@@ -1,0 +1,25 @@
+{
+  "name": "beddcode",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.14.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "lint": "oxlint .",
+    "fmt": "prettier --write .",
+    "fmt:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "oxlint": "^1.0.0",
+    "prettier": "^3.6.0",
+    "turbo": "^2.5.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

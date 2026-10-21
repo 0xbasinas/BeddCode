@@ -1,0 +1,341 @@
+import { describe, expect, it } from 'vitest'
+import type { SessionEvent } from '@beddcode/contracts'
+import { createLogger, type Transport } from '@beddcode/shared'
+import { createCodexAdapter } from './adapter.ts'
+import { CodexSession } from './session.ts'
+
+type Msg = { id?: number; method?: string; params?: Record<string, unknown>; result?: unknown }
+
+/** An in-memory `codex app-server`: records what the client sent and lets the test push messages. */
+function fakeServer() {
+  let lineHandler: (line: string) => void = () => {}
+  let closeHandler: () => void = () => {}
+  const received: Msg[] = []
+  const waiters: (() => void)[] = []
+  let nextServerId = 100
+
+  const auto: Record<string, (p: Record<string, unknown>) => unknown> = {
+    initialize: () => ({ userAgent: 'fake' }),
+    'thread/start': () => ({ thread: { id: 'th1' } }),
+    'thread/resume': (p) => ({ thread: { id: String(p.threadId) } }),
+    'turn/start': () => ({ turn: { id: 'tu1' } }),
+    'turn/interrupt': () => ({}),
+  }
+
+  const transport: Transport = {
+    send(line) {
+      const msg = JSON.parse(line) as Msg
+      received.push(msg)
+      if (msg.id !== undefined && msg.method && auto[msg.method]) {
+        const result = auto[msg.method]!(msg.params ?? {})
+        queueMicrotask(() =>
+          result instanceof Error
+            ? lineHandler(
+                JSON.stringify({ id: msg.id, error: { code: -1, message: result.message } }),
+              )
+            : lineHandler(JSON.stringify({ id: msg.id, result })),
+        )
+      }
+      waiters.splice(0).forEach((w) => w())
+    },
+    onLine: (h) => (lineHandler = h),
+    onClose: (h) => (closeHandler = h),
+    close: () => closeHandler(),
+  }
+
+  return {
+    transport,
+    received,
+    auto,
+    notify: (method: string, params: unknown) => lineHandler(JSON.stringify({ method, params })),
+    /** Sends a server request and resolves with the client's reply. */
+    ask(method: string, params: unknown): Promise<Msg> {
+      const id = nextServerId++
+      lineHandler(JSON.stringify({ id, method, params }))
+      return this.waitFor((m) => m.id === id && m.method === undefined)
+    },
+    async waitFor(pred: (m: Msg) => boolean): Promise<Msg> {
+      for (;;) {
+        const found = received.find(pred)
+        if (found) return found
+        await new Promise<void>((r) => waiters.push(r))
+      }
+    },
+    sent: (method: string) => received.filter((m) => m.method === method),
+    die: () => closeHandler(),
+  }
+}
+
+const log = createLogger('test', 'error')
+const start = (
+  server: ReturnType<typeof fakeServer>,
+  input: Partial<ConstructorParameters<typeof CodexSession>[0]> = {},
+) =>
+  new CodexSession(
+    { sessionId: 's1', cwd: '/work', ...input },
+    { transport: server.transport, log },
+  )
+
+async function nextEvent(session: CodexSession, pred: (e: SessionEvent) => boolean) {
+  for await (const e of session.events) if (pred(e)) return e
+  throw new Error('stream ended')
+}
+
+const completeTurn = (s: ReturnType<typeof fakeServer>, status = 'completed') =>
+  s.notify('turn/completed', { threadId: 'th1', turn: { id: 'tu1', status } })
+
+describe('CodexSession', () => {
+  it("starts a thread with the mode's approval policy and sandbox and records the thread id", async () => {
+    const server = fakeServer()
+    const session = start(server, { permissionMode: 'full', model: 'gpt-x' })
+    const event = await nextEvent(session, (e) => e.type === 'session.provider-session')
+    expect(event).toMatchObject({ providerSessionId: 'th1' })
+    expect(server.sent('thread/start')[0]?.params).toMatchObject({
+      cwd: '/work',
+      approvalPolicy: 'never',
+      sandbox: 'danger-full-access',
+      model: 'gpt-x',
+    })
+    expect(server.sent('initialized')).toHaveLength(1)
+    await session.close()
+  })
+
+  it('defaults to asking before edits', async () => {
+    const server = fakeServer()
+    const session = start(server)
+    await nextEvent(session, (e) => e.type === 'session.provider-session')
+    expect(server.sent('thread/start')[0]?.params).toMatchObject({
+      approvalPolicy: 'untrusted',
+      sandbox: 'workspace-write',
+    })
+    await session.close()
+  })
+
+  it('resumes an existing thread instead of starting a new one', async () => {
+    const server = fakeServer()
+    const session = start(server, { resumeId: 'old-thread' })
+    await nextEvent(session, (e) => e.type === 'session.provider-session')
+    expect(server.sent('thread/start')).toHaveLength(0)
+    expect(server.sent('thread/resume')[0]?.params).toMatchObject({
+      threadId: 'old-thread',
+      cwd: '/work',
+    })
+    await session.close()
+  })
+
+  it.each([
+    ['allow', 'accept'],
+    ['allow-session', 'acceptForSession'],
+    ['deny', 'decline'],
+  ])('relays a command approval: %s -> %s', async (optionId, decision) => {
+    const server = fakeServer()
+    const session = start(server)
+    const turn = session.prompt({ text: 'go' })
+    await server.waitFor((m) => m.method === 'turn/start')
+
+    const reply = server.ask('item/commandExecution/requestApproval', {
+      threadId: 'th1',
+      turnId: 'tu1',
+      itemId: 'c1',
+      command: "bash -lc 'pnpm test'",
+    })
+    const request = await nextEvent(session, (e) => e.type === 'approval.requested')
+    if (request.type !== 'approval.requested') throw new Error('unreachable')
+    expect(request).toMatchObject({ title: 'Running pnpm test?', detail: "bash -lc 'pnpm test'" })
+    expect(request.options.map((o) => o.id)).toEqual(['allow', 'deny', 'allow-session'])
+
+    await session.respondToApproval(request.requestId, optionId)
+    expect((await reply).result).toEqual({ decision })
+
+    completeTurn(server)
+    await turn
+    await session.close()
+  })
+
+  it('describes a file-change approval from the item it refers to and emits the diff after', async () => {
+    const server = fakeServer()
+    const session = start(server)
+    const turn = session.prompt({ text: 'go' })
+    await server.waitFor((m) => m.method === 'turn/start')
+
+    const changes = [
+      {
+        path: '/work/src/a.ts',
+        kind: { type: 'update', move_path: null },
+        diff: '@@ -1 +1 @@\n-a\n+b\n',
+      },
+    ]
+    server.notify('item/started', {
+      threadId: 'th1',
+      turnId: 'tu1',
+      item: { type: 'fileChange', id: 'f1', changes, status: 'inProgress' },
+    })
+    const reply = server.ask('item/fileChange/requestApproval', {
+      threadId: 'th1',
+      turnId: 'tu1',
+      itemId: 'f1',
+    })
+    const request = await nextEvent(session, (e) => e.type === 'approval.requested')
+    expect(request).toMatchObject({ title: 'Editing src/a.ts?', detail: '/work/src/a.ts' })
+    if (request.type !== 'approval.requested') throw new Error('unreachable')
+
+    await session.respondToApproval(request.requestId, 'allow')
+    expect((await reply).result).toEqual({ decision: 'accept' })
+    server.notify('item/completed', {
+      threadId: 'th1',
+      turnId: 'tu1',
+      item: { type: 'fileChange', id: 'f1', changes, status: 'completed' },
+    })
+    const diff = await nextEvent(session, (e) => e.type === 'diff')
+    expect(diff).toMatchObject({ path: 'src/a.ts', added: 1, removed: 1 })
+    completeTurn(server)
+    await turn
+    await session.close()
+  })
+
+  it("maps a permissions request to Codex's grant shape", async () => {
+    const server = fakeServer()
+    const session = start(server)
+    const reply = server.ask('item/permissions/requestApproval', {
+      threadId: 'th1',
+      reason: 'Need network',
+      permissions: { network: { enabled: true } },
+    })
+    const request = await nextEvent(session, (e) => e.type === 'approval.requested')
+    if (request.type !== 'approval.requested') throw new Error('unreachable')
+    await session.respondToApproval(request.requestId, 'allow-session')
+    expect((await reply).result).toEqual({
+      permissions: { network: { enabled: true } },
+      scope: 'session',
+    })
+    await session.close()
+  })
+
+  it('declines unsupported questions instead of leaving Codex waiting', async () => {
+    const server = fakeServer()
+    const session = start(server)
+    expect((await server.ask('item/tool/requestUserInput', { threadId: 'th1' })).result).toEqual({
+      answers: {},
+    })
+    expect(
+      (await server.ask('mcpServer/elicitation/request', { threadId: 'th1' })).result,
+    ).toMatchObject({ action: 'decline' })
+    await session.close()
+  })
+
+  it('applies a mode change once, to the next turn', async () => {
+    const server = fakeServer()
+    const session = start(server)
+    await session.setPermissionMode('read-only')
+
+    const first = session.prompt({ text: 'one' })
+    await server.waitFor((m) => m.method === 'turn/start')
+    completeTurn(server)
+    await first
+    const second = session.prompt({ text: 'two' })
+    await new Promise((r) => setTimeout(r, 5))
+    completeTurn(server)
+    await second
+
+    const [t1, t2] = server.sent('turn/start')
+    expect(t1?.params).toMatchObject({
+      approvalPolicy: 'on-request',
+      sandboxPolicy: { type: 'readOnly' },
+    })
+    expect(t2?.params).not.toHaveProperty('approvalPolicy')
+    await session.close()
+  })
+
+  it('interrupt cancels open approvals and asks Codex to stop the turn', async () => {
+    const server = fakeServer()
+    const session = start(server)
+    const turn = session.prompt({ text: 'go' })
+    await server.waitFor((m) => m.method === 'turn/start')
+    const reply = server.ask('item/commandExecution/requestApproval', {
+      threadId: 'th1',
+      itemId: 'c1',
+      command: 'x',
+    })
+    await nextEvent(session, (e) => e.type === 'approval.requested')
+
+    // The turn id is only known once turn/start has answered.
+    await new Promise((r) => setTimeout(r, 5))
+    await session.interrupt()
+    expect((await reply).result).toEqual({ decision: 'cancel' })
+    expect(server.sent('turn/interrupt')[0]?.params).toMatchObject({
+      threadId: 'th1',
+      turnId: 'tu1',
+    })
+
+    completeTurn(server, 'interrupted')
+    await turn
+    const events: SessionEvent[] = []
+    await session.close()
+    for await (const e of session.events) events.push(e)
+    expect(events.some((e) => e.type === 'turn.completed' && e.reason === 'cancelled')).toBe(true)
+  })
+
+  it('reports a failed turn/start as a finished turn without throwing', async () => {
+    const server = fakeServer()
+    server.auto['turn/start'] = () => new Error('rate limited')
+    const session = start(server)
+    await session.prompt({ text: 'go' })
+    const events: SessionEvent[] = []
+    await session.close()
+    for await (const e of session.events) events.push(e)
+    expect(events.map((e) => e.type)).toEqual(
+      expect.arrayContaining(['turn.started', 'error', 'turn.completed']),
+    )
+    expect(events.find((e) => e.type === 'error')).toMatchObject({ message: 'rate limited' })
+  })
+
+  it('ignores notifications for other threads', async () => {
+    const server = fakeServer()
+    const session = start(server)
+    await nextEvent(session, (e) => e.type === 'session.provider-session')
+    server.notify('item/completed', {
+      threadId: 'other',
+      item: { type: 'agentMessage', id: 'x', text: 'nope' },
+    })
+    server.notify('item/completed', {
+      threadId: 'th1',
+      item: { type: 'agentMessage', id: 'y', text: 'yes' },
+    })
+    const e = await nextEvent(session, (ev) => ev.type === 'message.delta')
+    expect(e).toMatchObject({ text: 'yes' })
+    await session.close()
+  })
+
+  it('ends the turn with an error when the process dies mid-turn', async () => {
+    const server = fakeServer()
+    const session = start(server)
+    const turn = session.prompt({ text: 'go' })
+    await server.waitFor((m) => m.method === 'turn/start')
+    await new Promise((r) => setTimeout(r, 5))
+    server.die()
+    await turn
+    const events: SessionEvent[] = []
+    for await (const e of session.events) events.push(e)
+    expect(events.find((e) => e.type === 'error')).toMatchObject({
+      message: expect.stringContaining('ended'),
+    })
+    expect(events.at(-1)).toMatchObject({ type: 'turn.completed', reason: 'error' })
+  })
+})
+
+describe('createCodexAdapter', () => {
+  it("reports not-installed for a missing binary and lists Codex's own modes", async () => {
+    const adapter = createCodexAdapter({ executablePath: '/definitely/not/here/codex' })
+    const [instance] = await adapter.detect()
+    expect(instance).toMatchObject({ id: 'codex', kind: 'codex', status: 'not-installed' })
+    expect(instance?.capabilities.permissionModes.map((m) => m.id)).toEqual([
+      'ask',
+      'auto',
+      'read-only',
+      'full',
+    ])
+    await expect(adapter.startSession('codex', { sessionId: 's', cwd: '/x' })).rejects.toThrow(
+      'not installed',
+    )
+  })
+})

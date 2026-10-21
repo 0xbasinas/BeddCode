@@ -1,0 +1,506 @@
+import { randomBytes } from 'node:crypto'
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from 'node:fs'
+import path from 'node:path'
+import type {
+  GitBranch,
+  GitCommit,
+  GitDiff,
+  GitFile,
+  GitInfo,
+  GitLog,
+  GitStatus,
+} from '@beddcode/contracts'
+import { diffText, runCommand, type RunResult } from '@beddcode/shared'
+
+export type Runner = (
+  file: string,
+  args: string[],
+  options: { cwd: string; timeoutMs?: number },
+) => Promise<RunResult>
+
+/** The hash every repository knows: used as "before" when a branch has no commits yet. */
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
+const MAX_FILE_BYTES = 1024 * 1024
+const MAX_PATCH_LINES = 600
+
+const defaultRunner: Runner = (file, args, { cwd, timeoutMs }) =>
+  runCommand(file, args, {
+    cwd,
+    timeoutMs: timeoutMs ?? 30_000,
+    // Never block on a credential prompt; stable English output for parsing.
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C', GIT_OPTIONAL_LOCKS: '0' },
+  })
+
+export class GitError extends Error {}
+
+const toPosix = (p: string) => p.replace(/\\/g, '/')
+
+/** Everything the app needs from git, by shelling out to the user's own `git`. */
+export class GitService {
+  constructor(private readonly run: Runner = defaultRunner) {}
+
+  private async git(cwd: string, args: string[], timeoutMs?: number): Promise<string> {
+    const res = await this.gitRaw(cwd, args, timeoutMs)
+    if (res.code !== 0) {
+      throw new GitError(res.stderr.trim() || res.stdout.trim() || `git ${args[0]} failed`)
+    }
+    return res.stdout
+  }
+
+  private gitRaw(cwd: string, args: string[], timeoutMs?: number): Promise<RunResult> {
+    return this.run('git', ['-c', 'core.quotepath=false', ...args], { cwd, timeoutMs }).catch(
+      (err: NodeJS.ErrnoException) => {
+        if (err.code === 'ENOENT') throw new GitError('Git is not installed on this host')
+        throw err
+      },
+    )
+  }
+
+  async info(cwd: string): Promise<GitInfo> {
+    if (!isDirectory(cwd)) throw new GitError(`Folder does not exist: ${cwd}`)
+    const inside = await this.gitRaw(cwd, ['rev-parse', '--is-inside-work-tree'])
+    if (inside.code !== 0 || inside.stdout.trim() !== 'true') return { isRepo: false }
+
+    const root = path.resolve((await this.git(cwd, ['rev-parse', '--show-toplevel'])).trim())
+    const common = path.resolve(
+      (await this.git(cwd, ['rev-parse', '--path-format=absolute', '--git-common-dir'])).trim(),
+    )
+    const mainRoot = path.basename(common) === '.git' ? path.dirname(common) : root
+
+    const head = (await this.gitRaw(cwd, ['symbolic-ref', '--short', '-q', 'HEAD'])).stdout.trim()
+    const upstreamRes = await this.gitRaw(cwd, [
+      'rev-parse',
+      '--abbrev-ref',
+      '--symbolic-full-name',
+      '@{u}',
+    ])
+    const upstream = upstreamRes.code === 0 ? upstreamRes.stdout.trim() : undefined
+
+    let ahead: number | undefined
+    let behind: number | undefined
+    if (upstream) {
+      const counts = await this.gitRaw(cwd, ['rev-list', '--left-right', '--count', '@{u}...HEAD'])
+      const [b, a] = counts.stdout.trim().split(/\s+/).map(Number)
+      if (counts.code === 0) [behind, ahead] = [b, a]
+    }
+
+    return {
+      isRepo: true,
+      root,
+      mainRoot,
+      isWorktree: path.resolve(root) !== path.resolve(mainRoot),
+      branch: head || undefined,
+      detached: head ? undefined : true,
+      upstream,
+      ahead,
+      behind,
+      defaultBranch: await this.defaultBranch(cwd, head || undefined),
+    }
+  }
+
+  private async defaultBranch(
+    cwd: string,
+    current: string | undefined,
+  ): Promise<string | undefined> {
+    const origin = await this.gitRaw(cwd, [
+      'symbolic-ref',
+      '--short',
+      '-q',
+      'refs/remotes/origin/HEAD',
+    ])
+    if (origin.code === 0 && origin.stdout.trim())
+      return origin.stdout.trim().replace(/^origin\//, '')
+    for (const name of ['main', 'master']) {
+      const ok = await this.gitRaw(cwd, ['show-ref', '--verify', '--quiet', `refs/heads/${name}`])
+      if (ok.code === 0) return name
+    }
+    return current
+  }
+
+  /** Root of the repository, or an error when `cwd` is not inside one. */
+  private async root(cwd: string): Promise<string> {
+    const info = await this.info(cwd)
+    if (!info.isRepo || !info.root) throw new GitError('This folder is not a git repository')
+    return info.root
+  }
+
+  private async baseline(cwd: string): Promise<string> {
+    const head = await this.gitRaw(cwd, ['rev-parse', '--verify', '-q', 'HEAD'])
+    return head.code === 0 ? 'HEAD' : EMPTY_TREE
+  }
+
+  async status(cwd: string): Promise<GitStatus> {
+    const root = await this.root(cwd)
+    const info = await this.info(cwd)
+    const porcelain = await this.git(root, [
+      'status',
+      '--porcelain=v1',
+      '-z',
+      '--untracked-files=all',
+    ])
+    const numstat = parseNumstat(
+      await this.git(root, ['diff', await this.baseline(root), '--numstat', '-z']),
+    )
+
+    const files: GitFile[] = []
+    const entries = porcelain.split('\0')
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i]
+      if (!entry || entry.length < 4) continue
+      const x = entry[0]!
+      const y = entry[1]!
+      const file = entry.slice(3)
+      // A rename lists its old path as the next entry; it is not a file of its own.
+      if (x === 'R' || x === 'C') i++
+
+      const untracked = x === '?'
+      const letter = untracked ? 'A' : x !== ' ' ? x : y
+      const status =
+        letter === 'D' ? 'D' : letter === 'A' ? 'A' : letter === 'R' || letter === 'C' ? 'R' : 'M'
+      const counts = untracked
+        ? countLines(path.join(root, file))
+        : (numstat.get(file) ?? { added: 0, removed: 0 })
+      files.push({
+        path: toPosix(file),
+        status,
+        staged: !untracked && x !== ' ',
+        added: counts.added,
+        removed: counts.removed,
+      })
+    }
+    files.sort((a, b) => a.path.localeCompare(b.path))
+    return { branch: info.branch, ahead: info.ahead ?? 0, behind: info.behind ?? 0, files }
+  }
+
+  async diff(cwd: string, file: string): Promise<GitDiff> {
+    const root = await this.root(cwd)
+    assertRelative(file)
+    const abs = path.join(root, file)
+
+    const tracked = await this.gitRaw(root, ['ls-files', '--error-unmatch', '--', file])
+    if (tracked.code !== 0 && existsSync(abs)) {
+      // Untracked: the whole file is new.
+      const text = readText(abs)
+      if (text === null) return { path: file, patch: '', added: 0, removed: 0, truncated: true }
+      const d = diffText(null, text)
+      return { path: file, ...d, truncated: false }
+    }
+
+    const out = await this.git(root, [
+      'diff',
+      await this.baseline(root),
+      '--no-color',
+      '--unified=3',
+      '--',
+      file,
+    ])
+    if (/^Binary files /m.test(out))
+      return { path: file, patch: '', added: 0, removed: 0, truncated: true }
+
+    const lines = out.split('\n')
+    const start = lines.findIndex((l) => l.startsWith('@@'))
+    const body = start === -1 ? [] : lines.slice(start)
+    if (body.at(-1) === '') body.pop()
+    const added = body.filter((l) => l.startsWith('+')).length
+    const removed = body.filter((l) => l.startsWith('-')).length
+    const truncated = body.length > MAX_PATCH_LINES
+    return {
+      path: file,
+      patch: body.slice(0, MAX_PATCH_LINES).join('\n'),
+      added,
+      removed,
+      truncated,
+    }
+  }
+
+  /**
+   * Commits exactly `paths`. The index is rebuilt from them, so files staged elsewhere are not
+   * swept in; anything not listed stays as an uncommitted change.
+   */
+  async commit(cwd: string, message: string, paths: string[], push = false) {
+    const root = await this.root(cwd)
+    paths.forEach(assertRelative)
+    await this.gitRaw(root, ['reset', '-q'])
+    await this.git(root, ['add', '-A', '--', ...paths])
+    await this.git(root, ['commit', '-m', message])
+    const hash = (await this.git(root, ['rev-parse', 'HEAD'])).trim()
+    if (push) await this.push(root)
+    return { hash, pushed: push }
+  }
+
+  async push(cwd: string): Promise<void> {
+    const root = await this.root(cwd)
+    const info = await this.info(root)
+    if (info.detached || !info.branch) throw new GitError('Cannot push a detached HEAD')
+    const args = info.upstream ? ['push'] : ['push', '-u', 'origin', 'HEAD']
+    await this.git(root, args, 120_000)
+  }
+
+  async log(cwd: string): Promise<GitLog> {
+    const root = await this.root(cwd)
+    const info = await this.info(root)
+    const base =
+      info.defaultBranch && info.defaultBranch !== info.branch ? info.defaultBranch : undefined
+    const baseExists =
+      base !== undefined &&
+      (await this.gitRaw(root, ['rev-parse', '--verify', '-q', base])).code === 0
+
+    const head = await this.gitRaw(root, ['rev-parse', '--verify', '-q', 'HEAD'])
+    if (head.code !== 0) return { unpushed: [], pushed: [], base: baseExists ? base : undefined }
+
+    const range = baseExists ? [`${base}..HEAD`] : []
+    const commits = parseLog(
+      await this.git(root, [
+        'log',
+        '-n',
+        '50',
+        '--numstat',
+        '--pretty=format:%x1e%H%x1f%an%x1f%at%x1f%s',
+        ...range,
+      ]),
+    )
+
+    let unpushedHashes: Set<string>
+    if (info.upstream) {
+      const unpushed = await this.git(root, ['rev-list', '@{u}..HEAD'])
+      unpushedHashes = new Set(unpushed.split('\n').filter(Boolean))
+    } else {
+      unpushedHashes = new Set(commits.map((c) => c.hash))
+    }
+    return {
+      unpushed: commits.filter((c) => unpushedHashes.has(c.hash)),
+      pushed: commits.filter((c) => !unpushedHashes.has(c.hash)),
+      base: baseExists ? base : undefined,
+    }
+  }
+
+  async branches(cwd: string): Promise<GitBranch[]> {
+    const root = await this.root(cwd)
+    const refs = await this.git(root, [
+      'for-each-ref',
+      'refs/heads',
+      '--sort=-committerdate',
+      '--format=%(refname:short)%1f%(committerdate:unix)%1f%(HEAD)',
+    ])
+    const trees = await this.worktrees(root)
+    return refs
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const [name, at, head] = line.split('\x1f')
+        const linked = trees.find((t) => t.branch === name && !t.main)
+        return {
+          name: name!,
+          current: head === '*',
+          at: Number(at) * 1000,
+          worktree: linked?.path,
+        }
+      })
+  }
+
+  private async worktrees(
+    cwd: string,
+  ): Promise<{ path: string; branch?: string; main: boolean }[]> {
+    const out = await this.git(cwd, ['worktree', 'list', '--porcelain'])
+    return out
+      .split('\n\n')
+      .filter(Boolean)
+      .map((block, i) => {
+        const lines = block.split('\n')
+        const wt = lines.find((l) => l.startsWith('worktree '))!.slice(9)
+        const branch = lines
+          .find((l) => l.startsWith('branch '))
+          ?.slice(7)
+          .replace('refs/heads/', '')
+        return { path: path.resolve(wt), branch, main: i === 0 }
+      })
+  }
+
+  /**
+   * Creates a worktree for a session under `<repo>/.wt/`, on a new branch cut from `baseBranch`
+   * (or on `branch` itself when it already exists and is free).
+   */
+  async createWorktree(
+    cwd: string,
+    options: { branch?: string; baseBranch?: string } = {},
+  ): Promise<{ path: string; branch: string; baseBranch: string }> {
+    const info = await this.info(cwd)
+    if (!info.isRepo || !info.mainRoot) throw new GitError('Worktrees need a git repository')
+    const base = options.baseBranch ?? info.defaultBranch ?? info.branch
+    if (!base) throw new GitError('Could not tell which branch to start from')
+
+    const branch = options.branch?.trim() || `beddcode/${randomBytes(3).toString('hex')}`
+    const wtRoot = path.join(info.mainRoot, '.wt')
+    let dir = path.join(wtRoot, slug(branch))
+    for (let n = 2; existsSync(dir); n++) dir = path.join(wtRoot, `${slug(branch)}-${n}`)
+
+    await this.excludeWorktreeDir(info.mainRoot)
+    const exists =
+      (
+        await this.gitRaw(info.mainRoot, [
+          'show-ref',
+          '--verify',
+          '--quiet',
+          `refs/heads/${branch}`,
+        ])
+      ).code === 0
+    if (exists) await this.git(info.mainRoot, ['worktree', 'add', dir, branch])
+    else await this.git(info.mainRoot, ['worktree', 'add', '-b', branch, dir, base])
+    return { path: dir, branch, baseBranch: base }
+  }
+
+  /**
+   * Deletes a linked worktree. On Windows the folder can stay locked for a moment after the agent
+   * that used it is stopped, so a refusal is retried before giving up. A folder left empty by an
+   * earlier attempt is cleaned up too.
+   */
+  async removeWorktree(worktreePath: string): Promise<boolean> {
+    const target = path.resolve(worktreePath)
+    const info = await this.info(target).catch(() => null)
+    if (!info?.isRepo || !info.isWorktree || !info.mainRoot) return removeLeftoverDir(target)
+
+    const trees = await this.worktrees(info.mainRoot)
+    if (!trees.some((t) => !t.main && t.path === target)) return false
+
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await this.git(info.mainRoot, ['worktree', 'remove', '--force', target])
+        break
+      } catch (err) {
+        const locked = /permission denied|being used by another process|failed to delete/i.test(
+          String(err),
+        )
+        if (!locked || attempt >= 6) throw err
+        await new Promise((r) => setTimeout(r, 400 * attempt))
+      }
+    }
+    // Git unregisters the worktree even when the folder itself could not be removed.
+    removeLeftoverDir(target)
+    return true
+  }
+
+  /** Keeps `.wt/` out of `git status` without touching the user's tracked .gitignore. */
+  private async excludeWorktreeDir(mainRoot: string) {
+    const gitDir = path.join(mainRoot, '.git')
+    if (!isDirectory(gitDir)) return
+    const file = path.join(gitDir, 'info', 'exclude')
+    const current = existsSync(file) ? readFileSync(file, 'utf8') : ''
+    if (current.split(/\r?\n/).includes('/.wt/')) return
+    mkdirSync(path.dirname(file), { recursive: true })
+    appendFileSync(file, `${current.endsWith('\n') || current === '' ? '' : '\n'}/.wt/\n`)
+  }
+}
+
+/** Removes an empty folder that sits directly inside a `.wt` directory (what a worktree leaves behind). */
+function removeLeftoverDir(dir: string): boolean {
+  try {
+    if (path.basename(path.dirname(dir)) !== '.wt' || !statSync(dir).isDirectory()) return false
+    if (readdirSync(dir).length > 0) return false
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+    return !existsSync(dir)
+  } catch {
+    return false
+  }
+}
+
+function slug(text: string) {
+  return (
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'session'
+  )
+}
+
+function isDirectory(p: string): boolean {
+  try {
+    return statSync(p).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+function assertRelative(file: string) {
+  if (path.isAbsolute(file) || toPosix(file).split('/').includes('..')) {
+    throw new GitError(`Path must be inside the repository: ${file}`)
+  }
+}
+
+function readText(file: string): string | null {
+  try {
+    if (statSync(file).size > MAX_FILE_BYTES) return null
+    const buf = readFileSync(file)
+    return buf.includes(0) ? null : buf.toString('utf8')
+  } catch {
+    return null
+  }
+}
+
+function countLines(file: string): { added: number; removed: number } {
+  const text = readText(file)
+  if (text === null || text === '') return { added: 0, removed: 0 }
+  return {
+    added: text.endsWith('\n') ? text.split('\n').length - 1 : text.split('\n').length,
+    removed: 0,
+  }
+}
+
+/** `git diff --numstat -z` into path -> counts. Binary files count as 0. */
+export function parseNumstat(out: string): Map<string, { added: number; removed: number }> {
+  const result = new Map<string, { added: number; removed: number }>()
+  const parts = out.split('\0')
+  for (let i = 0; i < parts.length; i++) {
+    const head = parts[i]
+    if (!head) continue
+    const [a, r, name] = head.split('\t')
+    let file = name
+    if (file === '') {
+      // Renames: the new path is the entry after the old one.
+      file = parts[i + 2]
+      i += 2
+    }
+    if (file === undefined) continue
+    result.set(toPosix(file), {
+      added: a === '-' ? 0 : Number(a),
+      removed: r === '-' ? 0 : Number(r),
+    })
+  }
+  return result
+}
+
+export function parseLog(out: string): GitCommit[] {
+  return out
+    .split('\x1e')
+    .filter((r) => r.trim())
+    .map((record) => {
+      const [header, ...rest] = record.split('\n')
+      const [hash, author, at, subject] = header!.split('\x1f')
+      const files = rest
+        .filter((l) => l.includes('\t'))
+        .map((l) => {
+          const [a, r, ...name] = l.split('\t')
+          return {
+            path: toPosix(name.join('\t')),
+            added: a === '-' ? 0 : Number(a),
+            removed: r === '-' ? 0 : Number(r),
+          }
+        })
+      return {
+        hash: hash!,
+        author: author!,
+        at: Number(at) * 1000,
+        subject: subject ?? '',
+        added: files.reduce((n, f) => n + f.added, 0),
+        removed: files.reduce((n, f) => n + f.removed, 0),
+        files,
+      }
+    })
+}

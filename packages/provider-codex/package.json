@@ -1,0 +1,21 @@
+{
+  "name": "@beddcode/provider-codex",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@beddcode/contracts": "workspace:*",
+    "@beddcode/provider-core": "workspace:*",
+    "@beddcode/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}
