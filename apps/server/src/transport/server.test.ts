@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import WebSocket from 'ws'
 import { ServerFrame, type StoredEvent } from '@beddcode/contracts'
 import { AcpAgentStore, AcpRegistry, createAcpAdapter } from '@beddcode/provider-acp'
@@ -10,6 +10,10 @@ import { createFakeAdapter } from '@beddcode/provider-core'
 import { createLogger } from '@beddcode/shared'
 import { AgentCatalog } from '../agents/catalog.ts'
 import { AttachmentStore } from '../attachments/store.ts'
+import { defaultGuard, type GuardOptions } from '../auth/guard.ts'
+import { PairingManager } from '../auth/pairing.ts'
+import { TokenStore } from '../auth/tokens.ts'
+import { TailscaleService } from '../network/tailscale.ts'
 import { SessionManager } from '../sessions/sessionManager.ts'
 import { FileService } from '../files/files.ts'
 import { FileWatchers } from '../files/watcher.ts'
@@ -19,6 +23,11 @@ import { GithubService } from '../workspace/github.ts'
 import { ProjectStore } from '../workspace/projects.ts'
 import { EventStore } from '../store/eventStore.ts'
 import { startServer, type RunningServer } from './server.ts'
+import {
+  HostClient,
+  applyEvent,
+  emptyReplica,
+} from '../../../../packages/client-runtime/src/index.ts'
 
 const cleanup: (() => void | Promise<void>)[] = []
 afterEach(async () => {
@@ -44,7 +53,8 @@ const registryJson = {
   ],
 }
 
-async function boot(store = new EventStore(':memory:')) {
+async function boot(store = new EventStore(':memory:'), guard?: GuardOptions, hostId = 'host-1') {
+  cleanup.push(() => store.close())
   const log = createLogger('test', 'error')
   const dir = mkdtempSync(path.join(os.tmpdir(), 'beddcode-test-'))
   cleanup.push(() => rmSync(dir, { recursive: true, force: true }))
@@ -76,10 +86,16 @@ async function boot(store = new EventStore(':memory:')) {
     new AcpRegistry({ fetch: async () => Response.json(registryJson) }),
     () => sessions.invalidateDetection(),
   )
+  const tokens = new TokenStore(path.join(dir, 'auth.json'))
+  const pairing = new PairingManager()
   const server: RunningServer = await startServer({
+    guard,
+    tokens,
+    pairing,
+    tailscale: new TailscaleService({ exe: null }),
     port: 0,
     host: '127.0.0.1',
-    hostId: 'host-1',
+    hostId,
     hostName: 'test-host',
     store,
     sessions,
@@ -101,7 +117,7 @@ async function boot(store = new EventStore(':memory:')) {
     () => terminals.shutdown(),
     () => watchers.closeAll(),
   )
-  return { server, store }
+  return { server, store, tokens, pairing }
 }
 
 class Client {
@@ -113,15 +129,15 @@ class Client {
       this.waiters.splice(0).forEach((w) => w())
     })
   }
-  static async connect(port: number) {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`)
+  static async connect(port: number, opts: { token?: string; origin?: string } = {}) {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { origin: opts.origin })
     await new Promise((resolve, reject) => {
       ws.once('open', resolve)
       ws.once('error', reject)
     })
     cleanup.push(() => ws.terminate())
     const c = new Client(ws)
-    c.send({ t: 'hello', protocol: 1 })
+    c.send({ t: 'hello', protocol: 1, token: opts.token })
     return c
   }
   send(frame: unknown) {
@@ -282,9 +298,14 @@ describe('server', () => {
     const { server } = await boot()
     const c = await Client.connect(server.port)
     const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'beddcode-term-api-')))
-    cleanup.push(() =>
-      rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 150 }),
-    )
+    cleanup.push(() => {
+      // Windows keeps a just-killed shell's folder locked for a moment; a leftover temp dir is harmless.
+      try {
+        rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 150 })
+      } catch {
+        // ignored
+      }
+    })
 
     const created = await c.rpc('terminals.create', { cwd: dir, cols: 100, rows: 30 })
     const info = created.result as { id: string; shell: string; cols: number }
@@ -427,5 +448,226 @@ describe('server', () => {
     const replayed = second.events()
     expect(replayed.map((e) => e.seq)).toEqual([lastSeen + 1])
     expect(replayed[0]?.event.type).toBe('error')
+  })
+})
+
+describe('access control', () => {
+  const pair = (port: number, body: unknown, headers: Record<string, string> = {}) =>
+    fetch(`http://127.0.0.1:${port}/pair`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+    })
+
+  it('refuses web pages from other origins before the socket opens', async () => {
+    const { server } = await boot()
+    await expect(Client.connect(server.port, { origin: 'https://evil.example' })).rejects.toThrow(
+      /403/,
+    )
+    const ok = await Client.connect(server.port, { origin: 'http://localhost:5173' })
+    await ok.until((fs) => fs.some((f) => f.t === 'welcome'))
+  })
+
+  it('lets this machine in without a token, but demands one when configured', async () => {
+    const { server, tokens } = await boot(undefined, { ...defaultGuard(), requireToken: true })
+
+    const anon = await Client.connect(server.port)
+    await anon.until((fs) => fs.some((f) => f.t === 'denied'))
+    expect(anon.frames.find((f) => f.t === 'denied')).toMatchObject({ reason: 'auth' })
+
+    const wrong = await Client.connect(server.port, { token: 'nope' })
+    await wrong.until((fs) => fs.some((f) => f.t === 'denied'))
+
+    const { token } = tokens.issue('test device')
+    const good = await Client.connect(server.port, { token })
+    await good.until((fs) => fs.some((f) => f.t === 'welcome'))
+    expect((await good.rpc('providers.list', {})).ok).toBe(true)
+  })
+
+  it('ignores requests sent before a hello that proves the token', async () => {
+    const { server } = await boot(undefined, { ...defaultGuard(), requireToken: true })
+    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`)
+    await new Promise((resolve) => ws.once('open', resolve))
+    cleanup.push(() => ws.terminate())
+    const closed = new Promise<number>((resolve) => ws.once('close', resolve))
+    ws.send(JSON.stringify({ t: 'req', id: '1', method: 'providers.list', params: {} }))
+    expect(await closed).toBe(1008)
+  })
+
+  it('pairs a device with a one-time code and the token it gets works', async () => {
+    const { server, pairing } = await boot(undefined, { ...defaultGuard(), requireToken: true })
+    const { code } = pairing.create()
+
+    const wrong = await pair(server.port, {
+      code: code === '000000' ? '000001' : '000000',
+      deviceName: 'x',
+    })
+    expect(wrong.status).toBe(403)
+
+    const res = await pair(server.port, { code, deviceName: 'Laptop' })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { token: string; host: { hostId: string } }
+    expect(body.host.hostId).toBe('host-1')
+
+    const c = await Client.connect(server.port, { token: body.token })
+    await c.until((fs) => fs.some((f) => f.t === 'welcome'))
+    expect((await c.rpc('devices.list', {})).ok).toBe(true)
+
+    // The code was single-use.
+    expect((await pair(server.port, { code, deviceName: 'Again' })).status).toBe(403)
+  })
+
+  it('rejects pairing from a foreign web page, and non-JSON bodies', async () => {
+    const { server, pairing } = await boot()
+    const { code } = pairing.create()
+    const evil = await pair(
+      server.port,
+      { code, deviceName: 'x' },
+      { origin: 'https://evil.example' },
+    )
+    expect(evil.status).toBe(403)
+    const form = await fetch(`http://127.0.0.1:${server.port}/pair`, {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: JSON.stringify({ code }),
+    })
+    expect(form.status).toBe(400)
+    // Neither attempt used up the code.
+    expect((await pair(server.port, { code, deviceName: 'Real' })).status).toBe(200)
+  })
+
+  it('issues pairing codes to the local machine only, over RPC and HTTP', async () => {
+    const { server } = await boot()
+    const c = await Client.connect(server.port)
+    const res = await c.rpc('host.pair', {})
+    expect(res.ok && (res.result as { code: string }).code).toMatch(/^\d{6}$/)
+
+    const admin = await fetch(`http://127.0.0.1:${server.port}/admin/pair`, { method: 'POST' })
+    expect(admin.status).toBe(200)
+    const viaBrowser = await fetch(`http://127.0.0.1:${server.port}/admin/pair`, {
+      method: 'POST',
+      headers: { origin: 'http://localhost:5173' },
+    })
+    expect(viaBrowser.status).toBe(403)
+  })
+
+  it('lists and revokes devices, and a revoked token stops working', async () => {
+    const { server, tokens } = await boot(undefined, { ...defaultGuard(), requireToken: true })
+    const { token, device } = tokens.issue('Phone')
+    const c = await Client.connect(server.port, { token })
+    const { token: otherToken } = tokens.issue('Other device')
+    const other = await Client.connect(server.port, { token: otherToken })
+    const list = await c.rpc('devices.list', {})
+    expect(list.ok && (list.result as { name: string }[])[0]?.name).toBe('Phone')
+    const revoked = await other.rpc('devices.revoke', { id: device.id })
+    expect(revoked.ok && (revoked.result as { revoked: boolean }).revoked).toBe(true)
+    expect(tokens.verify(token)).toBeNull()
+    await c.until((frames) => frames.some((f) => f.t === 'denied'))
+    expect((await other.rpc('providers.list', {})).ok).toBe(true)
+    const again = await Client.connect(server.port, { token })
+    await again.until((frames) => frames.some((f) => f.t === 'denied'))
+  })
+
+  it('reports Tailscale as unavailable instead of failing', async () => {
+    const { server } = await boot()
+    const c = await Client.connect(server.port)
+    const res = await c.rpc('tailnet.peers', {})
+    expect(res.ok && (res.result as { state: string }).state).toBe('not-installed')
+  })
+})
+
+describe('multiple hosts through the client runtime', () => {
+  it('keeps sessions isolated, replays missed events, and stops a revoked client', async () => {
+    const first = await boot(undefined, { ...defaultGuard(), requireToken: true }, 'one')
+    const second = await boot(undefined, { ...defaultGuard(), requireToken: true }, 'two')
+    const tokenFor = async (host: Awaited<ReturnType<typeof boot>>) => {
+      const { code } = host.pairing.create()
+      const res = await fetch(`http://127.0.0.1:${host.server.port}/pair`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ code, deviceName: 'Workspace' }),
+      })
+      expect(res.ok).toBe(true)
+      return ((await res.json()) as { token: string }).token
+    }
+    const firstToken = await tokenFor(first)
+    const secondToken = await tokenFor(second)
+    const connect = (host: Awaited<ReturnType<typeof boot>>, token: string) => {
+      let replica = emptyReplica()
+      const sockets: WebSocket[] = []
+      const client = new HostClient({
+        url: `ws://127.0.0.1:${host.server.port}/ws`,
+        token,
+        expectedHostId: host.server.hostInfo.hostId,
+        onEvent: (stored) => {
+          replica = applyEvent(replica, stored)
+        },
+        createSocket: (url) => {
+          const socket = new WebSocket(url)
+          sockets.push(socket)
+          return socket as unknown as globalThis.WebSocket
+        },
+        heartbeatMs: 25,
+        backoff: { minMs: 10, maxMs: 20 },
+      })
+      cleanup.push(() => client.stop())
+      client.start()
+      return { client, sockets, replica: () => replica }
+    }
+    const a = connect(first, firstToken)
+    const b = connect(second, secondToken)
+    await vi.waitFor(() => {
+      expect(a.client.connectionState).toBe('connected')
+      expect(b.client.connectionState).toBe('connected')
+    })
+    const sessionA = await a.client.request('sessions.create', {
+      instanceId: 'fake',
+      title: 'First host',
+      permissionMode: 'full',
+    })
+    const sessionB = await b.client.request('sessions.create', {
+      instanceId: 'fake',
+      title: 'Second host',
+      permissionMode: 'full',
+    })
+    await Promise.all([
+      a.client.request('sessions.prompt', { ...sessionA, text: 'one' }),
+      b.client.request('sessions.prompt', { ...sessionB, text: 'two' }),
+    ])
+    await vi.waitFor(() => {
+      expect(a.replica().sessions[sessionA.sessionId]?.status).toBe('idle')
+      expect(b.replica().sessions[sessionB.sessionId]?.status).toBe('idle')
+      expect(a.replica().sessions[sessionA.sessionId]?.items.some((i) => i.kind === 'diff')).toBe(
+        true,
+      )
+      expect(b.replica().sessions[sessionB.sessionId]?.items.some((i) => i.kind === 'diff')).toBe(
+        true,
+      )
+    })
+    expect(a.replica().order).toEqual([sessionA.sessionId])
+    expect(b.replica().order).toEqual([sessionB.sessionId])
+
+    a.sockets.at(-1)!.terminate()
+    const missed = first.store.append({
+      type: 'error',
+      sessionId: sessionA.sessionId,
+      at: Date.now(),
+      message: 'While disconnected',
+    })
+    await vi.waitFor(() => expect(a.replica().lastSeq).toBe(missed.seq))
+    expect(a.sockets.length).toBeGreaterThan(1)
+    expect(
+      a
+        .replica()
+        .sessions[sessionA.sessionId]!.items.filter(
+          (i) => i.kind === 'error' && i.message === 'While disconnected',
+        ),
+    ).toHaveLength(1)
+    expect(b.replica().sessions[sessionB.sessionId]?.status).toBe('idle')
+
+    first.tokens.revoke(first.tokens.list()[0]!.id)
+    await vi.waitFor(() => expect(a.client.connectionState).toBe('denied'))
+    await expect(a.client.request('providers.list', {})).rejects.toThrow('not connected')
+    expect((await b.client.request('providers.list', {})).length).toBeGreaterThan(0)
   })
 })

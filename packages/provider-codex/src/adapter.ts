@@ -10,6 +10,7 @@ import {
 } from '@beddcode/shared'
 import { codexModes } from './modes.ts'
 import { CodexSession } from './session.ts'
+import { discoverCodexModels } from './models.ts'
 
 export const CODEX_INSTANCE_ID = 'codex'
 
@@ -26,7 +27,6 @@ export const codexCapabilities: ProviderCapabilities = {
     description,
     dangerous,
   })),
-  efforts: ['low', 'medium', 'high'],
 }
 
 export interface CodexAdapterOptions {
@@ -45,6 +45,7 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): ProviderA
   const instanceId = options.instanceId ?? CODEX_INSTANCE_ID
   const log = options.log ?? createLogger('codex')
   const env = { ...process.env, ...(options.codexHome ? { CODEX_HOME: options.codexHome } : {}) }
+  let capabilities = codexCapabilities
 
   const executable = () =>
     options.executablePath ? resolveExecutable(options.executablePath) : resolveExecutable('codex')
@@ -71,13 +72,24 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): ProviderA
       log.warn('codex detection failed', err)
       status = 'error'
     }
-    return { ...base, status, version }
+    if (status === 'ready') {
+      try {
+        const transport =
+          options.createTransport?.(process.cwd()) ??
+          spawnTransport(exe, ['app-server'], { env, cwd: process.cwd() }, log)
+        capabilities = { ...codexCapabilities, ...(await discoverCodexModels(transport, log)) }
+      } catch (err) {
+        log.warn('Codex model discovery failed; using the CLI configuration', err)
+        capabilities = codexCapabilities
+      }
+    }
+    return { ...base, capabilities, status, version }
   }
 
   return {
     kind: 'codex',
     detect: async () => [await detectInstance()],
-    capabilities: () => codexCapabilities,
+    capabilities: () => capabilities,
     async startSession(_instanceId, input) {
       const exe = executable()
       if (!exe) throw new Error('Codex is not installed on this host')

@@ -1,10 +1,12 @@
 import { FolderOpen, GitBranch, Globe, SquareTerminal } from 'lucide-react'
 import type { ComponentType, ReactNode } from 'react'
 import { useRouterState } from '@tanstack/react-router'
-import { useHostStore } from '../../stores/host.ts'
+import { useSession, useSessionHostKey } from '../../stores/host.ts'
+import { HostScopeProvider } from '../../stores/HostScope.tsx'
+import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { useUiStore, type PaneId } from '../../stores/ui.ts'
 import { BrowserPane } from '../browser/BrowserPane.tsx'
-import { EMPTY_FOLDER, useFiles } from '../files/filesStore.ts'
+import { EMPTY_FOLDER, folderId, useFiles } from '../files/filesStore.ts'
 import { FilesPane } from '../files/FilesPane.tsx'
 import { GitPane } from '../git/GitPane.tsx'
 import { TerminalPane } from '../terminal/TerminalPane.tsx'
@@ -26,10 +28,11 @@ export function RightRail() {
   const activePane = useUiStore((s) => s.activePane)
   const togglePane = useUiStore((s) => s.togglePane)
   const sessionId = useActiveSessionId()
-  const session = useHostStore((s) => (sessionId ? s.replica.sessions[sessionId] : undefined))
+  const session = useSession(sessionId)
+  const hostKey = useSessionHostKey(sessionId) ?? LOCAL_HOST_KEY
   // The editor needs room: the files pane grows once a file is open.
   const editorOpen = useFiles((s) =>
-    session ? (s.byCwd[session.cwd] ?? EMPTY_FOLDER).tabs.length > 0 : false,
+    session ? (s.byCwd[folderId(hostKey, session.cwd)] ?? EMPTY_FOLDER).tabs.length > 0 : false,
   )
 
   const needSession = (render: (s: NonNullable<typeof session>) => ReactNode) =>
@@ -40,16 +43,21 @@ export function RightRail() {
     )
 
   return (
-    <div className="right">
+    <div
+      className={`right ${activePane ? 'has-pane' : ''} ${activePane === 'browser' ? 'browser-open' : ''} ${activePane === 'files' && editorOpen ? 'editor-open' : ''}`}
+    >
       {activePane && (
         <section
           className={`panel side-pane ${activePane === 'files' && editorOpen ? 'wide' : ''}`}
           aria-label={activePane}
         >
-          {activePane === 'git' && needSession((s) => <GitPane key={s.id} session={s} />)}
-          {activePane === 'terminal' && needSession((s) => <TerminalPane key={s.id} session={s} />)}
-          {activePane === 'files' && needSession((s) => <FilesPane key={s.id} session={s} />)}
-          {activePane === 'browser' && <BrowserPane />}
+          <HostScopeProvider hostKey={hostKey}>
+            {activePane === 'git' && needSession((s) => <GitPane key={s.id} session={s} />)}
+            {activePane === 'terminal' &&
+              needSession((s) => <TerminalPane key={s.id} session={s} />)}
+            {activePane === 'files' && needSession((s) => <FilesPane key={s.id} session={s} />)}
+            {activePane === 'browser' && <BrowserPane />}
+          </HostScopeProvider>
         </section>
       )}
       <nav className="rail" aria-label="Panes">

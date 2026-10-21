@@ -5,6 +5,7 @@ export const PROTOCOL_VERSION = 1
 
 /** Frames carried over the single host WebSocket (JSON text frames). */
 export const ClientFrame = z.discriminatedUnion('t', [
+  z.object({ t: z.literal('ping') }),
   z.object({ t: z.literal('hello'), protocol: z.number().int(), token: z.string().optional() }),
   z.object({
     t: z.literal('req'),
@@ -41,6 +42,7 @@ export const HostInfo = z.object({
 export type HostInfo = z.infer<typeof HostInfo>
 
 export const ServerFrame = z.discriminatedUnion('t', [
+  z.object({ t: z.literal('pong') }),
   z.object({ t: z.literal('welcome'), protocol: z.number().int(), host: HostInfo }),
   z.object({
     t: z.literal('res'),
@@ -50,6 +52,8 @@ export const ServerFrame = z.discriminatedUnion('t', [
     error: z.string().optional(),
   }),
   z.object({ t: z.literal('event'), stored: StoredEvent }),
+  /** The host refused this connection (missing or wrong token). It closes right after. */
+  z.object({ t: z.literal('denied'), reason: z.enum(['auth', 'origin', 'network']) }),
   /** Terminal output. `replay` marks the buffered history sent on attach. */
   z.object({
     t: z.literal('term.out'),

@@ -1,18 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import { File, FilePlus, FolderOpen, FolderPlus, Search, X, ChevronsDownUp } from 'lucide-react'
 import type { SessionView } from '@beddcode/client-runtime'
-import { hostRequest, onHostFrame, sendHostFrame, useHostStore } from '../../stores/host.ts'
+import { hostRequest, onHostFrame, sendHostFrame, useRuntime } from '../../stores/host.ts'
+import { useHostKey } from '../../stores/HostScope.tsx'
 import { formatBytes } from '../../ui/format.ts'
 import { Editor, type EditorPosition } from './Editor.tsx'
 import { FileTree } from './FileTree.tsx'
 import { baseName, languageName } from './fileIcons.ts'
-import { EMPTY_FOLDER, useFiles } from './filesStore.ts'
+import { EMPTY_FOLDER, folderId, useFiles } from './filesStore.ts'
+import { useAppPreferences } from '../../stores/appPreferences.ts'
 
 /** Browse and edit the files of the folder a session works in. */
 export function FilesPane({ session }: { session: SessionView }) {
-  const cwd = session.cwd
-  const epoch = useHostStore((s) => s.epoch)
-  const connected = useHostStore((s) => s.connection === 'connected')
+  const hostKey = useHostKey()
+  const realCwd = session.cwd
+  // Open files and listings are kept per folder *and* host: two hosts can have the same path.
+  const cwd = folderId(hostKey, realCwd)
+  const { epoch, connection } = useRuntime(hostKey)
+  const connected = connection === 'connected'
   const folder = useFiles((s) => s.byCwd[cwd] ?? EMPTY_FOLDER)
   const { loadDir, collapseAll, changed, create } = useFiles.getState()
   const [query, setQuery] = useState('')
@@ -26,15 +31,15 @@ export function FilesPane({ session }: { session: SessionView }) {
     void loadDir(cwd, '').catch((err: unknown) =>
       setError(err instanceof Error ? err.message : String(err)),
     )
-    sendHostFrame({ t: 'fs.watch', cwd })
-    const stop = onHostFrame((frame) => {
-      if (frame.t === 'fs.changed' && frame.cwd === cwd) changed(cwd, frame.paths)
+    sendHostFrame(hostKey, { t: 'fs.watch', cwd: realCwd })
+    const stop = onHostFrame(hostKey, (frame) => {
+      if (frame.t === 'fs.changed' && frame.cwd === realCwd) changed(cwd, frame.paths)
     })
     return () => {
       stop()
-      sendHostFrame({ t: 'fs.unwatch', cwd })
+      sendHostFrame(hostKey, { t: 'fs.unwatch', cwd: realCwd })
     }
-  }, [cwd, epoch, connected, loadDir, changed])
+  }, [hostKey, realCwd, cwd, epoch, connected, loadDir, changed])
 
   // Search as you type, ignoring answers that arrive out of order.
   useEffect(() => {
@@ -44,7 +49,7 @@ export function FilesPane({ session }: { session: SessionView }) {
     }
     let cancelled = false
     const timer = setTimeout(() => {
-      hostRequest('files.search', { cwd, query }).then(
+      hostRequest(hostKey, 'files.search', { cwd: realCwd, query }).then(
         (r) => !cancelled && setResults(r.paths),
         () => !cancelled && setResults([]),
       )
@@ -53,10 +58,10 @@ export function FilesPane({ session }: { session: SessionView }) {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [cwd, query])
+  }, [hostKey, realCwd, query])
 
   const active = folder.active ? folder.docs[folder.active] : undefined
-  const name = cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? cwd
+  const name = realCwd.split(/[\\/]/).filter(Boolean).at(-1) ?? realCwd
 
   return (
     <div className="pane-body files">
@@ -129,7 +134,11 @@ export function FilesPane({ session }: { session: SessionView }) {
         </div>
         <div className="pane-foot">
           <span>{folder.active ?? ''}</span>
-          <span>{active && !active.error ? formatBytes(active.size) : ''}</span>
+          <span>
+            {active && !active.error
+              ? `${formatBytes(active.size)} · ${active.content.split('\n').length} lines`
+              : ''}
+          </span>
         </div>
       </div>
 
@@ -167,8 +176,9 @@ function NewEntry({
 }
 
 function EditorColumn({ cwd }: { cwd: string }) {
+  const tabSize = useAppPreferences((s) => s.values.editorTabSize)
   const folder = useFiles((s) => s.byCwd[cwd] ?? EMPTY_FOLDER)
-  const { activate, close, setDirty, save, reload } = useFiles.getState()
+  const { activate, close, setDraft, save, reload } = useFiles.getState()
   const [position, setPosition] = useState<EditorPosition>({ line: 1, col: 1 })
   const [saveError, setSaveError] = useState<string>()
   const doc = folder.active ? folder.docs[folder.active] : undefined
@@ -276,9 +286,9 @@ function EditorColumn({ cwd }: { cwd: string }) {
         <Editor
           docKey={`${cwd}::${doc.path}`}
           fileName={baseName(doc.path)}
-          content={doc.content}
+          content={doc.draft ?? doc.content}
           version={doc.version}
-          onDirty={(dirty) => setDirty(cwd, doc.path, dirty)}
+          onChange={(text) => setDraft(cwd, doc.path, text)}
           onSave={(text) => void doSave(text)}
           textRef={textRef}
           onCursor={setPosition}
@@ -287,7 +297,8 @@ function EditorColumn({ cwd }: { cwd: string }) {
 
       <div className="pane-foot">
         <span>
-          Ln {position.line}, Col {position.col} · Spaces: 2 · {languageName(doc.path)} · UTF-8
+          Ln {position.line}, Col {position.col} · Spaces: {tabSize} · {languageName(doc.path)} ·
+          UTF-8
         </span>
         <span>{doc.dirty ? '● 1 unsaved change · Ctrl S to save' : ''}</span>
       </div>

@@ -6,11 +6,14 @@ const webUrl = process.env.BEDDCODE_WEB_URL
 
 function createWindow() {
   const win = new BrowserWindow({
+    show: process.env.BEDDCODE_WINDOW_HIDDEN !== '1',
     width: 1400,
     height: 900,
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#111111',
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#161616', symbolColor: '#9a9a9a', height: 44 },
     title: 'BeddCode',
     autoHideMenuBar: true,
     webPreferences: {

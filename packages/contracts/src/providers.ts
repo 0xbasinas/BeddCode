@@ -22,6 +22,9 @@ export const ModelOption = z.object({
   id: z.string(),
   label: z.string(),
   description: z.string().optional(),
+  /** Model-specific effort choices, in the order reported by the provider. */
+  efforts: z.array(z.string()).optional(),
+  defaultEffort: z.string().optional(),
 })
 export type ModelOption = z.infer<typeof ModelOption>
 

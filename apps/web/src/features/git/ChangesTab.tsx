@@ -3,6 +3,7 @@ import { Check, ChevronDown, ChevronRight, Folder, Minus } from 'lucide-react'
 import type { GitFile, GitStatus } from '@beddcode/contracts'
 import { PatchView } from '../../ui/PatchView.tsx'
 import { hostRequest } from '../../stores/host.ts'
+import { useHostKey } from '../../stores/HostScope.tsx'
 import { commitLabel, groupByDirectory, selectedPaths } from './changes.ts'
 import { usePolled } from './usePolled.ts'
 
@@ -23,6 +24,7 @@ export function ChangesTab({
   /** Called after a commit or push so the other tabs refresh. */
   onChanged(): void
 }) {
+  const hostKey = useHostKey()
   const [overrides, setOverrides] = useState<Record<string, boolean>>({})
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
@@ -44,7 +46,12 @@ export function ChangesTab({
     setBusy(push ? 'push' : 'commit')
     setError(undefined)
     try {
-      await hostRequest('git.commit', { cwd, message: message.trim(), paths: selected, push })
+      await hostRequest(hostKey, 'git.commit', {
+        cwd,
+        message: message.trim(),
+        paths: selected,
+        push,
+      })
       setMessage('')
       setOverrides({})
       onChanged()
@@ -169,7 +176,8 @@ export function ChangesTab({
 }
 
 function FileDiffView({ cwd, path }: { cwd: string; path: string }) {
-  const diff = usePolled(() => hostRequest('git.diff', { cwd, path }), path, 0)
+  const hostKey = useHostKey()
+  const diff = usePolled(() => hostRequest(hostKey, 'git.diff', { cwd, path }), path, 0)
   if (diff.loading) return <div className="muted diff-note">Loading…</div>
   if (diff.error) return <div className="composer-error diff-note">{diff.error}</div>
   if (!diff.data || (diff.data.truncated && !diff.data.patch)) {

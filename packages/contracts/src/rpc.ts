@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { GitBranch, GitDiff, GitInfo, GitLog, GitStatus, Project, PullRequest } from './git.ts'
+import { Device, PairingCode, TailnetStatus } from './hosts.ts'
 import { ProviderInstance } from './providers.ts'
 import { FileContent, FileEntry, TerminalInfo } from './workspace.ts'
 
@@ -103,6 +104,19 @@ export const RpcMethods = {
     params: z.object({ sessionId: z.string() }),
     result: z.object({ removed: z.boolean() }),
   },
+  /** New pairing code for this host. Only the machine itself may ask (loopback connections). */
+  'host.pair': { params: z.object({}), result: PairingCode },
+  /** Paired devices, and removal of one (its token stops working). Loopback connections only. */
+  'devices.list': { params: z.object({}), result: z.array(Device) },
+  'devices.revoke': {
+    params: z.object({ id: z.string() }),
+    result: z.object({ revoked: z.boolean() }),
+  },
+  /** Tailscale peers as seen from this machine, with a probe for BeddCode hosts among them. */
+  'tailnet.peers': {
+    params: z.object({ port: z.number().int().min(1).max(65535).optional() }),
+    result: TailnetStatus,
+  },
   'terminals.create': {
     params: z.object({
       cwd: z.string(),
@@ -184,6 +198,10 @@ export const RpcMethods = {
   },
   'sessions.interrupt': {
     params: z.object({ sessionId: z.string() }),
+    result: z.object({}),
+  },
+  'sessions.rename': {
+    params: z.object({ sessionId: z.string(), title: z.string().trim().min(1).max(120) }),
     result: z.object({}),
   },
   'sessions.setMode': {

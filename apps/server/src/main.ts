@@ -1,82 +1,89 @@
-import path from 'node:path'
-import { AcpAgentStore, AcpRegistry, createAcpAdapter } from '@beddcode/provider-acp'
-import { createClaudeAdapter } from '@beddcode/provider-claude'
-import { createCodexAdapter } from '@beddcode/provider-codex'
-import { createFakeAdapter, type ProviderAdapter } from '@beddcode/provider-core'
-import { createLogger } from '@beddcode/shared'
-import { AgentCatalog } from './agents/catalog.ts'
-import { AttachmentStore } from './attachments/store.ts'
-import { dataHome, loadHostId } from './hostIdentity.ts'
-import { SessionManager } from './sessions/sessionManager.ts'
-import { EventStore } from './store/eventStore.ts'
-import { startServer } from './transport/server.ts'
-import { FileService } from './files/files.ts'
-import { FileWatchers } from './files/watcher.ts'
-import { TerminalManager } from './terminals/manager.ts'
-import { GitService } from './workspace/git.ts'
-import { GithubService } from './workspace/github.ts'
-import { ProjectStore } from './workspace/projects.ts'
+import os from 'node:os'
+import type { PairingCode } from '@beddcode/contracts'
+import { parseServeArgs } from './config.ts'
+import { TailscaleService } from './network/tailscale.ts'
+import { runServer } from './runServer.ts'
+import { installService, uninstallService } from './service/install.ts'
 
-const log = createLogger('server')
-const port = Number(process.env.BEDDCODE_PORT ?? 3773)
-const host = process.env.BEDDCODE_HOST ?? '127.0.0.1'
-const home = dataHome()
+const USAGE = `BeddCode host
 
-const acpStore = new AcpAgentStore(path.join(home, 'acp-agents.json'))
-const adapters: ProviderAdapter[] = [
-  createClaudeAdapter({ log: createLogger('claude') }),
-  createCodexAdapter({ log: createLogger('codex') }),
-  createAcpAdapter({ store: acpStore, log: createLogger('acp') }),
-]
-if (process.env.BEDDCODE_FAKE_PROVIDER === '1') adapters.push(createFakeAdapter())
+Usage: beddcode-server [command] [options]
 
-const store = new EventStore(path.join(home, 'beddcode.db'))
-const attachments = new AttachmentStore(path.join(home, 'attachments'))
-const git = new GitService()
-const workspace = {
-  git,
-  github: new GithubService(),
-  projects: new ProjectStore(path.join(home, 'projects.json'), git),
-  terminals: new TerminalManager(),
-  files: new FileService(),
+Commands:
+  serve               Run the host (default)
+  pair                Print a one-time code to pair another device with this host
+  install-service     Run the host in the background, starting at login
+  uninstall-service   Stop it and remove it
+
+Options for serve and install-service:
+  --host <address>    Address to listen on (default 127.0.0.1; use 0.0.0.0 for other machines)
+  --port <number>     Port (default 3773)
+  --allow-lan         Also accept machines on your local network, not just the tailnet
+  --require-token     Ask for a paired device's token even from this machine
+  --allow-origin <o>  Let a web page at this origin connect (repeatable)
+
+Other: --dry-run      With (un)install-service, show what would happen and change nothing
+`
+
+/** Pairing happens on the machine itself, through the running host. */
+async function pair(port: number) {
+  let code: PairingCode
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/admin/pair`, { method: 'POST' })
+    if (!res.ok) throw new Error(`the host answered ${res.status}`)
+    code = (await res.json()) as PairingCode
+  } catch (err) {
+    console.error(
+      `Could not reach the host on port ${port} (${err instanceof Error ? err.message : err}). Is it running?`,
+    )
+    process.exitCode = 1
+    return
+  }
+
+  const status = await new TailscaleService().status()
+  const addresses = [
+    status.self && `${status.self.dnsName || status.self.name} (${status.self.ip})`,
+    ...Object.values(os.networkInterfaces())
+      .flat()
+      .filter((i) => i && i.family === 'IPv4' && !i.internal && !i.address.startsWith('169.254.'))
+      .map((i) => i!.address),
+  ].filter(Boolean)
+  const minutes = Math.round((code.expiresAt - Date.now()) / 60_000)
+  console.log(`Pairing code: ${code.code}   (valid for ${minutes} minutes, works once)`)
+  console.log(`Add this host in BeddCode with one of these addresses on port ${port}:`)
+  addresses.forEach((a) => console.log(`  ${a}`))
 }
-const watchers = new FileWatchers()
-const sessions = new SessionManager({
-  store,
-  attachments,
-  git,
-  adapters,
-  log,
-  defaultCwd: process.cwd(),
-})
-const agents = new AgentCatalog(acpStore, new AcpRegistry(), () => sessions.invalidateDetection())
 
-const server = await startServer({
-  port,
-  host,
-  hostId: loadHostId(home),
-  defaultCwd: process.cwd(),
-  store,
-  sessions,
-  agents,
-  attachments,
-  workspace,
-  watchers,
-  log,
-})
-log.info(`listening on ${host}:${server.port} (data: ${home})`)
+const [first = 'serve', ...rest] = process.argv.slice(2)
+const wantsHelp = first === '--help' || first === '-h' || first === 'help'
+const known = ['serve', 'pair', 'install-service', 'uninstall-service']
+const command = known.includes(first)
+  ? first
+  : first.startsWith('-') && !wantsHelp
+    ? 'serve'
+    : first
+const args = command === first ? rest : [first, ...rest]
+const dryRun = args.includes('--dry-run')
+const serveArgs = args.filter((a) => a !== '--dry-run')
 
-const shutdown = () =>
-  void sessions
-    .close()
-    .then(() => {
-      workspace.terminals.shutdown()
-      return watchers.closeAll()
-    })
-    .then(() => server.close())
-    .then(() => {
-      store.close()
-      process.exit(0)
-    })
-process.on('SIGINT', shutdown)
-process.on('SIGTERM', shutdown)
+try {
+  if (wantsHelp || !known.includes(command)) {
+    console.log(USAGE)
+    process.exitCode = wantsHelp ? 0 : 1
+  } else if (command === 'pair') {
+    await pair(parseServeArgs(serveArgs).port)
+  } else if (command === 'install-service') {
+    parseServeArgs(serveArgs) // fail now on a typo rather than in the background
+    // A background host exists to be reached from other machines, so it listens beyond loopback
+    // unless told otherwise. Only the tailnet and paired devices get in (see auth/guard.ts).
+    const withHost = serveArgs.includes('--host') ? serveArgs : ['--host', '0.0.0.0', ...serveArgs]
+    await installService({ serveArgs: withHost, dryRun })
+  } else if (command === 'uninstall-service') {
+    await uninstallService({ dryRun })
+  } else {
+    await runServer(parseServeArgs(serveArgs))
+  }
+} catch (err) {
+  console.error(err instanceof Error ? err.message : err)
+  process.exitCode = 1
+}

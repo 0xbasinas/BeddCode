@@ -1,19 +1,25 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   ChevronDown,
   ChevronUp,
   FileText,
+  FolderOpen,
   Paperclip,
   Pencil,
   Search,
   SquareTerminal,
   Wrench,
+  Check,
+  Shield,
+  X,
+  CirclePause,
 } from 'lucide-react'
 import type { TranscriptItem } from '@beddcode/client-runtime'
 import { Markdown } from '../../ui/Markdown.tsx'
 import { PatchView } from '../../ui/PatchView.tsx'
 import { buildBlocks, totalChanges, type EditedFile } from './blocks.ts'
 import { folderName } from '../../ui/format.ts'
+import { FileIcon } from '../files/FileIcon.tsx'
 
 type Item = TranscriptItem
 type ApprovalItem = Extract<Item, { kind: 'approval' }>
@@ -22,30 +28,58 @@ export function Transcript({
   items,
   cwd,
   onApprove,
+  onOpenFile,
 }: {
   items: Item[]
   cwd: string
-  onApprove(requestId: string, optionId: string): void
+  onApprove(requestId: string, optionId: string): void | Promise<void>
+  onOpenFile?(path: string): void
 }) {
+  const blocks = buildBlocks(items)
   return (
     <>
-      {buildBlocks(items).map((block) =>
-        block.kind === 'edits' ? (
-          <EditedFilesCard key={block.id} files={block.files} cwd={cwd} />
-        ) : (
-          <ItemView key={block.item.id} item={block.item} onApprove={onApprove} />
-        ),
-      )}
+      {blocks.map((block, index) => {
+        if (block.kind === 'edits')
+          return (
+            <EditedFilesCard key={block.id} files={block.files} cwd={cwd} onOpenFile={onOpenFile} />
+          )
+        if (block.item.kind === 'tool') {
+          const previous = blocks[index - 1]
+          if (previous?.kind === 'item' && previous.item.kind === 'tool') return null
+          const tools: Extract<Item, { kind: 'tool' }>[] = []
+          for (let i = index; i < blocks.length; i++) {
+            const next = blocks[i]
+            if (next?.kind !== 'item' || next.item.kind !== 'tool') break
+            tools.push(next.item)
+          }
+          const last = tools.at(-1)
+          return (
+            <div className="tool-group" key={block.item.id}>
+              {tools.map((tool) => (
+                <ToolRow key={tool.id} item={tool} />
+              ))}
+              {last?.at && (
+                <time className="tool-time" dateTime={new Date(last.at).toISOString()}>
+                  {new Date(last.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </time>
+              )}
+            </div>
+          )
+        }
+        return <ItemView key={block.item.id} item={block.item} cwd={cwd} onApprove={onApprove} />
+      })}
     </>
   )
 }
 
 function ItemView({
   item,
+  cwd,
   onApprove,
 }: {
   item: Item
-  onApprove(requestId: string, optionId: string): void
+  cwd: string
+  onApprove(requestId: string, optionId: string): void | Promise<void>
 }) {
   switch (item.kind) {
     case 'message':
@@ -68,9 +102,16 @@ function ItemView({
     case 'tool':
       return <ToolRow item={item} />
     case 'approval':
-      return <ApprovalCard item={item} onApprove={onApprove} />
+      return <ApprovalCard item={item} cwd={cwd} onApprove={onApprove} />
     case 'error':
       return <div className="msg error">{item.message}</div>
+    case 'notice':
+      return (
+        <div className="turn-notice">
+          <CirclePause size={16} />
+          <span>{item.message}</span>
+        </div>
+      )
     case 'diff':
       return null // grouped into the "Edited files" card
   }
@@ -89,12 +130,22 @@ function ToolRow({ item }: { item: Extract<Item, { kind: 'tool' }> }) {
   return (
     <div className={`tool ${item.status}`} title={item.output}>
       <Icon size={15} />
-      <code>{item.title}</code>
+      <code>
+        {item.status === 'cancelled' ? item.title.replace(/^Running\s+/, 'Stopped: ') : item.title}
+      </code>
     </div>
   )
 }
 
-export function EditedFilesCard({ files, cwd }: { files: EditedFile[]; cwd: string }) {
+export function EditedFilesCard({
+  files,
+  cwd,
+  onOpenFile,
+}: {
+  files: EditedFile[]
+  cwd: string
+  onOpenFile?(path: string): void
+}) {
   const [open, setOpen] = useState(true)
   const { added, removed } = totalChanges(files)
   return (
@@ -111,7 +162,13 @@ export function EditedFilesCard({ files, cwd }: { files: EditedFile[]; cwd: stri
       </button>
       {open &&
         files.map((file, i) => (
-          <FileDiff key={file.path} file={file} cwd={cwd} initiallyOpen={i === 0} />
+          <FileDiff
+            key={file.path}
+            file={file}
+            cwd={cwd}
+            initiallyOpen={i === 0}
+            onOpenFile={onOpenFile}
+          />
         ))}
     </div>
   )
@@ -128,22 +185,41 @@ function FileDiff({
   file,
   cwd,
   initiallyOpen,
+  onOpenFile,
 }: {
   file: EditedFile
   cwd: string
   initiallyOpen: boolean
+  onOpenFile?(path: string): void
 }) {
   const [open, setOpen] = useState(initiallyOpen)
   return (
     <div className="file-diff">
-      <button className="file-row" onClick={() => setOpen((o) => !o)} title={file.path}>
-        <FileText size={15} />
-        <span className="file-path">{displayPath(file.path, cwd) || folderName(file.path)}</span>
-        <span className="stat">
-          <span className="add">+{file.added}</span> <span className="del">−{file.removed}</span>
-        </span>
-        {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-      </button>
+      <div className="file-row" title={file.path}>
+        <button className="file-toggle" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+          <FileIcon name={file.path} size={15} />
+          <span className="file-path">{displayPath(file.path, cwd) || folderName(file.path)}</span>
+          <span className="stat">
+            <span className="add">+{file.added}</span> <span className="del">−{file.removed}</span>
+          </span>
+        </button>
+        {onOpenFile && (
+          <button
+            className="icon-btn file-open"
+            aria-label={`Open ${displayPath(file.path, cwd)} in editor`}
+            onClick={() => onOpenFile(displayPath(file.path, cwd))}
+          >
+            <FolderOpen size={14} />
+          </button>
+        )}
+        <button
+          className="icon-btn file-disclosure"
+          aria-label={`${open ? 'Collapse' : 'Expand'} diff for ${displayPath(file.path, cwd)}`}
+          onClick={() => setOpen((o) => !o)}
+        >
+          {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+        </button>
+      </div>
       {open && <PatchView patch={file.patch} />}
     </div>
   )
@@ -152,33 +228,103 @@ function FileDiff({
 export function ApprovalCard({
   item,
   onApprove,
+  cwd,
 }: {
   item: ApprovalItem
-  onApprove(requestId: string, optionId: string): void
+  onApprove(requestId: string, optionId: string): void | Promise<void>
+  cwd?: string
 }) {
   const answered = item.options.find((o) => o.id === item.resolvedOptionId)
   const firstAllow = item.options.find((o) => o.kind === 'allow')
   const firstDeny = item.options.find((o) => o.kind === 'deny')
+  const [busy, setBusy] = useState<string>()
+  const [error, setError] = useState<string>()
+  const submitting = useRef(false)
+  const resolved = Boolean(item.resolvedOptionId) || Boolean(item.cancelled)
+  const state = item.cancelled
+    ? 'cancelled'
+    : !resolved
+      ? 'pending'
+      : answered?.kind === 'deny'
+        ? 'denied'
+        : answered?.kind === 'allow'
+          ? 'allowed'
+          : 'answered'
+  const answer = async (optionId: string) => {
+    if (submitting.current || resolved) return
+    submitting.current = true
+    setBusy(optionId)
+    setError(undefined)
+    try {
+      await onApprove(item.requestId, optionId)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      submitting.current = false
+      setBusy(undefined)
+    }
+  }
   return (
-    <div className="approval">
-      <div className="approval-title">{item.title}</div>
-      {item.detail && <code className="approval-detail">{item.detail}</code>}
-      {answered ? (
-        <div className="approval-done">{answered.label}</div>
-      ) : (
+    <div className={`approval ${state}`}>
+      <div className="approval-state">
+        {state === 'pending' ? (
+          <Shield size={15} />
+        ) : state === 'allowed' ? (
+          <Check size={15} />
+        ) : state === 'denied' ? (
+          <X size={15} />
+        ) : (
+          <CirclePause size={15} />
+        )}
+        {state === 'pending'
+          ? 'Approval needed'
+          : state === 'allowed'
+            ? answered?.label === 'Always for this session'
+              ? 'Allowed for this session'
+              : 'Allowed'
+            : state === 'denied'
+              ? 'Denied'
+              : state === 'cancelled'
+                ? 'Request cancelled'
+                : (answered?.label ?? 'Answered')}
+      </div>
+      <div className="approval-title" title={item.title}>
+        {item.title.startsWith('Running ') ? 'Run this command?' : item.title}
+      </div>
+      {item.detail && (
+        <details className="approval-details" open={!resolved}>
+          <summary>Details</summary>
+          <pre>
+            <code>{item.detail}</code>
+          </pre>
+        </details>
+      )}
+      {cwd && (
+        <code className="approval-cwd" title={cwd}>
+          {cwd}
+        </code>
+      )}
+      {!resolved && (
         <div className="approval-actions">
           {item.options.map((o) => (
             <button
               key={o.id}
+              id={`approval-${item.id}-${o.id}`}
               className={o.id === firstAllow?.id ? 'allow' : ''}
-              onClick={() => onApprove(item.requestId, o.id)}
+              disabled={Boolean(busy)}
+              onClick={() => void answer(o.id)}
             >
-              {o.label}
+              {busy === o.id ? 'Sending…' : o.label}
               {o.id === firstAllow?.id && <kbd>Enter</kbd>}
               {o.id === firstDeny?.id && <kbd>Esc</kbd>}
             </button>
           ))}
         </div>
+      )}
+      {error && (
+        <p className="approval-error" role="alert">
+          {error}
+        </p>
       )}
     </div>
   )

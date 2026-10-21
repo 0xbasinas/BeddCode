@@ -49,7 +49,7 @@ describe('replica', () => {
       },
     ])
     const view = s.sessions.s1!
-    expect(view.items.find((i) => i.kind === 'tool')).toMatchObject({ status: 'ok' })
+    expect(view.items.find((i) => i.kind === 'tool')).toMatchObject({ status: 'ok', at: 1 })
     expect([view.added, view.removed]).toEqual([3, 1])
     expect(view.status).toBe('needs-you')
 
@@ -79,5 +79,60 @@ describe('replica', () => {
     s = applyEvent(s, { seq: 1, event: { ...base, sessionId: 'a', ...created } })
     s = applyEvent(s, { seq: 2, event: { ...base, sessionId: 'b', ...created } })
     expect(s.order).toEqual(['b', 'a'])
+  })
+
+  it('names default sessions from their first message while preserving custom and renamed titles', () => {
+    const initial = { ...created, title: 'Session in demo' }
+    const s = fold([
+      initial,
+      { type: 'message.delta', role: 'user', text: '  Find the failing test\nand fix it  ' },
+    ])
+    expect(s.sessions.s1!.title).toBe('Find the failing test and fix it')
+    const renamed = applyEvent(s, {
+      seq: 20,
+      event: { ...base, type: 'session.renamed', title: 'Release blocker' },
+    })
+    expect(renamed.sessions.s1!.title).toBe('Release blocker')
+    expect(
+      fold([created, { type: 'message.delta', role: 'user', text: 'Different prompt' }]).sessions
+        .s1!.title,
+    ).toBe('Demo')
+  })
+
+  it('keeps Needs you until every pending approval has been answered', () => {
+    const request = (requestId: string): Draft => ({
+      type: 'approval.requested',
+      requestId,
+      title: 'Run?',
+      options: [{ id: 'allow', label: 'Allow', kind: 'allow' }],
+    })
+    const s = fold([
+      created,
+      { type: 'turn.started' },
+      request('r1'),
+      request('r2'),
+      { type: 'approval.resolved', requestId: 'r1', optionId: 'allow' },
+    ])
+    expect(s.sessions.s1!.status).toBe('needs-you')
+    expect(
+      applyEvent(s, {
+        seq: 20,
+        event: { ...base, type: 'approval.resolved', requestId: 'r2', optionId: 'allow' },
+      }).sessions.s1!.status,
+    ).toBe('running')
+  })
+
+  it('marks unfinished tools and requests as cancelled after a host interruption, with a notice', () => {
+    const s = fold([
+      created,
+      { type: 'turn.started' },
+      { type: 'tool.started', toolId: 'x', kind: 'command', title: 'Running test' },
+      { type: 'approval.requested', requestId: 'r', title: 'Run?', options: [] },
+      { type: 'turn.completed', reason: 'cancelled', message: 'Host restarted' },
+    ]).sessions.s1!
+    expect(s).toMatchObject({ status: 'idle', lastTurnReason: 'cancelled' })
+    expect(s.items.find((i) => i.kind === 'tool')).toMatchObject({ status: 'cancelled' })
+    expect(s.items.find((i) => i.kind === 'approval')).toMatchObject({ cancelled: true })
+    expect(s.items.at(-1)).toMatchObject({ kind: 'notice', message: 'Host restarted' })
   })
 })

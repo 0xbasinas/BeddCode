@@ -142,6 +142,11 @@ export class SessionManager {
     return this.requireLive(sessionId).session.interrupt()
   }
 
+  rename(sessionId: string, title: string): void {
+    if (!this.createdEvent(sessionId)) throw new Error(`Unknown session: ${sessionId}`)
+    this.deps.store.append({ type: 'session.renamed', sessionId, at: Date.now(), title })
+  }
+
   /** Deletes the worktree a session was started in. The session's branch and history are kept. */
   async removeWorktree(sessionId: string): Promise<boolean> {
     const created = this.createdEvent(sessionId)

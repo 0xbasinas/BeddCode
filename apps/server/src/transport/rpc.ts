@@ -1,5 +1,9 @@
 import { statSync } from 'node:fs'
 import { RpcMethods, type RpcMethodName, type RpcParams, type RpcResult } from '@beddcode/contracts'
+import type { PairingManager } from '../auth/pairing.ts'
+import type { PeerClass } from '../auth/guard.ts'
+import type { TokenStore } from '../auth/tokens.ts'
+import type { TailscaleService } from '../network/tailscale.ts'
 import type { AgentCatalog } from '../agents/catalog.ts'
 import type { AttachmentStore } from '../attachments/store.ts'
 import type { SessionManager } from '../sessions/sessionManager.ts'
@@ -31,14 +35,40 @@ function isDirectory(p: string): boolean {
   }
 }
 
+/** Who may reach this host, and how new devices get in. */
+export interface AccessServices {
+  tokens: TokenStore
+  pairing: PairingManager
+  tailscale: TailscaleService
+  /** The port this host listens on, probed on other tailnet machines. */
+  port: () => number
+}
+
+/** What the router knows about the caller. */
+export interface RpcContext {
+  peer: PeerClass
+}
+
+/** Managing who may connect is only for someone sitting at this machine. */
+const LOOPBACK_ONLY: ReadonlySet<RpcMethodName> = new Set([
+  'host.pair',
+  'devices.list',
+  'devices.revoke',
+])
+
 export function createRpcRouter(
   sessions: SessionManager,
   agents: AgentCatalog,
   attachments: AttachmentStore,
   workspace: WorkspaceServices,
+  access: AccessServices,
 ) {
   const { git, github, projects, terminals, files } = workspace
   const handlers: Handlers = {
+    'host.pair': async () => access.pairing.create(),
+    'devices.list': async () => access.tokens.list(),
+    'devices.revoke': async (p) => ({ revoked: access.tokens.revoke(p.id) }),
+    'tailnet.peers': (p) => access.tailscale.discover(p.port ?? access.port()),
     'providers.list': () => sessions.listProviders(),
     'agents.list': async () => agents.list(),
     'agents.add': (p) => agents.add(p),
@@ -96,6 +126,10 @@ export function createRpcRouter(
       await sessions.interrupt(p.sessionId)
       return {}
     },
+    'sessions.rename': async (p) => {
+      sessions.rename(p.sessionId, p.title)
+      return {}
+    },
     'sessions.setMode': async (p) => {
       await sessions.setMode(p.sessionId, p.modeId)
       return {}
@@ -106,9 +140,16 @@ export function createRpcRouter(
     },
   }
 
-  return async function dispatch(method: string, params: unknown): Promise<unknown> {
+  return async function dispatch(
+    method: string,
+    params: unknown,
+    context: RpcContext,
+  ): Promise<unknown> {
     if (!Object.hasOwn(RpcMethods, method)) throw new Error(`unknown method: ${method}`)
     const name = method as RpcMethodName
+    if (LOOPBACK_ONLY.has(name) && context.peer !== 'loopback') {
+      throw new Error('This can only be done on the host machine itself')
+    }
     const parsed = RpcMethods[name].params.parse(params ?? {})
     return (handlers[name] as (p: unknown) => Promise<unknown>)(parsed)
   }

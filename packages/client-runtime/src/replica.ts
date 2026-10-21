@@ -16,8 +16,9 @@ export type TranscriptItem =
       id: string
       title: string
       toolKind: 'command' | 'read' | 'edit' | 'search' | 'other'
-      status: 'running' | 'ok' | 'failed'
+      status: 'running' | 'ok' | 'failed' | 'cancelled'
       output?: string
+      at?: number
     }
   | { kind: 'diff'; id: string; path: string; added: number; removed: number; patch: string }
   | {
@@ -28,7 +29,9 @@ export type TranscriptItem =
       detail?: string
       options: { id: string; label: string; kind: 'allow' | 'deny' | 'other' }[]
       resolvedOptionId?: string
+      cancelled?: boolean
     }
+  | { kind: 'notice'; id: string; message: string }
   | { kind: 'error'; id: string; message: string }
 
 export interface SessionView {
@@ -47,6 +50,7 @@ export interface SessionView {
   createdAt: number
   updatedAt: number
   status: SessionStatus
+  lastTurnReason?: 'done' | 'cancelled' | 'error'
   items: TranscriptItem[]
   added: number
   removed: number
@@ -102,6 +106,9 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
   const id = `${stored.seq}`
 
   switch (e.type) {
+    case 'session.renamed':
+      next.title = e.title
+      break
     case 'session.provider-session':
       return { ...state, lastSeq: stored.seq }
     case 'session.modes':
@@ -110,8 +117,18 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       break
     case 'turn.started':
       next.status = 'running'
+      next.lastTurnReason = undefined
       break
     case 'message.delta': {
+      if (
+        e.role === 'user' &&
+        current.title ===
+          `Session in ${current.projectPath.replace(/\\/g, '/').split('/').filter(Boolean).at(-1) ?? current.projectPath}` &&
+        !current.items.some((item) => item.kind === 'message' && item.role === 'user')
+      ) {
+        const title = e.text.trim().replace(/\s+/g, ' ')
+        if (title) next.title = title.length > 76 ? `${title.slice(0, 75).trimEnd()}…` : title
+      }
       const last = current.items.at(-1)
       if (
         e.role === 'assistant' &&
@@ -138,13 +155,20 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     case 'tool.started':
       next.items = [
         ...current.items,
-        { kind: 'tool', id: e.toolId, title: e.title, toolKind: e.kind, status: 'running' },
+        {
+          kind: 'tool',
+          id: e.toolId,
+          title: e.title,
+          toolKind: e.kind,
+          status: 'running',
+          at: e.at,
+        },
       ]
       break
     case 'tool.completed':
       next.items = current.items.map((item) =>
         item.kind === 'tool' && item.id === e.toolId
-          ? { ...item, status: e.ok ? 'ok' : 'failed', output: e.output }
+          ? { ...item, status: e.ok ? 'ok' : 'failed', output: e.output, at: e.at }
           : item,
       )
       break
@@ -176,10 +200,24 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
           ? { ...item, resolvedOptionId: e.optionId }
           : item,
       )
-      next.status = 'running'
+      next.status = next.items.some(
+        (item) => item.kind === 'approval' && !item.resolvedOptionId && !item.cancelled,
+      )
+        ? 'needs-you'
+        : current.status === 'needs-you'
+          ? 'running'
+          : current.status
       break
     case 'turn.completed':
       next.status = e.reason === 'error' ? 'failed' : 'idle'
+      next.lastTurnReason = e.reason
+      next.items = current.items.map((item) => {
+        if (item.kind === 'approval' && !item.resolvedOptionId) return { ...item, cancelled: true }
+        if (item.kind === 'tool' && item.status === 'running' && e.reason !== 'done')
+          return { ...item, status: e.reason === 'cancelled' ? 'cancelled' : 'failed' }
+        return item
+      })
+      if (e.message) next.items = [...next.items, { kind: 'notice', id, message: e.message }]
       break
     case 'error':
       next.items = [...current.items, { kind: 'error', id, message: e.message }]

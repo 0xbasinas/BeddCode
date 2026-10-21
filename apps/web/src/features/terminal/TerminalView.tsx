@@ -2,14 +2,15 @@ import { useEffect, useRef } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { onHostFrame, sendHostFrame, useHostStore } from '../../stores/host.ts'
+import { onHostFrame, sendHostFrame, useRuntime } from '../../stores/host.ts'
+import { useHostKey } from '../../stores/HostScope.tsx'
 
 const THEME = {
-  background: '#0d0d0d',
+  background: '#0e0e0e',
   foreground: '#ececec',
-  cursor: '#f0a43c',
-  cursorAccent: '#0d0d0d',
-  selectionBackground: 'rgba(240, 164, 60, 0.3)',
+  cursor: '#d4d4d4',
+  cursorAccent: '#0e0e0e',
+  selectionBackground: 'rgba(255, 255, 255, 0.15)',
 }
 
 /**
@@ -26,7 +27,8 @@ export function TerminalView({
 }) {
   const container = useRef<HTMLDivElement>(null)
   // A new connection means the server forgot our subscription: attach again.
-  const epoch = useHostStore((s) => s.epoch)
+  const hostKey = useHostKey()
+  const { epoch } = useRuntime(hostKey)
   const onSizeRef = useRef(onSize)
   onSizeRef.current = onSize
 
@@ -36,7 +38,8 @@ export function TerminalView({
 
     const term = new Terminal({
       fontFamily: "'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace",
-      fontSize: 13,
+      fontSize: 12,
+      lineHeight: 1.6,
       cursorBlink: true,
       scrollback: 5000,
       theme: THEME,
@@ -51,11 +54,11 @@ export function TerminalView({
       } catch {
         return // hidden or zero-sized: try again on the next resize
       }
-      sendHostFrame({ t: 'term.resize', id, cols: term.cols, rows: term.rows })
+      sendHostFrame(hostKey, { t: 'term.resize', id, cols: term.cols, rows: term.rows })
       onSizeRef.current?.({ cols: term.cols, rows: term.rows })
     }
 
-    const stopFrames = onHostFrame((frame) => {
+    const stopFrames = onHostFrame(hostKey, (frame) => {
       if (frame.t === 'term.out' && frame.id === id) {
         // History replaces whatever is on screen so a re-attach never shows things twice.
         if (frame.replay) term.reset()
@@ -65,9 +68,9 @@ export function TerminalView({
         term.write(`\r\n\x1b[90m[process exited${how}]\x1b[0m\r\n`)
       }
     })
-    const stopInput = term.onData((data) => sendHostFrame({ t: 'term.input', id, data }))
+    const stopInput = term.onData((data) => sendHostFrame(hostKey, { t: 'term.input', id, data }))
 
-    sendHostFrame({ t: 'term.attach', id })
+    sendHostFrame(hostKey, { t: 'term.attach', id })
     reportSize()
     term.focus()
 
@@ -81,12 +84,12 @@ export function TerminalView({
     return () => {
       clearTimeout(timer)
       observer.disconnect()
-      sendHostFrame({ t: 'term.detach', id })
+      sendHostFrame(hostKey, { t: 'term.detach', id })
       stopFrames()
       stopInput.dispose()
       term.dispose()
     }
-  }, [id, epoch])
+  }, [hostKey, id, epoch])
 
   return <div className="terminal-host" ref={container} />
 }

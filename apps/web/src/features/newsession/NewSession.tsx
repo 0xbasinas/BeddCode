@@ -10,13 +10,32 @@ import {
   GitBranch,
   GitPullRequest,
   Monitor,
+  Server,
 } from 'lucide-react'
 import type { GitBranch as Branch, GitInfo, ProviderInstance } from '@beddcode/contracts'
 import { Composer } from '../composer/Composer.tsx'
 import { ModelMenu, type ModelChoice } from '../composer/Menus.tsx'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import { folderName, timeAgo } from '../../ui/format.ts'
-import { hostRequest, readyProviders, useHostStore } from '../../stores/host.ts'
+import {
+  addProject,
+  createSession,
+  hostRequest,
+  prompt,
+  readyProviders,
+  useHostStore,
+  useRuntime,
+} from '../../stores/host.ts'
+import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
+import { Welcome, setupWasSkipped, skipSetup } from './Welcome.tsx'
+import { useAppPreferences } from '../../stores/appPreferences.ts'
+import { modelChoice } from '../../ui/models.ts'
+import {
+  agentDefaults,
+  defaultAgent,
+  hostDefaults,
+  usePreferences,
+} from '../../stores/preferences.ts'
 
 const QUICK_STARTS = [
   {
@@ -52,25 +71,56 @@ interface RepoState {
   branches: Branch[]
 }
 
-export function NewSession({ initialProject }: { initialProject?: string }) {
+export function NewSession({
+  initialProject,
+  initialHost,
+}: {
+  initialProject?: string
+  initialHost?: string
+}) {
   const navigate = useNavigate()
-  const { providers, connection, host, replica, projects } = useHostStore()
+  const entries = useHostStore((s) => s.entries)
+  const defaultHostKey = useAppPreferences((s) => s.values.defaultHostKey)
+  const defaultWorkspace = useAppPreferences((s) => s.values.defaultWorkspace)
+  const [hostKey, setHostKey] = useState(
+    entries.some((e) => e.key === (initialHost ?? defaultHostKey))
+      ? (initialHost ?? defaultHostKey)
+      : LOCAL_HOST_KEY,
+  )
+  const { providers, connection, host, replica, projects, synced } = useRuntime(hostKey)
+  const hasWorkspace = useHostStore((s) =>
+    Object.values(s.runtimes).some((r) => r.replica.order.length > 0 || r.projects.length > 0),
+  )
+  const [setupSkipped, setSetupSkipped] = useState(setupWasSkipped)
   const [text, setText] = useState('')
   const [instanceId, setInstanceId] = useState<string>()
-  const [modeId, setModeId] = useState<string>()
-  const [choice, setChoice] = useState<ModelChoice>({ model: undefined, effort: undefined })
+  const defaults = usePreferences((s) => hostDefaults(s.hosts, host?.hostId ?? hostKey))
+  const [selection, setSelection] = useState<{
+    key: string
+    modeId?: string
+    choice: ModelChoice
+  }>()
   const [chosenFolder, setChosenFolder] = useState(initialProject ?? '')
   const [workspace, setWorkspace] = useState<Workspace>({ mode: 'local' })
   const [repo, setRepo] = useState<RepoState | null | 'loading'>('loading')
 
   const ready = readyProviders(providers)
-  const agent: ProviderInstance | undefined = ready.find((p) => p.id === instanceId) ?? ready[0]
-
-  // Changing agent resets choices that only make sense for the previous one.
-  useEffect(() => {
-    setModeId(undefined)
-    setChoice({ model: undefined, effort: undefined })
-  }, [agent?.id])
+  const agent =
+    ready.find((p) => p.id === instanceId) ?? defaultAgent(providers, defaults.instanceId)
+  const saved = agentDefaults(defaults, agent)
+  const selectionKey = `${host?.hostId ?? hostKey}:${agent?.id ?? ''}`
+  const modeId = selection?.key === selectionKey ? selection.modeId : saved.permissionMode
+  const chosen =
+    selection?.key === selectionKey
+      ? selection.choice
+      : { model: saved.model, effort: saved.effort }
+  const choice = modelChoice(
+    agent?.capabilities.models ?? [],
+    agent?.capabilities.efforts ?? [],
+    chosen,
+  )
+  const setModeId = (next: string) => setSelection({ key: selectionKey, modeId: next, choice })
+  const setChoice = (next: ModelChoice) => setSelection({ key: selectionKey, modeId, choice: next })
 
   const folder = chosenFolder || projects[0]?.path || host?.defaultCwd || ''
 
@@ -81,15 +131,18 @@ export function NewSession({ initialProject }: { initialProject?: string }) {
     let cancelled = false
     setRepo('loading')
     Promise.all([
-      hostRequest('git.info', { cwd: folder }),
-      hostRequest('git.branches', { cwd: folder }),
+      hostRequest(hostKey, 'git.info', { cwd: folder }),
+      hostRequest(hostKey, 'git.branches', { cwd: folder }),
     ])
       .then(([info, branches]) => {
         if (cancelled) return
         setRepo(info.isRepo ? { info, branches } : null)
         // Isolated worktrees are the default whenever there is a commit to branch from.
         setWorkspace(
-          info.isRepo && info.defaultBranch && branches.length > 0
+          defaultWorkspace === 'worktree' &&
+            info.isRepo &&
+            info.defaultBranch &&
+            branches.length > 0
             ? { mode: 'worktree', baseBranch: info.defaultBranch }
             : { mode: 'local' },
         )
@@ -102,7 +155,7 @@ export function NewSession({ initialProject }: { initialProject?: string }) {
     return () => {
       cancelled = true
     }
-  }, [folder, connection])
+  }, [hostKey, folder, connection, defaultWorkspace])
 
   const modes = agent?.capabilities.permissionModes ?? []
   const recentFolders = useMemo(
@@ -118,9 +171,8 @@ export function NewSession({ initialProject }: { initialProject?: string }) {
 
   const send = async (value: string, attachments: string[]) => {
     if (!agent) throw new Error('No agent is ready on this host')
-    const { createSession, prompt } = useHostStore.getState()
     const useWorktree = repo && repo !== 'loading' && workspace.mode === 'worktree'
-    const sessionId = await createSession({
+    const sessionId = await createSession(hostKey, {
       instanceId: agent.id,
       cwd: folder || undefined,
       permissionMode: modeId,
@@ -131,6 +183,21 @@ export function NewSession({ initialProject }: { initialProject?: string }) {
     await prompt(sessionId, value, attachments)
     void navigate({ to: '/session/$sessionId', params: { sessionId } })
   }
+
+  if (!initialProject && synced && !hasWorkspace && !setupSkipped)
+    return (
+      <Welcome
+        hostKey={hostKey}
+        onAddFolder={async (path) => {
+          const added = await addProject(hostKey, path)
+          setChosenFolder(added.path)
+        }}
+        onSkip={() => {
+          skipSetup()
+          setSetupSkipped(true)
+        }}
+      />
+    )
 
   return (
     <main className="panel new-session">
@@ -154,6 +221,7 @@ export function NewSession({ initialProject }: { initialProject?: string }) {
           busy={false}
           disabled={connection !== 'connected' || !agent}
           autoFocus
+          hostKey={hostKey}
           onSend={send}
           modes={modes}
           modeId={modeId}
@@ -177,13 +245,18 @@ export function NewSession({ initialProject }: { initialProject?: string }) {
                 recent={recentFolders}
                 onChange={setChosenFolder}
                 onAdd={async (p) => {
-                  const added = await useHostStore.getState().addProject(p)
+                  const added = await addProject(hostKey, p)
                   setChosenFolder(added.path)
                 }}
               />
-              <span className="chip-lite static">
-                <Monitor size={14} /> {host?.name ?? 'This PC'}
-              </span>
+              <HostChip
+                hostKey={hostKey}
+                onPick={(key) => {
+                  setHostKey(key)
+                  setChosenFolder('')
+                  setInstanceId(undefined)
+                }}
+              />
               <span className="spacer" />
               {repo && repo !== 'loading' && (
                 <WorkspaceChip repo={repo} workspace={workspace} onChange={setWorkspace} />
@@ -194,8 +267,8 @@ export function NewSession({ initialProject }: { initialProject?: string }) {
         <div className="quick">
           <div className="quick-title">Quick starts</div>
           <div className="quick-grid">
-            {QUICK_STARTS.map(({ icon: Icon, label, prompt }) => (
-              <button key={label} onClick={() => setText(prompt)}>
+            {QUICK_STARTS.map(({ icon: Icon, label, prompt: starter }) => (
+              <button key={label} onClick={() => setText(starter)}>
                 <Icon size={18} /> {label}
               </button>
             ))}
@@ -203,6 +276,66 @@ export function NewSession({ initialProject }: { initialProject?: string }) {
         </div>
       </div>
     </main>
+  )
+}
+
+/** Which host the session runs on. A plain label while this computer is the only host. */
+function HostChip({ hostKey, onPick }: { hostKey: string; onPick(key: string): void }) {
+  const entries = useHostStore((s) => s.entries)
+  const runtimes = useHostStore((s) => s.runtimes)
+  const current = entries.find((e) => e.key === hostKey)
+  const name =
+    hostKey === LOCAL_HOST_KEY
+      ? 'This PC'
+      : (runtimes[hostKey]?.host?.name ?? current?.name ?? 'Host')
+  if (entries.length < 2) {
+    return (
+      <span className="chip-lite static">
+        <Monitor size={14} /> {name}
+      </span>
+    )
+  }
+  return (
+    <Dropdown
+      trigger={({ toggle }) => (
+        <button className="chip-lite" onClick={toggle} aria-label="Host">
+          {hostKey === LOCAL_HOST_KEY ? <Monitor size={14} /> : <Server size={14} />} {name}{' '}
+          <ChevronDown size={13} />
+        </button>
+      )}
+    >
+      {(close) => (
+        <>
+          <div className="menu-heading">Run on</div>
+          {entries.map((e) => {
+            const r = runtimes[e.key]
+            const online = r?.connection === 'connected'
+            return (
+              <button
+                key={e.key}
+                className="menu-row"
+                disabled={!online}
+                aria-checked={e.key === hostKey}
+                onClick={() => {
+                  onPick(e.key)
+                  close()
+                }}
+              >
+                <span className="menu-text">
+                  <span className="menu-title">{r?.host?.name ?? e.name}</span>
+                  {!online && <span className="menu-desc">Offline</span>}
+                </span>
+                {e.key === hostKey ? (
+                  <Check size={16} />
+                ) : (
+                  <span className={`dot ${online ? 'ok' : 'warn'}`} />
+                )}
+              </button>
+            )
+          })}
+        </>
+      )}
+    </Dropdown>
   )
 }
 

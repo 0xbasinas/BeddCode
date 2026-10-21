@@ -175,6 +175,9 @@ function DesktopPage({
   const host = useRef<HTMLDivElement>(null)
   const { navigated, titled } = useBrowser.getState()
   const initialUrl = useRef(tab.url)
+  const latestUrl = useRef(tab.url)
+  latestUrl.current = tab.url
+  const ready = useRef(false)
 
   useEffect(() => {
     const el = host.current
@@ -182,7 +185,17 @@ function DesktopPage({
     // Created by hand: React has no typing for the element, and the source must be set once.
     const webview = createElementIn(el, initialUrl.current)
     viewRef.current = webview
-    const sync = () => onNav({ back: webview.canGoBack(), forward: webview.canGoForward() })
+    ready.current = false
+    const sync = () => {
+      if (ready.current) onNav({ back: webview.canGoBack(), forward: webview.canGoForward() })
+    }
+    const onReady = () => {
+      ready.current = true
+      sync()
+      if (latestUrl.current !== initialUrl.current && webview.getURL() !== latestUrl.current) {
+        webview.src = latestUrl.current
+      }
+    }
     const onNavigate = (e: Event) => {
       const url = (e as Event & { url?: string }).url
       if (url) navigated(tab.id, url)
@@ -190,11 +203,16 @@ function DesktopPage({
     }
     webview.addEventListener('did-navigate', onNavigate)
     webview.addEventListener('did-navigate-in-page', onNavigate)
-    webview.addEventListener('page-title-updated', (e) =>
-      titled(tab.id, (e as Event & { title?: string }).title ?? ''),
-    )
+    webview.addEventListener('dom-ready', onReady)
+    const onTitle = (e: Event) => titled(tab.id, (e as Event & { title?: string }).title ?? '')
+    webview.addEventListener('page-title-updated', onTitle)
     return () => {
+      ready.current = false
       viewRef.current = null
+      webview.removeEventListener('did-navigate', onNavigate)
+      webview.removeEventListener('did-navigate-in-page', onNavigate)
+      webview.removeEventListener('dom-ready', onReady)
+      webview.removeEventListener('page-title-updated', onTitle)
       webview.remove()
     }
   }, [tab.id, viewRef, onNav, navigated, titled])
@@ -204,6 +222,7 @@ function DesktopPage({
     const webview = viewRef.current
     if (
       webview &&
+      ready.current &&
       webview.getURL &&
       webview.getURL() !== tab.url &&
       tab.url !== initialUrl.current

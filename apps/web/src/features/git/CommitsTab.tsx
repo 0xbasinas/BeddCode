@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { hostRequest } from '../../stores/host.ts'
+import { useHostKey } from '../../stores/HostScope.tsx'
 import type { GitCommit, GitLog } from '@beddcode/contracts'
 import { agoLabel } from '../../ui/format.ts'
 
@@ -53,6 +54,7 @@ export function CommitsTab({
   onChanged(): void
   onOpenPr(): void
 }) {
+  const hostKey = useHostKey()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
 
@@ -60,7 +62,7 @@ export function CommitsTab({
     setBusy(true)
     setError(undefined)
     try {
-      await hostRequest('git.push', { cwd })
+      await hostRequest(hostKey, 'git.push', { cwd })
       onChanged()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

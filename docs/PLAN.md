@@ -155,6 +155,12 @@ Each adapter declares what it really supports: resume, fork, steering mid-turn, 
 
 Milestone 1 (usable alpha) = phases 0–5 on the local host.
 
+Current follow-up work:
+
+- Phase 8 has local two-host integration coverage, pairing/revocation, replay, and route fallback. A test across two physical tailnet machines and Linux service installation remain.
+- Phase 9 now has the first-launch checklist, Settings navigation, General/Appearance/Shortcuts/Permissions/Hosts/Git/Editor pages, agent detection/refresh, ACP registry/custom-agent management, and per-host defaults for new sessions. The workspace, panes, and Settings follow the Brilliant design. The full remote-host onboarding wizard, notifications, Tools & MCP, and usage reporting remain.
+- Before phase 10, connect Electron to a supervised local daemon so opening the app does not depend on a development terminal. Then build and test installers on clean Windows and Linux machines.
+
 ## 6. Cross-cutting rules
 
 - **Replay-fixture tests:** record real provider transcripts, replay through the adapter + store, assert projections. Needed for each adapter.

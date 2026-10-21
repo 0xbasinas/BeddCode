@@ -1,20 +1,53 @@
-/* Design tokens approximated from ui-docs (dark theme). Refine against the screens in phase 5. */
+/* Use the same Inter assets and declared weights as Brilliant's canvas renderer. */
+@font-face {
+  font-family: 'Inter';
+  src: url('./fonts/Inter-Regular.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('./fonts/Inter-Medium.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('./fonts/Inter-SemiBold.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('./fonts/JetBrainsMono-Regular.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
 :root {
-  --bg-app: #111111;
-  --bg-panel: #181818;
+  --bg-app: #0b0b0b;
+  --bg-panel: #161616;
   --bg-raised: #1f1f1f;
   --bg-hover: #242424;
-  --border: #2a2a2a;
+  --border: #2c2c2c;
+  --bg-card: #1a1a1a;
   --text: #ececec;
   --text-muted: #8a8a8a;
-  --text-faint: #5c5c5c;
-  --accent: #f0a43c;
-  --success: #6fcf97;
-  --danger: #e5645c;
-  --radius-panel: 14px;
-  --radius-control: 10px;
+  --text-faint: #6a6a6a;
+  --accent: #e9a23b;
+  --success: #7cc48a;
+  --danger: #e0716c;
+  --radius-panel: 10px;
+  --radius-control: 8px;
+  --bg-input: #1f1f1f;
+  --bg-code: #121212;
+  --border-subtle: #232323;
+  --text-secondary: #d4d4d4;
   --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
-  --gap: 8px;
+  --gap: 6px;
   color-scheme: dark;
 }

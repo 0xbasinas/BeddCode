@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { create } from 'zustand'
 import {
   HostClient,
@@ -5,6 +6,7 @@ import {
   emptyReplica,
   type ConnectionState,
   type ReplicaState,
+  type SessionView,
 } from '@beddcode/client-runtime'
 import type {
   ClientFrame,
@@ -17,8 +19,15 @@ import type {
   ServerFrame,
   StoredEvent,
 } from '@beddcode/contracts'
+import {
+  LOCAL_HOST_KEY,
+  loadRemoteHosts,
+  saveRemoteHosts,
+  upsertHost,
+  type HostEntry,
+} from './hostCatalog.ts'
 
-const HOST_URL = import.meta.env.VITE_BEDDCODE_HOST_WS ?? 'ws://127.0.0.1:3773/ws'
+const LOCAL_URL = import.meta.env.VITE_BEDDCODE_HOST_WS ?? 'ws://127.0.0.1:3773/ws'
 
 export interface UploadedFile {
   id: string
@@ -26,7 +35,8 @@ export interface UploadedFile {
   size: number
 }
 
-interface HostState {
+/** Everything the app knows about one host: its connection, its sessions, its capabilities. */
+export interface HostRuntime {
   connection: ConnectionState
   host: HostInfo | null
   providers: ProviderInstance[]
@@ -36,33 +46,9 @@ interface HostState {
   epoch: number
   /** True once the first replay finished, so the UI can tell "empty" from "still loading". */
   synced: boolean
-  addProject(path: string): Promise<Project>
-  removeProject(path: string): Promise<void>
-  createSession(options: RpcParams<'sessions.create'>): Promise<string>
-  upload(file: File): Promise<UploadedFile>
-  prompt(sessionId: string, text: string, attachmentIds?: string[]): Promise<void>
-  interrupt(sessionId: string): Promise<void>
-  setMode(sessionId: string, modeId: string): Promise<void>
-  approve(sessionId: string, requestId: string, optionId: string): Promise<void>
 }
 
-let client: HostClient | null = null
-
-type LiveFrame = Extract<ServerFrame, { t: 'term.out' | 'term.exit' | 'fs.changed' }>
-const frameListeners = new Set<(frame: LiveFrame) => void>()
-
-/** Terminal output and file-change notifications. Returns the function that unsubscribes. */
-export function onHostFrame(listener: (frame: LiveFrame) => void): () => void {
-  frameListeners.add(listener)
-  return () => frameListeners.delete(listener)
-}
-
-/** Sends a frame to the host; false when not connected (nothing was sent). */
-export function sendHostFrame(frame: ClientFrame): boolean {
-  return client?.send(frame) ?? false
-}
-
-export const useHostStore = create<HostState>(() => ({
+const emptyRuntime = (): HostRuntime => ({
   connection: 'connecting',
   host: null,
   providers: [],
@@ -70,60 +56,290 @@ export const useHostStore = create<HostState>(() => ({
   replica: emptyReplica(),
   epoch: 0,
   synced: false,
+})
 
-  async addProject(path) {
-    const project = await requireClient().request('projects.add', { path })
-    await refreshProjects()
-    return project
-  },
-  async removeProject(path) {
-    await requireClient().request('projects.remove', { path })
-    await refreshProjects()
-  },
-  async createSession(options) {
-    const { sessionId } = await requireClient().request('sessions.create', options)
-    return sessionId
-  },
-  async upload(file) {
-    return requireClient().request('attachments.upload', {
-      name: file.name,
-      dataBase64: await toBase64(file),
-    })
-  },
-  async prompt(sessionId, text, attachmentIds) {
-    await requireClient().request('sessions.prompt', {
-      sessionId,
-      text,
-      attachments: attachmentIds && attachmentIds.length > 0 ? attachmentIds : undefined,
-    })
-  },
-  async interrupt(sessionId) {
-    await requireClient().request('sessions.interrupt', { sessionId })
-  },
-  async setMode(sessionId, modeId) {
-    await requireClient().request('sessions.setMode', { sessionId, modeId })
-  },
-  async approve(sessionId, requestId, optionId) {
-    await requireClient().request('sessions.approve', { sessionId, requestId, optionId })
-  },
+interface HostsState {
+  /** The local host first, then paired remote hosts in the order they were added. */
+  entries: HostEntry[]
+  runtimes: Record<string, HostRuntime>
+}
+
+const localEntry: HostEntry = { key: LOCAL_HOST_KEY, name: 'This computer', routes: [LOCAL_URL] }
+
+const storage = (): Storage | undefined => {
+  try {
+    return globalThis.localStorage
+  } catch {
+    return undefined
+  }
+}
+
+export const useHostStore = create<HostsState>(() => ({
+  entries: [localEntry, ...loadRemoteHosts(storage())],
+  runtimes: {},
 }))
 
-/** Any host request, for features (git, PRs) that read live state instead of the event log. */
+const clients = new Map<string, HostClient>()
+
+type LiveFrame = Extract<ServerFrame, { t: 'term.out' | 'term.exit' | 'fs.changed' }>
+const frameListeners = new Map<string, Set<(frame: LiveFrame) => void>>()
+
+/** Terminal output and file-change notifications of one host. Returns the function that unsubscribes. */
+export function onHostFrame(hostKey: string, listener: (frame: LiveFrame) => void): () => void {
+  const set = frameListeners.get(hostKey) ?? new Set()
+  frameListeners.set(hostKey, set)
+  set.add(listener)
+  return () => set.delete(listener)
+}
+
+/** Sends a frame to a host; false when not connected (nothing was sent). */
+export function sendHostFrame(hostKey: string, frame: ClientFrame): boolean {
+  return clients.get(hostKey)?.send(frame) ?? false
+}
+
+function requireClient(hostKey: string): HostClient {
+  const client = clients.get(hostKey)
+  if (!client) throw new Error('That host is not connected')
+  return client
+}
+
+/** Any host request, for features (git, files, terminals) that read live state instead of the event log. */
 export function hostRequest<M extends RpcMethodName>(
+  hostKey: string,
   method: M,
   params: RpcParams<M>,
 ): Promise<RpcResult<M>> {
-  return requireClient().request(method, params)
+  return requireClient(hostKey).request(method, params)
 }
 
-export async function refreshProjects() {
-  const projects = await requireClient().request('projects.list', {})
-  useHostStore.setState({ projects })
+function patchRuntime(hostKey: string, patch: (r: HostRuntime) => Partial<HostRuntime>) {
+  useHostStore.setState((s) => {
+    const current = s.runtimes[hostKey] ?? emptyRuntime()
+    return { runtimes: { ...s.runtimes, [hostKey]: { ...current, ...patch(current) } } }
+  })
 }
 
-function requireClient(): HostClient {
-  if (!client) throw new Error('Host client not started')
-  return client
+export async function refreshProjects(hostKey: string) {
+  const projects = await hostRequest(hostKey, 'projects.list', {})
+  patchRuntime(hostKey, () => ({ projects }))
+}
+
+/** Re-detect installed CLIs after setup or a change to the ACP agent catalog. */
+export async function refreshProviders(hostKey: string) {
+  const client = requireClient(hostKey)
+  const providers = await client.request('providers.list', {})
+  if (clients.get(hostKey) === client) patchRuntime(hostKey, () => ({ providers }))
+}
+
+function startHost(entry: HostEntry) {
+  clients.get(entry.key)?.stop()
+  patchRuntime(entry.key, () => emptyRuntime())
+
+  const queue: StoredEvent[] = []
+  let scheduled = false
+  // Coalesce bursts of streamed events into one state update per frame.
+  const flush = () => {
+    scheduled = false
+    const batch = queue.splice(0)
+    // A queued animation frame may outlive removing or re-pairing this host.
+    if (clients.get(entry.key) !== client) return
+    if (batch.length)
+      patchRuntime(entry.key, (r) => ({ replica: batch.reduce(applyEvent, r.replica) }))
+  }
+
+  const client = new HostClient({
+    url: entry.routes,
+    token: entry.token,
+    expectedHostId: entry.key === LOCAL_HOST_KEY ? undefined : entry.key,
+    onEvent(stored) {
+      queue.push(stored)
+      if (!scheduled) {
+        scheduled = true
+        requestAnimationFrame(flush)
+      }
+    },
+    onFrame(frame) {
+      frameListeners.get(entry.key)?.forEach((l) => l(frame))
+    },
+    onCaughtUp() {
+      flush()
+      patchRuntime(entry.key, () => ({ synced: true }))
+    },
+    onState(connection, host) {
+      patchRuntime(entry.key, (r) => ({
+        connection,
+        host: host ?? r.host,
+        epoch: connection === 'connected' ? r.epoch + 1 : r.epoch,
+      }))
+      if (connection === 'connected') {
+        client
+          .request('providers.list', {})
+          .then((providers) => patchRuntime(entry.key, () => ({ providers })))
+          .catch(() => {})
+        refreshProjects(entry.key).catch(() => {})
+      }
+    },
+  })
+  clients.set(entry.key, client)
+  client.start()
+}
+
+let started = false
+
+/** Connects to this computer's host and every paired remote host. Safe to call twice (React StrictMode). */
+export function startHosts() {
+  if (started) return
+  started = true
+  useHostStore.getState().entries.forEach(startHost)
+}
+
+/** Remembers a remote host (replacing an earlier pairing of the same one) and connects to it. */
+export function addRemoteHost(entry: HostEntry) {
+  const entries = upsertHost(useHostStore.getState().entries, entry)
+  useHostStore.setState({ entries })
+  saveRemoteHosts(storage(), entries)
+  startHost(entry)
+}
+
+export function removeRemoteHost(hostKey: string) {
+  if (hostKey === LOCAL_HOST_KEY) return
+  clients.get(hostKey)?.stop()
+  clients.delete(hostKey)
+  frameListeners.delete(hostKey)
+  const entries = useHostStore.getState().entries.filter((e) => e.key !== hostKey)
+  useHostStore.setState((s) => {
+    const { [hostKey]: _gone, ...runtimes } = s.runtimes
+    return { entries, runtimes }
+  })
+  saveRemoteHosts(storage(), entries)
+}
+
+/** The route currently in use for a host, e.g. to show where it is reached. */
+export const activeRoute = (hostKey: string) => clients.get(hostKey)?.activeUrl
+
+// -- reading ---------------------------------------------------------------
+
+const EMPTY_RUNTIME = emptyRuntime()
+
+export function useRuntime(hostKey: string): HostRuntime {
+  return useHostStore((s) => s.runtimes[hostKey] ?? EMPTY_RUNTIME)
+}
+
+export interface HostedSession {
+  hostKey: string
+  session: SessionView
+}
+
+/** Sessions of every host, newest activity first within each host. */
+export function useAllSessions(): HostedSession[] {
+  const entries = useHostStore((s) => s.entries)
+  const runtimes = useHostStore((s) => s.runtimes)
+  return useMemo(
+    () =>
+      entries.flatMap((e) => {
+        const replica = runtimes[e.key]?.replica
+        return replica
+          ? replica.order.map((id) => ({ hostKey: e.key, session: replica.sessions[id]! }))
+          : []
+      }),
+    [entries, runtimes],
+  )
+}
+
+/** Which host a session lives on (session ids are unique across hosts). */
+export function hostKeyOfSession(sessionId: string): string | undefined {
+  const { runtimes } = useHostStore.getState()
+  return (
+    Object.keys(runtimes).find((k) => runtimes[k]!.replica.sessions[sessionId]) ??
+    createdOn.get(sessionId)
+  )
+}
+
+export function useSessionHostKey(sessionId: string | undefined): string | undefined {
+  return useHostStore((s) =>
+    sessionId
+      ? Object.keys(s.runtimes).find((k) => s.runtimes[k]!.replica.sessions[sessionId])
+      : undefined,
+  )
+}
+
+export function useSession(sessionId: string | undefined): SessionView | undefined {
+  return useHostStore((s) => {
+    if (!sessionId) return undefined
+    for (const runtime of Object.values(s.runtimes)) {
+      const found = runtime.replica.sessions[sessionId]
+      if (found) return found
+    }
+    return undefined
+  })
+}
+
+/** Providers that can start a session right now, in the order the host reports them. */
+export function readyProviders(providers: ProviderInstance[]): ProviderInstance[] {
+  return providers.filter((p) => p.status === 'ready')
+}
+
+// -- acting ----------------------------------------------------------------
+
+export async function addProject(hostKey: string, path: string): Promise<Project> {
+  const project = await hostRequest(hostKey, 'projects.add', { path })
+  await refreshProjects(hostKey)
+  return project
+}
+
+export async function removeProject(hostKey: string, path: string): Promise<void> {
+  await hostRequest(hostKey, 'projects.remove', { path })
+  await refreshProjects(hostKey)
+}
+
+/** Sessions just created here, until their first event arrives and the replica knows them. */
+const createdOn = new Map<string, string>()
+
+export async function createSession(
+  hostKey: string,
+  options: RpcParams<'sessions.create'>,
+): Promise<string> {
+  const { sessionId } = await hostRequest(hostKey, 'sessions.create', options)
+  createdOn.set(sessionId, hostKey)
+  return sessionId
+}
+
+export async function upload(hostKey: string, file: File): Promise<UploadedFile> {
+  return hostRequest(hostKey, 'attachments.upload', {
+    name: file.name,
+    dataBase64: await toBase64(file),
+  })
+}
+
+/** Requests on a session go to the host that owns it. */
+function sessionRequest<M extends RpcMethodName>(
+  sessionId: string,
+  method: M,
+  params: RpcParams<M>,
+): Promise<RpcResult<M>> {
+  const hostKey = hostKeyOfSession(sessionId)
+  if (!hostKey) return Promise.reject(new Error('That session is not available right now'))
+  return hostRequest(hostKey, method, params)
+}
+
+export async function prompt(sessionId: string, text: string, attachmentIds?: string[]) {
+  await sessionRequest(sessionId, 'sessions.prompt', {
+    sessionId,
+    text,
+    attachments: attachmentIds && attachmentIds.length > 0 ? attachmentIds : undefined,
+  })
+}
+
+export async function interrupt(sessionId: string) {
+  await sessionRequest(sessionId, 'sessions.interrupt', { sessionId })
+}
+
+export async function setMode(sessionId: string, modeId: string) {
+  await sessionRequest(sessionId, 'sessions.setMode', { sessionId, modeId })
+}
+
+export async function approve(sessionId: string, requestId: string, optionId: string) {
+  await sessionRequest(sessionId, 'sessions.approve', { sessionId, requestId, optionId })
 }
 
 async function toBase64(file: File): Promise<string> {
@@ -134,56 +350,4 @@ async function toBase64(file: File): Promise<string> {
     binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
   }
   return btoa(binary)
-}
-
-/** Providers that can start a session right now, in the order the host reports them. */
-export function readyProviders(providers: ProviderInstance[]): ProviderInstance[] {
-  return providers.filter((p) => p.status === 'ready')
-}
-
-/** Starts the single host connection. Safe to call twice (React StrictMode). */
-export function connectToLocalHost() {
-  if (client) return
-  const queue: StoredEvent[] = []
-  let scheduled = false
-
-  // Coalesce bursts of streamed events into one state update per frame.
-  const flush = () => {
-    scheduled = false
-    const batch = queue.splice(0)
-    useHostStore.setState((s) => ({ replica: batch.reduce(applyEvent, s.replica) }))
-  }
-
-  client = new HostClient({
-    url: HOST_URL,
-    onEvent(stored) {
-      queue.push(stored)
-      if (!scheduled) {
-        scheduled = true
-        requestAnimationFrame(flush)
-      }
-    },
-    onFrame(frame) {
-      frameListeners.forEach((l) => l(frame))
-    },
-    onCaughtUp() {
-      flush()
-      useHostStore.setState({ synced: true })
-    },
-    onState(connection, host) {
-      useHostStore.setState((s) => ({
-        connection,
-        host: host ?? s.host,
-        epoch: connection === 'connected' ? s.epoch + 1 : s.epoch,
-      }))
-      if (connection === 'connected') {
-        client
-          ?.request('providers.list', {})
-          .then((providers) => useHostStore.setState({ providers }))
-          .catch(() => {})
-        refreshProjects().catch(() => {})
-      }
-    },
-  })
-  client.start()
 }

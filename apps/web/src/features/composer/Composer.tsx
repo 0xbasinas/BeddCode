@@ -2,7 +2,7 @@ import { useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode }
 import { ArrowUp, Paperclip, Plus, Square, X } from 'lucide-react'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import { formatBytes } from '../../ui/format.ts'
-import { useHostStore } from '../../stores/host.ts'
+import { upload } from '../../stores/host.ts'
 import { ModeMenu, type ModeItem } from './Menus.tsx'
 
 const MAX_BYTES = 20 * 1024 * 1024
@@ -24,6 +24,8 @@ interface ComposerProps {
   busy: boolean
   disabled?: boolean
   autoFocus?: boolean
+  /** The host files are uploaded to; attachments must live where the agent runs. */
+  hostKey: string
   onSend(text: string, attachmentIds: string[]): Promise<void>
   onStop?(): void
   modes?: ModeItem[]
@@ -38,7 +40,6 @@ interface ComposerProps {
 let nextKey = 1
 
 export function Composer(props: ComposerProps) {
-  const upload = useHostStore((s) => s.upload)
   const [files, setFiles] = useState<Attached[]>([])
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -56,7 +57,7 @@ export function Composer(props: ComposerProps) {
         continue
       }
       setFiles((fs) => [...fs, { ...base, status: 'uploading' }])
-      upload(file).then(
+      upload(props.hostKey, file).then(
         (saved) => patch(key, { status: 'done', id: saved.id }),
         (err: unknown) =>
           patch(key, {

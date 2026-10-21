@@ -2,6 +2,7 @@ import { Check, ChevronDown, Shield, Sparkles } from 'lucide-react'
 import type { ModelOption } from '@beddcode/contracts'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import { effortLabel } from '../../ui/format.ts'
+import { modelChoice, modelEfforts } from '../../ui/models.ts'
 
 export interface ModeItem {
   id: string
@@ -87,13 +88,20 @@ export function ModelMenu({
   if (models.length === 0 && efforts.length === 0) return null
   const model = models.find((m) => m.id === value.model)
   const label = model?.label ?? 'Default model'
+  const availableEfforts = modelEfforts(models, efforts, value.model)
 
   return (
     <Dropdown
       align="end"
       panelClassName="wide"
-      trigger={({ toggle }) => (
-        <button className="pill" onClick={toggle} aria-label="Model and effort">
+      trigger={({ open, toggle }) => (
+        <button
+          className="pill"
+          onClick={toggle}
+          aria-label="Model and effort"
+          aria-haspopup="menu"
+          aria-expanded={open}
+        >
           <Sparkles size={15} /> {label}
           {value.effort && <span className="muted">{effortLabel(value.effort)}</span>}
           <ChevronDown size={14} />
@@ -109,7 +117,9 @@ export function ModelMenu({
                 className="menu-row"
                 role="menuitemradio"
                 aria-checked={!value.model}
-                onClick={() => onChange({ ...value, model: undefined })}
+                onClick={() =>
+                  onChange(modelChoice(models, efforts, { ...value, model: undefined }))
+                }
               >
                 <span className="menu-text">
                   <span className="menu-title">Default</span>
@@ -123,7 +133,7 @@ export function ModelMenu({
                   className="menu-row"
                   role="menuitemradio"
                   aria-checked={m.id === value.model}
-                  onClick={() => onChange({ ...value, model: m.id })}
+                  onClick={() => onChange(modelChoice(models, efforts, { ...value, model: m.id }))}
                 >
                   <span className="menu-text">
                     <span className="menu-title">{m.label}</span>
@@ -134,22 +144,39 @@ export function ModelMenu({
               ))}
             </>
           )}
-          {efforts.length > 0 && (
+          {models.length === 0 && (
+            <>
+              <div className="menu-heading">Model</div>
+              <div className="menu-model-default">
+                <span>Agent default</span>
+                <span className="menu-desc">
+                  Model choices are unavailable. Refresh agents in Settings to retry.
+                </span>
+              </div>
+            </>
+          )}
+          {availableEfforts.length > 0 && (
             <>
               <div className="menu-sep" />
               <div className="menu-heading">
                 Effort <span className="muted">Higher uses more of your limit</span>
               </div>
               <div className="segmented" role="radiogroup" aria-label="Effort">
-                {efforts.map((e) => (
+                <button
+                  role="radio"
+                  aria-checked={!value.effort}
+                  className={!value.effort ? 'on' : ''}
+                  onClick={() => onChange({ ...value, effort: undefined })}
+                >
+                  Default
+                </button>
+                {availableEfforts.map((e) => (
                   <button
                     key={e}
                     role="radio"
                     aria-checked={e === value.effort}
                     className={e === value.effort ? 'on' : ''}
-                    onClick={() =>
-                      onChange({ ...value, effort: value.effort === e ? undefined : e })
-                    }
+                    onClick={() => onChange({ ...value, effort: e })}
                   >
                     {effortLabel(e)}
                   </button>

@@ -3,6 +3,7 @@ import type { ProviderCapabilities, ProviderInstance, ProviderStatus } from '@be
 import type { ProviderAdapter } from '@beddcode/provider-core'
 import { createLogger, resolveExecutable, runCommand, type Logger } from '@beddcode/shared'
 import { ClaudeSession, type QueryFn } from './session.ts'
+import { discoverClaudeModels } from './models.ts'
 
 export const CLAUDE_INSTANCE_ID = 'claude'
 
@@ -39,7 +40,8 @@ export const claudeCapabilities: ProviderCapabilities = {
     { id: 'opus', label: 'Opus', description: 'Deep reasoning for complex changes' },
     { id: 'haiku', label: 'Haiku', description: 'Fast and light, for small edits' },
   ],
-  efforts: ['low', 'medium', 'high', 'xhigh'],
+  // Effort support comes from the CLI's per-model metadata.
+  efforts: [],
 }
 
 export interface ClaudeAdapterOptions {
@@ -59,12 +61,14 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
   const log = options.log ?? createLogger('claude')
   const queryFn = options.queryFn ?? (query as QueryFn)
   const env = options.configDir ? { CLAUDE_CONFIG_DIR: options.configDir } : undefined
+  let capabilities = claudeCapabilities
 
   // An explicit path must exist; otherwise fall back to PATH lookup only when none was given.
   const executable = () =>
     options.executablePath ? resolveExecutable(options.executablePath) : resolveExecutable('claude')
 
   async function detectInstance(): Promise<ProviderInstance> {
+    capabilities = claudeCapabilities
     const base = {
       id: instanceId,
       kind: 'claude' as const,
@@ -82,7 +86,8 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
       version = /\d+\.\d+\.\d+/.exec(v.stdout)?.[0]
       // `auth status` only reads local credentials; it does not start a session.
       const auth = await runCommand(exe, ['auth', 'status'], { env: runEnv })
-      if (auth.code === 0) {
+      if (auth.code !== 0) status = 'needs-sign-in'
+      else {
         const parsed = safeJson(auth.stdout) as { loggedIn?: boolean } | null
         if (parsed && parsed.loggedIn === false) status = 'needs-sign-in'
       }
@@ -90,13 +95,23 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
       log.warn('claude detection failed', err)
       status = 'error'
     }
-    return { ...base, status, version }
+    if (status === 'ready') {
+      try {
+        capabilities = {
+          ...claudeCapabilities,
+          models: await discoverClaudeModels(queryFn, exe, env),
+        }
+      } catch (err) {
+        log.warn('Claude model discovery failed; using unversioned CLI aliases', err)
+      }
+    }
+    return { ...base, capabilities, status, version }
   }
 
   return {
     kind: 'claude',
     detect: async () => [await detectInstance()],
-    capabilities: () => claudeCapabilities,
+    capabilities: () => capabilities,
     async startSession(_instanceId, input) {
       const exe = executable()
       if (!exe) throw new Error('Claude Code is not installed on this host')

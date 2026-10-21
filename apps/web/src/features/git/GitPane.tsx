@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { GitBranch } from 'lucide-react'
 import type { SessionView } from '@beddcode/client-runtime'
 import { hostRequest } from '../../stores/host.ts'
+import { useHostKey } from '../../stores/HostScope.tsx'
 import { ChangesTab } from './ChangesTab.tsx'
 import { CommitsTab } from './CommitsTab.tsx'
 import { PullRequestTab } from './PullRequestTab.tsx'
@@ -17,12 +18,13 @@ export function GitPane({ session }: { session: SessionView }) {
   const [tab, setTab] = useState<Tab>('changes')
   const [version, setVersion] = useState(0)
   const cwd = session.cwd
+  const hostKey = useHostKey()
   // A finished turn usually means files changed.
-  const key = `${cwd}:${session.status}:${version}`
+  const key = `${hostKey}:${cwd}:${session.status}:${version}`
 
-  const info = usePolled(() => hostRequest('git.info', { cwd }), key)
-  const status = usePolled(() => hostRequest('git.status', { cwd }), key)
-  const log = usePolled(() => hostRequest('git.log', { cwd }), key, 8000)
+  const info = usePolled(() => hostRequest(hostKey, 'git.info', { cwd }), key)
+  const status = usePolled(() => hostRequest(hostKey, 'git.status', { cwd }), key)
+  const log = usePolled(() => hostRequest(hostKey, 'git.log', { cwd }), key, 8000)
 
   const changed = () => {
     setVersion((v) => v + 1)

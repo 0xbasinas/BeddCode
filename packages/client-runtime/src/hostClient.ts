@@ -9,11 +9,18 @@ import {
   type StoredEvent,
 } from '@beddcode/contracts'
 
-export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'stopped'
+/** `denied`: the host refused our token. It will not help to retry; the device has to be paired again. */
+export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'stopped' | 'denied'
 
 export interface HostClientOptions {
-  url: string
+  /** One address, or several routes to the same host (tried in order, e.g. tailnet name then IP). */
+  url: string | string[]
   token?: string
+  /** Refuse routes that now point at a different machine. */
+  expectedHostId?: string
+  connectTimeoutMs?: number
+  requestTimeoutMs?: number
+  heartbeatMs?: number
   /** Resume point, e.g. restored from a persisted replica. */
   initialSeq?: number
   onEvent(stored: StoredEvent): void
@@ -29,6 +36,7 @@ export interface HostClientOptions {
 interface Pending {
   resolve(value: unknown): void
   reject(reason: Error): void
+  timer: ReturnType<typeof setTimeout>
 }
 
 /**
@@ -40,12 +48,26 @@ export class HostClient {
   private state: ConnectionState = 'connecting'
   private lastSeq: number
   private attempt = 0
+  private route = 0
   private nextId = 1
   private timer: ReturnType<typeof setTimeout> | null = null
+  private connectTimer: ReturnType<typeof setTimeout> | null = null
+  private heartbeat: ReturnType<typeof setInterval> | null = null
+  private awaitingPong = false
   private readonly pending = new Map<string, Pending>()
 
   constructor(private readonly options: HostClientOptions) {
     this.lastSeq = options.initialSeq ?? 0
+  }
+
+  private get routes(): string[] {
+    const { url } = this.options
+    return Array.isArray(url) ? url : [url]
+  }
+
+  /** The address currently in use (or being tried). */
+  get activeUrl(): string {
+    return this.routes[this.route % this.routes.length]!
   }
 
   get connectionState(): ConnectionState {
@@ -57,7 +79,8 @@ export class HostClient {
   }
 
   start() {
-    if (this.state === 'stopped') this.state = 'connecting'
+    if (this.ws || this.timer || this.state === 'denied') return
+    this.setState('connecting')
     this.open()
   }
 
@@ -65,6 +88,7 @@ export class HostClient {
     this.setState('stopped')
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
+    this.clearSocketTimers()
     this.ws?.close()
     this.ws = null
     this.failPending(new Error('client stopped'))
@@ -77,7 +101,15 @@ export class HostClient {
     }
     const id = String(this.nextId++)
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject })
+      const timer = setTimeout(() => {
+        this.pending.delete(id)
+        reject(
+          new Error(
+            'The host took too long to answer. The operation may still be running; check it before retrying.',
+          ),
+        )
+      }, this.options.requestTimeoutMs ?? 180_000)
+      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer })
       ws.send(JSON.stringify({ t: 'req', id, method, params }))
     })
   }
@@ -92,27 +124,62 @@ export class HostClient {
 
   private open() {
     const create = this.options.createSocket ?? ((url: string) => new WebSocket(url))
-    const ws = create(this.options.url)
+    const ws = create(this.activeUrl)
     this.ws = ws
+    let welcomed = false
+    const disconnected = () => {
+      if (this.ws !== ws) return
+      this.clearSocketTimers()
+      this.ws = null
+      this.failPending(new Error('connection lost'))
+      if (!welcomed) this.route = (this.route + 1) % this.routes.length
+      if (this.state !== 'stopped' && this.state !== 'denied') this.scheduleReconnect()
+    }
+    // Closing a socket that is still connecting can itself take a long time in browsers.
+    // Detach immediately so another route can be tried without waiting for its close event.
+    const abandon = () => {
+      disconnected()
+      ws.close()
+    }
+    this.connectTimer = setTimeout(abandon, this.options.connectTimeoutMs ?? 5_000)
 
     ws.onopen = () => {
+      if (this.ws !== ws) return
       ws.send(JSON.stringify({ t: 'hello', protocol: PROTOCOL_VERSION, token: this.options.token }))
     }
     ws.onmessage = (msg) => {
+      if (this.ws !== ws) return
       let frame: ServerFrame
       try {
         frame = ServerFrame.parse(JSON.parse(String(msg.data)))
       } catch {
         return
       }
+      if (frame.t === 'welcome') {
+        if (welcomed) return
+        if (
+          frame.protocol !== PROTOCOL_VERSION ||
+          (this.options.expectedHostId && frame.host.hostId !== this.options.expectedHostId)
+        ) {
+          abandon()
+          return
+        }
+        welcomed = true
+        if (this.connectTimer) clearTimeout(this.connectTimer)
+        this.connectTimer = null
+        this.awaitingPong = false
+        this.heartbeat = setInterval(() => {
+          if (this.awaitingPong) {
+            abandon()
+            return
+          }
+          this.awaitingPong = true
+          ws.send(JSON.stringify({ t: 'ping' }))
+        }, this.options.heartbeatMs ?? 15_000)
+      } else if (!welcomed && frame.t !== 'denied') return
       this.handle(ws, frame)
     }
-    ws.onclose = () => {
-      if (this.ws !== ws) return
-      this.ws = null
-      this.failPending(new Error('connection lost'))
-      if (this.state !== 'stopped') this.scheduleReconnect()
-    }
+    ws.onclose = disconnected
     ws.onerror = () => {
       // `close` follows; reconnect is handled there.
     }
@@ -124,6 +191,13 @@ export class HostClient {
         this.attempt = 0
         this.setState('connected', frame.host)
         ws.send(JSON.stringify({ t: 'subscribe', afterSeq: this.lastSeq }))
+        break
+      case 'denied':
+        this.setState('denied')
+        ws.close()
+        break
+      case 'pong':
+        this.awaitingPong = false
         break
       case 'event':
         if (frame.stored.seq > this.lastSeq) {
@@ -143,6 +217,7 @@ export class HostClient {
         const p = this.pending.get(frame.id)
         if (!p) break
         this.pending.delete(frame.id)
+        clearTimeout(p.timer)
         if (frame.ok) p.resolve(frame.result)
         else p.reject(new Error(frame.error ?? 'request failed'))
         break
@@ -153,7 +228,10 @@ export class HostClient {
   private scheduleReconnect() {
     const { minMs, maxMs } = this.options.backoff ?? { minMs: 250, maxMs: 10_000 }
     this.setState('reconnecting')
-    const delay = Math.min(maxMs, minMs * 2 ** this.attempt) * (0.75 + Math.random() * 0.5)
+    // Going through every route once counts as one step of backoff, so alternatives are tried quickly.
+    const delay =
+      Math.min(maxMs, minMs * 2 ** Math.floor(this.attempt / this.routes.length)) *
+      (0.75 + Math.random() * 0.5)
     this.attempt++
     this.timer = setTimeout(() => {
       this.timer = null
@@ -162,8 +240,18 @@ export class HostClient {
   }
 
   private failPending(error: Error) {
-    for (const p of this.pending.values()) p.reject(error)
+    for (const p of this.pending.values()) {
+      clearTimeout(p.timer)
+      p.reject(error)
+    }
     this.pending.clear()
+  }
+
+  private clearSocketTimers() {
+    if (this.connectTimer) clearTimeout(this.connectTimer)
+    if (this.heartbeat) clearInterval(this.heartbeat)
+    this.connectTimer = null
+    this.heartbeat = null
   }
 
   private setState(state: ConnectionState, host?: HostInfo) {

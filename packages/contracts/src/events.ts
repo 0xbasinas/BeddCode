@@ -27,6 +27,7 @@ export const SessionEvent = z.discriminatedUnion('type', [
   }),
   /** The provider's own session id, kept so a stopped session can be resumed later. */
   Base.extend({ type: z.literal('session.provider-session'), providerSessionId: z.string() }),
+  Base.extend({ type: z.literal('session.renamed'), title: z.string().trim().min(1).max(120) }),
   /** Permission modes the agent itself reports for this session (ACP agents). */
   Base.extend({
     type: z.literal('session.modes'),
@@ -85,6 +86,8 @@ export const SessionEvent = z.discriminatedUnion('type', [
   Base.extend({
     type: z.literal('turn.completed'),
     reason: z.enum(['done', 'cancelled', 'error']),
+    /** Explains an interrupted turn, such as a host restart. */
+    message: z.string().optional(),
   }),
   Base.extend({ type: z.literal('error'), message: z.string() }),
 ])

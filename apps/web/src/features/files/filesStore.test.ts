@@ -4,10 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const files: Record<string, { content: string; mtime: number }> = {}
 const lists: Record<string, { name: string; type: 'file' | 'dir' }[]> = {}
 let writeError: Error | null = null
+let writePending: Promise<void> | undefined
 const calls: string[] = []
 
 vi.mock('../../stores/host.ts', () => ({
-  hostRequest: async (method: string, params: Record<string, unknown>) => {
+  hostRequest: async (_host: string, method: string, params: Record<string, unknown>) => {
     calls.push(`${method}:${String(params.dir ?? params.path ?? '')}`)
     switch (method) {
       case 'files.list':
@@ -26,6 +27,7 @@ vi.mock('../../stores/host.ts', () => ({
       }
       case 'files.write': {
         if (writeError) throw writeError
+        await writePending
         files[String(params.path)] = { content: String(params.content), mtime: 999 }
         return { mtime: 999 }
       }
@@ -44,6 +46,7 @@ beforeEach(() => {
   useFiles.setState({ byCwd: {} })
   calls.length = 0
   writeError = null
+  writePending = undefined
   for (const k of Object.keys(files)) delete files[k]
   for (const k of Object.keys(lists)) delete lists[k]
   files['a.ts'] = { content: 'A', mtime: 10 }
@@ -106,6 +109,65 @@ describe('files store', () => {
       dirty: false,
       conflict: false,
     })
+  })
+
+  it('retains unsaved text across tab changes and clears it on undo or reload', async () => {
+    const f = useFiles.getState()
+    await f.open('/w', 'a.ts')
+    f.setDraft('/w', 'a.ts', 'draft')
+    await f.open('/w', 'src/b.ts')
+    await f.open('/w', 'a.ts')
+    expect(state().docs['a.ts']).toMatchObject({ content: 'A', draft: 'draft', dirty: true })
+    f.setDraft('/w', 'a.ts', 'A')
+    expect(state().docs['a.ts']).toMatchObject({ draft: undefined, dirty: false })
+    f.setDraft('/w', 'a.ts', 'another draft')
+    await f.reload('/w', 'a.ts')
+    expect(state().docs['a.ts']).toMatchObject({
+      content: 'A',
+      draft: undefined,
+      dirty: false,
+      version: 1,
+    })
+  })
+
+  it('keeps edits made while a save is pending, including undo back to the old disk text', async () => {
+    const f = useFiles.getState()
+    await f.open('/w', 'a.ts')
+    for (const next of ['newer draft', 'é']) {
+      f.setDraft('/w', 'a.ts', 'submitted')
+      let finish!: () => void
+      writePending = new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      const saving = f.save('/w', 'a.ts', 'submitted')
+      f.setDraft('/w', 'a.ts', next)
+      finish()
+      await saving
+      expect(state().docs['a.ts']).toMatchObject({ content: 'submitted', draft: next, dirty: true })
+      writePending = undefined
+      await f.save('/w', 'a.ts', next)
+      expect(state().docs['a.ts']).toMatchObject({
+        content: next,
+        draft: undefined,
+        dirty: false,
+        size: new TextEncoder().encode(next).length,
+      })
+    }
+  })
+
+  it('preserves undo to the old disk text while saving a different draft', async () => {
+    const f = useFiles.getState()
+    await f.open('/w', 'a.ts')
+    f.setDraft('/w', 'a.ts', 'submitted')
+    let finish!: () => void
+    writePending = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const saving = f.save('/w', 'a.ts', 'submitted')
+    f.setDraft('/w', 'a.ts', 'A')
+    finish()
+    await saving
+    expect(state().docs['a.ts']).toMatchObject({ content: 'submitted', draft: 'A', dirty: true })
   })
 
   it('flags a conflict when the file changed on disk, and can then overwrite', async () => {

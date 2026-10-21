@@ -19,11 +19,12 @@ import {
   lineNumbers,
 } from '@codemirror/view'
 import { tags as t } from '@lezer/highlight'
+import { useAppPreferences, type AppPreferences } from '../../stores/appPreferences.ts'
 
 const theme = EditorView.theme(
   {
-    '&': { height: '100%', backgroundColor: 'transparent', color: '#ececec', fontSize: '13px' },
-    '.cm-scroller': { fontFamily: 'var(--font-mono)', lineHeight: '1.65' },
+    '&': { height: '100%', backgroundColor: 'transparent', color: '#d4d4d4' },
+    '.cm-scroller': { fontFamily: 'var(--font-mono)' },
     '.cm-content': { caretColor: '#f0a43c' },
     '.cm-cursor': { borderLeftColor: '#f0a43c' },
     '.cm-gutters': { backgroundColor: 'transparent', color: '#5c5c5c', border: 'none' },
@@ -75,7 +76,7 @@ interface EditorProps {
   content: string
   /** Bumped when `content` was replaced from disk: the editor starts over from it. */
   version: number
-  onDirty(dirty: boolean): void
+  onChange(text: string): void
   onSave(text: string): void
   onCursor(position: EditorPosition): void
   /** Filled with a function that returns the text currently in the editor (for the Save button). */
@@ -86,10 +87,22 @@ interface Held {
   state: EditorState
   version: number
   language: Compartment
+  configuration: Compartment
+}
+
+function editorConfiguration(preferences: AppPreferences): Extension[] {
+  return [
+    EditorView.theme({
+      '&': { fontSize: `${preferences.editorFontSize}px` },
+      '.cm-scroller': { lineHeight: `${Math.round(preferences.editorFontSize * 1.65)}px` },
+    }),
+    EditorState.tabSize.of(preferences.editorTabSize),
+    ...(preferences.editorLineNumbers ? [lineNumbers()] : []),
+    ...(preferences.editorWordWrap ? [EditorView.lineWrapping] : []),
+  ]
 }
 
 const COMMON: Extension[] = [
-  lineNumbers(),
   highlightActiveLineGutter(),
   highlightActiveLine(),
   history(),
@@ -97,13 +110,15 @@ const COMMON: Extension[] = [
   indentOnInput(),
   bracketMatching(),
   highlightSelectionMatches(),
-  EditorState.tabSize.of(2),
   theme,
   highlight,
 ]
 
 /** A CodeMirror 6 editor with one remembered state (text, cursor, undo history) per open file. */
 export function Editor(props: EditorProps) {
+  const preferences = useAppPreferences((s) => s.values)
+  const preferencesRef = useRef(preferences)
+  preferencesRef.current = preferences
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const held = useRef(new Map<string, Held>())
@@ -144,11 +159,13 @@ export function Editor(props: EditorProps) {
     let entry = held.current.get(props.docKey)
     if (!entry || entry.version !== props.version) {
       const language = new Compartment()
+      const configuration = new Compartment()
       const state = EditorState.create({
         doc: latest.current.content,
         extensions: [
           ...COMMON,
           language.of([]),
+          configuration.of(editorConfiguration(preferencesRef.current)),
           keymap.of([
             {
               key: 'Mod-s',
@@ -164,7 +181,7 @@ export function Editor(props: EditorProps) {
             ...defaultKeymap,
           ]),
           EditorView.updateListener.of((update) => {
-            if (update.docChanged) latest.current.onDirty(true)
+            if (update.docChanged) latest.current.onChange(update.state.doc.toString())
             if (update.docChanged || update.selectionSet) {
               const head = update.state.selection.main.head
               const line = update.state.doc.lineAt(head)
@@ -173,7 +190,7 @@ export function Editor(props: EditorProps) {
           }),
         ],
       })
-      entry = { state, version: props.version, language }
+      entry = { state, version: props.version, language, configuration }
       held.current.set(props.docKey, entry)
 
       // Syntax highlighting loads on demand, per language.
@@ -202,6 +219,19 @@ export function Editor(props: EditorProps) {
     latest.current.onCursor({ line: line.number, col: head - line.from + 1 })
     v.focus()
   }, [props.docKey, props.version, props.fileName])
+
+  useEffect(() => {
+    for (const [key, entry] of held.current) {
+      const effects = entry.configuration.reconfigure(editorConfiguration(preferencesRef.current))
+      if (current.current === key && view.current) view.current.dispatch({ effects })
+      else entry.state = entry.state.update({ effects }).state
+    }
+  }, [
+    preferences.editorFontSize,
+    preferences.editorTabSize,
+    preferences.editorWordWrap,
+    preferences.editorLineNumbers,
+  ])
 
   return <div className="editor-host" ref={host} />
 }

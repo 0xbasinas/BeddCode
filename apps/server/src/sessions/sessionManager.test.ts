@@ -88,6 +88,17 @@ function setup(opts: Parameters<typeof resumableAdapter>[0]) {
 const tick = () => new Promise((r) => setTimeout(r, 5))
 
 describe('SessionManager', () => {
+  it('persists a renamed title without needing a running provider and rejects unknown sessions', async () => {
+    const { store, manager } = setup({ resume: true })
+    const { sessionId } = await manager.create({ instanceId: 'stub' })
+    await manager.close()
+    manager.rename(sessionId, 'Investigate retries')
+    expect(store.readSession(sessionId).at(-1)?.event).toMatchObject({
+      type: 'session.renamed',
+      title: 'Investigate retries',
+    })
+    expect(() => manager.rename('missing', 'No session')).toThrow('Unknown session')
+  })
   it('refuses to start a session on a provider that is not ready', async () => {
     const { manager } = setup({ resume: true, status: 'needs-sign-in' })
     await expect(manager.create({ instanceId: 'stub' })).rejects.toThrow('not ready')

@@ -2,13 +2,15 @@ import { useCallback, useEffect, useState } from 'react'
 import { Plus, SquareTerminal, Trash2, X } from 'lucide-react'
 import type { SessionView } from '@beddcode/client-runtime'
 import type { TerminalInfo } from '@beddcode/contracts'
-import { hostRequest, useHostStore } from '../../stores/host.ts'
+import { hostRequest, useRuntime } from '../../stores/host.ts'
+import { useHostKey } from '../../stores/HostScope.tsx'
 import { TerminalView } from './TerminalView.tsx'
 
 /** Terminals of the folder a session works in. */
 export function TerminalPane({ session }: { session: SessionView }) {
   const cwd = session.cwd
-  const epoch = useHostStore((s) => s.epoch)
+  const hostKey = useHostKey()
+  const { epoch } = useRuntime(hostKey)
   const [terminals, setTerminals] = useState<TerminalInfo[] | null>(null)
   const [active, setActive] = useState<string>()
   const [size, setSize] = useState<{ cols: number; rows: number }>()
@@ -16,7 +18,7 @@ export function TerminalPane({ session }: { session: SessionView }) {
 
   useEffect(() => {
     let cancelled = false
-    hostRequest('terminals.list', { cwd }).then(
+    hostRequest(hostKey, 'terminals.list', { cwd }).then(
       (list) => {
         if (cancelled) return
         setTerminals(list)
@@ -27,21 +29,21 @@ export function TerminalPane({ session }: { session: SessionView }) {
     return () => {
       cancelled = true
     }
-  }, [cwd, epoch])
+  }, [hostKey, cwd, epoch])
 
   const create = useCallback(async () => {
     setError(undefined)
     try {
-      const info = await hostRequest('terminals.create', { cwd })
+      const info = await hostRequest(hostKey, 'terminals.create', { cwd })
       setTerminals((list) => [...(list ?? []), info])
       setActive(info.id)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
-  }, [cwd])
+  }, [hostKey, cwd])
 
   const close = async (id: string) => {
-    await hostRequest('terminals.close', { id }).catch(() => {})
+    await hostRequest(hostKey, 'terminals.close', { id }).catch(() => {})
     setTerminals((list) => {
       const next = (list ?? []).filter((t) => t.id !== id)
       setActive((cur) => (cur === id ? next.at(-1)?.id : cur))

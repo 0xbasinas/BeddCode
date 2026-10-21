@@ -1,6 +1,6 @@
-import { ChevronDown, ChevronRight, File, Folder, FolderOpen } from 'lucide-react'
+import { ChevronDown, ChevronRight, Folder, FolderOpen } from 'lucide-react'
 import { EMPTY_FOLDER, useFiles } from './filesStore.ts'
-import { fileLabel } from './fileIcons.ts'
+import { FileIcon } from './FileIcon.tsx'
 
 const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name)
 
@@ -41,7 +41,6 @@ function Level({ cwd, dir, depth }: { cwd: string; dir: string; depth: number })
             </div>
           )
         }
-        const label = fileLabel(entry.name)
         return (
           <button
             key={path}
@@ -50,10 +49,7 @@ function Level({ cwd, dir, depth }: { cwd: string; dir: string; depth: number })
             onClick={() => void open(cwd, path)}
             title={path}
           >
-            <span className="file-icon">
-              <File size={16} />
-              {label && <span className="file-label">{label}</span>}
-            </span>
+            <FileIcon name={entry.name} />
             <span className="tree-name">{entry.name}</span>
           </button>
         )

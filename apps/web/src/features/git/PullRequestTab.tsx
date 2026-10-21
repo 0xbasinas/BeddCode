@@ -4,6 +4,7 @@ import type { GitLog, PullRequest } from '@beddcode/contracts'
 import { Markdown } from '../../ui/Markdown.tsx'
 import { agoLabel } from '../../ui/format.ts'
 import { hostRequest } from '../../stores/host.ts'
+import { useHostKey } from '../../stores/HostScope.tsx'
 import { usePolled } from './usePolled.ts'
 
 const CHECK_ICON = {
@@ -26,7 +27,12 @@ export function PullRequestTab({
   refreshKey: unknown
   onChanged(): void
 }) {
-  const pr = usePolled(() => hostRequest('git.pr.get', { cwd }), `${cwd}:${refreshKey}`, 15_000)
+  const hostKey = useHostKey()
+  const pr = usePolled(
+    () => hostRequest(hostKey, 'git.pr.get', { cwd }),
+    `${hostKey}:${cwd}:${refreshKey}`,
+    15_000,
+  )
 
   if (pr.loading) return <div className="git-empty muted">Checking GitHub…</div>
   if (pr.error) {
@@ -131,6 +137,7 @@ function CreatePr({
   log: GitLog | undefined
   onCreated(): void
 }) {
+  const hostKey = useHostKey()
   const first = log ? [...log.unpushed, ...log.pushed].at(-1) : undefined
   const [title, setTitle] = useState(first?.subject ?? '')
   const [body, setBody] = useState('')
@@ -142,7 +149,7 @@ function CreatePr({
     setBusy(true)
     setError(undefined)
     try {
-      await hostRequest('git.pr.create', {
+      await hostRequest(hostKey, 'git.pr.create', {
         cwd,
         title: title.trim(),
         body,

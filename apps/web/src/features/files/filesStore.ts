@@ -1,11 +1,38 @@
 import { create } from 'zustand'
-import type { FileEntry } from '@beddcode/contracts'
+import type { FileEntry, RpcMethodName, RpcParams, RpcResult } from '@beddcode/contracts'
 import { hostRequest } from '../../stores/host.ts'
+import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
+
+/**
+ * Names one folder on one host. The store's `cwd` arguments are these ids; a bare path means the
+ * local host.
+ */
+// NUL cannot appear in a path, so a host key joined to a path with it cannot clash with one.
+const SEPARATOR = String.fromCharCode(0)
+export const folderId = (hostKey: string, cwd: string) => `${hostKey}${SEPARATOR}${cwd}`
+export function splitFolderId(id: string): { hostKey: string; cwd: string } {
+  const at = id.indexOf(SEPARATOR)
+  return at < 0
+    ? { hostKey: LOCAL_HOST_KEY, cwd: id }
+    : { hostKey: id.slice(0, at), cwd: id.slice(at + 1) }
+}
+
+/** A file request for the folder `id`, sent to the host it lives on. */
+function request<M extends RpcMethodName>(
+  id: string,
+  method: M,
+  params: Omit<RpcParams<M>, 'cwd'>,
+): Promise<RpcResult<M>> {
+  const { hostKey, cwd } = splitFolderId(id)
+  return hostRequest(hostKey, method, { ...params, cwd } as RpcParams<M>)
+}
 
 export interface Doc {
   path: string
-  /** Text as last loaded from or saved to disk; the editor keeps the live text. */
+  /** Text as last loaded from or saved to disk. */
   content: string
+  /** Unsaved text retained when the pane or Settings changes. Never written until Save. */
+  draft?: string
   mtime: number
   size: number
   binary: boolean
@@ -39,6 +66,7 @@ interface FilesState {
   activate(cwd: string, path: string): void
   close(cwd: string, path: string): void
   setDirty(cwd: string, path: string, dirty: boolean): void
+  setDraft(cwd: string, path: string, text: string): void
   save(cwd: string, path: string, content: string, force?: boolean): Promise<void>
   reload(cwd: string, path: string): Promise<void>
   create(cwd: string, path: string, type: 'file' | 'dir'): Promise<void>
@@ -60,7 +88,7 @@ export const useFiles = create<FilesState>((set, get) => {
     byCwd: {},
 
     async loadDir(cwd, dir) {
-      const { entries } = await hostRequest('files.list', { cwd, dir })
+      const { entries } = await request(cwd, 'files.list', { dir })
       update(cwd, (f) => ({ ...f, entries: { ...f.entries, [dir]: entries } }))
     },
 
@@ -79,7 +107,7 @@ export const useFiles = create<FilesState>((set, get) => {
       const folder = get().byCwd[cwd] ?? empty()
       if (folder.docs[path]) return get().activate(cwd, path)
       try {
-        const file = await hostRequest('files.read', { cwd, path })
+        const file = await request(cwd, 'files.read', { path })
         const doc: Doc = {
           path,
           content: file.content,
@@ -139,17 +167,35 @@ export const useFiles = create<FilesState>((set, get) => {
       patchDoc(cwd, path, { dirty })
     },
 
+    setDraft(cwd, path, text) {
+      const doc = get().byCwd[cwd]?.docs[path]
+      if (doc)
+        patchDoc(cwd, path, {
+          draft: text === doc.content ? undefined : text,
+          dirty: text !== doc.content,
+        })
+    },
+
     async save(cwd, path, content, force = false) {
       const doc = get().byCwd[cwd]?.docs[path]
       if (!doc) return
       try {
-        const { mtime } = await hostRequest('files.write', {
-          cwd,
+        const { mtime } = await request(cwd, 'files.write', {
           path,
           content,
           expectedMtime: force ? undefined : doc.mtime,
         })
-        patchDoc(cwd, path, { content, mtime, dirty: false, conflict: false, size: content.length })
+        const latest = get().byCwd[cwd]?.docs[path]
+        const draft =
+          latest && latest.draft !== doc.draft ? (latest.draft ?? latest.content) : undefined
+        patchDoc(cwd, path, {
+          content,
+          mtime,
+          draft: draft === content ? undefined : draft,
+          dirty: draft !== undefined && draft !== content,
+          conflict: false,
+          size: new TextEncoder().encode(content).length,
+        })
       } catch (err) {
         if (err instanceof Error && /changed on disk/i.test(err.message)) {
           patchDoc(cwd, path, { conflict: true })
@@ -159,7 +205,7 @@ export const useFiles = create<FilesState>((set, get) => {
     },
 
     async reload(cwd, path) {
-      const file = await hostRequest('files.read', { cwd, path })
+      const file = await request(cwd, 'files.read', { path })
       const doc = get().byCwd[cwd]?.docs[path]
       patchDoc(cwd, path, {
         content: file.content,
@@ -168,13 +214,14 @@ export const useFiles = create<FilesState>((set, get) => {
         binary: file.binary,
         tooLarge: file.tooLarge,
         dirty: false,
+        draft: undefined,
         conflict: false,
         version: (doc?.version ?? 0) + 1,
       })
     },
 
     async create(cwd, path, type) {
-      await hostRequest('files.create', { cwd, path, type })
+      await request(cwd, 'files.create', { path, type })
       const parent = parentOf(path)
       // Make the new entry visible: expand every folder on the way to it.
       const parts = parent ? parent.split('/') : []
