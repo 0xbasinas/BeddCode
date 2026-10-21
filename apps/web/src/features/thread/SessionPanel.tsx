@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import {
   Check,
   ChevronDown,
@@ -6,6 +6,8 @@ import {
   FileDiff,
   FolderOpen,
   GitBranch,
+  GripHorizontal,
+  Minus,
   Monitor,
   Settings,
   Shield,
@@ -13,24 +15,53 @@ import {
 } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import type { SessionView } from '@beddcode/client-runtime'
-import { Dropdown } from '../../ui/Dropdown.tsx'
 import { setMode, useRuntime } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { useUiStore } from '../../stores/ui.ts'
 import { folderName } from '../../ui/format.ts'
+import { clampOffset, loadOffset, saveOffset, type Offset } from './floating.ts'
 
-export function SessionPanel({
+const storage = (): Storage | undefined => {
+  try {
+    return globalThis.localStorage
+  } catch {
+    return undefined
+  }
+}
+
+/** The agent's name under the composer. The Environment card is always there; nothing here hides it. */
+export function SessionChip({ agent }: { agent: string }) {
+  const initials = agent
+    .split(/\s+/)
+    .map((word) => word[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+  return (
+    <span className="chip-lite static" title="The agent running this session">
+      <span className="avatar">{initials}</span>
+      {agent}
+    </span>
+  )
+}
+
+/**
+ * Where this session runs and how: changes, host, branch, permission mode, terminal, folder, notes.
+ * It floats over the transcript instead of covering it like a menu: drag it by its title to put it
+ * where it is out of the way; it stays open while the conversation scrolls.
+ */
+export function EnvironmentCard({
   session,
   hostKey,
-  agent,
   stats,
 }: {
   session: SessionView
   hostKey: string
-  agent: string
   stats: { added: number; removed: number }
 }) {
   const navigate = useNavigate()
+  const minimized = useUiStore((s) => s.environmentMinimized)
+  const setMinimized = useUiStore((s) => s.setEnvironmentMinimized)
   const { connection, host, providers } = useRuntime(hostKey)
   const provider = providers.find((p) => p.id === session.instanceId)
   const modes = session.modes ?? provider?.capabilities.permissionModes ?? []
@@ -49,51 +80,121 @@ export function SessionPanel({
   })
   const toggle = (row: typeof expanded) =>
     setExpanded((current) => (current === row ? undefined : row))
-  const initials = agent
-    .split(/\s+/)
-    .map((word) => word[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase()
+
+  // Position: kept inside the thread however the window changes.
+  const card = useRef<HTMLDivElement>(null)
+  const [offset, setOffset] = useState<Offset>(() => loadOffset(storage()))
+  const drag = useRef<{ startX: number; startY: number; from: Offset } | null>(null)
+  /** The latest position, which is what a drag starts from and what gets saved when it ends. */
+  const latest = useRef(offset)
+
+  const fit = (next: Offset): Offset => {
+    const parent = card.current?.offsetParent
+    if (!(parent instanceof HTMLElement) || !card.current) return next
+    return clampOffset(
+      next,
+      { width: parent.clientWidth, height: parent.clientHeight },
+      { width: card.current.offsetWidth, height: card.current.offsetHeight },
+    )
+  }
+  useEffect(() => {
+    const refit = () =>
+      setOffset((current) => {
+        latest.current = fit(current)
+        return latest.current
+      })
+    refit()
+    window.addEventListener('resize', refit)
+    const observer = new ResizeObserver(refit)
+    if (card.current) observer.observe(card.current)
+    if (card.current?.offsetParent) observer.observe(card.current.offsetParent)
+    return () => {
+      window.removeEventListener('resize', refit)
+      observer.disconnect()
+    }
+  }, [])
+
+  const startDrag = (e: PointerEvent<HTMLDivElement>) => {
+    if ((e.target as Element).closest('button')) return
+    try {
+      // Keeps the drag going when the pointer leaves the title; not every input device allows it.
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {
+      // Dragging still works while the pointer stays over the title.
+    }
+    drag.current = { startX: e.clientX, startY: e.clientY, from: latest.current }
+  }
+  const moveDrag = (e: PointerEvent<HTMLDivElement>) => {
+    const d = drag.current
+    if (!d) return
+    // Dragging right shrinks the distance from the right edge.
+    const next = fit({
+      right: d.from.right - (e.clientX - d.startX),
+      top: d.from.top + (e.clientY - d.startY),
+    })
+    latest.current = next
+    setOffset(next)
+  }
+  const endDrag = (e: PointerEvent<HTMLDivElement>) => {
+    if (!drag.current) return
+    drag.current = null
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    } catch {
+      // Already released.
+    }
+    saveOffset(storage(), latest.current)
+  }
 
   return (
-    <Dropdown
-      panelClassName="session-panel"
-      trigger={({ open, toggle }) => (
-        <button
-          className="chip-lite"
-          aria-label="Session details"
-          aria-expanded={open}
-          onClick={toggle}
-        >
-          <span className="avatar">{initials}</span>
-          {agent}
-          <ChevronDown size={11} />
-        </button>
-      )}
+    <div
+      ref={card}
+      className={`env-card ${minimized ? 'minimized' : ''}`}
+      role="dialog"
+      aria-label="Session environment"
+      style={{ right: offset.right, top: offset.top }}
     >
-      {(close) => (
-        <>
-          <div className="session-panel-heading">
-            Environment
-            <button
-              className="icon-btn small"
-              aria-label="Agent settings"
-              onClick={() => {
-                close()
-                void navigate({ to: '/settings' })
-              }}
-            >
-              <Settings size={13} />
-            </button>
-          </div>
+      <div
+        className="session-panel-heading env-drag"
+        onPointerDown={startDrag}
+        onPointerMove={moveDrag}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        <span className="env-title">
+          <GripHorizontal size={14} /> Environment
+        </span>
+        <span className="env-actions">
           <button
-            className="menu-row"
+            className="icon-btn small"
+            aria-label="Agent settings"
             onClick={() => {
-              useUiStore.getState().openPane('git')
-              close()
+              void navigate({ to: '/settings' })
             }}
           >
+            <Settings size={13} />
+          </button>
+          <button
+            className="icon-btn small"
+            aria-label={minimized ? 'Expand' : 'Minimize'}
+            aria-expanded={!minimized}
+            onClick={() => setMinimized(!minimized)}
+          >
+            {minimized ? <ChevronDown size={13} /> : <Minus size={13} />}
+          </button>
+        </span>
+      </div>
+      {minimized ? (
+        <div className="env-summary" title="Expand to see the details">
+          <GitBranch size={13} /> {session.branch ?? folderName(session.projectPath)}
+          <span className="stat">
+            <span className="add">+{stats.added}</span>{' '}
+            <span className="del">−{stats.removed}</span>
+          </span>
+        </div>
+      ) : (
+        <div className="env-body">
+          <button className="menu-row" onClick={() => useUiStore.getState().openPane('git')}>
             <FileDiff size={16} />
             <span className="menu-text menu-title">Changes</span>
             <span className="stat">
@@ -181,13 +282,7 @@ export function SessionPanel({
               )}
             </>
           )}
-          <button
-            className="menu-row"
-            onClick={() => {
-              useUiStore.getState().openPane('terminal')
-              close()
-            }}
-          >
+          <button className="menu-row" onClick={() => useUiStore.getState().openPane('terminal')}>
             <SquareTerminal size={16} />
             <span className="menu-text menu-title">Terminal</span>
           </button>
@@ -195,10 +290,7 @@ export function SessionPanel({
           <button
             className="menu-row"
             title={session.cwd}
-            onClick={() => {
-              useUiStore.getState().openPane('files')
-              close()
-            }}
+            onClick={() => useUiStore.getState().openPane('files')}
           >
             <FolderOpen size={16} />
             <span className="menu-text menu-title">{folderName(session.projectPath)}</span>
@@ -239,8 +331,8 @@ export function SessionPanel({
               {error}
             </p>
           )}
-        </>
+        </div>
       )}
-    </Dropdown>
+    </div>
   )
 }

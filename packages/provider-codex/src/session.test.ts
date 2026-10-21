@@ -20,6 +20,8 @@ function fakeServer() {
     'thread/resume': (p) => ({ thread: { id: String(p.threadId) } }),
     'turn/start': () => ({ turn: { id: 'tu1' } }),
     'turn/interrupt': () => ({}),
+    'turn/steer': () => ({ turnId: 'tu1' }),
+    'skills/list': () => ({ data: [] }),
   }
 
   const transport: Transport = {
@@ -211,12 +213,9 @@ describe('CodexSession', () => {
     await session.close()
   })
 
-  it('declines unsupported questions instead of leaving Codex waiting', async () => {
+  it('declines MCP forms instead of leaving Codex waiting', async () => {
     const server = fakeServer()
     const session = start(server)
-    expect((await server.ask('item/tool/requestUserInput', { threadId: 'th1' })).result).toEqual({
-      answers: {},
-    })
     expect(
       (await server.ask('mcpServer/elicitation/request', { threadId: 'th1' })).result,
     ).toMatchObject({ action: 'decline' })
@@ -337,5 +336,194 @@ describe('createCodexAdapter', () => {
     await expect(adapter.startSession('codex', { sessionId: 's', cwd: '/x' })).rejects.toThrow(
       'not installed',
     )
+  })
+})
+
+describe('steering, questions, plans and skills', () => {
+  const finish = (server: ReturnType<typeof fakeServer>) => completeTurn(server)
+
+  it('steers the running turn by its id, and starts a turn when none is running', async () => {
+    const server = fakeServer()
+    const session = start(server)
+    const turn = session.prompt({ text: 'first' })
+    await server.waitFor((m) => m.method === 'turn/start')
+    await new Promise((r) => setTimeout(r, 5))
+
+    await session.steer({ text: 'also this' })
+    expect(server.sent('turn/steer')[0]?.params).toMatchObject({
+      threadId: 'th1',
+      expectedTurnId: 'tu1',
+      input: [{ type: 'text', text: 'also this' }],
+    })
+    finish(server)
+    await turn
+
+    const idle = session.steer({ text: 'nothing running' })
+    await new Promise((r) => setTimeout(r, 5))
+    expect(server.sent('turn/start')).toHaveLength(2)
+    expect(server.sent('turn/steer')).toHaveLength(1)
+    finish(server)
+    await idle
+    await session.close()
+  })
+
+  it('lets the user answer a question and returns the answers by question id', async () => {
+    const server = fakeServer()
+    const session = start(server)
+    const asked = nextEvent(session, (e) => e.type === 'question.requested')
+    const reply = server.ask('item/tool/requestUserInput', {
+      threadId: 'th1',
+      turnId: 'tu1',
+      itemId: 'i1',
+      isBlocking: true,
+      questions: [
+        {
+          id: 'lang',
+          header: 'Language',
+          question: 'Which language?',
+          isOther: true,
+          isSecret: false,
+          options: [
+            { label: 'TypeScript', description: 'typed' },
+            { label: 'Python', description: '' },
+          ],
+        },
+        {
+          id: 'token',
+          header: 'Token',
+          question: 'API token?',
+          isOther: false,
+          isSecret: true,
+          options: null,
+        },
+      ],
+    })
+    const event = await asked
+    if (event.type !== 'question.requested') throw new Error('no question')
+    expect(event.questions).toMatchObject([
+      {
+        id: 'lang',
+        header: 'Language',
+        allowOther: true,
+        options: [{ label: 'TypeScript' }, { label: 'Python' }],
+      },
+      { id: 'token', secret: true, allowOther: true },
+    ])
+
+    await session.answerQuestion(event.requestId, { lang: ['TypeScript'], token: ['abc'] })
+    expect((await reply).result).toEqual({
+      answers: { lang: { answers: ['TypeScript'] }, token: { answers: ['abc'] } },
+    })
+    await expect(session.answerQuestion(event.requestId)).rejects.toThrow('No pending question')
+    await session.close()
+  })
+
+  it('answers open questions with nothing when the user interrupts', async () => {
+    const server = fakeServer()
+    const session = start(server)
+    const asked = nextEvent(session, (e) => e.type === 'question.requested')
+    const reply = server.ask('item/tool/requestUserInput', {
+      threadId: 'th1',
+      questions: [
+        { id: 'a', header: 'A', question: 'Q?', isOther: true, isSecret: false, options: null },
+      ],
+    })
+    await asked
+    await session.interrupt()
+    expect((await reply).result).toEqual({ answers: {} })
+    await session.close()
+  })
+
+  it("shows Codex's plan updates", async () => {
+    const server = fakeServer()
+    const session = start(server)
+    const planned = nextEvent(session, (e) => e.type === 'plan.updated')
+    // Notifications are for the thread, which exists once the session has started.
+    await server.waitFor((m) => m.method === 'thread/start')
+    await new Promise((r) => setTimeout(r, 10))
+    server.notify('turn/plan/updated', {
+      threadId: 'th1',
+      turnId: 'tu1',
+      explanation: 'Because',
+      plan: [
+        { step: 'Read', status: 'completed' },
+        { step: 'Edit', status: 'inProgress' },
+        { step: 'Test', status: 'pending' },
+      ],
+    })
+    expect(await planned).toMatchObject({
+      explanation: 'Because',
+      steps: [
+        { text: 'Read', status: 'completed' },
+        { text: 'Edit', status: 'in-progress' },
+        { text: 'Test', status: 'pending' },
+      ],
+    })
+    await session.close()
+  })
+
+  it('lists skills as commands and sends a leading /skill as a skill input', async () => {
+    const server = fakeServer()
+    server.auto['skills/list'] = () => ({
+      data: [
+        {
+          cwd: '/work',
+          skills: [
+            { name: 'pdf', description: 'Work with PDFs', path: '/skills/pdf', enabled: true },
+            { name: 'off', description: 'Disabled', path: '/skills/off', enabled: false },
+          ],
+        },
+      ],
+    })
+    const session = start(server)
+    const listed = await nextEvent(session, (e) => e.type === 'session.commands')
+    expect(listed).toMatchObject({
+      commands: [{ name: 'pdf', description: 'Work with PDFs', kind: 'skill' }],
+    })
+
+    const turn = session.prompt({ text: '/pdf merge these files' })
+    await server.waitFor((m) => m.method === 'turn/start')
+    expect(server.sent('turn/start')[0]?.params?.input).toEqual([
+      { type: 'skill', name: 'pdf', path: '/skills/pdf' },
+      { type: 'text', text: 'merge these files', text_elements: [] },
+    ])
+    finish(server)
+    await turn
+
+    const plain = session.prompt({ text: '/unknown thing' })
+    await new Promise((r) => setTimeout(r, 5))
+    expect(server.sent('turn/start')[1]?.params?.input).toEqual([
+      { type: 'text', text: '/unknown thing', text_elements: [] },
+    ])
+    finish(server)
+    await plain
+    await session.close()
+  })
+})
+
+describe('switching models', () => {
+  it('sends the chosen model and effort with every turn from then on', async () => {
+    const server = fakeServer()
+    const session = start(server, { model: 'gpt-a', effort: 'low' })
+    const first = session.prompt({ text: 'one' })
+    await server.waitFor((m) => m.method === 'turn/start')
+    expect(server.sent('turn/start')[0]?.params).toMatchObject({ model: 'gpt-a', effort: 'low' })
+    completeTurn(server)
+    await first
+
+    await session.setModel('gpt-b', 'high')
+    const second = session.prompt({ text: 'two' })
+    await new Promise((r) => setTimeout(r, 5))
+    expect(server.sent('turn/start')[1]?.params).toMatchObject({ model: 'gpt-b', effort: 'high' })
+    completeTurn(server)
+    await second
+
+    await session.setModel(undefined, undefined)
+    const third = session.prompt({ text: 'three' })
+    await new Promise((r) => setTimeout(r, 5))
+    expect(server.sent('turn/start')[2]?.params).not.toHaveProperty('model')
+    completeTurn(server)
+    await third
+    await session.close()
   })
 })

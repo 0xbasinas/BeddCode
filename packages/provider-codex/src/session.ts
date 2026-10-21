@@ -1,4 +1,4 @@
-import type { SessionEvent } from '@beddcode/contracts'
+import type { QuestionSpec, SessionEvent } from '@beddcode/contracts'
 import type { ProviderSession, PromptInput, StartSessionInput } from '@beddcode/provider-core'
 import {
   JsonRpcClient,
@@ -10,6 +10,7 @@ import {
   type Transport,
 } from '@beddcode/shared'
 import { CodexEventMapper, commandTitle, fileChangeTitle, type FileChange } from './mapper.ts'
+import { skillsToCommands } from './history.ts'
 import { modeById, sandboxPolicy, type CodexMode } from './modes.ts'
 
 type Draft<E = SessionEvent> = E extends unknown ? Omit<E, 'sessionId' | 'at' | 'turnId'> : never
@@ -42,6 +43,9 @@ export class CodexSession implements ProviderSession {
   private readonly mapper: CodexEventMapper
   private readonly turnWaiters: Deferred<void>[] = []
   private readonly pending = new Map<string, PendingApproval>()
+  private readonly questions = new Map<string, (result: unknown) => void>()
+  /** Skill name to the path Codex wants when a skill is invoked. */
+  private readonly skills = new Map<string, string>()
   private readonly ready: Promise<void>
   private threadId: string | null = null
   private codexTurnId: string | null = null
@@ -49,8 +53,8 @@ export class CodexSession implements ProviderSession {
   private approvalCount = 0
   private closed = false
   private modeOverride: CodexMode | null = null
-  private readonly model: string | undefined
-  private readonly effort: string | undefined
+  private model: string | undefined
+  private effort: string | undefined
 
   constructor(
     private readonly input: StartSessionInput,
@@ -105,10 +109,41 @@ export class CodexSession implements ProviderSession {
         : await this.rpc.request<{ thread: { id: string } }>('thread/start', common)
       this.threadId = res.thread.id
       this.emit({ type: 'session.provider-session', providerSessionId: this.threadId })
+      void this.announceSkills()
     } catch (err) {
       this.fail(err instanceof Error ? err.message : String(err))
       throw err
     }
+  }
+
+  /** Codex lists its skills per folder; they appear in the composer as commands. */
+  private async announceSkills() {
+    try {
+      const res = await this.rpc.request<{ data: { skills: Obj[] }[] }>('skills/list', {
+        cwds: [this.input.cwd],
+      })
+      const skills = res.data.flatMap((entry) => entry.skills).filter((s) => s.enabled !== false)
+      for (const s of skills) {
+        if (typeof s.name === 'string' && typeof s.path === 'string')
+          this.skills.set(s.name, s.path)
+      }
+      if (this.closed) return
+      this.emit({ type: 'session.commands', commands: skillsToCommands(skills) })
+    } catch (err) {
+      this.deps.log.debug(`could not read Codex skills for ${this.sessionId}`, err)
+    }
+  }
+
+  /** A leading `/skill` or `$skill` names a skill, which Codex takes as its own input item. */
+  private inputFor(text: string): Obj[] {
+    const match = /^[/$]([\w.-]+)(?:\s+([\s\S]*))?$/.exec(text.trim())
+    const path = match && this.skills.get(match[1]!)
+    if (!match || !path) return [{ type: 'text', text, text_elements: [] }]
+    const rest = match[2]?.trim()
+    return [
+      { type: 'skill', name: match[1], path },
+      ...(rest ? [{ type: 'text', text: rest, text_elements: [] }] : []),
+    ]
   }
 
   async prompt(input: PromptInput): Promise<void> {
@@ -128,7 +163,9 @@ export class CodexSession implements ProviderSession {
     try {
       const res = await this.rpc.request<{ turn: { id: string } }>('turn/start', {
         threadId: this.threadId,
-        input: [{ type: 'text', text: input.text, text_elements: [] }],
+        input: this.inputFor(input.text),
+        // Sent with every turn, so a model chosen mid-session sticks for the rest of the thread.
+        ...(this.model ? { model: this.model } : {}),
         ...(this.effort ? { effort: this.effort } : {}),
         ...this.takeModeOverride(),
       })
@@ -146,6 +183,38 @@ export class CodexSession implements ProviderSession {
     await done.promise
   }
 
+  /**
+   * Adds to the turn that is running (`turn/steer`). When the turn just ended, or is of a kind
+   * that cannot take extra input, the message starts a turn of its own instead.
+   */
+  async steer(input: PromptInput): Promise<void> {
+    if (this.closed) throw new Error('session is closed')
+    await this.ready
+    if (!this.threadId || !this.codexTurnId) return this.prompt(input)
+    try {
+      await this.rpc.request('turn/steer', {
+        threadId: this.threadId,
+        input: this.inputFor(input.text),
+        expectedTurnId: this.codexTurnId,
+      })
+    } catch (err) {
+      if (!this.codexTurnId) return this.prompt(input)
+      throw err
+    }
+  }
+
+  async answerQuestion(requestId: string, answers?: Record<string, string[]>) {
+    const resolve = this.questions.get(requestId)
+    if (!resolve) throw new Error(`No pending question ${requestId}`)
+    this.questions.delete(requestId)
+    resolve({
+      answers: Object.fromEntries(
+        Object.entries(answers ?? {}).map(([id, values]) => [id, { answers: values }]),
+      ),
+    })
+    this.emit({ type: 'question.resolved', requestId, answers }, this.currentTurn())
+  }
+
   async interrupt() {
     this.resolveAllPending('cancel')
     if (this.threadId && this.codexTurnId) {
@@ -154,6 +223,12 @@ export class CodexSession implements ProviderSession {
         turnId: this.codexTurnId,
       })
     }
+  }
+
+  /** Applied with the next turn, which carries the model and effort. */
+  async setModel(model: string | undefined, effort: string | undefined) {
+    this.model = model
+    this.effort = effort
   }
 
   async setPermissionMode(modeId: string) {
@@ -244,14 +319,37 @@ export class CodexSession implements ProviderSession {
                   scope: id === ALLOW_SESSION ? 'session' : 'turn',
                 },
         })
-      // Questions and MCP forms are not supported yet; decline rather than leave Codex waiting.
       case 'item/tool/requestUserInput':
-        return { answers: {} }
+        return this.askQuestions(p)
+      // MCP forms are not supported yet; decline rather than leave Codex waiting.
       case 'mcpServer/elicitation/request':
         return { action: 'decline', content: null, _meta: null }
       default:
         throw new JsonRpcError(-32601, `Method not found: ${method}`)
     }
+  }
+
+  /** Codex's request_user_input: the answers go back keyed by question id. */
+  private askQuestions(p: Obj): Promise<unknown> {
+    const asked = Array.isArray(p.questions) ? (p.questions as Obj[]) : []
+    const specs: QuestionSpec[] = asked.map((q) => ({
+      id: String(q.id),
+      header: typeof q.header === 'string' ? q.header : undefined,
+      question: String(q.question ?? ''),
+      options: Array.isArray(q.options)
+        ? (q.options as Obj[]).map((o) => ({
+            label: String(o.label ?? ''),
+            description: typeof o.description === 'string' ? o.description : undefined,
+          }))
+        : undefined,
+      allowOther: q.isOther === true || !Array.isArray(q.options),
+      secret: q.isSecret === true,
+    }))
+    const requestId = `req-${++this.approvalCount}`
+    return new Promise((resolve) => {
+      this.questions.set(requestId, resolve)
+      this.emit({ type: 'question.requested', requestId, questions: specs }, this.currentTurn())
+    })
   }
 
   private askApproval(opts: {
@@ -284,6 +382,11 @@ export class CodexSession implements ProviderSession {
 
   /** Answers every open approval with Codex's own "cancel" and tells the UI. */
   private resolveAllPending(decision: 'cancel') {
+    for (const [requestId, resolve] of this.questions) {
+      resolve({ answers: {} })
+      this.emit({ type: 'question.resolved', requestId }, this.currentTurn())
+    }
+    this.questions.clear()
     for (const [requestId, waiting] of this.pending) {
       waiting.resolve({ decision })
       this.emit({ type: 'approval.resolved', requestId, optionId: DENY }, this.currentTurn())

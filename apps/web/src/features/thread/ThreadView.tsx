@@ -1,14 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
-import { Copy, Folder, GitBranch, MoreHorizontal, Plus, Server, Trash2, Pencil } from 'lucide-react'
+import { Link, useNavigate } from '@tanstack/react-router'
+import {
+  Copy,
+  Folder,
+  GitBranch,
+  GitFork,
+  MoreHorizontal,
+  Plus,
+  Server,
+  Trash2,
+  Pencil,
+} from 'lucide-react'
 import type { SessionView } from '@beddcode/client-runtime'
 import { Composer } from '../composer/Composer.tsx'
-import { ModelBadge } from '../composer/Menus.tsx'
+import { ModelBadge, ModelMenu } from '../composer/Menus.tsx'
+import { ConfigMenu } from '../composer/ConfigMenu.tsx'
+import { PlanCard } from './PlanCard.tsx'
+import { QueueList } from './QueueList.tsx'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import {
+  answerQuestion,
   approve,
+  dequeue,
+  forkSession,
+  setSessionModel,
   hostRequest,
   interrupt,
+  setConfigOption,
   prompt,
   setMode,
   useHostStore,
@@ -23,7 +41,7 @@ import { buildBlocks, totalChanges } from './blocks.ts'
 import { useFollowEnd } from './useFollowEnd.ts'
 import { folderId, useFiles } from '../files/filesStore.ts'
 import { useUiStore } from '../../stores/ui.ts'
-import { SessionPanel } from './SessionPanel.tsx'
+import { EnvironmentCard, SessionChip } from './SessionPanel.tsx'
 import { RenameSessionDialog } from './RenameSessionDialog.tsx'
 
 export function ThreadView({ sessionId }: { sessionId: string }) {
@@ -86,6 +104,20 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
   const provider = providers.find((p) => p.id === session.instanceId)
   const busy = session.status === 'running' || session.status === 'needs-you'
   const modes = session.modes ?? provider?.capabilities.permissionModes ?? []
+  const canSteer = provider?.capabilities.steer === true
+  // Forking needs the agent's own conversation id, which exists once the first turn has begun.
+  const canFork = provider?.capabilities.fork === true && session.completedTurns > 0
+
+  const fork = async (throughTurn?: number) => {
+    setActionError(undefined)
+    try {
+      const forked = await forkSession(sessionId, throughTurn)
+      void navigate({ to: '/session/$sessionId', params: { sessionId: forked } })
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err))
+    }
+  }
+  const report = (err: unknown) => setActionError(err instanceof Error ? err.message : String(err))
   const stats = totalChanges(
     buildBlocks(session.items).flatMap((b) => (b.kind === 'edits' ? b.files : [])),
   )
@@ -99,6 +131,19 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             {hostKey === LOCAL_HOST_KEY ? 'This PC' : (host?.name ?? hostKey)} ·{' '}
             {folderName(session.projectPath)}
             {session.branch ? ` · ${session.branch}` : ''}
+            {session.forkedFrom && (
+              <>
+                {' · '}
+                <Link
+                  to="/session/$sessionId"
+                  params={{ sessionId: session.forkedFrom.sessionId }}
+                  className="thread-fork-link"
+                >
+                  Forked from {session.forkedFrom.title ?? 'another session'}
+                </Link>
+              </>
+            )}
+            {session.imported ? ' · Imported' : ''}
           </div>
         </div>
         <Dropdown
@@ -139,6 +184,18 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                 <Plus size={15} />
                 New session in this folder
               </button>
+              {canFork && (
+                <button
+                  className="menu-row"
+                  onClick={() => {
+                    close()
+                    void fork()
+                  }}
+                >
+                  <GitFork size={15} />
+                  Fork this session
+                </button>
+              )}
               <button
                 className="menu-row"
                 onClick={() => {
@@ -181,6 +238,9 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
               void useFiles.getState().open(folderId(hostKey, session.cwd), path)
             }}
             onApprove={(requestId, optionId) => approve(sessionId, requestId, optionId)}
+            onAnswer={(requestId, answers) => answerQuestion(sessionId, requestId, answers)}
+            onFork={canFork ? (turnNo) => fork(turnNo) : undefined}
+            completedTurns={session.completedTurns}
           />
         </div>
       </div>
@@ -192,7 +252,28 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
       <Composer
         text={text}
         onTextChange={setText}
-        placeholder={session.items.length === 0 ? 'Describe a task…' : 'Ask for follow-up changes'}
+        placeholder={
+          session.items.length === 0
+            ? 'Describe a task…'
+            : busy
+              ? canSteer
+                ? 'Steer the agent, or queue a message…'
+                : 'Queue a message for when this turn ends…'
+              : `Reply to ${provider?.label ?? 'the agent'}…`
+        }
+        commands={session.commands}
+        above={
+          <>
+            {session.plan && <PlanCard plan={session.plan} />}
+            <QueueList
+              queue={session.queue}
+              busy={busy}
+              canSteer={canSteer}
+              onSend={(queueId) => void dequeue(sessionId, queueId, 'steer').catch(report)}
+              onCancel={(queueId) => void dequeue(sessionId, queueId, 'cancel').catch(report)}
+            />
+          </>
+        }
         busy={busy}
         onStop={() => {
           setActionError(undefined)
@@ -200,16 +281,35 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             setActionError(err instanceof Error ? err.message : String(err)),
           )
         }}
-        onSend={(value, attachments) => prompt(sessionId, value, attachments)}
+        onSend={async (value, attachments) => {
+          await prompt(sessionId, value, attachments)
+        }}
         modes={modes}
         modeId={session.currentModeId}
         onModeChange={(id) => void setMode(sessionId, id)}
         modelSlot={
-          <ModelBadge
-            models={provider?.capabilities.models ?? []}
-            model={session.model}
-            effort={session.effort}
-          />
+          session.config.length > 0 ? (
+            <ConfigMenu
+              options={session.config}
+              onChange={(id, value) => setConfigOption(sessionId, id, value).catch(report)}
+            />
+          ) : (provider?.capabilities.models?.length ?? 0) > 0 ? (
+            // Claude and Codex take a different model from the next message on.
+            <ModelMenu
+              models={provider?.capabilities.models ?? []}
+              efforts={provider?.capabilities.efforts ?? []}
+              value={{ model: session.model, effort: session.effort }}
+              onChange={(choice) =>
+                void setSessionModel(sessionId, choice.model, choice.effort).catch(report)
+              }
+            />
+          ) : (
+            <ModelBadge
+              models={provider?.capabilities.models ?? []}
+              model={session.model}
+              effort={session.effort}
+            />
+          )
         }
         hostKey={hostKey}
         footer={
@@ -222,6 +322,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
           />
         }
       />
+      <EnvironmentCard session={session} hostKey={hostKey} stats={stats} />
       {renaming && (
         <RenameSessionDialog
           session={session}
@@ -249,13 +350,7 @@ function SessionFooter({
 }) {
   return (
     <div className="footer-bar">
-      <SessionPanel
-        key={session.id}
-        session={session}
-        hostKey={hostKey}
-        agent={agent ?? session.instanceId}
-        stats={stats}
-      />
+      <SessionChip agent={agent ?? session.instanceId} />
       {hostName && (
         <span className="chip-lite static" title="The host this session runs on">
           <Server size={14} /> {hostName}

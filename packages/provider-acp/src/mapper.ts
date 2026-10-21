@@ -1,5 +1,5 @@
-import type { SessionUpdate, ToolCallContent } from '@agentclientprotocol/sdk'
-import type { SessionEvent } from '@beddcode/contracts'
+import type { SessionConfigOption, SessionUpdate, ToolCallContent } from '@agentclientprotocol/sdk'
+import type { ConfigOption, SessionEvent } from '@beddcode/contracts'
 import { diffText } from '@beddcode/shared'
 
 type Draft<E = SessionEvent> = E extends unknown ? Omit<E, 'sessionId' | 'at' | 'turnId'> : never
@@ -23,6 +23,40 @@ export function toolKind(kind: string | null | undefined): ToolKind {
     default:
       return 'other'
   }
+}
+
+/** The agent's per-session settings (model, thinking level, ...) in our own shape. */
+export function toConfigOptions(options: SessionConfigOption[] | null | undefined): ConfigOption[] {
+  return (options ?? []).map((o): ConfigOption => {
+    const base = {
+      id: o.id,
+      name: o.name,
+      description: o.description ?? undefined,
+      category: o.category ?? undefined,
+    }
+    if (o.type === 'boolean') return { ...base, type: 'boolean', value: o.currentValue }
+    const choices = (o.options as unknown[]).flatMap((entry) => {
+      const e = entry as {
+        value?: string
+        name: string
+        description?: string | null
+        group?: string
+        options?: unknown[]
+      }
+      // A group holds options of its own; a plain entry is itself an option.
+      return Array.isArray(e.options)
+        ? (e.options as { value: string; name: string; description?: string | null }[]).map(
+            (c) => ({
+              value: c.value,
+              name: c.name,
+              description: c.description ?? undefined,
+              group: e.name,
+            }),
+          )
+        : [{ value: String(e.value), name: e.name, description: e.description ?? undefined }]
+    })
+    return { ...base, type: 'select', value: o.currentValue, choices }
+  })
 }
 
 interface ToolState {
@@ -103,6 +137,43 @@ export class AcpEventMapper {
         }
         break
       }
+
+      case 'plan':
+        out.push({
+          type: 'plan.updated',
+          steps: update.entries.map((e) => ({
+            text: e.content,
+            status:
+              e.status === 'completed'
+                ? ('completed' as const)
+                : e.status === 'in_progress'
+                  ? ('in-progress' as const)
+                  : ('pending' as const),
+          })),
+        })
+        break
+
+      case 'available_commands_update':
+        out.push({
+          type: 'session.commands',
+          commands: update.availableCommands.map((c) => ({
+            name: c.name,
+            description: c.description || undefined,
+            hint: c.input?.hint || undefined,
+            kind: 'command' as const,
+          })),
+        })
+        break
+
+      case 'config_option_update':
+        out.push({ type: 'session.config', options: toConfigOptions(update.configOptions) })
+        break
+
+      case 'session_info_update':
+        if (typeof update.title === 'string' && update.title.trim()) {
+          out.push({ type: 'session.renamed', title: update.title.trim().slice(0, 120) })
+        }
+        break
 
       case 'current_mode_update':
         out.push({

@@ -97,6 +97,23 @@ export class CodexEventMapper {
         }
         break
       }
+      case 'turn/plan/updated': {
+        const steps = Array.isArray(p.plan) ? (p.plan as Obj[]) : []
+        out.push({
+          type: 'plan.updated',
+          steps: steps.map((step) => ({
+            text: str(step.step) ?? '',
+            status:
+              step.status === 'completed'
+                ? ('completed' as const)
+                : step.status === 'inProgress'
+                  ? ('in-progress' as const)
+                  : ('pending' as const),
+          })),
+          explanation: str(p.explanation),
+        })
+        break
+      }
       case 'item/started':
         this.onItemStarted(p.item as CodexItem, out)
         break

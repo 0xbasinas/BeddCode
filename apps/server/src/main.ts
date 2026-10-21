@@ -5,6 +5,12 @@ import { TailscaleService } from './network/tailscale.ts'
 import { runServer } from './runServer.ts'
 import { installService, uninstallService } from './service/install.ts'
 
+// `node --watch` (the dev script) makes every worker thread report the files it loads. The terminal
+// library keeps one worker per shell and takes any message from it for its own, which crashes the
+// host when a terminal closes. Workers copy this variable when they start, so clearing it here,
+// before a terminal can exist, leaves them quiet. Watch mode itself is unaffected.
+delete process.env.WATCH_REPORT_DEPENDENCIES
+
 const USAGE = `BeddCode host
 
 Usage: beddcode-server [command] [options]

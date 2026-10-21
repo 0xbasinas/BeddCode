@@ -1,9 +1,10 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type {
   InitializeResponse,
   PermissionOption,
   RequestPermissionRequest,
+  SessionConfigOption,
   SessionUpdate,
 } from '@agentclientprotocol/sdk'
 import type { SessionEvent } from '@beddcode/contracts'
@@ -15,19 +16,35 @@ import {
   type Logger,
   type Transport,
 } from '@beddcode/shared'
-import { AcpEventMapper } from './mapper.ts'
+import { AcpEventMapper, toConfigOptions } from './mapper.ts'
 import { TerminalManager } from './terminals.ts'
 
 type Draft<E = SessionEvent> = E extends unknown ? Omit<E, 'sessionId' | 'at' | 'turnId'> : never
 type Obj = Record<string, unknown>
 
 const PROTOCOL_VERSION = 1
+/** Starting up can legitimately take a while (an `npx` download, MCP servers); a hang cannot. */
+const INIT_TIMEOUT = 30_000
+const SESSION_TIMEOUT = 90_000
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024
+const IMAGE_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+}
 
 export interface AcpSessionDeps {
   transport: Transport
   log: Logger
   label: string
   clientVersion?: string
+}
+
+interface SetupResponse {
+  modes?: Modes
+  configOptions?: SessionConfigOption[] | null
 }
 
 interface Modes {
@@ -51,6 +68,7 @@ export class AcpSession implements ProviderSession {
   private closed = false
   /** While loading history the agent replays old messages; those must not become new events. */
   private replaying = false
+  private canSendImages = false
 
   constructor(
     private readonly input: StartSessionInput,
@@ -62,7 +80,7 @@ export class AcpSession implements ProviderSession {
     this.rpc = new JsonRpcClient(deps.transport, deps.log, { jsonrpc2: true })
     this.rpc.onNotification((method, params) => this.onNotification(method, params))
     this.rpc.onRequest((method, params) => this.onClientRequest(method, params))
-    this.rpc.onClose(() => this.fail(`${deps.label} stopped unexpectedly`))
+    this.rpc.onClose(() => this.fail(this.endMessage()))
     this.ready = this.init()
     this.ready.catch(() => {})
   }
@@ -71,21 +89,33 @@ export class AcpSession implements ProviderSession {
     return this.queue
   }
 
+  /** Why the process ended, with the last thing it said on stderr when that explains it. */
+  private endMessage(): string {
+    const tail = this.rpc.stderrTail.split('\n').filter(Boolean).at(-1)
+    return tail
+      ? `${this.deps.label} stopped unexpectedly: ${tail.slice(0, 300)}`
+      : `${this.deps.label} stopped unexpectedly`
+  }
+
   private emit(draft: Draft, turnId?: string) {
     this.queue.push({ ...draft, sessionId: this.sessionId, turnId, at: Date.now() } as SessionEvent)
   }
 
   private async init() {
     try {
-      const init = await this.rpc.request<InitializeResponse>('initialize', {
-        protocolVersion: PROTOCOL_VERSION,
-        clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true },
-        clientInfo: {
-          name: 'beddcode',
-          title: 'BeddCode',
-          version: this.deps.clientVersion ?? '0.0.0',
+      const init = await this.rpc.request<InitializeResponse>(
+        'initialize',
+        {
+          protocolVersion: PROTOCOL_VERSION,
+          clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true },
+          clientInfo: {
+            name: 'beddcode',
+            title: 'BeddCode',
+            version: this.deps.clientVersion ?? '0.0.0',
+          },
         },
-      })
+        { timeoutMs: INIT_TIMEOUT },
+      )
       if (init.protocolVersion !== PROTOCOL_VERSION) {
         throw new Error(
           `${this.deps.label} speaks ACP v${init.protocolVersion}, which is not supported yet`,
@@ -93,6 +123,8 @@ export class AcpSession implements ProviderSession {
       }
 
       const caps = init.agentCapabilities
+      this.canSendImages = caps?.promptCapabilities?.image === true
+      this.authMethods = (init.authMethods ?? []).map((m) => m.name)
       const extra = this.input.additionalDirectories ?? []
       const base = {
         cwd: this.input.cwd,
@@ -103,23 +135,28 @@ export class AcpSession implements ProviderSession {
           : {}),
       }
       let modes: Modes | undefined
+      let configOptions: SessionConfigOption[] | null | undefined
 
       if (this.input.resumeId) {
         this.acpSessionId = this.input.resumeId
         if (caps?.sessionCapabilities?.resume) {
-          const res = await this.rpc.request<{ modes?: Modes }>('session/resume', {
-            sessionId: this.acpSessionId,
-            ...base,
-          })
+          const res = await this.rpc.request<SetupResponse>(
+            'session/resume',
+            { sessionId: this.acpSessionId, ...base },
+            { timeoutMs: SESSION_TIMEOUT },
+          )
           modes = res.modes
+          configOptions = res.configOptions
         } else if (caps?.loadSession) {
           this.replaying = true
           try {
-            const res = await this.rpc.request<{ modes?: Modes }>('session/load', {
-              sessionId: this.acpSessionId,
-              ...base,
-            })
+            const res = await this.rpc.request<SetupResponse>(
+              'session/load',
+              { sessionId: this.acpSessionId, ...base },
+              { timeoutMs: SESSION_TIMEOUT },
+            )
             modes = res.modes
+            configOptions = res.configOptions
           } finally {
             this.replaying = false
           }
@@ -127,20 +164,49 @@ export class AcpSession implements ProviderSession {
           throw new Error(`${this.deps.label} cannot resume sessions`)
         }
       } else {
-        const res = await this.rpc.request<{ sessionId: string; modes?: Modes }>(
+        const res = await this.rpc.request<SetupResponse & { sessionId: string }>(
           'session/new',
           base,
+          { timeoutMs: SESSION_TIMEOUT },
         )
         this.acpSessionId = res.sessionId
         modes = res.modes
+        configOptions = res.configOptions
       }
 
       this.emit({ type: 'session.provider-session', providerSessionId: this.acpSessionId })
       await this.announceModes(modes)
+      if (configOptions?.length) {
+        this.emit({ type: 'session.config', options: toConfigOptions(configOptions) })
+      }
+      // Settings chosen before the session started (model, thinking level, ...).
+      for (const [id, value] of Object.entries(this.input.config ?? {})) {
+        try {
+          await this.sendConfig(id, value)
+        } catch (err) {
+          this.deps.log.warn(`could not apply ${id} for ${this.sessionId}`, err)
+        }
+      }
     } catch (err) {
-      this.fail(err instanceof Error ? err.message : String(err))
+      this.fail(this.explain(err))
       throw err
     }
+  }
+
+  private authMethods: string[] = []
+
+  /** An agent that wants a sign-in says so with a bare auth error; tell the user what to do. */
+  private explain(err: unknown): string {
+    const message = err instanceof Error ? err.message : String(err)
+    const code = err instanceof JsonRpcError ? err.code : undefined
+    if (
+      (code === -32000 || /auth|sign.?in|log.?in|credential/i.test(message)) &&
+      this.authMethods.length > 0
+    ) {
+      return `${this.deps.label} needs you to sign in (${this.authMethods.join(' or ')}). Do that with the agent itself, then try again.`
+    }
+    if (/ended|closed|stopped/i.test(message)) return this.endMessage()
+    return message
   }
 
   /** Reports the agent's own modes and applies the one the user asked for, if the agent has it. */
@@ -178,7 +244,10 @@ export class AcpSession implements ProviderSession {
     try {
       const res = await this.rpc.request<{ stopReason: string }>('session/prompt', {
         sessionId: this.acpSessionId,
-        prompt: [{ type: 'text', text: input.text }],
+        prompt: [
+          { type: 'text', text: input.text },
+          ...(await this.imageBlocks(input.attachments)),
+        ],
       })
       if (this.inflightTurn !== turnId) return
       this.inflightTurn = null
@@ -205,6 +274,44 @@ export class AcpSession implements ProviderSession {
         turnId,
       )
       this.emit({ type: 'turn.completed', reason: 'error' }, turnId)
+    }
+  }
+
+  /** Pictures go in as image blocks when the agent takes them; every file is also named in the text. */
+  private async imageBlocks(files: string[] | undefined): Promise<Obj[]> {
+    if (!this.canSendImages || !files) return []
+    const blocks: Obj[] = []
+    for (const file of files) {
+      const mimeType = IMAGE_TYPES[path.extname(file).toLowerCase()]
+      if (!mimeType) continue
+      try {
+        if ((await stat(file)).size > MAX_IMAGE_BYTES) continue
+        blocks.push({ type: 'image', mimeType, data: (await readFile(file)).toString('base64') })
+      } catch {
+        // The file path in the text still lets the agent read it by itself.
+      }
+    }
+    return blocks
+  }
+
+  /** Changes one of the settings the agent offers (its model, thinking level, ...). */
+  async setConfigOption(optionId: string, value: string | boolean) {
+    await this.ready
+    await this.sendConfig(optionId, value)
+  }
+
+  private async sendConfig(optionId: string, value: string | boolean) {
+    const res = await this.rpc.request<{ configOptions?: SessionConfigOption[] }>(
+      'session/set_config_option',
+      {
+        sessionId: this.acpSessionId,
+        configId: optionId,
+        ...(typeof value === 'boolean' ? { type: 'boolean', value } : { value }),
+      },
+      { timeoutMs: SESSION_TIMEOUT },
+    )
+    if (res.configOptions) {
+      this.emit({ type: 'session.config', options: toConfigOptions(res.configOptions) })
     }
   }
 

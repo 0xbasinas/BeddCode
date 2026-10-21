@@ -36,6 +36,14 @@ export const ProviderCapabilities = z.object({
   planMode: z.boolean(),
   imageInput: z.boolean(),
   usage: z.boolean(),
+  /** The agent can ask the user questions mid-turn. */
+  questions: z.boolean().optional(),
+  /** The agent reports slash commands or skills. */
+  commands: z.boolean().optional(),
+  /** Earlier conversations can be listed and imported. */
+  history: z.boolean().optional(),
+  /** MCP servers can be listed and managed through the agent's own CLI. */
+  mcp: z.boolean().optional(),
   permissionModes: z.array(PermissionModeOption),
   /** Models the user can choose at session start; absent when the provider picks its own. */
   models: z.array(ModelOption).optional(),

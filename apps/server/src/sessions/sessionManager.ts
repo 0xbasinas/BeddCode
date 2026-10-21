@@ -1,9 +1,20 @@
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import path from 'node:path'
-import type { ProviderInstance, RpcParams, SessionEvent } from '@beddcode/contracts'
+import type {
+  AgentPreview,
+  HistoryEntry,
+  McpServer,
+  McpServerInput,
+  ProviderInstance,
+  RpcParams,
+  RpcResult,
+  SessionEvent,
+  SlashCommand,
+} from '@beddcode/contracts'
 import type { ProviderAdapter, ProviderSession } from '@beddcode/provider-core'
 import type { Logger } from '@beddcode/shared'
+import type { PreviewCache } from '../agents/previews.ts'
 import type { AttachmentStore } from '../attachments/store.ts'
 import type { EventStore } from '../store/eventStore.ts'
 import type { GitService } from '../workspace/git.ts'
@@ -18,6 +29,8 @@ export interface SessionManagerDeps {
   defaultCwd: string
   /** How long detection results are reused when starting sessions. */
   detectTtlMs?: number
+  /** Remembers what agents offer for new sessions (see `previewAgent`). */
+  previews?: PreviewCache
 }
 
 interface LiveSession {
@@ -25,9 +38,25 @@ interface LiveSession {
   adapter: ProviderAdapter
 }
 
+interface QueuedPrompt {
+  queueId: string
+  text: string
+  attachments: { name: string; path: string }[]
+}
+
+/** What the host tracks about a session's current turn and its waiting messages. */
+interface TurnState {
+  /** A turn is running (or about to). */
+  busy: boolean
+  queue: QueuedPrompt[]
+  /** Send this queued message as soon as the interrupted turn ends. */
+  sendAfterInterrupt?: string
+}
+
 export class SessionManager {
   private readonly live = new Map<string, LiveSession>()
   private readonly resuming = new Map<string, Promise<LiveSession>>()
+  private readonly turns = new Map<string, TurnState>()
   private detected: {
     at: number
     instances: { adapter: ProviderAdapter; instance: ProviderInstance }[]
@@ -38,6 +67,8 @@ export class SessionManager {
   /** Forget cached detection, e.g. after an ACP agent was added or removed. */
   invalidateDetection() {
     this.detected = null
+    // An agent was added, removed or changed: what it offers may have changed too.
+    this.deps.previews?.clearAll()
   }
 
   async listProviders(): Promise<ProviderInstance[]> {
@@ -75,6 +106,7 @@ export class SessionManager {
         permissionMode: params.permissionMode,
         model: params.model,
         effort: params.effort,
+        config: params.config,
       })
     } catch (err) {
       // Do not leave an unused worktree behind when the agent could not start.
@@ -103,7 +135,12 @@ export class SessionManager {
     return { sessionId }
   }
 
-  async prompt(sessionId: string, text: string, attachmentIds: string[] = []): Promise<void> {
+  async prompt(
+    sessionId: string,
+    text: string,
+    attachmentIds: string[] = [],
+    mode: 'auto' | 'queue' = 'auto',
+  ): Promise<RpcResult<'sessions.prompt'>> {
     const attachments = attachmentIds.map((id) => {
       const found = this.deps.attachments.get(id)
       if (!found) throw new Error('An attachment is no longer available; attach it again')
@@ -112,7 +149,106 @@ export class SessionManager {
     if (!text.trim() && attachments.length === 0) throw new Error('Nothing to send')
 
     // A session whose process ended (server restart, crash) is resumed transparently.
-    const { session } = await this.ensureLive(sessionId)
+    const live = await this.ensureLive(sessionId)
+    const turn = this.turnState(sessionId)
+    if (!turn.busy) {
+      this.startTurn(sessionId, live, text, attachments)
+      return { state: 'started' }
+    }
+
+    // The agent is working. Steer the message into the running turn when it can take it there,
+    // otherwise keep it for after the turn.
+    if (mode === 'auto' && live.session.steer) {
+      try {
+        await live.session.steer(promptInput(text, attachments))
+        this.appendUserMessage(sessionId, text, attachments)
+        return { state: 'steered' }
+      } catch (err) {
+        // Some turns cannot take extra input (a compaction, a review); wait for the next one.
+        this.deps.log.warn(`could not steer ${sessionId}; queueing instead`, err)
+      }
+    }
+    const queueId = randomUUID()
+    turn.queue.push({ queueId, text, attachments })
+    this.deps.store.append({
+      type: 'prompt.queued',
+      sessionId,
+      at: Date.now(),
+      queueId,
+      text,
+      attachments: attachments.length > 0 ? attachments : undefined,
+    })
+    return { state: 'queued', queueId }
+  }
+
+  /** Cancels a queued message, or pushes it ahead of the agent's current work. */
+  async dequeue(sessionId: string, queueId: string, action: 'cancel' | 'steer'): Promise<void> {
+    const turn = this.turnState(sessionId)
+    const index = turn.queue.findIndex((q) => q.queueId === queueId)
+    if (index < 0) throw new Error('That message is no longer waiting')
+    const [item] = turn.queue.splice(index, 1)
+    if (!item) return
+
+    if (action === 'cancel') {
+      this.deps.store.append({
+        type: 'prompt.dequeued',
+        sessionId,
+        at: Date.now(),
+        queueId,
+        reason: 'cancelled',
+      })
+      return
+    }
+
+    const live = await this.ensureLive(sessionId)
+    if (!turn.busy) {
+      this.dequeued(sessionId, queueId, 'sent')
+      this.startTurn(sessionId, live, item.text, item.attachments)
+    } else if (live.session.steer) {
+      this.dequeued(sessionId, queueId, 'steered')
+      this.appendUserMessage(sessionId, item.text, item.attachments)
+      await live.session.steer(promptInput(item.text, item.attachments))
+    } else {
+      // No way to talk into the running turn: stop it and send this next.
+      turn.queue.unshift(item)
+      turn.sendAfterInterrupt = queueId
+      await live.session.interrupt()
+    }
+  }
+
+  /** Switches model and effort for the rest of the session; resuming later keeps the choice. */
+  async setModel(sessionId: string, model: string | undefined, effort: string | undefined) {
+    const { session, adapter } = await this.ensureLive(sessionId)
+    const created = this.createdEvent(sessionId)
+    if (!created) throw new Error(`Unknown session: ${sessionId}`)
+    if (!session.setModel || !adapter.capabilities(created.instanceId).models?.length) {
+      throw new Error('This agent does not let you change its model during a session')
+    }
+    await session.setModel(model, effort)
+    this.deps.store.append({ type: 'session.model', sessionId, at: Date.now(), model, effort })
+  }
+
+  async setConfig(sessionId: string, optionId: string, value: string | boolean): Promise<void> {
+    const { session } = this.requireLive(sessionId)
+    if (!session.setConfigOption) throw new Error('This agent has no settings to change')
+    await session.setConfigOption(optionId, value)
+  }
+
+  async answerQuestion(
+    sessionId: string,
+    requestId: string,
+    answers?: Record<string, string[]>,
+  ): Promise<void> {
+    const { session } = this.requireLive(sessionId)
+    if (!session.answerQuestion) throw new Error('This agent does not ask questions')
+    await session.answerQuestion(requestId, answers)
+  }
+
+  private appendUserMessage(
+    sessionId: string,
+    text: string,
+    attachments: { name: string; path: string }[],
+  ) {
     this.deps.store.append({
       type: 'message.delta',
       sessionId,
@@ -121,13 +257,25 @@ export class SessionManager {
       text,
       attachments: attachments.length > 0 ? attachments : undefined,
     })
-    // Agents read attachments from disk, so the prompt names each file's absolute path.
-    const providerText =
-      attachments.length === 0
-        ? text
-        : `${text}\n\nAttached files:\n${attachments.map((a) => `- ${a.path}`).join('\n')}`.trim()
+  }
+
+  private dequeued(sessionId: string, queueId: string, reason: 'sent' | 'steered') {
+    this.deps.store.append({ type: 'prompt.dequeued', sessionId, at: Date.now(), queueId, reason })
+  }
+
+  /** Begins a turn: records the user's message and hands the prompt to the agent. */
+  private startTurn(
+    sessionId: string,
+    { session }: LiveSession,
+    text: string,
+    attachments: { name: string; path: string }[],
+  ) {
+    const turn = this.turnState(sessionId)
+    turn.busy = true
+    this.appendUserMessage(sessionId, text, attachments)
     // The provider call resolves when the turn ends; the caller only needs acceptance.
-    session.prompt({ text: providerText }).catch((err: unknown) => {
+    session.prompt(promptInput(text, attachments)).catch((err: unknown) => {
+      turn.busy = false
       this.deps.log.error(`prompt failed for ${sessionId}`, err)
       this.deps.store.append({
         type: 'error',
@@ -136,6 +284,44 @@ export class SessionManager {
         message: err instanceof Error ? err.message : String(err),
       })
     })
+  }
+
+  /** A turn ended: send the next waiting message when it is clearly what the user wants. */
+  private onTurnEnded(sessionId: string, reason: 'done' | 'cancelled' | 'error') {
+    const turn = this.turnState(sessionId)
+    turn.busy = false
+    const next = turn.queue[0]
+    if (!next) return
+    const wanted = reason === 'done' || turn.sendAfterInterrupt === next.queueId
+    if (!wanted) return
+    const live = this.live.get(sessionId)
+    if (!live) return
+    turn.sendAfterInterrupt = undefined
+    turn.queue.shift()
+    this.dequeued(sessionId, next.queueId, 'sent')
+    this.startTurn(sessionId, live, next.text, next.attachments)
+  }
+
+  /** Waiting messages survive restarts: rebuild them from the log the first time they are needed. */
+  private turnState(sessionId: string): TurnState {
+    let state = this.turns.get(sessionId)
+    if (!state) {
+      const waiting = new Map<string, QueuedPrompt>()
+      for (const { event } of this.deps.store.readSession(sessionId)) {
+        if (event.type === 'prompt.queued') {
+          waiting.set(event.queueId, {
+            queueId: event.queueId,
+            text: event.text,
+            attachments: event.attachments ?? [],
+          })
+        } else if (event.type === 'prompt.dequeued') {
+          waiting.delete(event.queueId)
+        }
+      }
+      state = { busy: false, queue: [...waiting.values()] }
+      this.turns.set(sessionId, state)
+    }
+    return state
   }
 
   interrupt(sessionId: string): Promise<void> {
@@ -243,13 +429,17 @@ export class SessionManager {
         ? lastModes.currentModeId
         : created.event.permissionMode
 
+    // Continue with the model last chosen, not the one the session started with.
+    const lastModel = events.map((e) => e.event).findLast((e) => e.type === 'session.model')
+    const chosen = lastModel?.type === 'session.model' ? lastModel : created.event
+
     const session = await adapter.startSession(instance.id, {
       sessionId,
       cwd: created.event.cwd,
       additionalDirectories: [this.deps.attachments.root],
       permissionMode: mode,
-      model: created.event.model,
-      effort: created.event.effort,
+      model: chosen.model,
+      effort: chosen.effort,
       resumeId,
     })
     const live = { session, adapter }
@@ -291,16 +481,270 @@ export class SessionManager {
     return undefined
   }
 
+  /** Conversations the agent's CLI has stored, marking the ones that are already sessions here. */
+  async listHistory(instanceId: string, cwd?: string): Promise<HistoryEntry[]> {
+    const { adapter, instance } = await this.findInstance(instanceId)
+    if (!adapter.listHistory)
+      throw new Error(`${instance.label} does not keep a history we can read`)
+    const known = this.sessionsByProviderId()
+    const items = await adapter.listHistory(instance.id, cwd)
+    return items.map((item) => ({ ...item, imported: known.has(item.id) }))
+  }
+
+  /** Brings a stored conversation in as a session; the agent resumes it on the first message. */
+  async importSession(params: RpcParams<'sessions.import'>): Promise<{ sessionId: string }> {
+    // Opening the same conversation again goes back to the session it already is.
+    const existing = this.sessionsByProviderId().get(params.providerSessionId)
+    if (existing) return { sessionId: existing }
+    const { adapter, instance } = await this.findInstance(params.instanceId)
+    if (!adapter.readHistory || !adapter.capabilities(instance.id).resume) {
+      throw new Error(`${instance.label} cannot continue earlier conversations`)
+    }
+    const listed = (await adapter.listHistory?.(instance.id, params.cwd))?.find(
+      (h) => h.id === params.providerSessionId,
+    )
+    const folder = params.cwd ?? listed?.cwd ?? this.deps.defaultCwd
+    if (!isDirectory(folder)) throw new Error(`Folder does not exist: ${folder}`)
+    const turns = await adapter.readHistory(instance.id, params.providerSessionId, folder)
+
+    const info = await this.deps.git.info(folder).catch(() => null)
+    const sessionId = randomUUID()
+    const projectPath = info?.isRepo ? (info.mainRoot ?? info.root ?? folder) : folder
+    const at = listed?.updatedAt ?? Date.now()
+    this.deps.store.append({
+      type: 'session.created',
+      sessionId,
+      at,
+      title: listed?.title || defaultTitle(projectPath),
+      cwd: folder,
+      projectPath,
+      branch: info?.isRepo ? info.branch : undefined,
+      instanceId: instance.id,
+      imported: true,
+    })
+    this.appendTurns(sessionId, turns, at)
+    this.deps.store.append({
+      type: 'session.provider-session',
+      sessionId,
+      at: Date.now(),
+      providerSessionId: params.providerSessionId,
+    })
+    this.announceModes(sessionId, adapter, instance.id, undefined)
+    return { sessionId }
+  }
+
+  /** A new session that continues an existing one, optionally only its first `throughTurn` turns. */
+  async fork(params: RpcParams<'sessions.fork'>): Promise<{ sessionId: string }> {
+    const events = this.deps.store.readSession(params.sessionId)
+    const created = events.find((e) => e.event.type === 'session.created')?.event
+    if (created?.type !== 'session.created') throw new Error(`Unknown session: ${params.sessionId}`)
+    const providerSession = events
+      .map((e) => e.event)
+      .findLast((e) => e.type === 'session.provider-session')
+    if (providerSession?.type !== 'session.provider-session') {
+      throw new Error('Send a first message before forking this session')
+    }
+    const { adapter, instance } = await this.findInstance(created.instanceId)
+    if (!adapter.forkHistory || !adapter.capabilities(instance.id).fork) {
+      throw new Error(`${instance.label} cannot fork a conversation`)
+    }
+
+    // Keep everything up to the end of the chosen turn.
+    let kept = events.map((e) => e.event).filter((e) => e.type !== 'session.created')
+    if (params.throughTurn !== undefined) {
+      let completed = 0
+      const end = kept.findIndex(
+        (e) => e.type === 'turn.completed' && ++completed === params.throughTurn,
+      )
+      if (end < 0) throw new Error(`This session has fewer than ${params.throughTurn} turns`)
+      kept = kept.slice(0, end + 1)
+    }
+
+    const newProviderId = await adapter.forkHistory(instance.id, {
+      providerSessionId: providerSession.providerSessionId,
+      cwd: created.cwd,
+      throughTurn: params.throughTurn,
+    })
+
+    const sessionId = randomUUID()
+    this.deps.store.append({
+      ...created,
+      sessionId,
+      at: Date.now(),
+      title: params.title ?? `${created.title} (fork)`,
+      forkedFrom: { sessionId: params.sessionId, title: created.title },
+      imported: undefined,
+    })
+    // What was said so far stays visible; open approvals, queues and mode changes do not carry over.
+    const carried = new Set([
+      'message.delta',
+      'tool.started',
+      'tool.completed',
+      'diff',
+      'plan.updated',
+      'turn.started',
+      'turn.completed',
+    ])
+    for (const event of kept) {
+      if (carried.has(event.type)) this.deps.store.append({ ...event, sessionId })
+    }
+    this.deps.store.append({
+      type: 'session.provider-session',
+      sessionId,
+      at: Date.now(),
+      providerSessionId: newProviderId,
+    })
+    const lastModes = events.map((e) => e.event).findLast((e) => e.type === 'session.modes')
+    this.announceModes(
+      sessionId,
+      adapter,
+      instance.id,
+      lastModes?.type === 'session.modes' ? lastModes.currentModeId : created.permissionMode,
+    )
+    return { sessionId }
+  }
+
+  /**
+   * What an agent offers before a session exists. Claude and Codex answer from their capabilities;
+   * ACP agents are probed once and remembered (a real session seeds the same cache).
+   */
+  async previewAgent(instanceId: string, cwd?: string): Promise<AgentPreview> {
+    const { adapter, instance } = await this.findInstance(instanceId)
+    const cached = this.deps.previews?.get(instance.id)
+    if (cached) return cached
+    if (!adapter.preview) {
+      return {
+        modes: instance.capabilities.permissionModes,
+        config: [],
+        commands: (await adapter.listCommands?.(instance.id, cwd ?? this.deps.defaultCwd)) ?? [],
+      }
+    }
+    const preview = await adapter.preview(instance.id, cwd ?? this.deps.defaultCwd)
+    this.deps.previews?.set(instance.id, preview)
+    return preview
+  }
+
+  /** Forget what was remembered for an agent, e.g. after it was removed or re-added. */
+  forgetPreview(instanceId: string) {
+    this.deps.previews?.clear(instanceId)
+  }
+
+  /** The first thing a real session reports about itself becomes the cached preview if there is none. */
+  private readonly seeding = new Map<string, Partial<AgentPreview>>()
+  private seedPreview(sessionId: string, event: SessionEvent) {
+    const previews = this.deps.previews
+    if (!previews) return
+    const partial = this.seeding.get(sessionId) ?? {}
+    if (event.type === 'session.modes') {
+      partial.modes = event.modes
+      partial.currentModeId = event.currentModeId
+    } else if (event.type === 'session.config') partial.config = event.options
+    else if (event.type === 'session.commands') partial.commands = event.commands
+    else if (event.type === 'turn.started') {
+      this.seeding.delete(sessionId)
+      const created = this.createdEvent(sessionId)
+      const live = this.live.get(sessionId)
+      if (created && live?.adapter.kind === 'acp' && !previews.get(created.instanceId)) {
+        previews.set(created.instanceId, {
+          modes: partial.modes ?? [],
+          currentModeId: partial.currentModeId,
+          config: partial.config ?? [],
+          commands: partial.commands ?? [],
+        })
+      }
+      return
+    } else return
+    this.seeding.set(sessionId, partial)
+  }
+
+  async listCommands(instanceId: string, cwd?: string): Promise<SlashCommand[]> {
+    const { adapter } = await this.findInstance(instanceId)
+    return (await adapter.listCommands?.(instanceId, cwd ?? this.deps.defaultCwd)) ?? []
+  }
+
+  async mcp(instanceId: string) {
+    const { adapter, instance } = await this.findInstance(instanceId)
+    if (!adapter.mcp) throw new Error(`${instance.label} has no MCP settings we can manage`)
+    return {
+      list: (cwd?: string): Promise<McpServer[]> =>
+        adapter.mcp!.list(instance.id, cwd ?? this.deps.defaultCwd),
+      add: (server: McpServerInput, cwd?: string) =>
+        adapter.mcp!.add(instance.id, server, cwd ?? this.deps.defaultCwd),
+      remove: (name: string, scope?: string, cwd?: string) =>
+        adapter.mcp!.remove(instance.id, name, scope, cwd ?? this.deps.defaultCwd),
+    }
+  }
+
+  /** Writes stored exchanges into the log the way a live conversation would have. */
+  private appendTurns(sessionId: string, turns: { user: string; assistant: string }[], at: number) {
+    turns.forEach((turn, index) => {
+      const turnId = `turn-${index + 1}`
+      const base = { sessionId, at, turnId }
+      this.deps.store.append({ ...base, type: 'message.delta', role: 'user', text: turn.user })
+      this.deps.store.append({ ...base, type: 'turn.started' })
+      if (turn.assistant) {
+        this.deps.store.append({
+          ...base,
+          type: 'message.delta',
+          role: 'assistant',
+          text: turn.assistant,
+        })
+      }
+      this.deps.store.append({ ...base, type: 'turn.completed', reason: 'done' })
+    })
+  }
+
+  /** Which session holds each provider conversation (the newest wins), so history can mark them. */
+  private sessionsByProviderId(): Map<string, string> {
+    const ids = new Map<string, string>()
+    let cursor = 0
+    for (;;) {
+      const batch = this.deps.store.readAfter(cursor, 1000)
+      for (const { event } of batch) {
+        if (event.type === 'session.provider-session')
+          ids.set(event.providerSessionId, event.sessionId)
+      }
+      if (batch.length < 1000) break
+      cursor = batch.at(-1)!.seq
+    }
+    return ids
+  }
+
   /** Copies the provider's normalized events into the durable log. */
   private async pump(sessionId: string, session: ProviderSession) {
     try {
-      for await (const event of session.events) this.deps.store.append(event)
+      for await (const event of session.events) {
+        this.deps.store.append(event)
+        this.seedPreview(sessionId, event)
+        if (event.type === 'turn.started') this.turnState(sessionId).busy = true
+        if (event.type === 'turn.completed') this.onTurnEnded(sessionId, event.reason)
+      }
     } catch (err) {
       this.deps.log.error(`event stream failed for ${sessionId}`, err)
     } finally {
-      if (this.live.get(sessionId)?.session === session) this.live.delete(sessionId)
+      if (this.live.get(sessionId)?.session === session) {
+        this.live.delete(sessionId)
+        // A session whose process ended is no longer in the middle of a turn.
+        const turn = this.turns.get(sessionId)
+        if (turn) turn.busy = false
+      }
     }
   }
+}
+
+/** What the provider receives: the text (naming the files) and the files themselves. */
+function promptInput(text: string, attachments: { path: string }[]) {
+  return {
+    text: withAttachments(text, attachments),
+    attachments: attachments.length > 0 ? attachments.map((a) => a.path) : undefined,
+  }
+}
+
+/** Agents read attachments from disk, so the prompt names each file's absolute path. */
+function withAttachments(text: string, attachments: { path: string }[]): string {
+  return attachments.length === 0
+    ? text
+    : `${text}\n\nAttached files:\n${attachments.map((a) => `- ${a.path}`).join('\n')}`.trim()
 }
 
 function isDirectory(p: string): boolean {

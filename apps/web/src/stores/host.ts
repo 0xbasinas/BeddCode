@@ -322,12 +322,69 @@ function sessionRequest<M extends RpcMethodName>(
   return hostRequest(hostKey, method, params)
 }
 
-export async function prompt(sessionId: string, text: string, attachmentIds?: string[]) {
-  await sessionRequest(sessionId, 'sessions.prompt', {
+/** Sends a message; while the agent is busy the host steers it in or queues it. */
+export async function prompt(
+  sessionId: string,
+  text: string,
+  attachmentIds?: string[],
+  mode?: 'auto' | 'queue',
+) {
+  return sessionRequest(sessionId, 'sessions.prompt', {
     sessionId,
     text,
     attachments: attachmentIds && attachmentIds.length > 0 ? attachmentIds : undefined,
+    mode,
   })
+}
+
+/** Cancels a queued message, or sends it into the running turn right away. */
+export async function dequeue(sessionId: string, queueId: string, action: 'cancel' | 'steer') {
+  await sessionRequest(sessionId, 'sessions.dequeue', { sessionId, queueId, action })
+}
+
+/** Answers a question the agent asked; no `answers` dismisses it. */
+export async function answerQuestion(
+  sessionId: string,
+  requestId: string,
+  answers?: Record<string, string[]>,
+) {
+  await sessionRequest(sessionId, 'sessions.answer', { sessionId, requestId, answers })
+}
+
+/** Switches a session's model and reasoning effort from its next message on. */
+export async function setSessionModel(
+  sessionId: string,
+  model: string | undefined,
+  effort: string | undefined,
+) {
+  await sessionRequest(sessionId, 'sessions.setModel', { sessionId, model, effort })
+}
+
+export async function setConfigOption(
+  sessionId: string,
+  optionId: string,
+  value: string | boolean,
+) {
+  await sessionRequest(sessionId, 'sessions.setConfig', { sessionId, optionId, value })
+}
+
+/** Starts a session that continues this one, keeping its first `throughTurn` turns (all if omitted). */
+export async function forkSession(sessionId: string, throughTurn?: number): Promise<string> {
+  const { sessionId: forked } = await sessionRequest(sessionId, 'sessions.fork', {
+    sessionId,
+    throughTurn,
+  })
+  createdOn.set(forked, hostKeyOfSession(sessionId) ?? LOCAL_HOST_KEY)
+  return forked
+}
+
+export async function importSession(
+  hostKey: string,
+  params: RpcParams<'sessions.import'>,
+): Promise<string> {
+  const { sessionId } = await hostRequest(hostKey, 'sessions.import', params)
+  createdOn.set(sessionId, hostKey)
+  return sessionId
 }
 
 export async function interrupt(sessionId: string) {

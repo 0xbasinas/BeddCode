@@ -136,3 +136,167 @@ describe('replica', () => {
     expect(s.items.at(-1)).toMatchObject({ kind: 'notice', message: 'Host restarted' })
   })
 })
+
+describe('replica: queue, plan, questions and agent extras', () => {
+  it('keeps messages typed while the agent works until they are sent or cancelled', () => {
+    const s = fold([
+      created,
+      {
+        type: 'prompt.queued',
+        queueId: 'q1',
+        text: 'first',
+        attachments: [{ name: 'a.png', path: '/a.png' }],
+      },
+      { type: 'prompt.queued', queueId: 'q2', text: 'second' },
+      { type: 'prompt.dequeued', queueId: 'q1', reason: 'sent' },
+    ])
+    expect(s.sessions.s1!.queue).toEqual([{ queueId: 'q2', text: 'second', attachments: [] }])
+    expect(
+      fold([
+        created,
+        { type: 'prompt.queued', queueId: 'q', text: 'x' },
+        { type: 'prompt.dequeued', queueId: 'q', reason: 'cancelled' },
+      ]).sessions.s1!.queue,
+    ).toEqual([])
+  })
+
+  it("holds the agent's latest plan, commands and settings", () => {
+    const s = fold([
+      created,
+      { type: 'plan.updated', steps: [{ text: 'A', status: 'pending' }] },
+      {
+        type: 'plan.updated',
+        steps: [
+          { text: 'A', status: 'completed' },
+          { text: 'B', status: 'in-progress' },
+        ],
+        explanation: 'why',
+      },
+      { type: 'session.commands', commands: [{ name: 'review' }] },
+      {
+        type: 'session.config',
+        options: [
+          {
+            id: 'model',
+            name: 'Model',
+            type: 'select',
+            value: 'fast',
+            choices: [{ value: 'fast', name: 'Fast' }],
+          },
+        ],
+      },
+    ])
+    const view = s.sessions.s1!
+    expect(view.plan).toEqual({
+      steps: [
+        { text: 'A', status: 'completed' },
+        { text: 'B', status: 'in-progress' },
+      ],
+      explanation: 'why',
+    })
+    expect(view.commands).toEqual([{ name: 'review' }])
+    expect(view.config[0]).toMatchObject({ id: 'model', value: 'fast' })
+  })
+
+  it('waits on a question, then continues once it is answered', () => {
+    const asked = fold([
+      created,
+      { type: 'turn.started', turnId: 't1' },
+      {
+        type: 'question.requested',
+        requestId: 'r1',
+        questions: [{ id: 'q0', question: 'Which?', options: [{ label: 'A' }] }],
+      },
+    ])
+    expect(asked.sessions.s1!.status).toBe('needs-you')
+    expect(asked.sessions.s1!.items.at(-1)).toMatchObject({ kind: 'question', requestId: 'r1' })
+
+    const answered = fold([
+      created,
+      { type: 'turn.started', turnId: 't1' },
+      {
+        type: 'question.requested',
+        requestId: 'r1',
+        questions: [{ id: 'q0', question: 'Which?' }],
+      },
+      { type: 'question.resolved', requestId: 'r1', answers: { q0: ['A'] } },
+    ])
+    expect(answered.sessions.s1!.status).toBe('running')
+    expect(answered.sessions.s1!.items.at(-1)).toMatchObject({
+      answers: { q0: ['A'] },
+      dismissed: false,
+    })
+  })
+
+  it('treats a dismissed question as closed, and one left open when the turn ends', () => {
+    const dismissed = fold([
+      created,
+      { type: 'turn.started', turnId: 't1' },
+      {
+        type: 'question.requested',
+        requestId: 'r1',
+        questions: [{ id: 'q0', question: 'Which?' }],
+      },
+      { type: 'question.resolved', requestId: 'r1' },
+    ])
+    expect(dismissed.sessions.s1!.items.at(-1)).toMatchObject({ dismissed: true })
+    expect(dismissed.sessions.s1!.status).toBe('running')
+
+    const ended = fold([
+      created,
+      { type: 'turn.started', turnId: 't1' },
+      {
+        type: 'question.requested',
+        requestId: 'r1',
+        questions: [{ id: 'q0', question: 'Which?' }],
+      },
+      { type: 'turn.completed', reason: 'cancelled' },
+    ])
+    expect(ended.sessions.s1!.items.at(-1)).toMatchObject({ dismissed: true })
+    expect(ended.sessions.s1!.status).toBe('idle')
+  })
+
+  it('stays "needs you" while any approval or question is still open', () => {
+    const s = fold([
+      created,
+      { type: 'turn.started', turnId: 't1' },
+      { type: 'approval.requested', requestId: 'a1', title: 'Run?', options: [] },
+      { type: 'question.requested', requestId: 'q1', questions: [{ id: 'x', question: '?' }] },
+      { type: 'approval.resolved', requestId: 'a1', optionId: 'allow' },
+    ])
+    expect(s.sessions.s1!.status).toBe('needs-you')
+  })
+
+  it('carries a plan on an approval and the fork/import markers on a session', () => {
+    const s = fold([
+      { ...created, forkedFrom: { sessionId: 'orig', title: 'Original' }, imported: true },
+      {
+        type: 'approval.requested',
+        requestId: 'a1',
+        title: 'Start?',
+        plan: '1. Do it',
+        options: [],
+      },
+    ])
+    const view = s.sessions.s1!
+    expect(view.forkedFrom).toEqual({ sessionId: 'orig', title: 'Original' })
+    expect(view.imported).toBe(true)
+    expect(view.items[0]).toMatchObject({ kind: 'approval', plan: '1. Do it' })
+  })
+})
+
+describe('replica: model changes', () => {
+  it('shows the model and effort the user switched to', () => {
+    const s = fold([
+      { ...created, model: 'sonnet', effort: 'low' } as never,
+      { type: 'session.model', model: 'opus', effort: 'high' },
+    ])
+    expect(s.sessions.s1).toMatchObject({ model: 'opus', effort: 'high' })
+    const back = fold([
+      { ...created, model: 'sonnet' } as never,
+      { type: 'session.model', model: 'opus' },
+      { type: 'session.model' },
+    ])
+    expect(back.sessions.s1!.model).toBeUndefined()
+  })
+})

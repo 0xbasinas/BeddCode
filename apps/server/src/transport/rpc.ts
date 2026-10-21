@@ -72,7 +72,7 @@ export function createRpcRouter(
     'providers.list': () => sessions.listProviders(),
     'agents.list': async () => agents.list(),
     'agents.add': (p) => agents.add(p),
-    'agents.remove': async (p) => agents.remove(p.id),
+    'agents.remove': (p) => agents.remove(p.id),
     'agents.registry': (p) => agents.searchRegistry(p.query),
     'projects.list': () => projects.list(),
     'projects.add': (p) => projects.add(p.path),
@@ -118,8 +118,35 @@ export function createRpcRouter(
       const saved = attachments.save(p.name, Buffer.from(p.dataBase64, 'base64'))
       return { id: saved.id, name: saved.name, size: saved.size }
     },
-    'sessions.prompt': async (p) => {
-      await sessions.prompt(p.sessionId, p.text, p.attachments)
+    'sessions.prompt': (p) => sessions.prompt(p.sessionId, p.text, p.attachments, p.mode),
+    'sessions.dequeue': async (p) => {
+      await sessions.dequeue(p.sessionId, p.queueId, p.action)
+      return {}
+    },
+    'sessions.answer': async (p) => {
+      await sessions.answerQuestion(p.sessionId, p.requestId, p.answers)
+      return {}
+    },
+    'sessions.setModel': async (p) => {
+      await sessions.setModel(p.sessionId, p.model, p.effort)
+      return {}
+    },
+    'sessions.setConfig': async (p) => {
+      await sessions.setConfig(p.sessionId, p.optionId, p.value)
+      return {}
+    },
+    'sessions.fork': (p) => sessions.fork(p),
+    'sessions.import': (p) => sessions.importSession(p),
+    'history.list': (p) => sessions.listHistory(p.instanceId, p.cwd),
+    'commands.list': (p) => sessions.listCommands(p.instanceId, p.cwd),
+    'agents.preview': (p) => sessions.previewAgent(p.instanceId, p.cwd),
+    'mcp.list': async (p) => (await sessions.mcp(p.instanceId)).list(p.cwd),
+    'mcp.add': async (p) => {
+      await (await sessions.mcp(p.instanceId)).add(p.server, p.cwd)
+      return {}
+    },
+    'mcp.remove': async (p) => {
+      await (await sessions.mcp(p.instanceId)).remove(p.name, p.scope, p.cwd)
       return {}
     },
     'sessions.interrupt': async (p) => {

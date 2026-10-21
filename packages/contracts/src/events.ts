@@ -10,6 +10,58 @@ const Base = z.object({
   at: z.number().int().describe('epoch ms'),
 })
 
+export const PlanStep = z.object({
+  text: z.string(),
+  status: z.enum(['pending', 'in-progress', 'completed']),
+})
+export type PlanStep = z.infer<typeof PlanStep>
+
+/** A question the agent asks the user mid-turn (Claude's AskUserQuestion, Codex's request_user_input). */
+export const QuestionSpec = z.object({
+  id: z.string(),
+  header: z.string().optional(),
+  question: z.string(),
+  /** Suggested answers; absent for a free-text question. */
+  options: z.array(z.object({ label: z.string(), description: z.string().optional() })).optional(),
+  multiSelect: z.boolean().optional(),
+  /** Whether the user may type an answer instead of picking an option. */
+  allowOther: z.boolean().optional(),
+  secret: z.boolean().optional(),
+})
+export type QuestionSpec = z.infer<typeof QuestionSpec>
+
+/** A slash command, skill or subagent the agent offers in the composer. */
+export const SlashCommand = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  /** Hint for the argument, e.g. <file>. */
+  hint: z.string().optional(),
+  kind: z.enum(['command', 'skill', 'agent']).optional(),
+})
+export type SlashCommand = z.infer<typeof SlashCommand>
+
+/** A setting the agent itself offers for a session (its model, its thinking level, ...). */
+export const ConfigOption = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  /** model, thought_level, mode, ... as the agent classifies it. */
+  category: z.string().optional(),
+  type: z.enum(['select', 'boolean']),
+  value: z.union([z.string(), z.boolean()]),
+  choices: z
+    .array(
+      z.object({
+        value: z.string(),
+        name: z.string(),
+        description: z.string().optional(),
+        group: z.string().optional(),
+      }),
+    )
+    .optional(),
+})
+export type ConfigOption = z.infer<typeof ConfigOption>
+
 export const SessionEvent = z.discriminatedUnion('type', [
   Base.extend({
     type: z.literal('session.created'),
@@ -24,10 +76,20 @@ export const SessionEvent = z.discriminatedUnion('type', [
     branch: z.string().optional(),
     /** Set when the session works in a worktree created for it. */
     worktree: z.object({ baseBranch: z.string() }).optional(),
+    /** Set when this session continues another one's history. */
+    forkedFrom: z.object({ sessionId: z.string(), title: z.string().optional() }).optional(),
+    /** True when the conversation was started outside BeddCode and imported. */
+    imported: z.boolean().optional(),
   }),
   /** The provider's own session id, kept so a stopped session can be resumed later. */
   Base.extend({ type: z.literal('session.provider-session'), providerSessionId: z.string() }),
   Base.extend({ type: z.literal('session.renamed'), title: z.string().trim().min(1).max(120) }),
+  /** The model and reasoning effort in use changed (set by the user during the session). */
+  Base.extend({
+    type: z.literal('session.model'),
+    model: z.string().optional(),
+    effort: z.string().optional(),
+  }),
   /** Permission modes the agent itself reports for this session (ACP agents). */
   Base.extend({
     type: z.literal('session.modes'),
@@ -73,6 +135,8 @@ export const SessionEvent = z.discriminatedUnion('type', [
     requestId: z.string(),
     title: z.string(),
     detail: z.string().optional(),
+    /** A plan to approve (markdown), when the agent leaves plan mode and asks to start. */
+    plan: z.string().optional(),
     /** The provider's own option ids, passed through unchanged. */
     options: z.array(
       z.object({ id: z.string(), label: z.string(), kind: z.enum(['allow', 'deny', 'other']) }),
@@ -83,6 +147,39 @@ export const SessionEvent = z.discriminatedUnion('type', [
     requestId: z.string(),
     optionId: z.string(),
   }),
+  /** A message typed while the agent was busy, waiting for the next turn. */
+  Base.extend({
+    type: z.literal('prompt.queued'),
+    queueId: z.string(),
+    text: z.string(),
+    attachments: z.array(z.object({ name: z.string(), path: z.string() })).optional(),
+  }),
+  Base.extend({
+    type: z.literal('prompt.dequeued'),
+    queueId: z.string(),
+    reason: z.enum(['sent', 'steered', 'cancelled']),
+  }),
+  /** The agent's own to-do list or plan; each event replaces the previous one. */
+  Base.extend({
+    type: z.literal('plan.updated'),
+    steps: z.array(PlanStep),
+    explanation: z.string().optional(),
+  }),
+  Base.extend({
+    type: z.literal('question.requested'),
+    requestId: z.string(),
+    questions: z.array(QuestionSpec),
+  }),
+  /** answers maps a question id to what was chosen or typed; absent when it was dismissed. */
+  Base.extend({
+    type: z.literal('question.resolved'),
+    requestId: z.string(),
+    answers: z.record(z.string(), z.array(z.string())).optional(),
+  }),
+  /** The agent's own per-session settings; each event replaces the previous list. */
+  Base.extend({ type: z.literal('session.config'), options: z.array(ConfigOption) }),
+  /** Commands and skills available right now; each event replaces the previous list. */
+  Base.extend({ type: z.literal('session.commands'), commands: z.array(SlashCommand) }),
   Base.extend({
     type: z.literal('turn.completed'),
     reason: z.enum(['done', 'cancelled', 'error']),

@@ -105,6 +105,8 @@ export class ClaudeEventMapper {
   private interrupted = false
   private readonly streamedMessages = new Set<string>()
   private readonly tools = new Map<string, { name: string; input: Record<string, unknown> }>()
+  /** Tool calls shown another way (the to-do list is the plan, not a tool row). */
+  private readonly hidden = new Set<string>()
 
   constructor(
     private readonly sessionId: string,
@@ -156,6 +158,28 @@ export class ClaudeEventMapper {
             const toolId = String(block.id)
             const name = String(block.name)
             const input = (block.input ?? {}) as Record<string, unknown>
+            // Looking up other tools is the agent's own plumbing, not something the user did or needs to see.
+            if (name === 'ToolSearch') {
+              this.hidden.add(toolId)
+              continue
+            }
+            if (name === 'TodoWrite' && Array.isArray(input.todos)) {
+              this.hidden.add(toolId)
+              out.push({
+                type: 'plan.updated',
+                steps: (input.todos as Record<string, unknown>[]).map((t) => ({
+                  text:
+                    str(t.status === 'in_progress' ? (t.activeForm ?? t.content) : t.content) ?? '',
+                  status:
+                    t.status === 'completed'
+                      ? ('completed' as const)
+                      : t.status === 'in_progress'
+                        ? ('in-progress' as const)
+                        : ('pending' as const),
+                })),
+              })
+              continue
+            }
             this.tools.set(toolId, { name, input })
             out.push({
               type: 'tool.started',
@@ -172,6 +196,7 @@ export class ClaudeEventMapper {
         for (const block of blocks(msg.message.content)) {
           if (block.type !== 'tool_result') continue
           const toolId = String(block.tool_use_id)
+          if (this.hidden.delete(toolId)) continue
           const ok = block.is_error !== true
           out.push({ type: 'tool.completed', toolId, ok, output: resultText(block.content) })
           const tool = this.tools.get(toolId)

@@ -29,6 +29,8 @@ export function AddAgentDialog({
   const [variables, setVariables] = useState<EnvironmentVariable[]>([])
   const [error, setError] = useState<string>()
   const [busy, setBusy] = useState(false)
+  /** The user agreed to download the selected agent's program. */
+  const [agreed, setAgreed] = useState(false)
   const entry = entries.find((e) => e.id === selected)
   const installed = new Set(agents.map((a) => a.registryId))
   const visible = entries.filter((e) =>
@@ -37,7 +39,7 @@ export function AddAgentDialog({
   const canAdd =
     mode === 'custom'
       ? !!name.trim() && !!command.trim()
-      : !!entry?.installable && !installed.has(entry.id)
+      : !!entry?.installable && !installed.has(entry.id) && (!entry.download || agreed)
 
   useEffect(() => {
     const element = dialog.current!
@@ -79,7 +81,7 @@ export function AddAgentDialog({
       const input =
         mode === 'custom'
           ? customAgentInput(name, command, args, variables)
-          : { registryId: entry!.id }
+          : { registryId: entry!.id, acceptDownload: entry!.download ? true : undefined }
       setBusy(true)
       await hostRequest(hostKey, 'agents.add', input)
       onAdded()
@@ -188,12 +190,16 @@ export function AddAgentDialog({
                     role="radio"
                     aria-checked={selected === item.id}
                     disabled={busy || !item.installable || installed.has(item.id)}
-                    onClick={() => setSelected(item.id)}
+                    onClick={() => {
+                      setSelected(item.id)
+                      setAgreed(false)
+                    }}
                   >
                     <span className="agent-avatar">{item.name.slice(0, 2).toUpperCase()}</span>
                     <span className="setting-label">
                       <span>{item.name}</span>
                       <small>{item.description}</small>
+                      {item.installable && item.download && <small>Downloads a program</small>}
                       {!item.installable && (
                         <small>
                           {item.reason ?? 'This agent needs a separate binary installation.'}
@@ -206,6 +212,26 @@ export function AddAgentDialog({
                   </button>
                 ))}
               </div>
+              {entry?.download && (
+                <div className="settings-notice download-notice" role="group" aria-label="Download">
+                  <p>
+                    <strong>{entry.name}</strong> is a program that is downloaded from{' '}
+                    <code>{entry.download.host}</code> and run on this host.{' '}
+                    {entry.download.verified
+                      ? 'The download is checked against a checksum the registry publishes.'
+                      : 'The registry publishes no checksum for it, so the download cannot be verified.'}
+                  </p>
+                  <label className="download-agree">
+                    <input
+                      type="checkbox"
+                      checked={agreed}
+                      disabled={busy}
+                      onChange={(e) => setAgreed(e.target.checked)}
+                    />
+                    Download and install it
+                  </label>
+                </div>
+              )}
               <button
                 type="button"
                 className="custom-agent-link"
@@ -318,7 +344,11 @@ export function AddAgentDialog({
             Cancel
           </button>
           <button className="settings-button primary" type="submit" disabled={busy || !canAdd}>
-            {busy ? 'Adding…' : 'Add agent'}
+            {busy
+              ? entry?.download && mode === 'registry'
+                ? 'Downloading…'
+                : 'Adding…'
+              : 'Add agent'}
           </button>
         </footer>
       </form>

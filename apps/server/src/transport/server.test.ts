@@ -199,7 +199,7 @@ describe('server', () => {
     })
     const binary = await c.rpc('agents.add', { registryId: 'demo-binary' })
     expect(binary.ok).toBe(false)
-    expect(binary.error).toContain('not supported')
+    expect(binary.error).toContain('No build for this machine')
 
     const listed = await c.rpc('agents.list', {})
     expect((listed.result as { id: string }[]).map((a) => a.id)).toEqual([

@@ -5,6 +5,7 @@ import { createCodexAdapter } from '@beddcode/provider-codex'
 import { createFakeAdapter, type ProviderAdapter } from '@beddcode/provider-core'
 import { createLogger } from '@beddcode/shared'
 import { AgentCatalog } from './agents/catalog.ts'
+import { PreviewCache } from './agents/previews.ts'
 import { AttachmentStore } from './attachments/store.ts'
 import { PairingManager } from './auth/pairing.ts'
 import { TokenStore } from './auth/tokens.ts'
@@ -33,7 +34,11 @@ export async function runServer(config: ServerConfig): Promise<void> {
     createCodexAdapter({ log: createLogger('codex') }),
     createAcpAdapter({ store: acpStore, log: createLogger('acp') }),
   ]
-  if (process.env.BEDDCODE_FAKE_PROVIDER === '1') adapters.push(createFakeAdapter())
+  // "advanced" adds steering, plans, questions, forks and history to the scripted agent.
+  const fake = process.env.BEDDCODE_FAKE_PROVIDER
+  if (fake === '1' || fake === 'advanced') {
+    adapters.push(createFakeAdapter({ advanced: fake === 'advanced', delayMs: 120 }))
+  }
 
   const store = new EventStore(path.join(home, 'beddcode.db'))
   recoverInterruptedTurns(store)
@@ -54,8 +59,16 @@ export async function runServer(config: ServerConfig): Promise<void> {
     adapters,
     log,
     defaultCwd: process.cwd(),
+    previews: new PreviewCache(path.join(home, 'agent-previews.json')),
   })
-  const agents = new AgentCatalog(acpStore, new AcpRegistry(), () => sessions.invalidateDetection())
+  const agents = new AgentCatalog(
+    acpStore,
+    new AcpRegistry(),
+    () => sessions.invalidateDetection(),
+    {
+      root: path.join(home, 'agents'),
+    },
+  )
 
   const server = await startServer({
     port: config.port,

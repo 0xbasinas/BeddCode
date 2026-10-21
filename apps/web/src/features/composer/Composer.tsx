@@ -1,8 +1,17 @@
-import { useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type DragEvent,
+  type ReactNode,
+} from 'react'
 import { ArrowUp, Paperclip, Plus, Square, X } from 'lucide-react'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import { formatBytes } from '../../ui/format.ts'
+import type { SlashCommand } from '@beddcode/contracts'
 import { upload } from '../../stores/host.ts'
+import { insertCommand, matchCommands } from './slash.ts'
 import { ModeMenu, type ModeItem } from './Menus.tsx'
 
 const MAX_BYTES = 20 * 1024 * 1024
@@ -35,6 +44,10 @@ interface ComposerProps {
   modelSlot?: ReactNode
   /** The strip under the composer (agent, folder, host, stats). */
   footer?: ReactNode
+  /** Slash commands and skills the agent offers; typing `/` lists them. */
+  commands?: SlashCommand[]
+  /** Shown above the box: the agent's plan, queued messages. */
+  above?: ReactNode
 }
 
 let nextKey = 1
@@ -70,11 +83,9 @@ export function Composer(props: ComposerProps) {
 
   const ready = files.filter((f) => f.status === 'done')
   const uploading = files.some((f) => f.status === 'uploading')
+  // Sending is allowed while the agent works: the host steers the message in or queues it.
   const canSend =
-    !props.disabled &&
-    !props.busy &&
-    !uploading &&
-    (props.text.trim().length > 0 || ready.length > 0)
+    !props.disabled && !uploading && (props.text.trim().length > 0 || ready.length > 0)
 
   const send = async () => {
     if (!canSend) return
@@ -89,6 +100,16 @@ export function Composer(props: ComposerProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send')
     }
+  }
+
+  const matches = matchCommands(props.text, props.commands)
+  const [slashIndex, setSlashIndex] = useState(0)
+  const [slashClosed, setSlashClosed] = useState<string | null>(null)
+  const slashOpen = matches.length > 0 && slashClosed !== props.text
+  useEffect(() => setSlashIndex(0), [props.text])
+  const choose = (command: SlashCommand) => {
+    props.onTextChange(insertCommand(command))
+    setSlashClosed(null)
   }
 
   const onPaste = (e: ClipboardEvent) => {
@@ -106,6 +127,7 @@ export function Composer(props: ComposerProps) {
 
   return (
     <div className="composer-wrap">
+      {props.above}
       <div
         className={`composer ${dragging ? 'dragging' : ''}`}
         onDragOver={(e) => {
@@ -136,6 +158,28 @@ export function Composer(props: ComposerProps) {
             ))}
           </div>
         )}
+        {slashOpen && (
+          <div className="slash-menu" role="listbox" aria-label="Commands">
+            {matches.map((c, i) => (
+              <button
+                key={c.name}
+                role="option"
+                aria-selected={i === slashIndex}
+                className={`slash-row ${i === slashIndex ? 'active' : ''}`}
+                onMouseEnter={() => setSlashIndex(i)}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  choose(c)
+                }}
+              >
+                <code>/{c.name}</code>
+                {c.hint && <span className="muted">{c.hint}</span>}
+                {c.description && <span className="slash-desc">{c.description}</span>}
+                {c.kind === 'skill' && <span className="slash-kind">skill</span>}
+              </button>
+            ))}
+          </div>
+        )}
         <textarea
           value={props.text}
           placeholder={props.placeholder}
@@ -144,6 +188,25 @@ export function Composer(props: ComposerProps) {
           onChange={(e) => props.onTextChange(e.target.value)}
           onPaste={onPaste}
           onKeyDown={(e) => {
+            if (slashOpen && !e.nativeEvent.isComposing) {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault()
+                setSlashIndex(
+                  (i) => (i + (e.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length,
+                )
+                return
+              }
+              if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault()
+                choose(matches[slashIndex] ?? matches[0]!)
+                return
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                setSlashClosed(props.text)
+                return
+              }
+            }
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
               void send()
@@ -188,21 +251,20 @@ export function Composer(props: ComposerProps) {
           )}
           <span className="spacer" />
           {props.modelSlot}
-          {props.busy ? (
-            <button className="send" title="Stop" aria-label="Stop" onClick={props.onStop}>
+          {props.busy && (
+            <button className="send stop" title="Stop" aria-label="Stop" onClick={props.onStop}>
               <Square size={14} fill="currentColor" />
             </button>
-          ) : (
-            <button
-              className="send"
-              title="Send"
-              aria-label="Send"
-              disabled={!canSend}
-              onClick={() => void send()}
-            >
-              <ArrowUp size={18} />
-            </button>
           )}
+          <button
+            className="send"
+            title={props.busy ? 'Send (steers the agent, or queues it)' : 'Send'}
+            aria-label="Send"
+            disabled={!canSend}
+            onClick={() => void send()}
+          >
+            <ArrowUp size={18} />
+          </button>
         </div>
       </div>
       {error && <div className="composer-error">{error}</div>}

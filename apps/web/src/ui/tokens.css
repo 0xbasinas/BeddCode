@@ -28,10 +28,13 @@
   font-display: swap;
 }
 :root {
-  --bg-app: #0b0b0b;
+  --ui-scale: 0.9;
+  /* Window behind the panels: close to them so the gaps read as shadow, not as holes. */
+  --bg-app: #101010;
   --bg-panel: #161616;
   --bg-raised: #1f1f1f;
-  --bg-hover: #242424;
+  --bg-hover: #262626;
+  --bg-active: #2c2c2c;
   --border: #2c2c2c;
   --bg-card: #1a1a1a;
   --text: #ececec;
@@ -40,14 +43,15 @@
   --accent: #e9a23b;
   --success: #7cc48a;
   --danger: #e0716c;
-  --radius-panel: 10px;
-  --radius-control: 8px;
+  --radius-panel: calc(10px * var(--ui-scale));
+  --radius-control: calc(8px * var(--ui-scale));
   --bg-input: #1f1f1f;
   --bg-code: #121212;
-  --border-subtle: #232323;
+  --border-subtle: #242424;
+  --border-strong: #363636;
   --text-secondary: #d4d4d4;
   --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
-  --gap: 6px;
+  --gap: calc(6px * var(--ui-scale));
   color-scheme: dark;
 }

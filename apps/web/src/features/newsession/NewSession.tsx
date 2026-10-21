@@ -1,18 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import {
-  BookOpen,
-  Bug,
-  Check,
-  ChevronDown,
-  FileSearch,
-  Folder,
-  GitBranch,
-  GitPullRequest,
-  Monitor,
-  Server,
-} from 'lucide-react'
-import type { GitBranch as Branch, GitInfo, ProviderInstance } from '@beddcode/contracts'
+import { Check, ChevronDown, Folder, GitBranch, Monitor, Server } from 'lucide-react'
+import type {
+  AgentPreview,
+  GitBranch as Branch,
+  GitInfo,
+  ProviderInstance,
+  SlashCommand,
+} from '@beddcode/contracts'
+import { ConfigMenu } from '../composer/ConfigMenu.tsx'
 import { Composer } from '../composer/Composer.tsx'
 import { ModelMenu, type ModelChoice } from '../composer/Menus.tsx'
 import { Dropdown } from '../../ui/Dropdown.tsx'
@@ -36,30 +32,6 @@ import {
   hostDefaults,
   usePreferences,
 } from '../../stores/preferences.ts'
-
-const QUICK_STARTS = [
-  {
-    icon: Bug,
-    label: 'Fix a failing test',
-    prompt: 'Find the failing test, work out why it fails, fix it, and run the tests to confirm.',
-  },
-  {
-    icon: FileSearch,
-    label: 'Review uncommitted changes',
-    prompt: 'Review my uncommitted changes and point out bugs, risky spots, and missing tests.',
-  },
-  {
-    icon: GitPullRequest,
-    label: 'Open a PR for this branch',
-    prompt:
-      'Write a clear title and description for a pull request from this branch, and tell me what it changes.',
-  },
-  {
-    icon: BookOpen,
-    label: 'Explain how this repo works',
-    prompt: 'Explain how this repository is organised and how its main pieces fit together.',
-  },
-]
 
 interface Workspace {
   mode: 'worktree' | 'local'
@@ -103,6 +75,12 @@ export function NewSession({
   const [chosenFolder, setChosenFolder] = useState(initialProject ?? '')
   const [workspace, setWorkspace] = useState<Workspace>({ mode: 'local' })
   const [repo, setRepo] = useState<RepoState | null | 'loading'>('loading')
+  const [commands, setCommands] = useState<SlashCommand[]>([])
+  const [preview, setPreview] = useState<{ key: string; data?: AgentPreview; failed?: boolean }>()
+  const [configState, setConfigState] = useState<{
+    key: string
+    values: Record<string, string | boolean>
+  }>()
 
   const ready = readyProviders(providers)
   const agent =
@@ -157,7 +135,50 @@ export function NewSession({
     }
   }, [hostKey, folder, connection, defaultWorkspace])
 
-  const modes = agent?.capabilities.permissionModes ?? []
+  // The agent's slash commands and skills for this folder, so `/` works before the session exists.
+  useEffect(() => {
+    setCommands([])
+    if (!agent?.capabilities.commands || !folder || connection !== 'connected') return
+    let cancelled = false
+    hostRequest(hostKey, 'commands.list', { instanceId: agent.id, cwd: folder }).then(
+      (list) => !cancelled && setCommands(list),
+      () => {},
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [hostKey, agent?.id, agent?.capabilities.commands, folder, connection])
+
+  // ACP agents only say what they offer (modes, model, thinking level, commands) when a session
+  // starts, so the host probes once and remembers it. Without this their composer would be bare.
+  const previewKey = `${hostKey}:${agent?.id ?? ''}`
+  useEffect(() => {
+    if (!agent || agent.kind !== 'acp' || !folder || connection !== 'connected') return
+    let cancelled = false
+    setPreview({ key: previewKey })
+    hostRequest(hostKey, 'agents.preview', { instanceId: agent.id, cwd: folder }).then(
+      (data) => !cancelled && setPreview({ key: previewKey, data }),
+      () => !cancelled && setPreview({ key: previewKey, failed: true }),
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [hostKey, agent?.id, agent?.kind, folder, connection, previewKey])
+  const agentPreview = preview?.key === previewKey ? preview : undefined
+  const offered = agentPreview?.data
+  const loadingOffer =
+    agent?.kind === 'acp' && agentPreview !== undefined && !offered && !agentPreview.failed
+
+  const configValues = configState?.key === selectionKey ? configState.values : {}
+  const configOptions = (offered?.config ?? []).map((o) => ({
+    ...o,
+    value: configValues[o.id] ?? o.value,
+  }))
+
+  const nativeModes = agent?.capabilities.permissionModes ?? []
+  const modes = nativeModes.length > 0 ? nativeModes : (offered?.modes ?? [])
+  const shownModeId = modeId ?? offered?.currentModeId
+  const slashCommands = commands.length > 0 ? commands : (offered?.commands ?? [])
   const recentFolders = useMemo(
     () =>
       [
@@ -178,6 +199,7 @@ export function NewSession({
       permissionMode: modeId,
       model: choice.model,
       effort: choice.effort,
+      config: Object.keys(configValues).length > 0 ? configValues : undefined,
       workspace: useWorktree ? { mode: 'worktree', baseBranch: workspace.baseBranch } : undefined,
     })
     await prompt(sessionId, value, attachments)
@@ -222,18 +244,31 @@ export function NewSession({
           disabled={connection !== 'connected' || !agent}
           autoFocus
           hostKey={hostKey}
+          commands={slashCommands}
           onSend={send}
           modes={modes}
-          modeId={modeId}
+          modeId={shownModeId}
           onModeChange={setModeId}
           modelSlot={
             agent && (
-              <ModelMenu
-                models={agent.capabilities.models ?? []}
-                efforts={agent.capabilities.efforts ?? []}
-                value={choice}
-                onChange={setChoice}
-              />
+              <>
+                {loadingOffer && <span className="muted offer-note">Reading settings…</span>}
+                <ConfigMenu
+                  options={configOptions}
+                  onChange={(id, value) =>
+                    setConfigState({
+                      key: selectionKey,
+                      values: { ...configValues, [id]: value },
+                    })
+                  }
+                />
+                <ModelMenu
+                  models={agent.capabilities.models ?? []}
+                  efforts={agent.capabilities.efforts ?? []}
+                  value={choice}
+                  onChange={setChoice}
+                />
+              </>
             )
           }
           footer={
@@ -264,16 +299,6 @@ export function NewSession({
             </div>
           }
         />
-        <div className="quick">
-          <div className="quick-title">Quick starts</div>
-          <div className="quick-grid">
-            {QUICK_STARTS.map(({ icon: Icon, label, prompt: starter }) => (
-              <button key={label} onClick={() => setText(starter)}>
-                <Icon size={18} /> {label}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
     </main>
   )
@@ -291,7 +316,7 @@ function HostChip({ hostKey, onPick }: { hostKey: string; onPick(key: string): v
   if (entries.length < 2) {
     return (
       <span className="chip-lite static">
-        <Monitor size={14} /> {name}
+        <Monitor size={14} /> <span className="chip-text">{name}</span>
       </span>
     )
   }
@@ -299,8 +324,8 @@ function HostChip({ hostKey, onPick }: { hostKey: string; onPick(key: string): v
     <Dropdown
       trigger={({ toggle }) => (
         <button className="chip-lite" onClick={toggle} aria-label="Host">
-          {hostKey === LOCAL_HOST_KEY ? <Monitor size={14} /> : <Server size={14} />} {name}{' '}
-          <ChevronDown size={13} />
+          {hostKey === LOCAL_HOST_KEY ? <Monitor size={14} /> : <Server size={14} />}{' '}
+          <span className="chip-text">{name}</span> <ChevronDown size={13} />
         </button>
       )}
     >
@@ -369,7 +394,8 @@ function AgentChip({
       trigger={({ toggle }) => (
         <button className="chip-lite" onClick={toggle} aria-label="Agent">
           <span className="avatar">{current ? initials(current.label) : '–'}</span>
-          {current?.label ?? 'No agent'} <ChevronDown size={13} />
+          <span className="chip-text">{current?.label ?? 'No agent'}</span>{' '}
+          <ChevronDown size={13} />
         </button>
       )}
     >
@@ -416,7 +442,8 @@ function FolderChip({
     <Dropdown
       trigger={({ toggle }) => (
         <button className="chip-lite" onClick={toggle} aria-label="Folder" title={value}>
-          <Folder size={14} /> {value ? folderName(value) : 'Choose a folder'}{' '}
+          <Folder size={14} />{' '}
+          <span className="chip-text">{value ? folderName(value) : 'Choose a folder'}</span>{' '}
           <ChevronDown size={13} />
         </button>
       )}
@@ -486,7 +513,8 @@ function WorkspaceChip({
       panelClassName="wide"
       trigger={({ toggle }) => (
         <button className="chip-lite" onClick={toggle} aria-label="Workspace">
-          <GitBranch size={14} /> {label} <ChevronDown size={13} />
+          <GitBranch size={14} /> <span className="chip-text">{label}</span>{' '}
+          <ChevronDown size={13} />
         </button>
       )}
     >

@@ -1,4 +1,5 @@
-import type { ProviderCapabilities, ProviderInstance } from '@beddcode/contracts'
+import type { SessionConfigOption, SessionUpdate } from '@agentclientprotocol/sdk'
+import type { ProviderCapabilities, ProviderInstance, SessionEvent } from '@beddcode/contracts'
 import type { ProviderAdapter } from '@beddcode/provider-core'
 import {
   createLogger,
@@ -9,6 +10,8 @@ import {
 } from '@beddcode/shared'
 import { instanceIdFor, type AcpAgentConfig, type AcpAgentStore } from './config.ts'
 import { AcpSession } from './session.ts'
+import { AcpEventMapper, toConfigOptions } from './mapper.ts'
+import { listAcpSessions, readAcpSession, withAcpAgent } from './history.ts'
 
 /**
  * ACP agents report their modes per session, so none are listed here; the session emits them
@@ -19,8 +22,11 @@ export const acpCapabilities: ProviderCapabilities = {
   fork: false,
   steer: false,
   planMode: false,
-  imageInput: false,
+  // Images go in as image blocks to agents that accept them; others read the file by its path.
+  imageInput: true,
   usage: false,
+  commands: true,
+  history: true,
   permissionModes: [],
 }
 
@@ -46,10 +52,83 @@ export function createAcpAdapter(options: AcpAdapterOptions): ProviderAdapter {
   const configFor = (instanceId: string) =>
     options.store.list().find((a) => instanceIdFor(a.id) === instanceId)
 
+  const transportFor = (config: AcpAgentConfig, cwd: string): Transport =>
+    options.createTransport?.(config, cwd) ??
+    spawnTransport(
+      resolveExecutable(config.command) ?? config.command,
+      config.args,
+      { cwd, env: { ...process.env, ...config.env } },
+      log,
+    )
+  const requireConfig = (instanceId: string) => {
+    const config = configFor(instanceId)
+    if (!config) throw new Error(`Unknown ACP agent: ${instanceId}`)
+    return config
+  }
+
   return {
     kind: 'acp',
     detect: async () => options.store.list().map(toInstance),
     capabilities: () => acpCapabilities,
+    /**
+     * Starts the agent just long enough to read what a session offers, then stops it. The agent
+     * only says so in answer to `session/new`, and its command list follows a moment later.
+     */
+    async preview(instanceId, cwd) {
+      const config = requireConfig(instanceId)
+      const folder = cwd ?? process.cwd()
+      return withAcpAgent(transportFor(config, folder), log, config.label, async (rpc, caps) => {
+        const mapper = new AcpEventMapper('preview')
+        const events: SessionEvent[] = []
+        rpc.onNotification((method, params) => {
+          const update = (params as { update?: SessionUpdate } | undefined)?.update
+          if (method === 'session/update' && update) events.push(...mapper.map(update))
+        })
+        const res = await rpc.request<{
+          sessionId: string
+          modes?: {
+            currentModeId?: string
+            availableModes?: { id: string; name: string; description?: string | null }[]
+          }
+          configOptions?: SessionConfigOption[] | null
+        }>('session/new', { cwd: folder, mcpServers: [] }, { timeoutMs: 60_000 })
+        // Commands arrive as a notification right after the session exists.
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        if (caps.sessionCapabilities && 'close' in caps.sessionCapabilities) {
+          // Leave no empty session behind in the agent's own history.
+          await rpc
+            .request('session/close', { sessionId: res.sessionId }, { timeoutMs: 5_000 })
+            .catch(() => {})
+        }
+        const commands = events.findLast((e) => e.type === 'session.commands')
+        return {
+          modes: (res.modes?.availableModes ?? []).map((m) => ({
+            id: m.id,
+            label: m.name,
+            description: m.description ?? undefined,
+          })),
+          currentModeId: res.modes?.currentModeId,
+          config: toConfigOptions(res.configOptions),
+          commands: commands?.type === 'session.commands' ? commands.commands : [],
+        }
+      })
+    },
+    async listHistory(instanceId, cwd) {
+      const config = requireConfig(instanceId)
+      return withAcpAgent(
+        transportFor(config, cwd ?? process.cwd()),
+        log,
+        config.label,
+        (rpc, caps) => listAcpSessions(rpc, caps, config.label, cwd),
+      )
+    },
+    async readHistory(instanceId, sessionId, cwd) {
+      const config = requireConfig(instanceId)
+      const folder = cwd ?? process.cwd()
+      return withAcpAgent(transportFor(config, folder), log, config.label, (rpc, caps) =>
+        readAcpSession(rpc, caps, config.label, sessionId, folder),
+      )
+    },
     async startSession(instanceId, input) {
       const config = configFor(instanceId)
       if (!config) throw new Error(`Unknown ACP agent: ${instanceId}`)

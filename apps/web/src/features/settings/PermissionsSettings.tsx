@@ -1,6 +1,7 @@
 import { Shield } from 'lucide-react'
 import { useRuntime } from '../../stores/host.ts'
 import { agentDefaults, hostDefaults, usePreferences } from '../../stores/preferences.ts'
+import { Select } from '../../ui/Select.tsx'
 
 export function PermissionsSettings({ hostKey }: { hostKey: string }) {
   const { host, providers, connection } = useRuntime(hostKey)
@@ -29,7 +30,7 @@ export function PermissionsSettings({ hostKey }: { hostKey: string }) {
                     {mode?.description ?? 'Used when you start a new session on this host.'}
                   </small>
                 </label>
-                <select
+                <Select
                   id={`permission-${provider.id}`}
                   aria-label={`${provider.label} permission mode`}
                   disabled={connection !== 'connected'}
@@ -44,7 +45,7 @@ export function PermissionsSettings({ hostKey }: { hostKey: string }) {
                       {option.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               {mode?.dangerous && (
                 <p className="settings-notice">

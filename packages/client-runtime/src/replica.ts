@@ -1,4 +1,10 @@
-import type { StoredEvent } from '@beddcode/contracts'
+import type {
+  ConfigOption,
+  PlanStep,
+  QuestionSpec,
+  SlashCommand,
+  StoredEvent,
+} from '@beddcode/contracts'
 
 export type SessionStatus = 'idle' | 'running' | 'needs-you' | 'failed'
 
@@ -9,6 +15,8 @@ export type TranscriptItem =
       role: 'user' | 'assistant'
       text: string
       turnId?: string
+      /** For the agent's replies: which turn of the session it belongs to (1-based). */
+      turnNo?: number
       attachments?: { name: string; path: string }[]
     }
   | {
@@ -19,6 +27,9 @@ export type TranscriptItem =
       status: 'running' | 'ok' | 'failed' | 'cancelled'
       output?: string
       at?: number
+      /** When the tool began and ended (epoch ms), for durations. */
+      startedAt?: number
+      endedAt?: number
     }
   | { kind: 'diff'; id: string; path: string; added: number; removed: number; patch: string }
   | {
@@ -27,9 +38,21 @@ export type TranscriptItem =
       requestId: string
       title: string
       detail?: string
+      /** A plan to approve (markdown), when the agent asks to leave plan mode. */
+      plan?: string
       options: { id: string; label: string; kind: 'allow' | 'deny' | 'other' }[]
       resolvedOptionId?: string
       cancelled?: boolean
+    }
+  | {
+      kind: 'question'
+      id: string
+      requestId: string
+      questions: QuestionSpec[]
+      /** What was chosen or typed, by question id. */
+      answers?: Record<string, string[]>
+      /** Closed without an answer (dismissed, or the turn ended). */
+      dismissed?: boolean
     }
   | { kind: 'notice'; id: string; message: string }
   | { kind: 'error'; id: string; message: string }
@@ -54,6 +77,21 @@ export interface SessionView {
   items: TranscriptItem[]
   added: number
   removed: number
+  /** Turns started and finished so far; a fork can end after any finished turn. */
+  turns: number
+  completedTurns: number
+  /** Messages typed while the agent was busy, in the order they will be sent. */
+  queue: { queueId: string; text: string; attachments: { name: string; path: string }[] }[]
+  /** The agent's own plan or to-do list, as of its latest update. */
+  plan?: { steps: PlanStep[]; explanation?: string }
+  /** Slash commands and skills the agent offers right now. */
+  commands: SlashCommand[]
+  /** The agent's own per-session settings (model, thinking level, ...). */
+  config: ConfigOption[]
+  /** The session this one continues, when it was forked. */
+  forkedFrom?: { sessionId: string; title?: string }
+  /** Started outside BeddCode and brought in. */
+  imported?: boolean
   /** Modes reported by the agent for this session, when it reports any. */
   modes?: { id: string; label: string; description?: string; dangerous?: boolean }[]
   currentModeId?: string
@@ -68,6 +106,15 @@ export interface ReplicaState {
 }
 
 export const emptyReplica = (): ReplicaState => ({ lastSeq: 0, order: [], sessions: {} })
+
+/** Is anything open that the agent is waiting on the user for? */
+function waiting(items: TranscriptItem[]): boolean {
+  return items.some(
+    (item) =>
+      (item.kind === 'approval' && !item.resolvedOptionId && !item.cancelled) ||
+      (item.kind === 'question' && !item.answers && !item.dismissed),
+  )
+}
 
 export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaState {
   // Reconnects can replay what we already hold; the log is idempotent by seq.
@@ -91,6 +138,13 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       items: [],
       added: 0,
       removed: 0,
+      turns: 0,
+      completedTurns: 0,
+      queue: [],
+      commands: [],
+      config: [],
+      forkedFrom: e.forkedFrom,
+      imported: e.imported,
     }
     return {
       lastSeq: stored.seq,
@@ -109,6 +163,10 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     case 'session.renamed':
       next.title = e.title
       break
+    case 'session.model':
+      next.model = e.model
+      next.effort = e.effort
+      break
     case 'session.provider-session':
       return { ...state, lastSeq: stored.seq }
     case 'session.modes':
@@ -116,6 +174,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.currentModeId = e.currentModeId
       break
     case 'turn.started':
+      next.turns = current.turns + 1
       next.status = 'running'
       next.lastTurnReason = undefined
       break
@@ -146,6 +205,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
             role: e.role,
             text: e.text,
             turnId: e.turnId,
+            turnNo: e.role === 'assistant' ? current.turns : undefined,
             attachments: e.attachments,
           },
         ]
@@ -162,13 +222,14 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
           toolKind: e.kind,
           status: 'running',
           at: e.at,
+          startedAt: e.at,
         },
       ]
       break
     case 'tool.completed':
       next.items = current.items.map((item) =>
         item.kind === 'tool' && item.id === e.toolId
-          ? { ...item, status: e.ok ? 'ok' : 'failed', output: e.output, at: e.at }
+          ? { ...item, status: e.ok ? 'ok' : 'failed', output: e.output, at: e.at, endedAt: e.at }
           : item,
       )
       break
@@ -189,10 +250,48 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
           requestId: e.requestId,
           title: e.title,
           detail: e.detail,
+          plan: e.plan,
           options: e.options,
         },
       ]
       next.status = 'needs-you'
+      break
+    case 'question.requested':
+      next.items = [
+        ...current.items,
+        { kind: 'question', id, requestId: e.requestId, questions: e.questions },
+      ]
+      next.status = 'needs-you'
+      break
+    case 'question.resolved':
+      next.items = current.items.map((item) =>
+        item.kind === 'question' && item.requestId === e.requestId
+          ? { ...item, answers: e.answers, dismissed: e.answers === undefined }
+          : item,
+      )
+      next.status = waiting(next.items)
+        ? 'needs-you'
+        : current.status === 'needs-you'
+          ? 'running'
+          : current.status
+      break
+    case 'prompt.queued':
+      next.queue = [
+        ...current.queue,
+        { queueId: e.queueId, text: e.text, attachments: e.attachments ?? [] },
+      ]
+      break
+    case 'prompt.dequeued':
+      next.queue = current.queue.filter((q) => q.queueId !== e.queueId)
+      break
+    case 'plan.updated':
+      next.plan = { steps: e.steps, explanation: e.explanation }
+      break
+    case 'session.commands':
+      next.commands = e.commands
+      break
+    case 'session.config':
+      next.config = e.options
       break
     case 'approval.resolved':
       next.items = current.items.map((item) =>
@@ -200,19 +299,20 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
           ? { ...item, resolvedOptionId: e.optionId }
           : item,
       )
-      next.status = next.items.some(
-        (item) => item.kind === 'approval' && !item.resolvedOptionId && !item.cancelled,
-      )
+      next.status = waiting(next.items)
         ? 'needs-you'
         : current.status === 'needs-you'
           ? 'running'
           : current.status
       break
     case 'turn.completed':
+      next.completedTurns = current.completedTurns + 1
       next.status = e.reason === 'error' ? 'failed' : 'idle'
       next.lastTurnReason = e.reason
       next.items = current.items.map((item) => {
         if (item.kind === 'approval' && !item.resolvedOptionId) return { ...item, cancelled: true }
+        if (item.kind === 'question' && !item.answers && !item.dismissed)
+          return { ...item, dismissed: true }
         if (item.kind === 'tool' && item.status === 'running' && e.reason !== 'done')
           return { ...item, status: e.reason === 'cancelled' ? 'cancelled' : 'failed' }
         return item

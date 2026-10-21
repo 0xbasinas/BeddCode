@@ -1,10 +1,11 @@
 import { FolderOpen, GitBranch, Globe, SquareTerminal } from 'lucide-react'
-import type { ComponentType, ReactNode } from 'react'
+import { useEffect, type ComponentType, type ReactNode } from 'react'
 import { useRouterState } from '@tanstack/react-router'
 import { useSession, useSessionHostKey } from '../../stores/host.ts'
 import { HostScopeProvider } from '../../stores/HostScope.tsx'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { useUiStore, type PaneId } from '../../stores/ui.ts'
+import { MissingFolder, useFolderMissing } from './MissingFolder.tsx'
 import { BrowserPane } from '../browser/BrowserPane.tsx'
 import { EMPTY_FOLDER, folderId, useFiles } from '../files/filesStore.ts'
 import { FilesPane } from '../files/FilesPane.tsx'
@@ -24,7 +25,7 @@ function useActiveSessionId(): string | undefined {
   return /^\/session\/([^/]+)/.exec(path)?.[1]
 }
 
-export function RightRail() {
+export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
   const activePane = useUiStore((s) => s.activePane)
   const togglePane = useUiStore((s) => s.togglePane)
   const sessionId = useActiveSessionId()
@@ -35,9 +36,21 @@ export function RightRail() {
     session ? (s.byCwd[folderId(hostKey, session.cwd)] ?? EMPTY_FOLDER).tabs.length > 0 : false,
   )
 
+  // Room for what is open: the editor wants a wide column, the browser a wider one still.
+  const wanted = activePane === 'browser' ? 680 : activePane === 'files' && editorOpen ? 640 : 0
+  useEffect(() => {
+    if (wanted) wantWidth(wanted)
+  }, [wanted, wantWidth])
+
+  const folderMissing = useFolderMissing(hostKey, session)
+
   const needSession = (render: (s: NonNullable<typeof session>) => ReactNode) =>
     session ? (
-      render(session)
+      folderMissing ? (
+        <MissingFolder session={session} />
+      ) : (
+        render(session)
+      )
     ) : (
       <div className="git-empty muted">Open a session to use this pane.</div>
     )

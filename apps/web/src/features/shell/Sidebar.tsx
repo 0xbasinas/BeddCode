@@ -23,6 +23,7 @@ import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { HostsDialog } from '../hosts/HostsDialog.tsx'
 import { folderName, timeAgo } from '../../ui/format.ts'
 import { useUiStore } from '../../stores/ui.ts'
+import { Select } from '../../ui/Select.tsx'
 
 type Filter = 'all' | 'needs-you' | 'done'
 
@@ -55,6 +56,18 @@ export function activityLine(s: SessionView): string {
           ? 'Done · changes ready'
           : 'Done'
   }
+}
+
+/**
+ * What to say next to the branch and agent: only what is worth a word. A finished session says
+ * nothing (its check mark and change counts already do), a busy one says what it is doing.
+ */
+export function sessionNote(s: SessionView): string {
+  if (s.status === 'idle') {
+    if (s.lastTurnReason === 'cancelled') return 'Stopped'
+    return s.items.length === 0 ? 'New' : ''
+  }
+  return activityLine(s)
 }
 
 export function Sidebar() {
@@ -354,25 +367,31 @@ ${s.projectPath}`
                     />
                   )}
                   <span className="session-main">
-                    <span className="session-title">{s.title}</span>
-                    <span className="session-sub">{activityLine(s)}</span>
-                    <span className="session-branch">
-                      {s.branch && (
-                        <>
-                          <GitBranch size={11} /> <code>{s.branch}</code> ·{' '}
-                        </>
-                      )}
-                      {agentLabel(s)}
+                    <span className="session-top">
+                      <span className="session-title">{s.title}</span>
+                      <span className="session-time">{timeAgo(s.updatedAt)}</span>
                     </span>
-                  </span>
-                  <span className="session-side">
-                    <span className="session-time">{timeAgo(s.updatedAt)}</span>
-                    {(s.added > 0 || s.removed > 0) && (
-                      <span className="stat">
-                        <span className="add">+{s.added}</span>{' '}
-                        <span className="del">−{s.removed}</span>
+                    <span className="session-meta">
+                      {sessionNote(s) && (
+                        <span className={`session-note ${s.status}`} title={sessionNote(s)}>
+                          {sessionNote(s)}
+                        </span>
+                      )}
+                      <span className="session-where">
+                        {s.branch && (
+                          <>
+                            <GitBranch size={11} /> <code>{s.branch}</code> ·{' '}
+                          </>
+                        )}
+                        {agentLabel(s)}
                       </span>
-                    )}
+                      {(s.added > 0 || s.removed > 0) && (
+                        <span className="stat">
+                          <span className="add">+{s.added}</span>{' '}
+                          <span className="del">−{s.removed}</span>
+                        </span>
+                      )}
+                    </span>
                   </span>
                 </Link>
               ))}
@@ -433,7 +452,7 @@ function AddFolder({ expanded = false }: { expanded?: boolean }) {
             {entries.length > 1 ? 'Add a folder on' : 'Add a folder on this host'}
           </div>
           {entries.length > 1 && (
-            <select
+            <Select
               className="path-input"
               value={hostKey}
               onChange={(e) => setHostKey(e.target.value)}
@@ -448,7 +467,7 @@ function AddFolder({ expanded = false }: { expanded?: boolean }) {
                   {runtimes[e.key]?.host?.name ?? e.name}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
           <input
             className="path-input"

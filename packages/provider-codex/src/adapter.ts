@@ -11,16 +11,22 @@ import {
 import { codexModes } from './modes.ts'
 import { CodexSession } from './session.ts'
 import { discoverCodexModels } from './models.ts'
+import { createCodexHistory, createWithAppServer, listCodexSkills } from './history.ts'
+import { createCodexMcp } from './mcp.ts'
 
 export const CODEX_INSTANCE_ID = 'codex'
 
 export const codexCapabilities: ProviderCapabilities = {
   resume: true,
-  fork: false,
-  steer: false,
+  fork: true,
+  steer: true,
   planMode: false,
   imageInput: false,
   usage: false,
+  questions: true,
+  commands: true,
+  history: true,
+  mcp: true,
   permissionModes: codexModes.map(({ id, label, description, dangerous }) => ({
     id,
     label,
@@ -49,6 +55,14 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): ProviderA
 
   const executable = () =>
     options.executablePath ? resolveExecutable(options.executablePath) : resolveExecutable('codex')
+
+  // History, forks and skill lists talk to a throwaway app-server rather than a live session.
+  const appServer = createWithAppServer((cwd) => {
+    const exe = executable()
+    if (!exe) throw new Error('Codex is not installed on this host')
+    return options.createTransport?.(cwd) ?? spawnTransport(exe, ['app-server'], { env, cwd }, log)
+  }, log)
+  const history = createCodexHistory(appServer)
 
   async function detectInstance(): Promise<ProviderInstance> {
     const base = {
@@ -98,5 +112,11 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): ProviderA
         spawnTransport(exe, ['app-server'], { env, cwd: input.cwd }, log)
       return new CodexSession(input, { transport, log })
     },
+    listHistory: (_instanceId, cwd) => history.list(cwd),
+    readHistory: (_instanceId, id, cwd) => history.read(id, cwd),
+    forkHistory: (_instanceId, from) =>
+      history.fork(from.providerSessionId, from.cwd, from.throughTurn),
+    listCommands: (_instanceId, cwd) => listCodexSkills(appServer, cwd ?? process.cwd()),
+    mcp: createCodexMcp(executable, env),
   }
 }

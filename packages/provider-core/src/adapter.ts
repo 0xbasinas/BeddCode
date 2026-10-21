@@ -1,4 +1,12 @@
-import type { ProviderCapabilities, ProviderInstance, SessionEvent } from '@beddcode/contracts'
+import type {
+  AgentPreview,
+  McpServer,
+  McpServerInput,
+  ProviderCapabilities,
+  ProviderInstance,
+  SessionEvent,
+  SlashCommand,
+} from '@beddcode/contracts'
 
 export interface StartSessionInput {
   sessionId: string
@@ -10,6 +18,8 @@ export interface StartSessionInput {
   permissionMode?: string
   /** Extra folders the agent may read without asking (e.g. where attachments are stored). */
   additionalDirectories?: string[]
+  /** The agent's own settings to apply right after it starts (model, thinking level, ...). */
+  config?: Record<string, string | boolean>
   /** Provider-native id to resume, when the provider supports it. */
   resumeId?: string
 }
@@ -25,11 +35,42 @@ export interface ProviderSession {
   /** Normalized events for the whole session lifetime. */
   readonly events: AsyncIterable<SessionEvent>
   prompt(input: PromptInput, signal?: AbortSignal): Promise<void>
+  /**
+   * Adds a message to the turn that is running, so the agent sees it at its next step. Only
+   * providers whose `capabilities.steer` is true implement it; the host queues otherwise.
+   */
+  steer?(input: PromptInput): Promise<void>
   interrupt(): Promise<void>
   setPermissionMode(modeId: string): Promise<void>
   /** Answer an `approval.requested` event with one of the provider's own option ids. */
   respondToApproval(requestId: string, optionId: string): Promise<void>
+  /** Uses another model (and effort) from the next message on; `undefined` means the agent's default. */
+  setModel?(model: string | undefined, effort: string | undefined): Promise<void>
+  /** Changes one of the settings the agent reported in `session.config`. */
+  setConfigOption?(optionId: string, value: string | boolean): Promise<void>
+  /** Answer a `question.requested` event; `answers` is absent when the user dismissed it. */
+  answerQuestion?(requestId: string, answers?: Record<string, string[]>): Promise<void>
   close(): Promise<void>
+}
+
+/** A conversation the agent's own CLI keeps, as listed before it is imported. */
+export interface HistoryItem {
+  id: string
+  title: string
+  updatedAt?: number
+  cwd?: string
+}
+
+/** One exchange of a stored conversation, enough to show it in the transcript. */
+export interface HistoryTurn {
+  user: string
+  assistant: string
+}
+
+export interface ProviderMcp {
+  list(instanceId: string, cwd?: string): Promise<McpServer[]>
+  add(instanceId: string, server: McpServerInput, cwd?: string): Promise<void>
+  remove(instanceId: string, name: string, scope?: string, cwd?: string): Promise<void>
 }
 
 /** One adapter per provider kind; instances come from `detect`. */
@@ -39,4 +80,22 @@ export interface ProviderAdapter {
   detect(): Promise<ProviderInstance[]>
   capabilities(instanceId: string): ProviderCapabilities
   startSession(instanceId: string, input: StartSessionInput): Promise<ProviderSession>
+
+  /** Conversations the agent's CLI has stored for a folder, newest first. */
+  listHistory?(instanceId: string, cwd?: string): Promise<HistoryItem[]>
+  /** The exchanges of one stored conversation. */
+  readHistory?(instanceId: string, providerSessionId: string, cwd?: string): Promise<HistoryTurn[]>
+  /**
+   * Copies a stored conversation into a new one holding its first `throughTurn` exchanges (all when
+   * omitted) and returns the new provider session id, ready to be resumed.
+   */
+  forkHistory?(
+    instanceId: string,
+    from: { providerSessionId: string; cwd: string; throughTurn?: number },
+  ): Promise<string>
+  /** What a new session would offer (modes, settings, commands), for agents that only say so by starting one. */
+  preview?(instanceId: string, cwd?: string): Promise<AgentPreview>
+  /** Slash commands and skills available in a folder, without starting a session. */
+  listCommands?(instanceId: string, cwd?: string): Promise<SlashCommand[]>
+  readonly mcp?: ProviderMcp
 }

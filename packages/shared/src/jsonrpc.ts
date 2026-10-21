@@ -8,6 +8,8 @@ export interface Transport {
   onLine(handler: (line: string) => void): void
   onClose(handler: () => void): void
   close(): void
+  /** The last lines the process wrote to stderr, to explain why it died. */
+  stderrTail?(): string
 }
 
 export class JsonRpcError extends Error {
@@ -69,11 +71,38 @@ export class JsonRpcClient {
     this.requestHandler = handler
   }
 
-  request<T = Json>(method: string, params?: Json): Promise<T> {
+  /** The tail of the process's stderr, if the transport keeps one. */
+  get stderrTail(): string {
+    return this.transport.stderrTail?.() ?? ''
+  }
+
+  request<T = Json>(
+    method: string,
+    params?: Json,
+    options: { timeoutMs?: number } = {},
+  ): Promise<T> {
     if (this.closed) return Promise.reject(new Error('The agent process ended'))
     const id = this.nextId++
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (v: Json) => void, reject })
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const settle =
+        <V>(fn: (v: V) => void) =>
+        (v: V) => {
+          clearTimeout(timer)
+          fn(v)
+        }
+      this.pending.set(id, {
+        resolve: settle(resolve as (v: Json) => void),
+        reject: settle(reject),
+      })
+      if (options.timeoutMs) {
+        timer = setTimeout(() => {
+          if (!this.pending.delete(id)) return
+          reject(
+            new Error(`${method} did not answer within ${Math.round(options.timeoutMs! / 1000)}s`),
+          )
+        }, options.timeoutMs)
+      }
       this.write({ id, method, params })
     })
   }
@@ -155,10 +184,20 @@ export function spawnTransport(
   log?: Logger,
 ): Transport {
   const child = spawnProcess(executable, args, options)
-  child.stderr.on('data', (d: Buffer) => log?.debug(`${executable} stderr: ${String(d).trimEnd()}`))
+  let tail = ''
+  const remember = (text: string) => {
+    tail = (tail + text).slice(-2000)
+  }
+  child.stderr.on('data', (d: Buffer) => {
+    remember(String(d))
+    log?.debug(`${executable} stderr: ${String(d).trimEnd()}`)
+  })
   // Writes to a dead process surface as EPIPE; the close handler already reports the exit.
   child.stdin.on('error', () => {})
-  child.on('error', (err) => log?.error(`${executable} failed to start`, err))
+  child.on('error', (err) => {
+    remember(`${err.message}\n`)
+    log?.error(`${executable} failed to start`, err)
+  })
 
   return {
     send: (line) => {
@@ -170,5 +209,6 @@ export function spawnTransport(
       child.stdin.end()
       child.kill()
     },
+    stderrTail: () => tail.trim(),
   }
 }

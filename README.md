@@ -83,9 +83,18 @@ Set the default agent, model, reasoning effort, and permission mode from the opt
 
 Any agent that speaks the [Agent Client Protocol](https://agentclientprotocol.com) can also be added over the WebSocket API:
 
-- `agents.registry` lists the public ACP registry; `agents.add { registryId }` adds one (npx and uvx agents run at the registry's pinned version; binary-only agents are not supported yet)
+- `agents.registry` lists the public ACP registry; `agents.add { registryId }` adds one. npx and uvx agents run at the registry's pinned version. Agents that ship a program (entries with `download`) are downloaded only after the user agrees (`acceptDownload: true`): https only, checked against the registry's SHA-256 when it publishes one, unpacked under `<data dir>/agents/<id>/<version>`, and deleted again when the agent is removed
 - `agents.add { label, command, args? }` adds a local command such as `goose acp`
 - Added agents live in `<data dir>/acp-agents.json` and show up as providers (`acp:<id>`)
+
+### Working with agents
+
+- **Steering and queueing.** Send a message while an agent works. Claude and Codex take it into the running turn (Claude as a priority "next" message, Codex through `turn/steer`); other agents, or `mode: 'queue'`, keep it in a queue that runs after the turn. Queued messages can be cancelled or sent now, and survive a host restart.
+- **Plans and questions.** Claude's plan mode shows the plan for approval (including "approve and auto-accept edits"); to-do lists from Claude, Codex and ACP agents appear as a plan card above the composer. Questions an agent asks (Claude's AskUserQuestion, Codex's request_user_input) become a card with its options.
+- **Fork, resume, history.** Fork a session from any finished turn. **Resume an earlier conversation** on the new-session screen lists what an agent keeps on its host, including conversations started in its own CLI, and brings one in as a session. Claude, Codex and ACP agents that list their sessions are supported.
+- **Tools & MCP.** Settings → Tools & MCP lists, adds and removes MCP servers by running the agent's own CLI (`claude mcp`, `codex mcp`), so its own config files stay the single source.
+- **Commands and skills.** Typing `/` in the composer lists the agent's slash commands and skills (Claude's live list, Codex skills, an ACP agent's available commands).
+- **ACP extras.** Agents' own settings (model, reasoning effort, modes, commands) appear in the composer, including on the new-session screen: the host starts the agent once to read them (`agents.preview`) and remembers the answer, so custom commands such as `grok agent stdio` get the same picker as any registry agent. Choices made there are applied as the session starts. Pictures go to agents that accept images; pictures go to agents that accept images; start-up has timeouts and failures include the agent's last stderr line.
 
 ## Layout
 

@@ -1,5 +1,6 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router'
+import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from 'react-resizable-panels'
 import { startHosts } from '../../stores/host.ts'
 import { RightRail } from './RightRail.tsx'
 import { Sidebar } from './Sidebar.tsx'
@@ -7,6 +8,16 @@ import { useAppPreferences } from '../../stores/appPreferences.ts'
 import { useUiStore } from '../../stores/ui.ts'
 
 export function AppShell() {
+  const rightPanel = usePanelRef()
+  const layout = useDefaultLayout({ id: 'beddcode-shell', storage: layoutStorage() })
+  // A pane that needs room (an open editor, the browser) asks for it; it never shrinks the panel.
+  const wantWidth = useCallback(
+    (px: number) => {
+      const current = rightPanel.current?.getSize().inPixels ?? 0
+      if (current < px) rightPanel.current?.resize(px)
+    },
+    [rightPanel],
+  )
   useEffect(() => startHosts(), [])
   const preferences = useAppPreferences((s) => s.values)
   useEffect(() => {
@@ -36,10 +47,47 @@ export function AppShell() {
   }, [navigate, settings])
   if (settings) return <Outlet />
   return (
-    <div className="shell">
-      <Sidebar />
-      <Outlet />
-      <RightRail />
-    </div>
+    <Group
+      orientation="horizontal"
+      className="shell"
+      defaultLayout={layout.defaultLayout}
+      onLayoutChanged={layout.onLayoutChanged}
+    >
+      <Panel
+        id="sidebar"
+        className="shell-panel"
+        defaultSize="24%"
+        minSize="220px"
+        maxSize="520px"
+        groupResizeBehavior="preserve-pixel-size"
+      >
+        <Sidebar />
+      </Panel>
+      <Separator className="shell-sep" />
+      <Panel id="main" className="shell-panel" minSize="320px">
+        <Outlet />
+      </Panel>
+      <Separator className="shell-sep" />
+      <Panel
+        id="right"
+        className="shell-panel"
+        panelRef={rightPanel}
+        defaultSize="30%"
+        minSize="280px"
+        maxSize="75%"
+        groupResizeBehavior="preserve-pixel-size"
+      >
+        <RightRail wantWidth={wantWidth} />
+      </Panel>
+    </Group>
   )
+}
+
+/** Remembers panel sizes between launches; nothing is saved when storage is unavailable. */
+function layoutStorage(): Pick<Storage, 'getItem' | 'setItem'> | undefined {
+  try {
+    return globalThis.localStorage
+  } catch {
+    return undefined
+  }
 }

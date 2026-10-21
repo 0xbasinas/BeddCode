@@ -1,6 +1,7 @@
 import { useAppPreferences } from '../../stores/appPreferences.ts'
 import { useHostStore } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
+import { Select } from '../../ui/Select.tsx'
 
 export function Toggle({
   label,
@@ -65,7 +66,7 @@ export function PreferencesSettings({
                 <span>Default host</span>
                 <small>Where new sessions start.</small>
               </label>
-              <select
+              <Select
                 id="default-host"
                 aria-label="Default host"
                 value={
@@ -82,7 +83,7 @@ export function PreferencesSettings({
                       : (runtimes[entry.key]?.host?.name ?? entry.name)}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="setting-row">
               <div className="setting-label">
@@ -107,7 +108,7 @@ export function PreferencesSettings({
                 <span>Interface font</span>
                 <small>The font used for labels, menus, and conversation text.</small>
               </label>
-              <select
+              <Select
                 id="interface-font"
                 aria-label="Interface font"
                 value={values.uiFont}
@@ -115,7 +116,7 @@ export function PreferencesSettings({
               >
                 <option value="inter">Inter</option>
                 <option value="system">System font</option>
-              </select>
+              </Select>
             </div>
             <div className="setting-row">
               <div className="setting-label">
@@ -154,7 +155,7 @@ export function PreferencesSettings({
                 <span>Font size</span>
                 <small>JetBrains Mono in the built-in editor.</small>
               </label>
-              <select
+              <Select
                 id="editor-font-size"
                 aria-label="Editor font size"
                 value={values.editorFontSize}
@@ -165,14 +166,14 @@ export function PreferencesSettings({
                     {size} px
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="setting-row">
               <label className="setting-label" htmlFor="editor-tab-size">
                 <span>Tab size</span>
                 <small>Width of a tab character in the editor.</small>
               </label>
-              <select
+              <Select
                 id="editor-tab-size"
                 aria-label="Editor tab size"
                 value={values.editorTabSize}
@@ -180,7 +181,7 @@ export function PreferencesSettings({
               >
                 <option value={2}>2 spaces</option>
                 <option value={4}>4 spaces</option>
-              </select>
+              </Select>
             </div>
             <Toggle
               label="Line numbers"
@@ -209,7 +210,7 @@ export function PreferencesSettings({
                 <span>Default workspace</span>
                 <small>You can choose another workspace before starting each session.</small>
               </label>
-              <select
+              <Select
                 id="default-workspace"
                 aria-label="Default workspace"
                 value={values.defaultWorkspace}
@@ -219,7 +220,7 @@ export function PreferencesSettings({
               >
                 <option value="worktree">New worktree</option>
                 <option value="local">Main checkout</option>
-              </select>
+              </Select>
             </div>
             <div className="setting-row">
               <div className="setting-label">

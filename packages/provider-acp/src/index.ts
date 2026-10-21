@@ -5,3 +5,5 @@ export { AcpRegistry, RegistryAgent, launchFor, REGISTRY_URL } from './registry.
 export type { LaunchResult, LaunchSpec } from './registry.ts'
 export { AcpEventMapper } from './mapper.ts'
 export { TerminalManager } from './terminals.ts'
+export { binaryFor, currentPlatform, installBinary, planInstall, removeInstall } from './binary.ts'
+export type { BinaryTarget, InstallOptions, InstallPlan } from './binary.ts'

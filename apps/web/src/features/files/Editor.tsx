@@ -23,19 +23,19 @@ import { useAppPreferences, type AppPreferences } from '../../stores/appPreferen
 
 const theme = EditorView.theme(
   {
-    '&': { height: '100%', backgroundColor: 'transparent', color: '#d4d4d4' },
+    '&': { height: '100%', backgroundColor: 'transparent', color: 'var(--text-secondary)' },
     '.cm-scroller': { fontFamily: 'var(--font-mono)' },
     '.cm-content': { caretColor: '#f0a43c' },
     '.cm-cursor': { borderLeftColor: '#f0a43c' },
     '.cm-gutters': { backgroundColor: 'transparent', color: '#5c5c5c', border: 'none' },
     '.cm-activeLine': { backgroundColor: 'rgba(255, 255, 255, 0.04)' },
-    '.cm-activeLineGutter': { backgroundColor: 'transparent', color: '#8a8a8a' },
+    '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--text-muted)' },
     '&.cm-focused': { outline: 'none' },
     '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
       backgroundColor: 'rgba(240, 164, 60, 0.25)',
     },
     '.cm-matchingBracket': { backgroundColor: 'rgba(240, 164, 60, 0.25)', outline: 'none' },
-    '.cm-panels': { backgroundColor: '#1f1f1f', color: '#ececec' },
+    '.cm-panels': { backgroundColor: 'var(--bg-raised)', color: 'var(--text)' },
     '.cm-searchMatch': { backgroundColor: 'rgba(240, 164, 60, 0.3)' },
   },
   { dark: true },

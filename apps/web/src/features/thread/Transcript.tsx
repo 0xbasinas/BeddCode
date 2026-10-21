@@ -1,18 +1,12 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import {
   ChevronDown,
   ChevronUp,
-  FileText,
   FolderOpen,
   Paperclip,
   Pencil,
-  Search,
-  SquareTerminal,
-  Wrench,
-  Check,
-  Shield,
-  X,
   CirclePause,
+  GitFork,
 } from 'lucide-react'
 import type { TranscriptItem } from '@beddcode/client-runtime'
 import { Markdown } from '../../ui/Markdown.tsx'
@@ -20,22 +14,44 @@ import { PatchView } from '../../ui/PatchView.tsx'
 import { buildBlocks, totalChanges, type EditedFile } from './blocks.ts'
 import { folderName } from '../../ui/format.ts'
 import { FileIcon } from '../files/FileIcon.tsx'
+import { ApprovalCard } from './ApprovalCard.tsx'
+import { QuestionCard } from './QuestionCard.tsx'
+import { ToolGroup } from './ToolCalls.tsx'
 
 type Item = TranscriptItem
-type ApprovalItem = Extract<Item, { kind: 'approval' }>
 
 export function Transcript({
   items,
   cwd,
   onApprove,
+  onAnswer,
   onOpenFile,
+  onFork,
+  completedTurns = 0,
 }: {
   items: Item[]
   cwd: string
   onApprove(requestId: string, optionId: string): void | Promise<void>
+  onAnswer?(requestId: string, answers?: Record<string, string[]>): void | Promise<void>
   onOpenFile?(path: string): void
+  /** Starts a session that continues this one up to the end of the given turn. */
+  onFork?(turnNo: number): void | Promise<void>
+  /** Turns that have finished; a fork can only end after one of them. */
+  completedTurns?: number
 }) {
   const blocks = buildBlocks(items)
+  // The last reply of each turn is where "fork from here" goes.
+  const lastReplyOfTurn = new Map<number, number>()
+  blocks.forEach((b, i) => {
+    if (
+      b.kind === 'item' &&
+      b.item.kind === 'message' &&
+      b.item.role === 'assistant' &&
+      b.item.turnNo
+    ) {
+      lastReplyOfTurn.set(b.item.turnNo, i)
+    }
+  })
   return (
     <>
       {blocks.map((block, index) => {
@@ -52,21 +68,28 @@ export function Transcript({
             if (next?.kind !== 'item' || next.item.kind !== 'tool') break
             tools.push(next.item)
           }
-          const last = tools.at(-1)
-          return (
-            <div className="tool-group" key={block.item.id}>
-              {tools.map((tool) => (
-                <ToolRow key={tool.id} item={tool} />
-              ))}
-              {last?.at && (
-                <time className="tool-time" dateTime={new Date(last.at).toISOString()}>
-                  {new Date(last.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </time>
-              )}
-            </div>
-          )
+          return <ToolGroup key={block.item.id} tools={tools} />
         }
-        return <ItemView key={block.item.id} item={block.item} cwd={cwd} onApprove={onApprove} />
+        const turnNo = block.item.kind === 'message' ? block.item.turnNo : undefined
+        const canFork =
+          onFork !== undefined &&
+          turnNo !== undefined &&
+          lastReplyOfTurn.get(turnNo) === index &&
+          turnNo <= completedTurns
+        return (
+          <div key={block.item.id} className={canFork ? 'has-fork' : undefined}>
+            <ItemView item={block.item} cwd={cwd} onApprove={onApprove} onAnswer={onAnswer} />
+            {canFork && (
+              <button
+                className="fork-here"
+                title="Start a new session from here"
+                onClick={() => void onFork(turnNo)}
+              >
+                <GitFork size={13} /> Fork from here
+              </button>
+            )}
+          </div>
+        )
       })}
     </>
   )
@@ -76,10 +99,12 @@ function ItemView({
   item,
   cwd,
   onApprove,
+  onAnswer,
 }: {
   item: Item
   cwd: string
   onApprove(requestId: string, optionId: string): void | Promise<void>
+  onAnswer?(requestId: string, answers?: Record<string, string[]>): void | Promise<void>
 }) {
   switch (item.kind) {
     case 'message':
@@ -100,9 +125,11 @@ function ItemView({
         <Markdown text={item.text} />
       )
     case 'tool':
-      return <ToolRow item={item} />
+      return <ToolGroup tools={[item]} />
     case 'approval':
       return <ApprovalCard item={item} cwd={cwd} onApprove={onApprove} />
+    case 'question':
+      return onAnswer ? <QuestionCard item={item} onAnswer={onAnswer} /> : null
     case 'error':
       return <div className="msg error">{item.message}</div>
     case 'notice':
@@ -115,26 +142,6 @@ function ItemView({
     case 'diff':
       return null // grouped into the "Edited files" card
   }
-}
-
-const toolIcons = {
-  command: SquareTerminal,
-  read: FileText,
-  edit: Pencil,
-  search: Search,
-  other: Wrench,
-} as const
-
-function ToolRow({ item }: { item: Extract<Item, { kind: 'tool' }> }) {
-  const Icon = toolIcons[item.toolKind]
-  return (
-    <div className={`tool ${item.status}`} title={item.output}>
-      <Icon size={15} />
-      <code>
-        {item.status === 'cancelled' ? item.title.replace(/^Running\s+/, 'Stopped: ') : item.title}
-      </code>
-    </div>
-  )
 }
 
 export function EditedFilesCard({
@@ -221,111 +228,6 @@ function FileDiff({
         </button>
       </div>
       {open && <PatchView patch={file.patch} />}
-    </div>
-  )
-}
-
-export function ApprovalCard({
-  item,
-  onApprove,
-  cwd,
-}: {
-  item: ApprovalItem
-  onApprove(requestId: string, optionId: string): void | Promise<void>
-  cwd?: string
-}) {
-  const answered = item.options.find((o) => o.id === item.resolvedOptionId)
-  const firstAllow = item.options.find((o) => o.kind === 'allow')
-  const firstDeny = item.options.find((o) => o.kind === 'deny')
-  const [busy, setBusy] = useState<string>()
-  const [error, setError] = useState<string>()
-  const submitting = useRef(false)
-  const resolved = Boolean(item.resolvedOptionId) || Boolean(item.cancelled)
-  const state = item.cancelled
-    ? 'cancelled'
-    : !resolved
-      ? 'pending'
-      : answered?.kind === 'deny'
-        ? 'denied'
-        : answered?.kind === 'allow'
-          ? 'allowed'
-          : 'answered'
-  const answer = async (optionId: string) => {
-    if (submitting.current || resolved) return
-    submitting.current = true
-    setBusy(optionId)
-    setError(undefined)
-    try {
-      await onApprove(item.requestId, optionId)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      submitting.current = false
-      setBusy(undefined)
-    }
-  }
-  return (
-    <div className={`approval ${state}`}>
-      <div className="approval-state">
-        {state === 'pending' ? (
-          <Shield size={15} />
-        ) : state === 'allowed' ? (
-          <Check size={15} />
-        ) : state === 'denied' ? (
-          <X size={15} />
-        ) : (
-          <CirclePause size={15} />
-        )}
-        {state === 'pending'
-          ? 'Approval needed'
-          : state === 'allowed'
-            ? answered?.label === 'Always for this session'
-              ? 'Allowed for this session'
-              : 'Allowed'
-            : state === 'denied'
-              ? 'Denied'
-              : state === 'cancelled'
-                ? 'Request cancelled'
-                : (answered?.label ?? 'Answered')}
-      </div>
-      <div className="approval-title" title={item.title}>
-        {item.title.startsWith('Running ') ? 'Run this command?' : item.title}
-      </div>
-      {item.detail && (
-        <details className="approval-details" open={!resolved}>
-          <summary>Details</summary>
-          <pre>
-            <code>{item.detail}</code>
-          </pre>
-        </details>
-      )}
-      {cwd && (
-        <code className="approval-cwd" title={cwd}>
-          {cwd}
-        </code>
-      )}
-      {!resolved && (
-        <div className="approval-actions">
-          {item.options.map((o) => (
-            <button
-              key={o.id}
-              id={`approval-${item.id}-${o.id}`}
-              className={o.id === firstAllow?.id ? 'allow' : ''}
-              disabled={Boolean(busy)}
-              onClick={() => void answer(o.id)}
-            >
-              {busy === o.id ? 'Sending…' : o.label}
-              {o.id === firstAllow?.id && <kbd>Enter</kbd>}
-              {o.id === firstDeny?.id && <kbd>Esc</kbd>}
-            </button>
-          ))}
-        </div>
-      )}
-      {error && (
-        <p className="approval-error" role="alert">
-          {error}
-        </p>
-      )}
     </div>
   )
 }

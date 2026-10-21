@@ -52,7 +52,7 @@ const settingsRoute = createRoute({
   }),
   component: function SettingsRoute() {
     const { section } = settingsRoute.useSearch()
-    return <SettingsPage section={section ?? 'agents'} />
+    return <SettingsPage section={section ?? 'general'} />
   },
 })
 

@@ -1,10 +1,22 @@
-import type { ProviderCapabilities, ProviderInstance, SessionEvent } from '@beddcode/contracts'
+import type {
+  ProviderCapabilities,
+  ProviderInstance,
+  SessionEvent,
+  SlashCommand,
+} from '@beddcode/contracts'
 import { createAsyncQueue, deferred, sleep, type Deferred } from '@beddcode/shared'
-import type { ProviderAdapter, ProviderSession, PromptInput, StartSessionInput } from './adapter.ts'
+import type {
+  HistoryItem,
+  HistoryTurn,
+  ProviderAdapter,
+  ProviderSession,
+  PromptInput,
+  StartSessionInput,
+} from './adapter.ts'
 
 export const FAKE_INSTANCE_ID = 'fake'
 
-const capabilities: ProviderCapabilities = {
+const baseCapabilities: ProviderCapabilities = {
   resume: false,
   fork: false,
   steer: false,
@@ -20,6 +32,12 @@ const capabilities: ProviderCapabilities = {
 export interface FakeAdapterOptions {
   /** Pause between scripted steps. Tests pass 0. */
   delayMs?: number
+  /** Accept messages sent while a turn runs, and announce the extras below. Off by default. */
+  advanced?: boolean
+  /** Called with the input of every session started, so tests can see what the host passed. */
+  onStart?: (input: StartSessionInput) => void
+  /** Conversations the fake agent "has on disk", for history and fork tests. */
+  history?: (HistoryItem & { turns: HistoryTurn[] })[]
 }
 
 /**
@@ -28,6 +46,24 @@ export interface FakeAdapterOptions {
  */
 export function createFakeAdapter(options: FakeAdapterOptions = {}): ProviderAdapter {
   const delayMs = options.delayMs ?? 40
+  const advanced = options.advanced === true
+  const capabilities: ProviderCapabilities = advanced
+    ? {
+        ...baseCapabilities,
+        resume: true,
+        fork: true,
+        steer: true,
+        planMode: true,
+        questions: true,
+        commands: true,
+        history: true,
+        models: [
+          { id: 'fast', label: 'Fast' },
+          { id: 'smart', label: 'Smart' },
+        ],
+      }
+    : baseCapabilities
+  const stored = options.history ?? []
 
   return {
     kind: 'fake',
@@ -45,8 +81,38 @@ export function createFakeAdapter(options: FakeAdapterOptions = {}): ProviderAda
     },
     capabilities: () => capabilities,
     async startSession(_instanceId, input) {
-      return new FakeSession(input, delayMs)
+      options.onStart?.(input)
+      return new FakeSession(input, delayMs, advanced)
     },
+    ...(advanced
+      ? {
+          async listHistory() {
+            return stored.map(({ id, title, updatedAt, cwd }) => ({ id, title, updatedAt, cwd }))
+          },
+          async readHistory(_instanceId: string, id: string) {
+            const found = stored.find((h) => h.id === id)
+            if (!found) throw new Error('No such conversation')
+            return found.turns
+          },
+          async forkHistory(
+            _instanceId: string,
+            from: { providerSessionId: string; throughTurn?: number },
+          ) {
+            // A conversation that was never stored (a live session) forks to an empty copy.
+            const found = stored.find((h) => h.id === from.providerSessionId)
+            const id = `${from.providerSessionId}-fork-${stored.length}`
+            stored.push({
+              id,
+              title: found?.title ?? id,
+              turns: found?.turns.slice(0, from.throughTurn) ?? [],
+            })
+            return id
+          },
+          async listCommands(): Promise<SlashCommand[]> {
+            return [{ name: 'review', description: 'Review the changes', kind: 'command' }]
+          },
+        }
+      : {}),
   }
 }
 
@@ -62,10 +128,43 @@ class FakeSession implements ProviderSession {
   constructor(
     input: StartSessionInput,
     private readonly delayMs: number,
+    private readonly advanced: boolean,
   ) {
     this.sessionId = input.sessionId
     this.permissionMode = input.permissionMode ?? 'ask'
+    if (advanced) {
+      this.setModel = async (model, effort) => {
+        this.models.push({ model, effort })
+      }
+      this.steer = async (input) => {
+        this.steered.push(input.text)
+      }
+      this.answerQuestion = async (requestId, answers) => {
+        const waiting = this.questions.get(requestId)
+        if (!waiting) throw new Error(`No pending question ${requestId}`)
+        waiting.resolve(answers)
+      }
+      this.emit({
+        type: 'session.provider-session',
+        providerSessionId: input.resumeId ?? input.sessionId,
+      })
+      this.emit({
+        type: 'session.commands',
+        commands: [{ name: 'review', description: 'Review the changes', kind: 'command' }],
+      })
+    }
   }
+
+  /** Messages that reached the running turn (tests read this). */
+  readonly steered: string[] = []
+  private readonly questions = new Map<string, Deferred<Record<string, string[]> | undefined>>()
+
+  /** Models chosen during the session, newest last (tests read this). */
+  readonly models: { model: string | undefined; effort: string | undefined }[] = []
+  setModel?: (model: string | undefined, effort: string | undefined) => Promise<void>
+  /** Only the advanced fake can be steered or asked questions, like the real agents that can. */
+  steer?: (input: PromptInput) => Promise<void>
+  answerQuestion?: (requestId: string, answers?: Record<string, string[]>) => Promise<void>
 
   get events() {
     return this.queue
@@ -86,6 +185,47 @@ class FakeSession implements ProviderSession {
         this.emit({ type: 'message.delta', role: 'assistant', text: chunk }, turnId)
         await sleep(this.delayMs / 4, signal)
       }
+    }
+
+    if (this.advanced && input.text.includes('[plan]')) {
+      this.emit(
+        {
+          type: 'plan.updated',
+          steps: [
+            { text: 'Find the bug', status: 'completed' },
+            { text: 'Fix it', status: 'in-progress' },
+            { text: 'Add a test', status: 'pending' },
+          ],
+        },
+        turnId,
+      )
+    }
+    if (this.advanced && input.text.includes('[question]')) {
+      const requestId = `q-${++this.idCounter}`
+      const answer = deferred<Record<string, string[]> | undefined>()
+      this.questions.set(requestId, answer)
+      this.emit(
+        {
+          type: 'question.requested',
+          requestId,
+          questions: [
+            {
+              id: 'db',
+              header: 'Database',
+              question: 'Which database?',
+              options: [{ label: 'Postgres' }, { label: 'SQLite' }],
+            },
+          ],
+        },
+        turnId,
+      )
+      signal.addEventListener('abort', () => answer.resolve(undefined), { once: true })
+      const answers = await answer.promise
+      this.questions.delete(requestId)
+      this.emit({ type: 'question.resolved', requestId, answers }, turnId)
+    }
+    if (this.advanced && input.text.includes('[slow]')) {
+      await sleep(this.delayMs * 10, signal)
     }
 
     await say(`Looking into "${input.text}". Let me check the code first.`)

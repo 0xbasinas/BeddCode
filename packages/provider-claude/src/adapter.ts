@@ -1,20 +1,32 @@
-import { query } from '@anthropic-ai/claude-agent-sdk'
+import {
+  forkSession,
+  getSessionMessages,
+  listSessions,
+  query,
+} from '@anthropic-ai/claude-agent-sdk'
 import type { ProviderCapabilities, ProviderInstance, ProviderStatus } from '@beddcode/contracts'
 import type { ProviderAdapter } from '@beddcode/provider-core'
 import { createLogger, resolveExecutable, runCommand, type Logger } from '@beddcode/shared'
 import { ClaudeSession, type QueryFn } from './session.ts'
 import { discoverClaudeModels } from './models.ts'
+import { scanClaudeCommands } from './commands.ts'
+import { createClaudeHistory, type ClaudeHistorySdk } from './history.ts'
+import { createClaudeMcp } from './mcp.ts'
 
 export const CLAUDE_INSTANCE_ID = 'claude'
 
 /** Claude's own permission mode ids, passed through unchanged. */
 export const claudeCapabilities: ProviderCapabilities = {
   resume: true,
-  fork: false,
-  steer: false,
+  fork: true,
+  steer: true,
   planMode: true,
   imageInput: false,
   usage: false,
+  questions: true,
+  commands: true,
+  history: true,
+  mcp: true,
   permissionModes: [
     {
       id: 'default',
@@ -54,6 +66,7 @@ export interface ClaudeAdapterOptions {
   log?: Logger
   /** Injected in tests. */
   queryFn?: QueryFn
+  historySdk?: ClaudeHistorySdk
 }
 
 export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): ProviderAdapter {
@@ -62,6 +75,9 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
   const queryFn = options.queryFn ?? (query as QueryFn)
   const env = options.configDir ? { CLAUDE_CONFIG_DIR: options.configDir } : undefined
   let capabilities = claudeCapabilities
+  const history = createClaudeHistory(
+    options.historySdk ?? ({ listSessions, getSessionMessages, forkSession } as ClaudeHistorySdk),
+  )
 
   // An explicit path must exist; otherwise fall back to PATH lookup only when none was given.
   const executable = () =>
@@ -115,8 +131,20 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
     async startSession(_instanceId, input) {
       const exe = executable()
       if (!exe) throw new Error('Claude Code is not installed on this host')
-      return new ClaudeSession(input, { queryFn, log, executablePath: exe, env })
+      return new ClaudeSession(input, {
+        queryFn,
+        log,
+        executablePath: exe,
+        env,
+        modes: claudeCapabilities.permissionModes,
+      })
     },
+    listHistory: (_instanceId, cwd) => history.list(cwd),
+    readHistory: (_instanceId, id, cwd) => history.read(id, cwd),
+    forkHistory: (_instanceId, from) =>
+      history.fork(from.providerSessionId, from.cwd, from.throughTurn),
+    listCommands: async (_instanceId, cwd) => scanClaudeCommands(cwd),
+    mcp: createClaudeMcp(executable, env),
   }
 }
 

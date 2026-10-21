@@ -5,6 +5,7 @@ import { hostRequest, refreshProviders, useRuntime } from '../../stores/host.ts'
 import { agentDefaults, hostDefaults, usePreferences } from '../../stores/preferences.ts'
 import { AddAgentDialog } from './AddAgentDialog.tsx'
 import { modelChoice, modelEfforts } from '../../ui/models.ts'
+import { Select } from '../../ui/Select.tsx'
 
 const STATUS: Record<ProviderInstance['status'], string> = {
   ready: 'Ready',
@@ -216,7 +217,7 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
               Used for new sessions on this host. You can pick another per session.
             </small>
           </div>
-          <select
+          <Select
             id="default-agent"
             aria-describedby="default-agent-description"
             disabled={!online}
@@ -235,7 +236,7 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                   {p.label}
                 </option>
               ))}
-          </select>
+          </Select>
         </div>
       </div>
       {current && (
@@ -262,7 +263,7 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                   <label htmlFor="default-model">Default model</label>
                   <small id="default-model-description">Used when you start a new session.</small>
                 </div>
-                <select
+                <Select
                   id="default-model"
                   aria-describedby="default-model-description"
                   disabled={!online}
@@ -285,7 +286,7 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                       {m.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             ) : null}
             {efforts.length ? (
@@ -296,7 +297,7 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                     Higher effort may take longer and use more of your limit.
                   </small>
                 </div>
-                <select
+                <Select
                   id="default-effort"
                   aria-describedby="default-effort-description"
                   disabled={!online}
@@ -311,7 +312,7 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                       {effort}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             ) : null}
             {current.capabilities.permissionModes.length > 0 && (
@@ -322,7 +323,7 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                     What this agent may do without asking.
                   </small>
                 </div>
-                <select
+                <Select
                   id="default-mode"
                   aria-describedby="default-mode-description"
                   disabled={!online}
@@ -340,7 +341,7 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                       {mode.dangerous && !/full access/i.test(mode.label) ? ' · full access' : ''}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             )}
             {current.capabilities.permissionModes.find((m) => m.id === saved.permissionMode)

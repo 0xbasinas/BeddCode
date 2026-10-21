@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { GitBranch, GitDiff, GitInfo, GitLog, GitStatus, Project, PullRequest } from './git.ts'
 import { Device, PairingCode, TailnetStatus } from './hosts.ts'
-import { ProviderInstance } from './providers.ts'
+import { ConfigOption, SlashCommand } from './events.ts'
+import { PermissionModeOption, ProviderInstance } from './providers.ts'
 import { FileContent, FileEntry, TerminalInfo } from './workspace.ts'
 
 /** An ACP agent configured on a host (a command that speaks ACP over stdio). */
@@ -21,11 +22,66 @@ export const RegistryEntry = z.object({
   version: z.string(),
   description: z.string(),
   icon: z.string().optional(),
-  /** False for agents that need a binary download, which is not supported yet. */
+  /** False when there is no way to run it on this machine (for example no build for this OS). */
   installable: z.boolean(),
   reason: z.string().optional(),
+  /** Set when adding the agent downloads a program; the user must agree first. */
+  download: z
+    .object({
+      host: z.string(),
+      /** The registry publishes a checksum, which is verified. Without one the file is trusted as is. */
+      verified: z.boolean(),
+    })
+    .optional(),
 })
 export type RegistryEntry = z.infer<typeof RegistryEntry>
+
+/** What an agent offers for a session that has not started yet. */
+export const AgentPreview = z.object({
+  modes: z.array(PermissionModeOption),
+  currentModeId: z.string().optional(),
+  config: z.array(ConfigOption),
+  commands: z.array(SlashCommand),
+})
+export type AgentPreview = z.infer<typeof AgentPreview>
+
+/** A conversation an agent's CLI has on disk. */
+export const HistoryEntry = z.object({
+  id: z.string(),
+  title: z.string(),
+  updatedAt: z.number().int().optional(),
+  cwd: z.string().optional(),
+  /** True when this conversation is already a session in BeddCode. */
+  imported: z.boolean().optional(),
+})
+export type HistoryEntry = z.infer<typeof HistoryEntry>
+
+export const McpServer = z.object({
+  name: z.string(),
+  transport: z.enum(['stdio', 'http', 'sse', 'unknown']),
+  /** The command line, or the URL. */
+  target: z.string(),
+  status: z.enum(['connected', 'failed', 'needs-auth', 'disabled', 'pending', 'unknown']),
+  /** Where the agent's own config keeps it (user, project, local), when it says. */
+  scope: z.string().optional(),
+  toolCount: z.number().int().optional(),
+  error: z.string().optional(),
+})
+export type McpServer = z.infer<typeof McpServer>
+
+export const McpServerInput = z.object({
+  name: z
+    .string()
+    .min(1)
+    .regex(/^[\w.-]+$/, 'Letters, digits, dots, dashes and underscores only'),
+  transport: z.enum(['stdio', 'http', 'sse']),
+  command: z.string().optional(),
+  args: z.array(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
+  url: z.string().optional(),
+  scope: z.enum(['user', 'project', 'local']).optional(),
+})
+export type McpServerInput = z.infer<typeof McpServerInput>
 
 /** Request/response methods carried in `req`/`res` frames. */
 export const RpcMethods = {
@@ -40,7 +96,11 @@ export const RpcMethods = {
   /** Adds an agent from the registry (`registryId`) or from a local command (`command`). */
   'agents.add': {
     params: z.union([
-      z.object({ registryId: z.string() }),
+      z.object({
+        registryId: z.string(),
+        /** Required when the entry downloads a program (see RegistryEntry.download). */
+        acceptDownload: z.boolean().optional(),
+      }),
       z.object({
         label: z.string().min(1),
         command: z.string().min(1),
@@ -165,6 +225,8 @@ export const RpcMethods = {
       permissionMode: z.string().optional(),
       model: z.string().optional(),
       effort: z.string().optional(),
+      /** The agent's own settings to apply as the session starts (see agents.preview). */
+      config: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
       /** Where the agent works. Defaults to the folder itself. */
       workspace: z
         .object({
@@ -187,12 +249,116 @@ export const RpcMethods = {
     }),
     result: z.object({ id: z.string(), name: z.string(), size: z.number().int() }),
   },
+  /**
+   * Sends a message. While the agent is busy it is steered into the running turn when the agent
+   * supports that, otherwise queued for the next turn (mode 'queue' always queues).
+   */
   'sessions.prompt': {
     params: z.object({
       sessionId: z.string(),
       text: z.string(),
-      /** Ids returned by `attachments.upload`. A prompt needs text or at least one attachment. */
+      /** Ids returned by attachments.upload. A prompt needs text or at least one attachment. */
       attachments: z.array(z.string()).optional(),
+      mode: z.enum(['auto', 'queue']).optional(),
+    }),
+    result: z.object({
+      state: z.enum(['started', 'steered', 'queued']),
+      queueId: z.string().optional(),
+    }),
+  },
+  /** Drops a queued message, or sends it into the running turn right away ('steer'). */
+  'sessions.dequeue': {
+    params: z.object({
+      sessionId: z.string(),
+      queueId: z.string(),
+      action: z.enum(['cancel', 'steer']),
+    }),
+    result: z.object({}),
+  },
+  /** Answers a question.requested event; omit answers to dismiss the question. */
+  'sessions.answer': {
+    params: z.object({
+      sessionId: z.string(),
+      requestId: z.string(),
+      answers: z.record(z.string(), z.array(z.string())).optional(),
+    }),
+    result: z.object({}),
+  },
+  /** Switches the model (and reasoning effort) a session uses from its next message on. */
+  'sessions.setModel': {
+    params: z.object({
+      sessionId: z.string(),
+      /** Omit to go back to the agent's default model. */
+      model: z.string().optional(),
+      effort: z.string().optional(),
+    }),
+    result: z.object({}),
+  },
+  /** Changes one of the agent's own settings for a session (see session.config events). */
+  'sessions.setConfig': {
+    params: z.object({
+      sessionId: z.string(),
+      optionId: z.string(),
+      value: z.union([z.string(), z.boolean()]),
+    }),
+    result: z.object({}),
+  },
+  /** Starts a new session that continues an existing one, optionally only its first N turns. */
+  'sessions.fork': {
+    params: z.object({
+      sessionId: z.string(),
+      /** Keep the first N turns; omit to keep everything. */
+      throughTurn: z.number().int().min(1).optional(),
+      title: z.string().optional(),
+    }),
+    result: z.object({ sessionId: z.string() }),
+  },
+  /**
+   * The modes, settings and commands an agent offers before any session exists (ACP agents report
+   * them only when a session starts). The first answer may take a few seconds; later ones are cached.
+   */
+  'agents.preview': {
+    params: z.object({ instanceId: z.string(), cwd: z.string().optional() }),
+    result: AgentPreview,
+  },
+  /** Conversations of an agent that were started outside BeddCode (or earlier), newest first. */
+  'history.list': {
+    params: z.object({ instanceId: z.string(), cwd: z.string().optional() }),
+    result: z.array(HistoryEntry),
+  },
+  /** Brings one of those conversations into BeddCode as a session that can be continued. */
+  'sessions.import': {
+    params: z.object({
+      instanceId: z.string(),
+      providerSessionId: z.string(),
+      cwd: z.string().optional(),
+    }),
+    result: z.object({ sessionId: z.string() }),
+  },
+  /** Slash commands and skills an agent offers in a folder, for the composer before a session exists. */
+  'commands.list': {
+    params: z.object({ instanceId: z.string(), cwd: z.string().optional() }),
+    result: z.array(SlashCommand),
+  },
+  /** MCP servers as the agent's own CLI knows them. */
+  'mcp.list': {
+    params: z.object({ instanceId: z.string(), cwd: z.string().optional() }),
+    result: z.array(McpServer),
+  },
+  'mcp.add': {
+    params: z.object({
+      instanceId: z.string(),
+      cwd: z.string().optional(),
+      server: McpServerInput,
+    }),
+    result: z.object({}),
+  },
+  'mcp.remove': {
+    params: z.object({
+      instanceId: z.string(),
+      cwd: z.string().optional(),
+      name: z.string(),
+      scope: z.string().optional(),
     }),
     result: z.object({}),
   },

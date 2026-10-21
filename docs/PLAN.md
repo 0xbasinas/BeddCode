@@ -159,6 +159,7 @@ Current follow-up work:
 
 - Phase 8 has local two-host integration coverage, pairing/revocation, replay, and route fallback. A test across two physical tailnet machines and Linux service installation remain.
 - Phase 9 now has the first-launch checklist, Settings navigation, General/Appearance/Shortcuts/Permissions/Hosts/Git/Editor pages, agent detection/refresh, ACP registry/custom-agent management, and per-host defaults for new sessions. The workspace, panes, and Settings follow the Brilliant design. The full remote-host onboarding wizard, notifications, Tools & MCP, and usage reporting remain.
+- Agent features are in: steering and queued messages, plan approval, agent questions, fork/resume/history, MCP management through each CLI, slash commands and skills, ACP settings, images and downloadable binary agents. Verified against live Claude, Codex and Grok; a real download from the registry has only been exercised against a local server.
 - Before phase 10, connect Electron to a supervised local daemon so opening the app does not depend on a development terminal. Then build and test installers on clean Windows and Linux machines.
 
 ## 6. Cross-cutting rules
