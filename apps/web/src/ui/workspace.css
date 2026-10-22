@@ -18,6 +18,8 @@ a {
   right: 0;
   height: 44px;
   -webkit-app-region: drag;
+  /* A drag strip only: clicks reach the tabs and buttons under it. */
+  pointer-events: none;
 }
 :root[data-desktop='true'] .settings-main::before {
   content: '';

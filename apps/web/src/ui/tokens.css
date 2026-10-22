@@ -59,5 +59,14 @@
   --pane-pad-x: calc(18px * var(--ui-scale));
   --pane-inset: calc(8px * var(--ui-scale));
   --head-line: calc(20px * var(--ui-scale));
+  /* The second header row (thread meta, Git branch); the headers' divider sits under it. */
+  --pane-sub: calc(26px * var(--ui-scale));
+  /* Rows inside a pane (hover surfaces) keep this much padding; their content lines up with
+     --pane-pad-x. */
+  --row-pad-x: calc(8px * var(--ui-scale));
+  /* The desktop title-bar controls; zero in a browser (set by windowControls.ts). */
+  --wco-left: 0px;
+  --wco-right: 0px;
+  --wco-height: 0px;
   color-scheme: dark;
 }

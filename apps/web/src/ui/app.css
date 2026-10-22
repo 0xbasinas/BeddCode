@@ -3277,6 +3277,23 @@ button.tcall-row:hover .tcall-chevron,
 }
 .thread-head h1 {
   line-height: var(--head-line);
+  margin-bottom: calc((var(--pane-head) - var(--head-line)) / 2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-heading {
+  flex: 1;
+}
+/* Second header row and the one header divider, at the same height in the thread and Git pane. */
+.thread-head .thread-meta {
+  margin-top: 0;
+  height: var(--pane-sub);
+  line-height: var(--pane-sub);
+}
+.thread .thread-head {
+  padding-bottom: 0;
+  border-bottom: 1px solid var(--border-subtle);
 }
 .thread-actions {
   height: var(--pane-head);
@@ -3311,4 +3328,87 @@ button.tcall-row:hover .tcall-chevron,
 .git-footer,
 .pane-foot {
   padding-bottom: var(--pane-inset);
+}
+
+/* Git pane: one left inset and one right edge for every row, the header divider level with the
+   thread's, a visible rail edge for the dividers to meet, and two equal buttons. */
+.git-tabs {
+  margin-bottom: calc((var(--pane-head) - calc(30px * var(--ui-scale))) / 2);
+}
+.git-branch {
+  box-sizing: content-box;
+  height: var(--pane-sub);
+  padding: 0 var(--pane-pad-x);
+}
+.git-scroll {
+  padding-left: calc(var(--pane-pad-x) - var(--row-pad-x));
+  padding-right: calc(var(--pane-pad-x) - var(--row-pad-x));
+}
+.select-row,
+.dir-row,
+.change-row {
+  padding-left: var(--row-pad-x);
+  padding-right: var(--row-pad-x);
+}
+.git-scroll section:has(> .dir-row) .change-row {
+  padding-left: calc(var(--row-pad-x) + calc(22px * var(--ui-scale)));
+}
+.status-letter {
+  text-align: right;
+}
+.git-footer {
+  padding-left: var(--pane-pad-x);
+  padding-right: var(--pane-pad-x);
+}
+.git-actions .primary,
+.git-actions .secondary {
+  flex: 1 1 0;
+  min-width: 0;
+  border: 1px solid transparent;
+}
+.git-actions .secondary {
+  background: var(--bg-raised);
+  border-color: var(--border);
+  color: var(--text);
+}
+.right.has-pane .rail {
+  border-left: 1px solid var(--border-subtle);
+}
+
+/* Desktop title bar: headers centre on the window controls' line, nothing clickable sits under
+   them, and the collapse button moves to their left. */
+:root[data-wco='true'] {
+  --pane-head: calc(var(--wco-height) - 2 * var(--gap));
+}
+:root[data-wco='true'] .rail {
+  padding-top: calc(var(--wco-height) - var(--gap));
+}
+:root[data-wco='true'] .pane-collapse {
+  position: fixed;
+  z-index: 5;
+  top: calc((var(--wco-height) - calc(28px * var(--ui-scale))) / 2);
+  right: calc(var(--wco-right) + 4px);
+}
+:root[data-wco='true'] .side-pane .pane-head,
+:root[data-wco='true'] .side-pane .git-tabs {
+  margin-right: max(
+    0px,
+    calc(var(--wco-right) + calc(30px * var(--ui-scale)) + 12px - 40px - var(--gap))
+  );
+}
+:root[data-wco='true'] .shell:not(:has(.has-pane)) .thread .thread-head {
+  padding-right: max(
+    calc(24px * var(--ui-scale)),
+    calc(var(--wco-right) + calc(30px * var(--ui-scale)) + 12px - 40px - 2 * var(--gap))
+  );
+}
+:root[data-wco='true'] .sidebar-top {
+  padding-left: max(
+    calc(var(--pane-pad-x) - var(--pane-inset)),
+    calc(var(--wco-left) + 8px - var(--gap) - var(--pane-inset))
+  );
+}
+
+.select-row .link-btn {
+  padding-right: 0;
 }

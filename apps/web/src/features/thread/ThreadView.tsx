@@ -126,7 +126,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
     <main className="panel thread">
       <header className="thread-head">
         <div className="thread-heading">
-          <h1>{session.title}</h1>
+          <h1 title={session.title}>{session.title}</h1>
           <div className="thread-meta" title={session.cwd}>
             {hostKey === LOCAL_HOST_KEY ? 'This PC' : (host?.name ?? hostKey)} ·{' '}
             {folderName(session.projectPath)}

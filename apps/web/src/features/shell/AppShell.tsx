@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from 'react-resizable-panels'
 import { startHosts } from '../../stores/host.ts'
 import { RightRail } from './RightRail.tsx'
+import { trackWindowControls } from './windowControls.ts'
 import { RAIL_WIDTH, openPaneWidth, rememberPaneWidth } from './paneWidth.ts'
 import { Sidebar } from './Sidebar.tsx'
 import { useAppPreferences } from '../../stores/appPreferences.ts'
@@ -23,6 +24,7 @@ export function AppShell() {
     [rightPanel],
   )
   useEffect(() => startHosts(), [])
+  useEffect(() => trackWindowControls(), [])
   // With no pane open the right panel is just its icon rail, so the thread gets the room.
   const activePane = useUiStore((s) => s.activePane)
   // Collapsing or expanding slides quickly (CSS, off under reduced motion); dragging never does.
