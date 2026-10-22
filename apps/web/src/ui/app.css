@@ -2977,6 +2977,13 @@ button.tcall-row:hover .tcall-chevron,
 .msg.user {
   padding: calc(9px * var(--ui-scale)) calc(14px * var(--ui-scale));
 }
+/* Your messages sit on the right; replies, tools and approvals stay full width on the left */
+.msg.user {
+  width: fit-content;
+  max-width: 78%;
+  margin-left: auto;
+  overflow-wrap: anywhere;
+}
 .md,
 .msg .plain {
   line-height: 1.6;
