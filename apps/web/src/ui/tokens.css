@@ -55,28 +55,35 @@
   --gap: calc(6px * var(--ui-scale));
   /* Pane alignment: every column's header row is this tall, its titles and icons centred on one
      line; header text starts this far in; the last row sits this far above the bottom edge. */
-  --pane-head: calc(56px * var(--ui-scale));
+  --pane-head: calc(46px * var(--ui-scale));
   --pane-pad-x: calc(18px * var(--ui-scale));
   --pane-inset: calc(8px * var(--ui-scale));
   --head-line: calc(20px * var(--ui-scale));
   /* The second header row (thread meta, Git branch); the headers' divider sits under it. */
   --pane-sub: calc(26px * var(--ui-scale));
+  /* Space between the header row and that second row (the Git branch row starts this far below
+     the window buttons' card); the thread's subtitle keeps the same so the dividers stay level. */
+  --pane-sub-gap: calc(10px * var(--ui-scale));
   /* Rows inside a pane (hover surfaces) keep this much padding; their content lines up with
      --pane-pad-x. */
   --row-pad-x: calc(8px * var(--ui-scale));
   /* Header icon buttons (16px icon + padding) and the right rail. */
-  --head-btn: calc(16px + 16px * var(--ui-scale));
+  --head-btn: calc(26px * var(--ui-scale));
+  /* The Git tabs' pill. */
+  --tabs-h: calc(26px * var(--ui-scale));
   --rail-w: 40px;
   /* Pane toggle at the start of a pane's header: its icon on the content edge. */
-  --toggle-left: calc(var(--pane-pad-x) - 8px * var(--ui-scale));
+  --toggle-left: calc(var(--pane-pad-x) - (var(--head-btn) - 16px) / 2);
   --toggle-reach: calc(var(--toggle-left) + var(--head-btn) + 4px * var(--ui-scale));
   /* The window buttons' card (desktop app on Linux and Windows), in the window's top-right corner
      at the header row's height: buttons as tall as the header buttons, the card's padding centring
      them on the header line. --island-w is 0 without it (browser build, macOS); see app.css. */
   --island-w: 0px;
   --island-btn-w: calc(40px * var(--ui-scale));
+  --island-btn-h: calc(28px * var(--ui-scale));
   --island-btn-gap: calc(2px * var(--ui-scale));
-  --island-pad: calc((var(--pane-head) - var(--head-btn)) / 2);
+  --island-pad: calc((var(--pane-head) - var(--island-btn-h)) / 2);
+  --island-pad-x: calc(6px * var(--ui-scale));
   /* The notch around the card: the card plus one gutter to its left and below. */
   --notch-h: calc(var(--pane-head) + var(--gap));
   /* A header-row button centred over the rail (the collapsed pane toggle). */

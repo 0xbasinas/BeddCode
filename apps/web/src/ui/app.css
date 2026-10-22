@@ -3278,7 +3278,8 @@ button.tcall-row:hover .tcall-chevron,
 }
 .thread-head h1 {
   line-height: var(--head-line);
-  margin-bottom: calc((var(--pane-head) - var(--head-line)) / 2);
+  /* The header row, then the gap to the subtitle (one margin: they would collapse). */
+  margin-bottom: calc((var(--pane-head) - var(--head-line)) / 2 + var(--pane-sub-gap));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3298,6 +3299,12 @@ button.tcall-row:hover .tcall-chevron,
 }
 .thread-actions {
   height: var(--pane-head);
+}
+.thread-actions .icon-btn {
+  box-sizing: border-box;
+  width: var(--head-btn);
+  height: var(--head-btn);
+  padding: 0;
 }
 .composer-wrap {
   margin-bottom: var(--pane-inset);
@@ -3326,10 +3333,20 @@ button.tcall-row:hover .tcall-chevron,
 }
 .git-tabs {
   box-sizing: border-box;
-  height: calc(30px * var(--ui-scale));
+  height: var(--tabs-h);
   align-items: center;
-  margin: calc((var(--pane-head) - calc(30px * var(--ui-scale))) / 2) var(--pane-pad-x)
-    calc(6px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale));
+  margin: calc((var(--pane-head) - var(--tabs-h)) / 2) var(--pane-pad-x) calc(6px * var(--ui-scale));
+}
+.git-tabs button {
+  padding-top: 0;
+  padding-bottom: 0;
+  height: 100%;
+}
+.git-tabs .badge-lite {
+  font-size: calc(10px * var(--ui-scale));
+  line-height: calc(14px * var(--ui-scale));
+  padding: 0 calc(5px * var(--ui-scale));
 }
 .git-footer,
 .pane-foot {
@@ -3339,11 +3356,12 @@ button.tcall-row:hover .tcall-chevron,
 /* Git pane: one left inset and one right edge for every row, the header divider level with the
    thread's, a visible rail edge for the dividers to meet, and two equal buttons. */
 .git-tabs {
-  margin-bottom: calc((var(--pane-head) - calc(30px * var(--ui-scale))) / 2);
+  margin-bottom: calc((var(--pane-head) - var(--tabs-h)) / 2);
 }
 .git-branch {
   box-sizing: content-box;
   height: var(--pane-sub);
+  margin-top: var(--pane-sub-gap);
   padding: 0 var(--pane-pad-x);
 }
 .git-scroll {
@@ -3424,7 +3442,7 @@ button.tcall-row:hover .tcall-chevron,
    thread) gives up that corner: a notch one gutter wider and taller than the card, its corners
    rounded like the panes'. The rail starts below it, the header row ends before it. */
 :root:has(.window-island) {
-  --island-w: calc(3 * var(--island-btn-w) + 2 * var(--island-btn-gap) + 2 * var(--island-pad));
+  --island-w: calc(3 * var(--island-btn-w) + 2 * var(--island-btn-gap) + 2 * var(--island-pad-x));
 }
 .window-island {
   position: fixed;
@@ -3435,7 +3453,7 @@ button.tcall-row:hover .tcall-chevron,
   box-sizing: border-box;
   width: var(--island-w);
   height: var(--pane-head);
-  padding: var(--island-pad);
+  padding: var(--island-pad) var(--island-pad-x);
   display: flex;
   background: var(--bg-panel);
   border-radius: var(--radius-panel);
@@ -3448,6 +3466,7 @@ button.tcall-row:hover .tcall-chevron,
 }
 .window-island .icon-btn {
   width: var(--island-btn-w);
+  height: var(--island-btn-h);
   color: var(--text-muted);
 }
 .window-island .icon-btn:hover {
