@@ -53,5 +53,11 @@
   --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
   --gap: calc(6px * var(--ui-scale));
+  /* Pane alignment: every column's header row is this tall, its titles and icons centred on one
+     line; header text starts this far in; the last row sits this far above the bottom edge. */
+  --pane-head: calc(48px * var(--ui-scale));
+  --pane-pad-x: calc(18px * var(--ui-scale));
+  --pane-inset: calc(8px * var(--ui-scale));
+  --head-line: calc(20px * var(--ui-scale));
   color-scheme: dark;
 }

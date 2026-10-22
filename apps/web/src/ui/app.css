@@ -3243,3 +3243,72 @@ button.tcall-row:hover .tcall-chevron,
 .shell-sep[data-separator='disabled'] {
   pointer-events: none;
 }
+
+/*
+ * Pane alignment. The sidebar, thread and right pane share one gutter (--gap, also the width of
+ * the dividers), one header row (--pane-head) whose titles and icons sit on its centre line, one
+ * header inset (--pane-pad-x), and one bottom line (--pane-inset above each pane's bottom edge).
+ */
+.sidebar {
+  padding: 0 var(--pane-inset) var(--pane-inset);
+}
+.sidebar-top {
+  height: var(--pane-head);
+  min-height: var(--pane-head);
+  padding: 0 calc(var(--pane-pad-x) - var(--pane-inset));
+}
+.brand {
+  line-height: var(--head-line);
+}
+.sidebar-foot {
+  padding-bottom: 0;
+}
+.thread .thread-head {
+  padding-top: 0;
+  padding-bottom: calc(8px * var(--ui-scale));
+  min-height: 0;
+}
+.thread-heading,
+.new-session .thread-head {
+  padding-top: calc((var(--pane-head) - var(--head-line)) / 2);
+}
+.new-session .thread-head {
+  min-height: 0;
+}
+.thread-head h1 {
+  line-height: var(--head-line);
+}
+.thread-actions {
+  height: var(--pane-head);
+}
+.composer-wrap {
+  margin-bottom: var(--pane-inset);
+}
+.right {
+  padding-top: 0;
+}
+.pane-collapse {
+  top: calc((var(--pane-head) - calc(28px * var(--ui-scale))) / 2);
+}
+.rail {
+  padding: var(--pane-head) 0 var(--pane-inset);
+}
+.pane-head {
+  height: var(--pane-head);
+  min-height: var(--pane-head);
+  padding: 0 var(--pane-pad-x);
+}
+.pane-head h2 {
+  line-height: var(--head-line);
+}
+.git-tabs {
+  box-sizing: border-box;
+  height: calc(30px * var(--ui-scale));
+  align-items: center;
+  margin: calc((var(--pane-head) - calc(30px * var(--ui-scale))) / 2) var(--pane-pad-x)
+    calc(6px * var(--ui-scale));
+}
+.git-footer,
+.pane-foot {
+  padding-bottom: var(--pane-inset);
+}
