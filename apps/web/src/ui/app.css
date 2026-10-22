@@ -3407,6 +3407,18 @@ button.tcall-row:hover .tcall-chevron,
   gap: var(--winbar-gap);
   -webkit-app-region: no-drag;
 }
+/* A quiet divider in the middle of the separation, marking the window controls' own zone. */
+.winbar::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: calc(var(--winbar-sep) / -2);
+  width: 1px;
+  height: calc(16px * var(--ui-scale));
+  transform: translateY(-50%);
+  background: var(--border);
+  pointer-events: none;
+}
 .winbar .icon-btn {
   color: var(--text-faint);
 }
@@ -3419,19 +3431,20 @@ button.tcall-row:hover .tcall-chevron,
   outline-offset: -2px;
 }
 :root:has(.winbar) {
-  --winbar-span: calc(3 * var(--head-btn) + 3 * var(--winbar-gap));
+  --winbar-w: calc(3 * var(--head-btn) + 2 * var(--winbar-gap));
+  --winbar-span: calc(var(--winbar-w) + var(--winbar-sep));
 }
 /* Headers under the window buttons end before them. */
 .right.has-pane .side-pane .git-tabs {
-  margin-right: max(var(--pane-pad-x), calc(var(--winbar-reach) + var(--winbar-gap)));
+  margin-right: max(var(--pane-pad-x), var(--winbar-reach));
 }
 .right.has-pane .side-pane .pane-head {
-  padding-right: max(var(--pane-pad-x), calc(var(--winbar-reach) + var(--winbar-gap)));
+  padding-right: max(var(--pane-pad-x), var(--winbar-reach));
 }
 .shell:not(:has(.right.has-pane)) .thread-head {
   padding-right: max(
     calc(24px * var(--ui-scale)),
-    calc(var(--winbar-reach) + var(--head-btn) + var(--winbar-gap) - var(--gap) + 8px)
+    calc(var(--winbar-reach) + var(--head-btn) + 4px * var(--ui-scale) - var(--gap))
   );
 }
 /* A narrow pane keeps its tabs clear of the window buttons: tighter tabs, then shrinking ones. */
@@ -3440,10 +3453,7 @@ button.tcall-row:hover .tcall-chevron,
 }
 .right.has-pane .side-pane .git-tabs {
   min-width: 0;
-  max-width: calc(
-    100% - var(--toggle-reach) -
-      max(var(--pane-pad-x), calc(var(--winbar-reach) + var(--winbar-gap)))
-  );
+  max-width: calc(100% - var(--toggle-reach) - max(var(--pane-pad-x), var(--winbar-reach)));
 }
 .git-tabs button {
   flex: 0 1 auto;

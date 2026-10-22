@@ -71,11 +71,16 @@
   /* Pane toggle at the start of a pane's header: its icon on the content edge. */
   --toggle-left: calc(var(--pane-pad-x) - 8px * var(--ui-scale));
   --toggle-reach: calc(var(--toggle-left) + var(--head-btn) + 4px * var(--ui-scale));
-  /* Window buttons: the close button centred over the rail; --winbar-span is 0 without them. */
-  --winbar-gap: calc(2px * var(--ui-scale));
+  /* Window buttons: their own zone at the top right, close centred over the rail. The gap between
+     buttons is chosen so that, with the pane collapsed, the gutter between the thread and the rail
+     falls exactly between maximize and close. --winbar-sep keeps every header control clear of
+     the zone (a 1px divider sits in its middle). Both spans are 0 without the window buttons. */
+  --winbar-gap: calc(var(--gap) + (var(--rail-w) - var(--head-btn)) / 2);
+  --winbar-sep: 16px;
   --winbar-right: calc(var(--gap) + (var(--rail-w) - var(--head-btn)) / 2);
+  --winbar-w: 0px;
   --winbar-span: 0px;
-  /* How far the window buttons (and the gap before them) reach into the pane left of the rail. */
+  /* How far the zone, its separation included, reaches into the pane left of the rail. */
   --winbar-reach: calc(var(--winbar-right) + var(--winbar-span) - var(--rail-w) - var(--gap));
   color-scheme: dark;
 }

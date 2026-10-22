@@ -141,7 +141,7 @@ export function AppShell() {
           onResize={onRightResize}
           defaultSize="30%"
           // The app's own window buttons take part of the header row; the tabs still need to fit.
-          minSize={appWindowControls() ? '320px' : '280px'}
+          minSize={appWindowControls() ? '340px' : '280px'}
           maxSize="75%"
           groupResizeBehavior="preserve-pixel-size"
         >
