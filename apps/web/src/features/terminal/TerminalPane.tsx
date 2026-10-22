@@ -58,7 +58,9 @@ export function TerminalPane({ session }: { session: SessionView }) {
     <div className="pane-body">
       <div className="pane-head">
         <h2>Terminal</h2>
-        <span className="muted">{session.branch ?? folder}</span>
+        <span className="muted" title={session.branch ?? cwd}>
+          {session.branch ?? folder}
+        </span>
         <span className="spacer" />
         <button className="icon-btn" aria-label="New terminal" onClick={() => void create()}>
           <Plus size={18} />

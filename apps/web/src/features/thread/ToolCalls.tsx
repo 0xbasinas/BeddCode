@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import {
   Ban,
   Check,
   ChevronRight,
   FileText,
+  Hand,
   Loader2,
   Pencil,
   Search,
@@ -12,12 +13,18 @@ import {
   X,
 } from 'lucide-react'
 import {
+  approvalWait,
   defaultOpen,
   formatDuration,
+  ranWithoutAsking,
   summarizeTools,
   toolDuration,
   toolLabel,
+  toolDetails,
+  toolPhase,
+  wasDenied,
   type Tool,
+  type ToolPhase,
 } from './toolSummary.ts'
 
 const ICONS = {
@@ -40,8 +47,14 @@ function useNow(active: boolean): number {
   return now
 }
 
-function StatusIcon({ status }: { status: Tool['status'] }) {
-  switch (status) {
+function StatusIcon({ phase }: { phase: ToolPhase }) {
+  switch (phase) {
+    case 'awaiting-approval':
+      return <Hand size={13} aria-label="Waiting for your approval" />
+    case 'approved':
+      return <Loader2 size={13} className="spin" aria-label="Approved, waiting for the agent" />
+    case 'denied':
+      return <X size={13} aria-label="Denied" />
     case 'running':
       return <Loader2 size={13} className="spin" aria-label="Running" />
     case 'ok':
@@ -53,13 +66,58 @@ function StatusIcon({ status }: { status: Tool['status'] }) {
   }
 }
 
-/** One tool call: what it did to what, how it went and how long it took; its output opens on click. */
+/** What a tool call was given and what it gave back, under its row when opened. */
+function ToolDetails({ tool, now, id }: { tool: Tool; now: number; id: string }) {
+  const output = tool.output?.trim()
+  // A call you denied did not run: what the agent said back is a note, not an error.
+  const failed = tool.status === 'failed' && !wasDenied(tool)
+  return (
+    <div className="tcall-details" id={id}>
+      <dl className="tcall-facts">
+        {toolDetails(tool, now).map((d, i) => (
+          <div key={i} className="tcall-fact">
+            <dt>{d.label}</dt>
+            <dd className={d.mono ? 'mono' : undefined}>{d.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {tool.input && (
+        <section className="tcall-block">
+          <h4>Input</h4>
+          <pre className="tcall-output">
+            <code>{tool.input}</code>
+          </pre>
+        </section>
+      )}
+      {output ? (
+        <section className="tcall-block">
+          <h4>{failed ? 'Error' : wasDenied(tool) ? 'Agent’s note' : 'Output'}</h4>
+          <pre className={`tcall-output ${failed ? 'error' : ''}`}>
+            <code>{output}</code>
+          </pre>
+        </section>
+      ) : (
+        tool.status !== 'running' && <p className="tcall-none">No output</p>
+      )}
+    </div>
+  )
+}
+
+/** One tool call: what it did to what, how it went and how long it took; its details open on click. */
 function ToolCall({ tool, now }: { tool: Tool; now: number }) {
   const [open, setOpen] = useState(false)
+  const detailsId = useId()
   const Icon = ICONS[tool.toolKind]
   const label = toolLabel(tool)
   const ms = toolDuration(tool, now)
-  const output = tool.output?.trim()
+  const waited = approvalWait(tool, now)
+  const phase = toolPhase(tool)
+  const timing = [
+    ms !== undefined ? `Ran for ${formatDuration(ms)}` : undefined,
+    waited !== undefined ? `waited ${formatDuration(waited)} for your approval` : undefined,
+  ]
+    .filter(Boolean)
+    .join(', ')
 
   const row = (
     <>
@@ -71,30 +129,51 @@ function ToolCall({ tool, now }: { tool: Tool; now: number }) {
           {label.target}
         </code>
       </span>
-      {ms !== undefined && tool.status !== 'cancelled' && (
-        <span className="tcall-time">{formatDuration(ms)}</span>
+      {ranWithoutAsking(tool) && (
+        <span
+          className="tcall-tag"
+          title="The agent ran this without asking you. Its own rules allow some commands (such as ls, cat or git status) without a prompt, and anything you allowed for the whole session."
+        >
+          no prompt
+        </span>
       )}
+      {phase === 'awaiting-approval' && <span className="tcall-tag wait">needs approval</span>}
+      {phase === 'approved' && <span className="tcall-tag">approved</span>}
+      {phase === 'denied' && tool.status === 'running' && <span className="tcall-tag">denied</span>}
+      {(ms !== undefined || (waited !== undefined && waited >= 1000)) &&
+        tool.status !== 'cancelled' && (
+          <span className="tcall-time" title={timing}>
+            {ms !== undefined && formatDuration(ms)}
+            {waited !== undefined && waited >= 1000 && (
+              <span className="tcall-wait">
+                {ms !== undefined ? ' · ' : ''}
+                {formatDuration(waited)} approval
+              </span>
+            )}
+          </span>
+        )}
       <span className="tcall-status">
-        <StatusIcon status={tool.status} />
+        <StatusIcon phase={phase} />
       </span>
-      {output && <ChevronRight size={13} className="tcall-chevron" />}
+      <ChevronRight size={13} className="tcall-chevron" aria-hidden />
     </>
   )
 
   return (
-    <div className={`tcall ${tool.status} ${open ? 'open' : ''}`}>
-      {output ? (
-        <button className="tcall-row" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-          {row}
-        </button>
-      ) : (
-        <div className="tcall-row">{row}</div>
-      )}
-      {open && output && (
-        <pre className="tcall-output">
-          <code>{output}</code>
-        </pre>
-      )}
+    <div
+      className={`tcall ${phase === 'denied' ? '' : tool.status} ${phase} ${open ? 'open' : ''}`}
+    >
+      <button
+        type="button"
+        className="tcall-row"
+        aria-expanded={open}
+        aria-controls={open ? detailsId : undefined}
+        aria-label={`${open ? 'Hide' : 'Show'} details: ${tool.title}`}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {row}
+      </button>
+      {open && <ToolDetails tool={tool} now={now} id={detailsId} />}
     </div>
   )
 }
@@ -115,7 +194,7 @@ export function ToolGroup({ tools }: { tools: Tool[] }) {
     toolDuration(t, now) !== undefined ? [toolDuration(t, now)!] : [],
   )
   const total = times.length > 0 ? times.reduce((a, b) => a + b, 0) : undefined
-  const failed = tools.filter((t) => t.status === 'failed').length
+  const failed = tools.filter((t) => t.status === 'failed' && !wasDenied(t)).length
 
   return (
     <div className={`tgroup ${running.length > 0 ? 'running' : ''}`}>

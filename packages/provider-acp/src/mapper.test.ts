@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionUpdate } from '@agentclientprotocol/sdk'
-import { AcpEventMapper, toolKind } from './mapper.ts'
+import { AcpEventMapper, inputText, toolKind } from './mapper.ts'
 
 const run = (updates: unknown[]) => {
   const mapper = new AcpEventMapper('s1', () => 1)
@@ -134,5 +134,95 @@ describe('AcpEventMapper', () => {
         modes: [{ id: 'default', label: 'Default' }],
       },
     ])
+  })
+
+  it('takes the kind from Grok-style _meta and refines the title once the agent says more', () => {
+    const events = run([
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 't9',
+        title: 'run_terminal_command',
+        rawInput: { command: 'ls -la' },
+        _meta: { 'x.ai/tool': { name: 'run_terminal_command', kind: 'execute', read_only: false } },
+      },
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 't9',
+        kind: 'execute',
+        title: 'Execute `ls -la`',
+      },
+      // Repeating what is already known says nothing new.
+      { sessionUpdate: 'tool_call_update', toolCallId: 't9', title: 'Execute `ls -la`' },
+      { sessionUpdate: 'tool_call_update', toolCallId: 't9', status: 'completed' },
+    ])
+    expect(events.map((e) => e.type)).toEqual(['tool.started', 'tool.updated', 'tool.completed'])
+    expect(events[0]).toMatchObject({ kind: 'command', title: 'run_terminal_command' })
+    expect(events[1]).toMatchObject({ title: 'Execute `ls -la`' })
+    expect(events[1]).not.toHaveProperty('kind')
+  })
+
+  it('reports a kind that only arrives with an update', () => {
+    const events = run([
+      { sessionUpdate: 'tool_call', toolCallId: 'k1', title: 'search_replace' },
+      { sessionUpdate: 'tool_call_update', toolCallId: 'k1', kind: 'edit' },
+    ])
+    expect(events[0]).toMatchObject({ type: 'tool.started', kind: 'other' })
+    expect(events[1]).toMatchObject({ type: 'tool.updated', kind: 'edit' })
+  })
+
+  it('says whether the agent asked before running a tool', () => {
+    const mapper = new AcpEventMapper('s1', () => 1)
+    mapper.setTurn('turn-1')
+    const start = (id: string) =>
+      mapper.map({
+        sessionUpdate: 'tool_call',
+        toolCallId: id,
+        title: id,
+        kind: 'execute',
+      } as SessionUpdate)
+    const done = (id: string) =>
+      mapper.map({
+        sessionUpdate: 'tool_call_update',
+        toolCallId: id,
+        status: 'completed',
+      } as SessionUpdate)
+    start('asked')
+    start('auto')
+    mapper.noteApproval('asked')
+    expect(done('asked')[0]).toMatchObject({ type: 'tool.completed', approval: 'asked' })
+    expect(done('auto')[0]).toMatchObject({ type: 'tool.completed', approval: 'not-asked' })
+  })
+
+  it("passes along the tool call's arguments and paths, once each", () => {
+    const events = run([
+      { sessionUpdate: 'tool_call', toolCallId: 'i1', title: 'read_file', rawInput: {} },
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'i1',
+        title: 'Read `/a/b.md`',
+        kind: 'read',
+        rawInput: { path: '/a/b.md', limit: 20 },
+        locations: [{ path: '/a/b.md' }, { path: '/a/b.md' }],
+      },
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'i1',
+        rawInput: { path: '/a/b.md', limit: 20 },
+        locations: [{ path: '/a/b.md' }],
+        status: 'completed',
+      },
+    ])
+    expect(events.map((e) => e.type)).toEqual(['tool.started', 'tool.updated', 'tool.completed'])
+    expect(events[0]).not.toHaveProperty('input')
+    expect(events[1]).toMatchObject({
+      input: '{\n  "path": "/a/b.md",\n  "limit": 20\n}',
+      paths: ['/a/b.md'],
+    })
+  })
+
+  it('caps long input and keeps string input as is', () => {
+    expect(inputText('  ')).toBeUndefined()
+    expect(inputText('ls -la')).toBe('ls -la')
+    expect(inputText({ text: 'x'.repeat(10_000) })!.length).toBe(4_000)
   })
 })

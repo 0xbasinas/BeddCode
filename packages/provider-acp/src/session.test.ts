@@ -344,7 +344,11 @@ describe('AcpSession: permissions', () => {
     const reply = agent.ask('session/request_permission', permission)
     const request = await nextEvent(session, (e) => e.type === 'approval.requested')
     if (request.type !== 'approval.requested') throw new Error('unreachable')
-    expect(request).toMatchObject({ title: 'Edit notes.txt', detail: '/w/notes.txt' })
+    expect(request).toMatchObject({
+      title: 'Edit notes.txt',
+      detail: '/w/notes.txt',
+      toolId: 't1',
+    })
     expect(request.options).toEqual([
       { id: 'once', label: 'Allow once', kind: 'allow' },
       { id: 'always', label: 'Always allow', kind: 'allow' },

@@ -300,3 +300,99 @@ describe('replica: model changes', () => {
     expect(back.sessions.s1!.model).toBeUndefined()
   })
 })
+
+describe('replica: tool approvals', () => {
+  const timed = (events: (Draft & { at: number })[]) => {
+    let state: ReplicaState = emptyReplica()
+    events.forEach((e, i) => {
+      state = applyEvent(state, { seq: i + 1, event: { ...base, ...e } as SessionEvent })
+    })
+    return state.sessions.s1!
+  }
+  const tool = (s: ReturnType<typeof timed>, id: string) =>
+    s.items.find((i) => i.kind === 'tool' && i.id === id) as Extract<
+      (typeof s.items)[number],
+      { kind: 'tool' }
+    >
+
+  it('links an approval to its tool, so the row knows when the user answered', () => {
+    const options = [
+      { id: 'allow-once', label: 'Yes', kind: 'allow' as const },
+      { id: 'reject-once', label: 'No', kind: 'deny' as const },
+    ]
+    const asked = timed([
+      { ...created, at: 0 },
+      { type: 'turn.started', at: 0 },
+      { type: 'tool.started', toolId: 't1', kind: 'command', title: 'run', at: 1_000 },
+      {
+        type: 'approval.requested',
+        requestId: 'r1',
+        toolId: 't1',
+        title: 'Run?',
+        options,
+        at: 1_005,
+      },
+    ])
+    expect(tool(asked, 't1').approval).toEqual({ requestId: 'r1', requestedAt: 1_005 })
+
+    const answered = timed([
+      { ...created, at: 0 },
+      { type: 'turn.started', at: 0 },
+      { type: 'tool.started', toolId: 't1', kind: 'command', title: 'run', at: 1_000 },
+      {
+        type: 'approval.requested',
+        requestId: 'r1',
+        toolId: 't1',
+        title: 'Run?',
+        options,
+        at: 1_005,
+      },
+      { type: 'approval.resolved', requestId: 'r1', optionId: 'allow-once', at: 17_000 },
+      { type: 'tool.completed', toolId: 't1', ok: true, approval: 'asked', at: 17_030 },
+    ])
+    expect(tool(answered, 't1')).toMatchObject({
+      status: 'ok',
+      asked: true,
+      endedAt: 17_030,
+      approval: { requestId: 'r1', requestedAt: 1_005, resolvedAt: 17_000, outcome: 'allow' },
+    })
+  })
+
+  it('refines a tool title and kind, and marks tools the agent ran without asking', () => {
+    const s = timed([
+      { ...created, at: 0 },
+      { type: 'turn.started', at: 0 },
+      { type: 'tool.started', toolId: 't2', kind: 'other', title: 'run_terminal_command', at: 1 },
+      { type: 'tool.updated', toolId: 't2', kind: 'command', title: 'Execute `ls`', at: 2 },
+      { type: 'tool.completed', toolId: 't2', ok: true, approval: 'not-asked', at: 3 },
+    ])
+    expect(tool(s, 't2')).toMatchObject({
+      title: 'Execute `ls`',
+      toolKind: 'command',
+      asked: false,
+      status: 'ok',
+    })
+    expect(tool(s, 't2').approval).toBeUndefined()
+  })
+
+  it("keeps a tool call's input and paths, refined by later updates", () => {
+    const s = timed([
+      { ...created, at: 0 },
+      { type: 'turn.started', at: 0 },
+      { type: 'tool.started', toolId: 't3', kind: 'read', title: 'read_file', input: '{}', at: 1 },
+      {
+        type: 'tool.updated',
+        toolId: 't3',
+        input: '{\n  "path": "/a/b.md"\n}',
+        paths: ['/a/b.md'],
+        at: 2,
+      },
+      { type: 'tool.completed', toolId: 't3', ok: true, output: '# b', at: 3 },
+    ])
+    expect(tool(s, 't3')).toMatchObject({
+      input: '{\n  "path": "/a/b.md"\n}',
+      paths: ['/a/b.md'],
+      output: '# b',
+    })
+  })
+})

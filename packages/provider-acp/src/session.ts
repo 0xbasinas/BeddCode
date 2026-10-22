@@ -412,6 +412,7 @@ export class AcpSession implements ProviderSession {
   private askPermission(req: RequestPermissionRequest): Promise<unknown> {
     const requestId = `req-${++this.approvalCount}`
     const tool = req.toolCall
+    if (tool.toolCallId) this.mapper.noteApproval(tool.toolCallId)
     const raw = (tool.rawInput ?? {}) as Obj
     const detail =
       (typeof raw.command === 'string' && raw.command) ||
@@ -431,6 +432,7 @@ export class AcpSession implements ProviderSession {
         {
           type: 'approval.requested',
           requestId,
+          toolId: tool.toolCallId || undefined,
           title: tool.title ?? 'Permission requested',
           detail: detail || undefined,
           options: req.options.map((o: PermissionOption) => ({

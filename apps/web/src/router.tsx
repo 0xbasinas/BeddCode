@@ -19,18 +19,23 @@ const indexRoute = createRoute({
   path: '/',
   // `project` preselects a folder, e.g. from the + next to a project in the sidebar; `host` says
   // on which host that folder lives.
-  validateSearch: (search: Record<string, unknown>): { project?: string; host?: string } => ({
+  // `compose` asks for the composer itself, even while the first-run checklist would show.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { project?: string; host?: string; compose?: boolean } => ({
     project: typeof search.project === 'string' ? search.project : undefined,
     host: typeof search.host === 'string' ? search.host : undefined,
+    compose: search.compose === true || search.compose === 'true' ? true : undefined,
   }),
   component: function NewSessionPage() {
-    const { project, host } = indexRoute.useSearch()
+    const { project, host, compose } = indexRoute.useSearch()
     // Keyed so picking another project starts from fresh state.
     return (
       <NewSession
-        key={`${host ?? ''}:${project ?? ''}`}
+        key={`${host ?? ''}:${project ?? ''}:${compose ? 'compose' : ''}`}
         initialProject={project}
         initialHost={host}
+        compose={compose}
       />
     )
   },

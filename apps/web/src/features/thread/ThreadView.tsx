@@ -41,7 +41,7 @@ import { buildBlocks, totalChanges } from './blocks.ts'
 import { useFollowEnd } from './useFollowEnd.ts'
 import { folderId, useFiles } from '../files/filesStore.ts'
 import { useUiStore } from '../../stores/ui.ts'
-import { EnvironmentCard, SessionChip } from './SessionPanel.tsx'
+import { EnvironmentButton, SessionChip } from './SessionPanel.tsx'
 import { RenameSessionDialog } from './RenameSessionDialog.tsx'
 
 export function ThreadView({ sessionId }: { sessionId: string }) {
@@ -126,7 +126,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
     <main className="panel thread">
       <header className="thread-head">
         <div className="thread-heading">
-          <h1>{session.title}</h1>
+          <h1 title={session.title}>{session.title}</h1>
           <div className="thread-meta" title={session.cwd}>
             {hostKey === LOCAL_HOST_KEY ? 'This PC' : (host?.name ?? hostKey)} ·{' '}
             {folderName(session.projectPath)}
@@ -146,79 +146,82 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             {session.imported ? ' · Imported' : ''}
           </div>
         </div>
-        <Dropdown
-          placement="bottom"
-          align="end"
-          trigger={({ toggle, open }) => (
-            <button
-              className="icon-btn"
-              aria-label="Session menu"
-              aria-expanded={open}
-              onClick={toggle}
-            >
-              <MoreHorizontal size={18} />
-            </button>
-          )}
-        >
-          {(close) => (
-            <>
+        <div className="thread-actions">
+          <EnvironmentButton session={session} hostKey={hostKey} stats={stats} />
+          <Dropdown
+            placement="bottom"
+            align="end"
+            trigger={({ toggle, open }) => (
               <button
-                className="menu-row"
-                onClick={() => {
-                  close()
-                  setRenaming(true)
-                }}
+                className="icon-btn"
+                aria-label="Session menu"
+                aria-expanded={open}
+                onClick={toggle}
               >
-                <Pencil size={15} /> Rename session
+                <MoreHorizontal size={18} />
               </button>
-              <button
-                className="menu-row"
-                onClick={() => {
-                  close()
-                  void navigate({
-                    to: '/',
-                    search: { host: hostKey, project: session.projectPath },
-                  })
-                }}
-              >
-                <Plus size={15} />
-                New session in this folder
-              </button>
-              {canFork && (
+            )}
+          >
+            {(close) => (
+              <>
                 <button
                   className="menu-row"
                   onClick={() => {
                     close()
-                    void fork()
+                    setRenaming(true)
                   }}
                 >
-                  <GitFork size={15} />
-                  Fork this session
+                  <Pencil size={15} /> Rename session
                 </button>
-              )}
-              <button
-                className="menu-row"
-                onClick={() => {
-                  void navigator.clipboard?.writeText(session.cwd)
-                  close()
-                }}
-              >
-                <Copy size={15} />
-                Copy folder path
-              </button>
-              <button
-                className="menu-row"
-                onClick={() => {
-                  void navigator.clipboard?.writeText(window.location.href)
-                  close()
-                }}
-              >
-                <Copy size={15} />
-                Copy session link
-              </button>
-            </>
-          )}
-        </Dropdown>
+                <button
+                  className="menu-row"
+                  onClick={() => {
+                    close()
+                    void navigate({
+                      to: '/',
+                      search: { host: hostKey, project: session.projectPath },
+                    })
+                  }}
+                >
+                  <Plus size={15} />
+                  New session in this folder
+                </button>
+                {canFork && (
+                  <button
+                    className="menu-row"
+                    onClick={() => {
+                      close()
+                      void fork()
+                    }}
+                  >
+                    <GitFork size={15} />
+                    Fork this session
+                  </button>
+                )}
+                <button
+                  className="menu-row"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(session.cwd)
+                    close()
+                  }}
+                >
+                  <Copy size={15} />
+                  Copy folder path
+                </button>
+                <button
+                  className="menu-row"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(window.location.href)
+                    close()
+                  }}
+                >
+                  <Copy size={15} />
+                  Copy session link
+                </button>
+              </>
+            )}
+          </Dropdown>
+        </div>
       </header>
       <div className="transcript" ref={scroller}>
         <div className="transcript-inner">
@@ -322,7 +325,6 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
           />
         }
       />
-      <EnvironmentCard session={session} hostKey={hostKey} stats={stats} />
       {renaming && (
         <RenameSessionDialog
           session={session}
@@ -366,7 +368,7 @@ function SessionFooter({
       )}
       <span className="spacer" />
       {session.branch && (
-        <span className="chip-lite static">
+        <span className="chip-lite static" title={session.branch}>
           <GitBranch size={14} /> <code>{session.branch}</code>
         </span>
       )}
@@ -400,7 +402,7 @@ function WorktreeChip({ session, hostKey }: { session: SessionView; hostKey: str
     <Dropdown
       trigger={({ toggle }) => (
         <button className="chip-lite" onClick={toggle} aria-label="Worktree" title={session.cwd}>
-          <Folder size={14} /> Worktree
+          <Folder size={14} /> <span className="chip-text">Worktree</span>
         </button>
       )}
       panelClassName="wide"

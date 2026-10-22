@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { GitFile } from '@beddcode/contracts'
-import { commitLabel, defaultSelected, groupByDirectory, selectedPaths } from './changes.ts'
+import {
+  commitLabel,
+  defaultSelected,
+  diffRefreshKey,
+  groupByDirectory,
+  selectedPaths,
+} from './changes.ts'
 
 const file = (path: string, status: GitFile['status'] = 'M', staged = false): GitFile => ({
   path,
@@ -42,5 +48,16 @@ describe('selection', () => {
   it('labels the commit button', () => {
     expect(commitLabel(1)).toBe('Commit 1 file')
     expect(commitLabel(3)).toBe('Commit 3 files')
+  })
+})
+
+describe('diffRefreshKey', () => {
+  it('changes when the agent edits the file again, and when the pane refreshes', () => {
+    const before = { ...file('hello.py', 'A'), added: 2 }
+    const after = { ...before, added: 3 }
+    expect(diffRefreshKey(before, 'k1')).not.toBe(diffRefreshKey(after, 'k1'))
+    expect(diffRefreshKey(before, 'k1')).not.toBe(diffRefreshKey(before, 'k2'))
+    expect(diffRefreshKey(before, 'k1')).not.toBe(diffRefreshKey({ ...before, staged: true }, 'k1'))
+    expect(diffRefreshKey(before, 'k1')).toBe(diffRefreshKey({ ...before }, 'k1'))
   })
 })

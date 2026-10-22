@@ -16,8 +16,10 @@ a {
   top: 0;
   left: 0;
   right: 0;
-  height: 44px;
+  height: var(--pane-head);
   -webkit-app-region: drag;
+  /* A drag strip only: clicks reach the tabs and buttons under it. */
+  pointer-events: none;
 }
 :root[data-desktop='true'] .settings-main::before {
   content: '';
@@ -497,9 +499,11 @@ a {
 @media (max-width: 1279px) {
   .right.browser-open {
     position: absolute;
-    top: calc(6px * var(--ui-scale));
-    right: calc(6px * var(--ui-scale));
-    bottom: calc(6px * var(--ui-scale));
+    /* Over the thread, inside the same gutter as every other pane. */
+    top: var(--gap);
+    right: var(--gap);
+    bottom: auto;
+    height: calc(100vh - 2 * var(--gap));
     width: min(calc(720px * var(--ui-scale)), calc(100vw - calc(292px * var(--ui-scale))));
     z-index: 10;
     box-shadow: -12px 0 28px #0005;

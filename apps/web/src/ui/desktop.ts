@@ -1,3 +1,13 @@
+/** Window actions over IPC; each resolves to whether the window is now maximized. */
+export interface DesktopWindow {
+  minimize(): Promise<boolean>
+  toggleMaximize(): Promise<boolean>
+  close(): Promise<boolean>
+  isMaximized(): Promise<boolean>
+  /** Calls back whenever the window is maximized or restored; returns an unsubscribe. */
+  onMaximizedChange(callback: (maximized: boolean) => void): () => void
+}
+
 declare global {
   interface Window {
     /** Present only inside the desktop app (see apps/desktop/src/preload.ts). */
@@ -5,6 +15,8 @@ declare global {
       platform: string
       /** Opens the system's folder picker; null when the user cancels. */
       pickFolder?(options?: { defaultPath?: string }): Promise<string | null>
+      /** The app's own window buttons; absent on macOS builds that keep the traffic lights. */
+      window?: DesktopWindow
     }
   }
 }
@@ -16,3 +28,9 @@ export const desktopBridge = () =>
 export const isMac = () =>
   desktopBridge()?.platform === 'darwin' ||
   (typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform))
+
+/** The window controls the app draws itself: inside the desktop app, except on macOS. */
+export const appWindowControls = (): DesktopWindow | undefined => {
+  const bridge = desktopBridge()
+  return bridge && bridge.platform !== 'darwin' ? bridge.window : undefined
+}

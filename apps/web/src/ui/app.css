@@ -106,7 +106,7 @@ kbd {
   flex-direction: column;
   gap: 0;
   padding: calc(4px * var(--ui-scale)) 0 calc(11px * var(--ui-scale));
-  flex: 0 0 40px;
+  flex: 0 0 var(--rail-w);
   align-items: center;
 }
 .rail button {
@@ -116,7 +116,7 @@ kbd {
   display: grid;
   place-items: center;
   width: calc(30px * var(--ui-scale));
-  height: calc(34px * var(--ui-scale));
+  height: var(--rail-btn-h);
 }
 .rail button:hover {
   background: var(--bg-hover);
@@ -2648,6 +2648,34 @@ button.tcall-row:hover {
 .tcall.failed .tcall-status {
   color: var(--danger);
 }
+.tcall.awaiting-approval .tcall-status {
+  color: var(--accent);
+}
+/* A call you denied never ran: muted, struck through lightly, not failure red. */
+.tcall.denied .tcall-status {
+  color: var(--text-faint);
+}
+.tcall.denied .tcall-text code {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--text-faint) 60%, transparent);
+}
+.tcall-tag {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.tcall-tag.wait {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.tcall-wait {
+  opacity: 0.8;
+}
 .tcall.failed .tcall-row {
   background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
@@ -2681,6 +2709,67 @@ button.tcall-row:hover .tcall-chevron,
   font-size: 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.tcall-output.error {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+/* An opened tool row: its facts, then what it was given and what it gave back */
+.tcall-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 6px 26px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.tcall-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 3px;
+  margin: 0;
+}
+.tcall-fact {
+  display: contents;
+}
+.tcall-fact dt {
+  color: var(--text-faint);
+}
+.tcall-fact dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.tcall-fact dd.mono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  white-space: pre-wrap;
+}
+.tcall-block h4 {
+  margin: 2px 0 3px;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 500;
+}
+.tcall-details .tcall-output {
+  margin: 0;
+  max-height: 200px;
+  font-size: 11.5px;
+}
+.tcall-none {
+  margin: 0;
+  color: var(--text-faint);
+  font-style: italic;
+}
+.tcall-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .spin {
   animation: tool-spin 1s linear infinite;
@@ -2854,15 +2943,44 @@ button.tcall-row:hover .tcall-chevron,
   font-size: 12px;
 }
 
-/* Environment: a card that floats over the thread */
-.thread {
+/* Environment: a small icon at the top right of the thread that opens the card beneath it */
+.thread-actions {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  flex: none;
+}
+.env-trigger {
+  position: relative;
+}
+.env-trigger.open {
+  background: var(--bg-active);
+  color: var(--text);
+}
+.env-hint {
+  position: absolute;
+  top: calc(5px * var(--ui-scale));
+  right: calc(5px * var(--ui-scale));
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg-panel);
+  pointer-events: none;
+}
+.env-hint.changes {
+  background: var(--accent);
+}
+.env-hint.warn {
+  background: var(--danger);
 }
 .env-card {
   position: absolute;
-  z-index: 12;
-  width: min(300px, calc(100% - 16px));
-  max-height: calc(100% - 96px);
+  top: calc(100% + calc(6px * var(--ui-scale)));
+  right: 0;
+  z-index: 30;
+  width: min(272px, calc(100vw - 24px));
+  max-height: calc(100vh - calc(110px * var(--ui-scale)));
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
@@ -2870,15 +2988,10 @@ button.tcall-row:hover .tcall-chevron,
   background: var(--bg-raised);
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
   overflow: hidden;
+  outline: none;
 }
-.env-card .env-drag {
+.env-card .env-head {
   padding-top: calc(10px * var(--ui-scale));
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-}
-.env-card .env-drag:active {
-  cursor: grabbing;
 }
 .env-title {
   display: inline-flex;
@@ -2919,27 +3032,6 @@ button.tcall-row:hover .tcall-chevron,
   font-size: calc(11px * var(--ui-scale));
 }
 
-/* Environment card: minimized to a title bar, and always present */
-.env-card.minimized {
-  width: auto;
-  min-width: 190px;
-  max-width: min(300px, calc(100% - 16px));
-}
-.env-card.minimized .env-drag {
-  padding-bottom: calc(6px * var(--ui-scale));
-}
-.env-summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 calc(14px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  color: var(--text-muted);
-  font-size: calc(12px * var(--ui-scale));
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* A tighter conversation: less air between messages, tool calls and approvals */
 .transcript {
   padding-top: calc(14px * var(--ui-scale));
@@ -2950,6 +3042,13 @@ button.tcall-row:hover .tcall-chevron,
 }
 .msg.user {
   padding: calc(9px * var(--ui-scale)) calc(14px * var(--ui-scale));
+}
+/* Your messages sit on the right; replies, tools and approvals stay full width on the left */
+.msg.user {
+  width: fit-content;
+  max-width: 78%;
+  margin-left: auto;
+  overflow-wrap: anywhere;
 }
 .md,
 .msg .plain {
@@ -3088,9 +3187,18 @@ button.tcall-row:hover .tcall-chevron,
   flex: 1 1 0;
   min-width: 0;
 }
-/* The least important chips give way first. */
+/* The least important chips give way first; the agent and the line counts never clip. */
 .footer-bar > .spacer ~ * {
   flex-shrink: 3;
+}
+.footer-bar > :first-child,
+.footer-bar > .stat {
+  flex-shrink: 0;
+}
+.footer-bar .chip-lite code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .chip-text {
   min-width: 0;
@@ -3107,4 +3215,385 @@ button.tcall-row:hover .tcall-chevron,
   align-self: center;
   margin-right: calc(6px * var(--ui-scale));
   font-size: calc(12px * var(--ui-scale));
+}
+
+/* Right pane: a collapse/expand control on the header line, and a quick slide */
+.pane-collapse {
+  color: var(--text-faint);
+}
+.pane-collapse:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.pane-collapse:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.shell.pane-sliding > [data-panel] {
+  transition: flex-grow 0.16s ease-out;
+}
+[data-motion='reduced'] .shell.pane-sliding > [data-panel] {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell.pane-sliding > [data-panel] {
+    transition: none;
+  }
+}
+/* With the pane collapsed there is nothing to resize: the separator is inert, not "not allowed". */
+.shell-sep[data-separator='disabled'] {
+  pointer-events: none;
+}
+
+/*
+ * Pane alignment. The sidebar, thread and right pane share one gutter (--gap, also the width of
+ * the dividers), one header row (--pane-head) whose titles and icons sit on its centre line, one
+ * header inset (--pane-pad-x), and one bottom line (--pane-inset above each pane's bottom edge).
+ */
+.sidebar {
+  padding: 0 var(--pane-inset) var(--pane-inset);
+}
+.sidebar-top {
+  height: var(--pane-head);
+  min-height: var(--pane-head);
+  padding: 0 calc(var(--pane-pad-x) - var(--pane-inset));
+}
+.brand {
+  line-height: var(--head-line);
+}
+.sidebar-foot {
+  padding-bottom: 0;
+}
+.thread .thread-head {
+  padding-top: 0;
+  padding-bottom: calc(8px * var(--ui-scale));
+  min-height: 0;
+}
+.thread-heading,
+.new-session .thread-head {
+  padding-top: calc((var(--pane-head) - var(--head-line)) / 2);
+}
+.new-session .thread-head {
+  min-height: 0;
+}
+.thread-head h1 {
+  line-height: var(--head-line);
+  /* The header row, then the gap to the subtitle (one margin: they would collapse). */
+  margin-bottom: calc((var(--pane-head) - var(--head-line)) / 2 + var(--pane-sub-gap));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-heading {
+  flex: 1;
+}
+/* Second header row and the one header divider, at the same height in the thread and Git pane. */
+.thread-head .thread-meta {
+  margin-top: 0;
+  height: var(--pane-sub);
+  line-height: var(--pane-sub);
+}
+.thread .thread-head {
+  padding-bottom: 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.thread-actions {
+  height: var(--pane-head);
+}
+.thread-actions .icon-btn {
+  box-sizing: border-box;
+  width: var(--head-btn);
+  height: var(--head-btn);
+  padding: 0;
+}
+.composer-wrap {
+  margin-bottom: var(--pane-inset);
+}
+.right {
+  padding-top: 0;
+}
+.rail {
+  padding: var(--pane-head) 0 var(--pane-inset);
+}
+.pane-head {
+  height: var(--pane-head);
+  min-height: var(--pane-head);
+  padding: 0 var(--pane-pad-x);
+}
+.pane-head h2 {
+  line-height: var(--head-line);
+  flex: none;
+}
+/* A pane header's subtitle (branch, folder) gives way first, ending in an ellipsis. */
+.pane-head > .muted {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.git-tabs {
+  box-sizing: border-box;
+  height: var(--tabs-h);
+  align-items: center;
+  padding: calc(2px * var(--ui-scale));
+  margin: calc((var(--pane-head) - var(--tabs-h)) / 2) var(--pane-pad-x) calc(6px * var(--ui-scale));
+}
+.git-tabs button {
+  padding-top: 0;
+  padding-bottom: 0;
+  height: 100%;
+}
+.git-tabs .badge-lite {
+  font-size: calc(10px * var(--ui-scale));
+  line-height: calc(14px * var(--ui-scale));
+  padding: 0 calc(5px * var(--ui-scale));
+}
+.git-footer,
+.pane-foot {
+  padding-bottom: var(--pane-inset);
+}
+
+/* Git pane: one left inset and one right edge for every row, the header divider level with the
+   thread's, a visible rail edge for the dividers to meet, and two equal buttons. */
+.git-tabs {
+  margin-bottom: calc((var(--pane-head) - var(--tabs-h)) / 2);
+}
+.git-branch {
+  box-sizing: content-box;
+  height: var(--pane-sub);
+  margin-top: var(--pane-sub-gap);
+  padding: 0 var(--pane-pad-x);
+}
+.git-scroll {
+  padding-left: calc(var(--pane-pad-x) - var(--row-pad-x));
+  padding-right: calc(var(--pane-pad-x) - var(--row-pad-x));
+}
+.select-row,
+.dir-row,
+.change-row {
+  padding-left: var(--row-pad-x);
+  padding-right: var(--row-pad-x);
+}
+.git-scroll section:has(> .dir-row) .change-row {
+  padding-left: calc(var(--row-pad-x) + calc(22px * var(--ui-scale)));
+}
+.status-letter {
+  text-align: right;
+}
+.git-footer {
+  padding-left: var(--pane-pad-x);
+  padding-right: var(--pane-pad-x);
+}
+.git-actions .primary,
+.git-actions .secondary {
+  flex: 1 1 0;
+  min-width: 0;
+  border: 1px solid transparent;
+}
+.git-actions .secondary {
+  background: var(--bg-raised);
+  border-color: var(--border);
+  color: var(--text);
+}
+.right.has-pane .rail {
+  /* The divider at the rail's left edge, drawn as a 1px background so it can start below the
+     window buttons' notch instead of running up into it. */
+  --rail-line-top: 0px;
+  background: linear-gradient(var(--border-subtle), var(--border-subtle)) 0 var(--rail-line-top) /
+    1px 100% no-repeat;
+}
+
+.select-row .link-btn {
+  padding-right: 0;
+}
+
+/* The header line's right end: the pane toggle at the start of the open pane's header; with the
+   pane collapsed it sits over the rail on the header line (below the window buttons' card when
+   there is one). */
+.pane-collapse,
+.window-island .icon-btn {
+  box-sizing: border-box;
+  width: var(--head-btn);
+  height: var(--head-btn);
+  padding: 0;
+}
+.right.has-pane .pane-collapse {
+  position: absolute;
+  z-index: 2;
+  top: calc((var(--pane-head) - var(--head-btn)) / 2);
+  left: var(--toggle-left);
+}
+.right.has-pane .side-pane .git-tabs {
+  margin-left: var(--toggle-reach);
+}
+.right.has-pane .side-pane .pane-head {
+  padding-left: var(--toggle-reach);
+}
+.right:not(.has-pane) .pane-collapse {
+  position: fixed;
+  z-index: 5;
+  top: calc(var(--gap) + (var(--pane-head) - var(--head-btn)) / 2);
+  right: var(--rail-btn-right);
+}
+
+/* The window buttons' card (frameless desktop window on Linux and Windows): its own card in the
+   window's top-right corner, one gutter from the edges, as tall as the header row and centred on
+   its line, its right edge on the rail's. The right column (or, with the pane collapsed, the
+   thread) gives up that corner: a notch one gutter wider and taller than the card, its corners
+   rounded like the panes'. The rail starts below it, the header row ends before it. */
+:root:has(.window-island) {
+  --island-w: calc(3 * var(--island-btn-w) + 2 * var(--island-btn-gap) + 2 * var(--island-pad-x));
+}
+.window-island {
+  position: fixed;
+  /* Above the Browser pane, which overlays the thread in small windows. */
+  z-index: 20;
+  top: var(--gap);
+  right: var(--gap);
+  box-sizing: border-box;
+  width: var(--island-w);
+  height: var(--pane-head);
+  padding: var(--island-pad) var(--island-pad-x);
+  display: flex;
+  background: var(--bg-panel);
+  border-radius: var(--radius-panel);
+  -webkit-app-region: drag;
+}
+.winbar {
+  display: flex;
+  gap: var(--island-btn-gap);
+  -webkit-app-region: no-drag;
+}
+.window-island .icon-btn {
+  width: var(--island-btn-w);
+  height: var(--island-btn-h);
+  color: var(--text-muted);
+}
+.window-island .icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.window-island .winbar-close:hover {
+  background: #e81123;
+  color: #fff;
+}
+.window-island .icon-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+/* The notch: --nw wide from the card's right edge, --notch-h tall. */
+:root:has(.window-island) .right.has-pane,
+:root:has(.window-island)
+  .shell:not(:has(.right.has-pane))
+  :is(.thread, .thread-empty, .new-session) {
+  --r: var(--radius-panel);
+  clip-path: shape(
+    from var(--r) 0,
+    hline to calc(100% - var(--nw) - var(--r)),
+    arc to calc(100% - var(--nw)) var(--r) of var(--r) cw,
+    vline to calc(var(--notch-h) - var(--r)),
+    arc to calc(100% - var(--nw) + var(--r)) var(--notch-h) of var(--r) ccw,
+    hline to calc(100% - var(--r)),
+    arc to 100% calc(var(--notch-h) + var(--r)) of var(--r) cw,
+    vline to calc(100% - var(--r)),
+    arc to calc(100% - var(--r)) 100% of var(--r) cw,
+    hline to var(--r),
+    arc to 0 calc(100% - var(--r)) of var(--r) cw,
+    vline to var(--r),
+    arc to var(--r) 0 of var(--r) cw,
+    close
+  );
+}
+:root:has(.window-island) .right.has-pane {
+  --nw: calc(var(--island-w) + var(--gap));
+}
+:root:has(.window-island) .right.has-pane .rail {
+  padding-top: calc(var(--notch-h) + (var(--rail-btn-h) - 20px) / 2);
+  --rail-line-top: calc(var(--notch-h) + var(--radius-panel));
+}
+/* The open pane's header row (toggle, tabs or title) ends 12px short of the notch's edge. */
+:root:has(.window-island) .right.has-pane .side-pane {
+  --island-reach: calc(var(--island-w) + 2 * var(--gap) + 12px - var(--rail-w));
+}
+:root:has(.window-island) .right.has-pane .side-pane .pane-head {
+  padding-right: max(var(--pane-pad-x), var(--island-reach));
+}
+:root:has(.window-island) .right.has-pane .side-pane .git-tabs {
+  max-width: calc(100% - var(--toggle-reach) - max(var(--pane-pad-x), var(--island-reach)));
+}
+/* The cut-out corner still moves the window. */
+:root:has(.window-island) .right.has-pane::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--nw);
+  height: var(--notch-h);
+  -webkit-app-region: drag;
+  pointer-events: none;
+}
+/* Pane collapsed: the rail starts a gutter below the card; the thread's corner is cut out instead,
+   its header buttons keeping their usual inset from the cut. */
+:root:has(.window-island)
+  .shell:not(:has(.right.has-pane))
+  :is(.thread, .thread-empty, .new-session) {
+  --nw: calc(var(--island-w) - var(--rail-w));
+}
+:root:has(.window-island) .shell:not(:has(.right.has-pane)) .thread-actions {
+  margin-right: calc(var(--island-w) - var(--rail-w));
+}
+:root:has(.window-island) .right:not(.has-pane) {
+  margin-top: var(--notch-h);
+  height: calc(100% - var(--notch-h));
+}
+:root:has(.window-island) .right:not(.has-pane) .pane-collapse {
+  top: calc(var(--gap) + var(--notch-h) + (var(--pane-head) - var(--head-btn)) / 2);
+}
+/* The window moves by its gutters too; the panes and the resize handles between them don't. */
+:root:has(.window-island) .shell {
+  -webkit-app-region: drag;
+}
+:root:has(.window-island) .shell-panel > *,
+:root:has(.window-island) .shell-sep {
+  -webkit-app-region: no-drag;
+}
+/* A narrow pane keeps its tabs in one row: tighter tabs, then shrinking ones. */
+.side-pane {
+  container-type: inline-size;
+}
+.right.has-pane .side-pane .git-tabs {
+  min-width: 0;
+  max-width: calc(100% - var(--toggle-reach) - var(--pane-pad-x));
+}
+.git-tabs button {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+/* Commit buttons stay on one line. */
+.git-actions .primary,
+.git-actions .secondary {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@container (max-width: 340px) {
+  .git-actions .primary,
+  .git-actions .secondary {
+    padding-left: calc(6px * var(--ui-scale));
+    padding-right: calc(6px * var(--ui-scale));
+  }
+  .git-tabs {
+    gap: calc(2px * var(--ui-scale));
+  }
+  .git-tabs button {
+    padding-left: calc(6px * var(--ui-scale));
+    padding-right: calc(6px * var(--ui-scale));
+    gap: calc(4px * var(--ui-scale));
+  }
+}
+/* macOS: room for the traffic lights at the left of the sidebar's header. */
+:root[data-platform='darwin'] .sidebar-top {
+  padding-left: 76px;
 }

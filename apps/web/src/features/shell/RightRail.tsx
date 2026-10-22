@@ -1,10 +1,18 @@
-import { FolderOpen, GitBranch, Globe, SquareTerminal } from 'lucide-react'
+import {
+  FolderOpen,
+  GitBranch,
+  Globe,
+  PanelRightClose,
+  PanelRightOpen,
+  SquareTerminal,
+} from 'lucide-react'
 import { useEffect, type ComponentType, type ReactNode } from 'react'
 import { useRouterState } from '@tanstack/react-router'
 import { useSession, useSessionHostKey } from '../../stores/host.ts'
 import { HostScopeProvider } from '../../stores/HostScope.tsx'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { useUiStore, type PaneId } from '../../stores/ui.ts'
+import { isMac } from '../../ui/desktop.ts'
 import { MissingFolder, useFolderMissing } from './MissingFolder.tsx'
 import { BrowserPane } from '../browser/BrowserPane.tsx'
 import { EMPTY_FOLDER, folderId, useFiles } from '../files/filesStore.ts'
@@ -28,6 +36,9 @@ function useActiveSessionId(): string | undefined {
 export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
   const activePane = useUiStore((s) => s.activePane)
   const togglePane = useUiStore((s) => s.togglePane)
+  const togglePaneCollapsed = useUiStore((s) => s.togglePaneCollapsed)
+  const lastPane = useUiStore((s) => s.lastPane)
+  const lastLabel = panes.find((p) => p.id === lastPane)?.label ?? 'pane'
   const sessionId = useActiveSessionId()
   const session = useSession(sessionId)
   const hostKey = useSessionHostKey(sessionId) ?? LOCAL_HOST_KEY
@@ -59,6 +70,17 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
     <div
       className={`right ${activePane ? 'has-pane' : ''} ${activePane === 'browser' ? 'browser-open' : ''} ${activePane === 'files' && editorOpen ? 'editor-open' : ''}`}
     >
+      {/* At the start of the open pane's header row, left of its tabs or title; with the pane
+          collapsed, on the same line at the left of the rail and window buttons. */}
+      <button
+        className="icon-btn pane-collapse"
+        aria-label={activePane ? 'Collapse pane' : `Expand ${lastLabel} pane`}
+        title={`${activePane ? 'Collapse pane' : `Expand ${lastLabel}`} (${isMac() ? '⌥⌘B' : 'Ctrl+Alt+B'})`}
+        aria-expanded={Boolean(activePane)}
+        onClick={togglePaneCollapsed}
+      >
+        {activePane ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+      </button>
       {activePane && (
         <section
           className={`panel side-pane ${activePane === 'files' && editorOpen ? 'wide' : ''}`}

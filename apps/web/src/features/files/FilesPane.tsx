@@ -68,7 +68,9 @@ export function FilesPane({ session }: { session: SessionView }) {
       <div className="files-tree">
         <div className="pane-head">
           <h2>Files</h2>
-          <span className="muted">{name}</span>
+          <span className="muted" title={name}>
+            {name}
+          </span>
           <span className="spacer" />
           <button className="icon-btn" aria-label="New file" onClick={() => setCreating('file')}>
             <FilePlus size={18} />

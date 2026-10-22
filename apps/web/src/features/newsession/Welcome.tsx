@@ -10,6 +10,8 @@ import { samePath } from '../folders/folderLogic.ts'
 import { defaultAgent, hostDefaults, usePreferences } from '../../stores/preferences.ts'
 import '../folders/folders.css'
 
+export { showWelcome } from './welcomeLogic.ts'
+
 export function Welcome({ hostKey, onSkip }: { hostKey: string; onSkip(): void }) {
   const navigate = useNavigate()
   const { connection, providers, host, projects } = useRuntime(hostKey)

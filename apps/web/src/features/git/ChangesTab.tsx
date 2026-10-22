@@ -4,7 +4,7 @@ import type { GitFile, GitStatus } from '@beddcode/contracts'
 import { PatchView } from '../../ui/PatchView.tsx'
 import { hostRequest } from '../../stores/host.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
-import { commitLabel, groupByDirectory, selectedPaths } from './changes.ts'
+import { commitLabel, diffRefreshKey, groupByDirectory, selectedPaths } from './changes.ts'
 import { usePolled } from './usePolled.ts'
 
 const STATUS_COLOR: Record<GitFile['status'], string> = {
@@ -17,10 +17,13 @@ const STATUS_COLOR: Record<GitFile['status'], string> = {
 export function ChangesTab({
   cwd,
   status,
+  refreshKey,
   onChanged,
 }: {
   cwd: string
   status: GitStatus
+  /** Changes whenever the pane refreshes as a whole, so open diffs load again too. */
+  refreshKey: string
   /** Called after a commit or push so the other tabs refresh. */
   onChanged(): void
 }) {
@@ -143,7 +146,13 @@ export function ChangesTab({
                         {file.status}
                       </span>
                     </div>
-                    {open[file.path] && <FileDiffView cwd={cwd} path={file.path} />}
+                    {open[file.path] && (
+                      <FileDiffView
+                        cwd={cwd}
+                        path={file.path}
+                        refreshKey={diffRefreshKey(file, refreshKey)}
+                      />
+                    )}
                   </div>
                 )
               })}
@@ -175,9 +184,19 @@ export function ChangesTab({
   )
 }
 
-function FileDiffView({ cwd, path }: { cwd: string; path: string }) {
+function FileDiffView({
+  cwd,
+  path,
+  refreshKey,
+}: {
+  cwd: string
+  path: string
+  refreshKey: string
+}) {
   const hostKey = useHostKey()
-  const diff = usePolled(() => hostRequest(hostKey, 'git.diff', { cwd, path }), path, 0)
+  // Reloads when the file's status changes, and on the same interval as the list, so an edit
+  // that keeps the line counts the same still shows up.
+  const diff = usePolled(() => hostRequest(hostKey, 'git.diff', { cwd, path }), refreshKey)
   if (diff.loading) return <div className="muted diff-note">Loading…</div>
   if (diff.error) return <div className="composer-error diff-note">{diff.error}</div>
   if (!diff.data || (diff.data.truncated && !diff.data.patch)) {

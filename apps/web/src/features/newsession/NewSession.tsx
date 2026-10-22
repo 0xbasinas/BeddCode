@@ -23,6 +23,7 @@ import {
 } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { Welcome, setupWasSkipped, skipSetup } from './Welcome.tsx'
+import { showWelcome } from './welcomeLogic.ts'
 import { chooseFolder } from '../folders/folderFlow.ts'
 import { useAppPreferences } from '../../stores/appPreferences.ts'
 import { modelChoice } from '../../ui/models.ts'
@@ -46,9 +47,12 @@ interface RepoState {
 export function NewSession({
   initialProject,
   initialHost,
+  compose,
 }: {
   initialProject?: string
   initialHost?: string
+  /** Show the composer straight away, even on a first run (the sidebar's New session). */
+  compose?: boolean
 }) {
   const navigate = useNavigate()
   const entries = useHostStore((s) => s.entries)
@@ -208,7 +212,7 @@ export function NewSession({
     void navigate({ to: '/session/$sessionId', params: { sessionId } })
   }
 
-  if (!initialProject && synced && !hasSessions && !setupSkipped)
+  if (showWelcome({ initialProject, compose, synced, hasSessions, setupSkipped }))
     return (
       <Welcome
         hostKey={hostKey}

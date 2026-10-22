@@ -1,8 +1,11 @@
 import path from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { runWindowAction } from './windowActions.ts'
 
 // Dev: the Vite server URL. Packaged: the built web app next to the desktop bundle.
 const webUrl = process.env.BEDDCODE_WEB_URL
+// Sent to the page whenever the window is maximized or restored (see preload.ts).
+const WINDOW_MAXIMIZED = 'beddcode:window-maximized'
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -12,8 +15,11 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#111111',
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#161616', symbolColor: '#9a9a9a', height: 44 },
+    // macOS keeps its traffic lights, inset and centred on the header line. Elsewhere the window is
+    // frameless and the app draws its own minimize / maximize / close (see WindowBar.tsx).
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 20 } }
+      : { frame: false }),
     title: 'BeddCode',
     autoHideMenuBar: true,
     webPreferences: {
@@ -35,6 +41,11 @@ function createWindow() {
     // Only web pages may be shown; anything else (file:, javascript:) is refused.
     if (!/^https?:\/\//i.test(params.src ?? '')) _event.preventDefault()
   })
+
+  // The app's own window buttons follow the real state, however it changed (button, keyboard, WM).
+  const sendMaximized = () => win.webContents.send(WINDOW_MAXIMIZED, win.isMaximized())
+  win.on('maximize', sendMaximized)
+  win.on('unmaximize', sendMaximized)
 
   if (webUrl) void win.loadURL(webUrl)
   else void win.loadFile(path.join(__dirname, '../../web/dist/index.html'))
@@ -58,6 +69,14 @@ ipcMain.handle('beddcode:pick-folder', async (event, options: unknown) => {
     properties: ['openDirectory', 'createDirectory'],
   })
   return result.canceled ? null : (result.filePaths[0] ?? null)
+})
+
+// Minimize, maximize/restore and close for the app's own window buttons. Like the folder picker,
+// only the app's own page may ask (never a page shown in the browser pane).
+ipcMain.handle('beddcode:window', (event, action: unknown) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win || event.sender !== win.webContents) return null
+  return runWindowAction(win, action)
 })
 
 app.whenReady().then(() => {

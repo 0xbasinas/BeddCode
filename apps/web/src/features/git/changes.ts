@@ -34,3 +34,15 @@ export function selectedPaths(files: GitFile[], overrides: Record<string, boolea
 export function commitLabel(count: number): string {
   return count === 1 ? 'Commit 1 file' : `Commit ${count} files`
 }
+
+/**
+ * When an open file's diff must load again: whenever what git says about the file changes (its
+ * status, staging or line counts), and whenever the pane as a whole refreshes (a turn ended, a
+ * commit). Keying on the path alone kept showing the first diff after the agent edited the file
+ * again.
+ */
+export function diffRefreshKey(file: GitFile, paneKey: string | number): string {
+  return [paneKey, file.path, file.status, file.staged ? 's' : 'u', file.added, file.removed].join(
+    ':',
+  )
+}
