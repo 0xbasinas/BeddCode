@@ -3369,9 +3369,8 @@ button.tcall-row:hover .tcall-chevron,
 }
 
 /* The header line's right end: the pane toggle at the start of the open pane's header, the app's
-   own window buttons at the top right (frameless desktop window on Linux and Windows), and room
-   kept free under them. Without the window buttons (macOS, the browser build) the collapsed
-   toggle sits over the rail. */
+   own window buttons in a title bar above the panes (frameless desktop window on Linux and
+   Windows). With the pane collapsed the toggle sits over the rail on the header line. */
 .pane-collapse,
 .winbar .icon-btn {
   box-sizing: border-box;
@@ -3394,20 +3393,39 @@ button.tcall-row:hover .tcall-chevron,
 .right:not(.has-pane) .pane-collapse {
   position: fixed;
   z-index: 5;
-  top: calc(var(--gap) + (var(--pane-head) - var(--head-btn)) / 2);
-  right: calc(var(--winbar-right) + var(--winbar-span));
+  top: calc(var(--titlebar-h) + var(--gap) + (var(--pane-head) - var(--head-btn)) / 2);
+  right: var(--rail-btn-right);
+}
+/* The title bar: window chrome in the gutter's colour, above every pane (and the Browser pane that
+   overlays the thread in small windows). Dragging it moves the window; its buttons don't. */
+:root:has(.titlebar) {
+  --titlebar-h: 36px;
+}
+#root {
+  box-sizing: border-box;
+  padding-top: var(--titlebar-h);
+}
+.titlebar {
+  position: fixed;
+  z-index: 20;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--titlebar-h);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: var(--rail-btn-right);
+  background: var(--bg-app);
+  -webkit-app-region: drag;
 }
 .winbar {
-  position: fixed;
-  /* Above the Browser pane, which overlays the thread in small windows. */
-  z-index: 20;
-  top: calc(var(--gap) + (var(--pane-head) - var(--head-btn)) / 2);
-  right: var(--winbar-right);
   display: flex;
   gap: var(--winbar-gap);
   -webkit-app-region: no-drag;
 }
 .winbar .icon-btn {
+  height: var(--titlebar-btn-h);
   color: var(--text-faint);
 }
 .winbar .winbar-close:hover {
@@ -3418,30 +3436,13 @@ button.tcall-row:hover .tcall-chevron,
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
-:root:has(.winbar) {
-  --winbar-w: calc(3 * var(--head-btn) + 2 * var(--winbar-gap));
-  --winbar-span: calc(var(--winbar-w) + var(--winbar-sep));
-}
-/* Headers under the window buttons end before them. */
-.right.has-pane .side-pane .git-tabs {
-  margin-right: max(var(--pane-pad-x), var(--winbar-reach));
-}
-.right.has-pane .side-pane .pane-head {
-  padding-right: max(var(--pane-pad-x), var(--winbar-reach));
-}
-.shell:not(:has(.right.has-pane)) .thread-head {
-  padding-right: max(
-    calc(24px * var(--ui-scale)),
-    calc(var(--winbar-reach) + var(--head-btn) + 4px * var(--ui-scale) - var(--gap))
-  );
-}
-/* A narrow pane keeps its tabs clear of the window buttons: tighter tabs, then shrinking ones. */
+/* A narrow pane keeps its tabs in one row: tighter tabs, then shrinking ones. */
 .side-pane {
   container-type: inline-size;
 }
 .right.has-pane .side-pane .git-tabs {
   min-width: 0;
-  max-width: calc(100% - var(--toggle-reach) - max(var(--pane-pad-x), var(--winbar-reach)));
+  max-width: calc(100% - var(--toggle-reach) - var(--pane-pad-x));
 }
 .git-tabs button {
   flex: 0 1 auto;
@@ -3449,7 +3450,19 @@ button.tcall-row:hover .tcall-chevron,
   overflow: hidden;
   white-space: nowrap;
 }
+/* Commit buttons stay on one line. */
+.git-actions .primary,
+.git-actions .secondary {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 @container (max-width: 340px) {
+  .git-actions .primary,
+  .git-actions .secondary {
+    padding-left: calc(6px * var(--ui-scale));
+    padding-right: calc(6px * var(--ui-scale));
+  }
   .git-tabs {
     gap: calc(2px * var(--ui-scale));
   }

@@ -8,7 +8,6 @@ import { RAIL_WIDTH, openPaneWidth, rememberPaneWidth } from './paneWidth.ts'
 import { Sidebar } from './Sidebar.tsx'
 import { useAppPreferences } from '../../stores/appPreferences.ts'
 import { useUiStore } from '../../stores/ui.ts'
-import { appWindowControls } from '../../ui/desktop.ts'
 import { FolderBrowserLayer } from '../folders/FolderBrowserDialog.tsx'
 import { FolderPickerHint, FolderToast } from '../folders/FolderToast.tsx'
 import { chooseFolder, useFolderFlow } from '../folders/folderFlow.ts'
@@ -140,8 +139,7 @@ export function AppShell() {
           collapsedSize={RAIL_WIDTH}
           onResize={onRightResize}
           defaultSize="30%"
-          // The app's own window buttons take part of the header row; the tabs still need to fit.
-          minSize={appWindowControls() ? '340px' : '280px'}
+          minSize="280px"
           maxSize="75%"
           groupResizeBehavior="preserve-pixel-size"
         >

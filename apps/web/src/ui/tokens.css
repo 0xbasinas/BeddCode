@@ -64,23 +64,19 @@
   /* Rows inside a pane (hover surfaces) keep this much padding; their content lines up with
      --pane-pad-x. */
   --row-pad-x: calc(8px * var(--ui-scale));
-  /* The desktop title-bar controls; zero in a browser (set by windowControls.ts). */
   /* Header icon buttons (16px icon + padding) and the right rail. */
   --head-btn: calc(16px + 16px * var(--ui-scale));
   --rail-w: 40px;
   /* Pane toggle at the start of a pane's header: its icon on the content edge. */
   --toggle-left: calc(var(--pane-pad-x) - 8px * var(--ui-scale));
   --toggle-reach: calc(var(--toggle-left) + var(--head-btn) + 4px * var(--ui-scale));
-  /* Window buttons: their own zone at the top right, close centred over the rail. The gap between
-     buttons is chosen so that, with the pane collapsed, the gutter between the thread and the rail
-     falls exactly between maximize and close. --winbar-sep keeps every header control clear of
-     the zone. Both spans are 0 without the window buttons. */
+  /* The app's own title bar (desktop app on Linux and Windows): a slim strip across the top of the
+     window holding the window buttons. 0 without it (browser build, macOS); see WindowBar.tsx. */
+  --titlebar-h: 0px;
+  --titlebar-btn-h: calc(28px * var(--ui-scale));
+  /* Window buttons 10.2px apart (at 0.9 scale); close sits over the rail's icons. */
   --winbar-gap: calc(var(--gap) + (var(--rail-w) - var(--head-btn)) / 2);
-  --winbar-sep: 16px;
-  --winbar-right: calc(var(--gap) + (var(--rail-w) - var(--head-btn)) / 2);
-  --winbar-w: 0px;
-  --winbar-span: 0px;
-  /* How far the zone, its separation included, reaches into the pane left of the rail. */
-  --winbar-reach: calc(var(--winbar-right) + var(--winbar-span) - var(--rail-w) - var(--gap));
+  /* A header-row button centred over the rail (the collapsed pane toggle, the close button). */
+  --rail-btn-right: calc(var(--gap) + (var(--rail-w) - var(--head-btn)) / 2);
   color-scheme: dark;
 }
