@@ -3,11 +3,12 @@ import { Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from 'react-resizable-panels'
 import { startHosts } from '../../stores/host.ts'
 import { RightRail } from './RightRail.tsx'
-import { trackWindowControls } from './windowControls.ts'
+import { WindowBar } from './WindowBar.tsx'
 import { RAIL_WIDTH, openPaneWidth, rememberPaneWidth } from './paneWidth.ts'
 import { Sidebar } from './Sidebar.tsx'
 import { useAppPreferences } from '../../stores/appPreferences.ts'
 import { useUiStore } from '../../stores/ui.ts'
+import { appWindowControls } from '../../ui/desktop.ts'
 import { FolderBrowserLayer } from '../folders/FolderBrowserDialog.tsx'
 import { FolderPickerHint, FolderToast } from '../folders/FolderToast.tsx'
 import { chooseFolder, useFolderFlow } from '../folders/folderFlow.ts'
@@ -24,7 +25,6 @@ export function AppShell() {
     [rightPanel],
   )
   useEffect(() => startHosts(), [])
-  useEffect(() => trackWindowControls(), [])
   // With no pane open the right panel is just its icon rail, so the thread gets the room.
   const activePane = useUiStore((s) => s.activePane)
   // Collapsing or expanding slides quickly (CSS, off under reduced motion); dragging never does.
@@ -54,6 +54,7 @@ export function AppShell() {
   useEffect(() => {
     const root = document.documentElement
     root.dataset.desktop = window.beddcodeDesktop ? 'true' : 'false'
+    if (window.beddcodeDesktop) root.dataset.platform = window.beddcodeDesktop.platform
     root.dataset.density = preferences.density
     root.dataset.motion = preferences.reduceMotion ? 'reduced' : 'normal'
     root.style.setProperty(
@@ -95,6 +96,7 @@ export function AppShell() {
     <>
       <FolderBrowserLayer />
       <FolderPickerHint />
+      <WindowBar />
     </>
   )
   if (settings)
@@ -138,7 +140,8 @@ export function AppShell() {
           collapsedSize={RAIL_WIDTH}
           onResize={onRightResize}
           defaultSize="30%"
-          minSize="280px"
+          // The app's own window buttons take part of the header row; the tabs still need to fit.
+          minSize={appWindowControls() ? '320px' : '280px'}
           maxSize="75%"
           groupResizeBehavior="preserve-pixel-size"
         >

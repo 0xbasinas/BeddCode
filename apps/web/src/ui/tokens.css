@@ -65,8 +65,17 @@
      --pane-pad-x. */
   --row-pad-x: calc(8px * var(--ui-scale));
   /* The desktop title-bar controls; zero in a browser (set by windowControls.ts). */
-  --wco-left: 0px;
-  --wco-right: 0px;
-  --wco-height: 0px;
+  /* Header icon buttons (16px icon + padding) and the right rail. */
+  --head-btn: calc(16px + 16px * var(--ui-scale));
+  --rail-w: 40px;
+  /* Pane toggle at the start of a pane's header: its icon on the content edge. */
+  --toggle-left: calc(var(--pane-pad-x) - 8px * var(--ui-scale));
+  --toggle-reach: calc(var(--toggle-left) + var(--head-btn) + 4px * var(--ui-scale));
+  /* Window buttons: the close button centred over the rail; --winbar-span is 0 without them. */
+  --winbar-gap: calc(2px * var(--ui-scale));
+  --winbar-right: calc(var(--gap) + (var(--rail-w) - var(--head-btn)) / 2);
+  --winbar-span: 0px;
+  /* How far the window buttons (and the gap before them) reach into the pane left of the rail. */
+  --winbar-reach: calc(var(--winbar-right) + var(--winbar-span) - var(--rail-w) - var(--gap));
   color-scheme: dark;
 }

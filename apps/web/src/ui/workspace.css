@@ -16,7 +16,7 @@ a {
   top: 0;
   left: 0;
   right: 0;
-  height: 44px;
+  height: var(--pane-head);
   -webkit-app-region: drag;
   /* A drag strip only: clicks reach the tabs and buttons under it. */
   pointer-events: none;
