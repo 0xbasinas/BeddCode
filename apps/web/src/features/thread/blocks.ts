@@ -43,8 +43,21 @@ export function buildBlocks(items: TranscriptItem[]): Block[] {
     filesByTurn.set(turnOf[i]!, files)
   })
 
+  // A denied request whose tool call is in the transcript: the tool row already reads "Denied".
+  const deniedTools = new Set(
+    items.flatMap((item) =>
+      item.kind === 'tool' && item.approval?.outcome === 'deny' ? [item.id] : [],
+    ),
+  )
+  const redundant = (item: TranscriptItem) =>
+    item.kind === 'approval' &&
+    item.toolId !== undefined &&
+    deniedTools.has(item.toolId) &&
+    item.options.find((o) => o.id === item.resolvedOptionId)?.kind === 'deny'
+
   const blocks: Block[] = []
   items.forEach((item, i) => {
+    if (redundant(item)) return
     if (item.kind !== 'diff') return void blocks.push({ kind: 'item', item })
     const t = turnOf[i]!
     if (lastDiffOfTurn.get(t) === i) {

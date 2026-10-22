@@ -1,4 +1,11 @@
-import { FolderOpen, GitBranch, Globe, SquareTerminal } from 'lucide-react'
+import {
+  FolderOpen,
+  GitBranch,
+  Globe,
+  PanelRightClose,
+  PanelRightOpen,
+  SquareTerminal,
+} from 'lucide-react'
 import { useEffect, type ComponentType, type ReactNode } from 'react'
 import { useRouterState } from '@tanstack/react-router'
 import { useSession, useSessionHostKey } from '../../stores/host.ts'
@@ -28,6 +35,9 @@ function useActiveSessionId(): string | undefined {
 export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
   const activePane = useUiStore((s) => s.activePane)
   const togglePane = useUiStore((s) => s.togglePane)
+  const togglePaneCollapsed = useUiStore((s) => s.togglePaneCollapsed)
+  const lastPane = useUiStore((s) => s.lastPane)
+  const lastLabel = panes.find((p) => p.id === lastPane)?.label ?? 'pane'
   const sessionId = useActiveSessionId()
   const session = useSession(sessionId)
   const hostKey = useSessionHostKey(sessionId) ?? LOCAL_HOST_KEY
@@ -73,6 +83,15 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
           </HostScopeProvider>
         </section>
       )}
+      <button
+        className="icon-btn pane-collapse"
+        aria-label={activePane ? 'Collapse pane' : `Expand ${lastLabel} pane`}
+        title={`${activePane ? 'Collapse pane' : `Expand ${lastLabel}`} (Ctrl+Alt+B)`}
+        aria-expanded={Boolean(activePane)}
+        onClick={togglePaneCollapsed}
+      >
+        {activePane ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+      </button>
       <nav className="rail" aria-label="Panes">
         {panes.map(({ id, label, Icon }) => (
           <button

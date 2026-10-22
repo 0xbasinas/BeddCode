@@ -10,6 +10,7 @@ import {
   toolDuration,
   toolLabel,
   toolPhase,
+  wasDenied,
   type Tool,
 } from './toolSummary.ts'
 
@@ -237,3 +238,48 @@ describe('toolDetails', () => {
     expect(approvalDecision(tool({}))).toBeUndefined()
   })
 })
+
+describe('a call the user denied', () => {
+  const denied = tool({
+    title: 'Execute `rm README.md`',
+    status: 'failed',
+    output: 'User rejected the execution for tool `run_terminal_command`',
+    startedAt: 1_000,
+    endedAt: 9_706,
+    approval: { requestId: 'r', requestedAt: 1_000, resolvedAt: 9_700, outcome: 'deny' },
+    asked: true,
+  })
+
+  it('reads as denied and not run, never as ran or failed', () => {
+    expect(wasDenied(denied)).toBe(true)
+    expect(toolPhase(denied)).toBe('denied')
+    expect(toolLabel(denied)).toEqual({ verb: 'Denied', target: 'rm README.md', prompt: '$' })
+    expect(toolDuration(denied)).toBeUndefined()
+    expect(approvalWait(denied)).toBe(8_700)
+    const rows = toolDetails(denied)
+    expect(rows).toContainEqual({ label: 'Status', value: 'Denied (not run)' })
+    expect(rows).toContainEqual({ label: 'Approval', value: 'Denied' })
+    expect(rows.find((r) => r.label === 'Ran for')).toBeUndefined()
+  })
+
+  it('is counted as denied in a summary and does not hold its group open', () => {
+    const ran = tool({ title: 'Execute `ls`' })
+    expect(summarizeTools([ran, ran, denied])).toBe('Ran 2 commands, denied 1')
+    expect(defaultOpen([ran, ran, denied])).toBe(false)
+  })
+
+  it('leaves real failures as failures', () => {
+    const failed = tool({ status: 'failed', output: 'exit 1' })
+    expect(wasDenied(failed)).toBe(false)
+    expect(toolPhase(failed)).toBe('failed')
+    expect(toolLabel(failed).verb).toBe('Ran')
+    const allowedButFailed = tool({
+      status: 'failed',
+      approval: { requestId: 'r', requestedAt: 0, resolvedAt: 1, outcome: 'allow' },
+    })
+    expect(toolPhase(allowedButFailed)).toBe('failed')
+    expect(defaultOpen([ran(), ran(), failed])).toBe(true)
+  })
+})
+
+const ran = () => tool({ title: 'Execute `ls`' })

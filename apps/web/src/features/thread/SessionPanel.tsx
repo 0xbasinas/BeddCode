@@ -22,6 +22,14 @@ import { folderName } from '../../ui/format.ts'
 import { environmentHint } from './environment.ts'
 
 /** The agent's name under the composer. The Environment bar is always there; nothing here hides it. */
+/** Focuses the element `selector` names as soon as it exists (within ~10 frames), else `fallback`. */
+function focusWhenReady(selector: string, fallback: HTMLElement | null, frames = 10) {
+  const found = document.querySelector<HTMLElement>(selector)
+  if (found) return found.focus()
+  if (frames <= 0) return fallback?.focus()
+  requestAnimationFrame(() => focusWhenReady(selector, fallback, frames - 1))
+}
+
 export function SessionChip({ agent }: { agent: string }) {
   const initials = agent
     .split(/\s+/)
@@ -149,7 +157,18 @@ export function EnvironmentButton({
             </span>
           </div>
           <div className="env-body">
-            <button className="menu-row" onClick={() => useUiStore.getState().showChanges()}>
+            <button
+              className="menu-row"
+              onClick={() => {
+                useUiStore.getState().showChanges()
+                close(false)
+                // Focus follows to the Changes tab once the pane has drawn it, else the icon.
+                focusWhenReady(
+                  '.side-pane .git-tabs [role="tab"][aria-selected="true"]',
+                  trigger.current,
+                )
+              }}
+            >
               <FileDiff size={16} />
               <span className="menu-text menu-title">Changes</span>
               <span className="stat">

@@ -65,3 +65,38 @@ describe('buildBlocks', () => {
     expect(edits.map((b) => b.kind === 'edits' && b.files[0]?.added)).toEqual([1, 2])
   })
 })
+
+describe('buildBlocks: denied requests', () => {
+  const options = [
+    { id: 'allow', label: 'Allow', kind: 'allow' as const },
+    { id: 'deny', label: 'Deny', kind: 'deny' as const },
+  ]
+  const tool = (outcome: 'allow' | 'deny'): TranscriptItem => ({
+    kind: 'tool',
+    id: 't1',
+    title: 'Execute `rm README.md`',
+    toolKind: 'command',
+    status: outcome === 'deny' ? 'failed' : 'ok',
+    approval: { requestId: 'r1', requestedAt: 0, resolvedAt: 1, outcome },
+  })
+  const approval = (resolvedOptionId: string, toolId?: string): TranscriptItem => ({
+    kind: 'approval',
+    id: 'a1',
+    requestId: 'r1',
+    toolId,
+    title: 'Run this command?',
+    detail: 'rm README.md',
+    options,
+    resolvedOptionId,
+  })
+
+  it('drops the answered "Denied" line when the tool row already says it', () => {
+    const items = [tool('deny'), approval('deny', 't1')]
+    expect(buildBlocks(items)).toEqual([{ kind: 'item', item: items[0] }])
+  })
+
+  it('keeps it when the request names no tool, and keeps allowed answers', () => {
+    expect(buildBlocks([tool('deny'), approval('deny')])).toHaveLength(2)
+    expect(buildBlocks([tool('allow'), approval('allow', 't1')])).toHaveLength(2)
+  })
+})

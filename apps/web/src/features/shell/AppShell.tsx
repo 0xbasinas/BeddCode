@@ -1,8 +1,9 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from 'react-resizable-panels'
 import { startHosts } from '../../stores/host.ts'
 import { RightRail } from './RightRail.tsx'
+import { RAIL_WIDTH, openPaneWidth, rememberPaneWidth } from './paneWidth.ts'
 import { Sidebar } from './Sidebar.tsx'
 import { useAppPreferences } from '../../stores/appPreferences.ts'
 import { useUiStore } from '../../stores/ui.ts'
@@ -22,6 +23,31 @@ export function AppShell() {
     [rightPanel],
   )
   useEffect(() => startHosts(), [])
+  // With no pane open the right panel is just its icon rail, so the thread gets the room.
+  const activePane = useUiStore((s) => s.activePane)
+  // Collapsing or expanding slides quickly (CSS, off under reduced motion); dragging never does.
+  const [sliding, setSliding] = useState(false)
+  const slideTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => {
+    const panel = rightPanel.current
+    if (!panel) return
+    const collapse = !activePane && !panel.isCollapsed()
+    const expand = Boolean(activePane) && panel.isCollapsed()
+    if (!collapse && !expand) return
+    setSliding(true)
+    clearTimeout(slideTimer.current)
+    slideTimer.current = setTimeout(() => setSliding(false), 200)
+    if (collapse) panel.collapse()
+    else panel.resize(openPaneWidth(layoutStorage()))
+  }, [activePane, rightPanel])
+  useEffect(() => () => clearTimeout(slideTimer.current), [])
+  // Remembers how wide an open pane was; dragging one shut closes it, so its rail button agrees.
+  const onRightResize = useCallback(() => {
+    const panel = rightPanel.current
+    if (!panel) return
+    if (!panel.isCollapsed()) return rememberPaneWidth(panel.getSize().inPixels, layoutStorage())
+    if (useUiStore.getState().activePane) useUiStore.getState().collapsePane()
+  }, [rightPanel])
   const preferences = useAppPreferences((s) => s.values)
   useEffect(() => {
     const root = document.documentElement
@@ -43,6 +69,11 @@ export function AppShell() {
         event.preventDefault()
         useUiStore.getState().setSearchOpen(true)
         if (settings) void navigate({ to: '/' })
+      }
+      // Ctrl/Cmd+Alt+B: collapse or expand the right pane (by key position, so macOS's ∫ works).
+      if ((event.ctrlKey || event.metaKey) && event.altKey && event.code === 'KeyB') {
+        event.preventDefault()
+        useUiStore.getState().togglePaneCollapsed()
       }
       // Ctrl/Cmd+O: Browse… for a folder on the host the Add folder menu points at.
       if (
@@ -75,7 +106,7 @@ export function AppShell() {
     <>
       <Group
         orientation="horizontal"
-        className="shell"
+        className={`shell ${sliding ? 'pane-sliding' : ''}`}
         defaultLayout={layout.defaultLayout}
         onLayoutChanged={layout.onLayoutChanged}
       >
@@ -96,11 +127,14 @@ export function AppShell() {
             <FolderToast />
           </div>
         </Panel>
-        <Separator className="shell-sep" />
+        <Separator className="shell-sep" disabled={!activePane} />
         <Panel
           id="right"
           className="shell-panel"
           panelRef={rightPanel}
+          collapsible
+          collapsedSize={RAIL_WIDTH}
+          onResize={onRightResize}
           defaultSize="30%"
           minSize="280px"
           maxSize="75%"

@@ -2651,8 +2651,13 @@ button.tcall-row:hover {
 .tcall.awaiting-approval .tcall-status {
   color: var(--accent);
 }
+/* A call you denied never ran: muted, struck through lightly, not failure red. */
 .tcall.denied .tcall-status {
-  color: var(--danger);
+  color: var(--text-faint);
+}
+.tcall.denied .tcall-text code {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--text-faint) 60%, transparent);
 }
 .tcall-tag {
   flex: none;
@@ -3201,4 +3206,40 @@ button.tcall-row:hover .tcall-chevron,
   align-self: center;
   margin-right: calc(6px * var(--ui-scale));
   font-size: calc(12px * var(--ui-scale));
+}
+
+/* Right pane: a collapse/expand control in the band above the rail, and a quick slide */
+.pane-collapse {
+  position: absolute;
+  top: calc(8px * var(--ui-scale));
+  right: 5px;
+  width: calc(30px * var(--ui-scale));
+  height: calc(28px * var(--ui-scale));
+  display: grid;
+  place-items: center;
+  color: var(--text-faint);
+  border-radius: var(--radius-control);
+}
+.pane-collapse:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.pane-collapse:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.shell.pane-sliding > [data-panel] {
+  transition: flex-grow 0.16s ease-out;
+}
+[data-motion='reduced'] .shell.pane-sliding > [data-panel] {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell.pane-sliding > [data-panel] {
+    transition: none;
+  }
+}
+/* With the pane collapsed there is nothing to resize: the separator is inert, not "not allowed". */
+.shell-sep[data-separator='disabled'] {
+  pointer-events: none;
 }

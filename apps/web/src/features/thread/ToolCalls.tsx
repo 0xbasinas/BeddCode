@@ -22,6 +22,7 @@ import {
   toolLabel,
   toolDetails,
   toolPhase,
+  wasDenied,
   type Tool,
   type ToolPhase,
 } from './toolSummary.ts'
@@ -68,6 +69,8 @@ function StatusIcon({ phase }: { phase: ToolPhase }) {
 /** What a tool call was given and what it gave back, under its row when opened. */
 function ToolDetails({ tool, now, id }: { tool: Tool; now: number; id: string }) {
   const output = tool.output?.trim()
+  // A call you denied did not run: what the agent said back is a note, not an error.
+  const failed = tool.status === 'failed' && !wasDenied(tool)
   return (
     <div className="tcall-details" id={id}>
       <dl className="tcall-facts">
@@ -88,8 +91,8 @@ function ToolDetails({ tool, now, id }: { tool: Tool; now: number; id: string })
       )}
       {output ? (
         <section className="tcall-block">
-          <h4>{tool.status === 'failed' ? 'Error' : 'Output'}</h4>
-          <pre className={`tcall-output ${tool.status === 'failed' ? 'error' : ''}`}>
+          <h4>{failed ? 'Error' : wasDenied(tool) ? 'Agent’s note' : 'Output'}</h4>
+          <pre className={`tcall-output ${failed ? 'error' : ''}`}>
             <code>{output}</code>
           </pre>
         </section>
@@ -136,7 +139,7 @@ function ToolCall({ tool, now }: { tool: Tool; now: number }) {
       )}
       {phase === 'awaiting-approval' && <span className="tcall-tag wait">needs approval</span>}
       {phase === 'approved' && <span className="tcall-tag">approved</span>}
-      {phase === 'denied' && <span className="tcall-tag">denied</span>}
+      {phase === 'denied' && tool.status === 'running' && <span className="tcall-tag">denied</span>}
       {(ms !== undefined || (waited !== undefined && waited >= 1000)) &&
         tool.status !== 'cancelled' && (
           <span className="tcall-time" title={timing}>
@@ -157,7 +160,9 @@ function ToolCall({ tool, now }: { tool: Tool; now: number }) {
   )
 
   return (
-    <div className={`tcall ${tool.status} ${phase} ${open ? 'open' : ''}`}>
+    <div
+      className={`tcall ${phase === 'denied' ? '' : tool.status} ${phase} ${open ? 'open' : ''}`}
+    >
       <button
         type="button"
         className="tcall-row"
@@ -189,7 +194,7 @@ export function ToolGroup({ tools }: { tools: Tool[] }) {
     toolDuration(t, now) !== undefined ? [toolDuration(t, now)!] : [],
   )
   const total = times.length > 0 ? times.reduce((a, b) => a + b, 0) : undefined
-  const failed = tools.filter((t) => t.status === 'failed').length
+  const failed = tools.filter((t) => t.status === 'failed' && !wasDenied(t)).length
 
   return (
     <div className={`tgroup ${running.length > 0 ? 'running' : ''}`}>

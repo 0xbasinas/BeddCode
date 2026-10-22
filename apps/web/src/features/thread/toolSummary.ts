@@ -17,7 +17,7 @@ export function formatDuration(ms: number): string {
  * approve it does not count (see `approvalWait`); a tool still waiting has no run time yet.
  */
 export function toolDuration(tool: Tool, now = Date.now()): number | undefined {
-  if (tool.startedAt === undefined) return undefined
+  if (tool.startedAt === undefined || wasDenied(tool)) return undefined
   const approval = tool.approval
   if (approval && approval.resolvedAt === undefined && tool.status === 'running') return undefined
   const from = approval?.resolvedAt ?? tool.startedAt
@@ -41,8 +41,17 @@ export type ToolPhase =
   | 'denied'
   | Tool['status']
 
+/**
+ * True when the user said no and the tool did not run: agents report such a call as failed
+ * ("User rejected the execution…"), which is not a failure of the tool.
+ */
+export function wasDenied(tool: Pick<Tool, 'status' | 'approval'>): boolean {
+  return tool.approval?.outcome === 'deny' && tool.status !== 'ok'
+}
+
 /** Where a tool stands, including the user's answer while the agent catches up. */
 export function toolPhase(tool: Tool): ToolPhase {
+  if (wasDenied(tool)) return 'denied'
   if (tool.status !== 'running' || !tool.approval) return tool.status
   const { resolvedAt, outcome } = tool.approval
   if (resolvedAt === undefined) return 'awaiting-approval'
@@ -69,14 +78,17 @@ const PLURAL: Record<Tool['toolKind'], [string, string, string]> = {
 }
 const ORDER: Tool['toolKind'][] = ['command', 'read', 'edit', 'search', 'other']
 
-/** "Ran 2 commands, read 3 files": what a group of tool calls did, in one line. */
+/** "Ran 2 commands, read 3 files, denied 1": what a group of tool calls did, in one line. */
 export function summarizeTools(tools: Tool[]): string {
+  const done = tools.filter((t) => !wasDenied(t))
+  const denied = tools.length - done.length
   const parts = ORDER.flatMap((kind) => {
-    const n = tools.filter((t) => t.toolKind === kind).length
+    const n = done.filter((t) => t.toolKind === kind).length
     if (n === 0) return []
     const [verb, one, many] = PLURAL[kind]
     return [`${verb} ${n} ${n === 1 ? one : many}`]
   })
+  if (denied > 0) parts.push(`denied ${denied}`)
   const text = parts.join(', ')
   return text ? text[0]!.toUpperCase() + text.slice(1) : 'No tools'
 }
@@ -109,15 +121,25 @@ function unquote(text: string): string {
 }
 
 /** Splits a provider's tool title ("Running Bash: pnpm test") into a verb and its object. */
-export function toolLabel(tool: Pick<Tool, 'title' | 'status'>): ToolLabel {
+export function toolLabel(tool: Pick<Tool, 'title' | 'status' | 'approval'>): ToolLabel {
+  const denied = wasDenied(tool)
   for (const [pattern, running, done, prompt] of VERBS) {
     if (!pattern.test(tool.title)) continue
     const target = unquote(tool.title.replace(pattern, '').trim())
-    const verb =
-      tool.status === 'running' ? running : tool.status === 'cancelled' ? 'Stopped' : done
+    const verb = denied
+      ? 'Denied'
+      : tool.status === 'running'
+        ? running
+        : tool.status === 'cancelled'
+          ? 'Stopped'
+          : done
     return { verb, target, prompt }
   }
-  return { verb: tool.status === 'cancelled' ? 'Stopped' : '', target: tool.title, prompt: '' }
+  return {
+    verb: denied ? 'Denied' : tool.status === 'cancelled' ? 'Stopped' : '',
+    target: tool.title,
+    prompt: '',
+  }
 }
 
 /**
@@ -127,7 +149,12 @@ export function toolLabel(tool: Pick<Tool, 'title' | 'status'>): ToolLabel {
 export function defaultOpen(tools: Tool[]): boolean {
   return (
     tools.length <= 2 ||
-    tools.some((t) => t.status === 'running' || t.status === 'failed' || t.status === 'cancelled')
+    tools.some(
+      (t) =>
+        t.status === 'running' ||
+        (t.status === 'failed' && !wasDenied(t)) ||
+        t.status === 'cancelled',
+    )
   )
 }
 
@@ -142,7 +169,7 @@ const KIND_NAMES: Record<Tool['toolKind'], string> = {
 const PHASE_NAMES: Record<ToolPhase, string> = {
   'awaiting-approval': 'Waiting for your approval',
   approved: 'Approved, waiting for the agent',
-  denied: 'Denied, waiting for the agent',
+  denied: 'Denied (not run)',
   running: 'Running',
   ok: 'Done',
   failed: 'Failed',

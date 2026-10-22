@@ -114,17 +114,30 @@
   overflow: hidden;
   white-space: nowrap;
 }
-/* "New session here" takes the host's place while the pointer is on the folder. */
+/*
+ * "New session here" shows over the host while the pointer is on the folder. It is placed out of
+ * the row's flow, so showing it never changes the row's height or pushes the sessions below.
+ */
+.folder-group .group-title {
+  position: relative;
+}
 .folder-group .group-title .icon-btn.small {
-  display: none;
+  position: absolute;
+  /* Centred on the name's line: the row has more padding above (8px) than below (3px). */
+  top: calc(50% + 2.5px * var(--ui-scale));
+  right: calc(6px * var(--ui-scale));
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
 }
 .folder-group:hover .group-title .icon-btn.small,
 .folder-group .group-title:focus-within .icon-btn.small {
-  display: grid;
+  opacity: 1;
+  pointer-events: auto;
 }
 .folder-group:hover .group-title .folder-host,
 .folder-group .group-title:focus-within .folder-host {
-  display: none;
+  visibility: hidden;
 }
 .folder-empty {
   display: flex;
