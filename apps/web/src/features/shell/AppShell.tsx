@@ -141,7 +141,7 @@ export function AppShell() {
           onResize={onRightResize}
           defaultSize="30%"
           // The window buttons' card takes the end of an open pane's header row; the tabs still fit.
-          minSize={appWindowControls() ? '350px' : '280px'}
+          minSize={appWindowControls() ? '366px' : '280px'}
           maxSize="75%"
           groupResizeBehavior="preserve-pixel-size"
         >

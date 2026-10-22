@@ -3492,9 +3492,9 @@ button.tcall-row:hover .tcall-chevron,
   padding-top: calc(var(--notch-h) + (var(--rail-btn-h) - 20px) / 2);
   --rail-line-top: calc(var(--notch-h) + var(--radius-panel));
 }
-/* The open pane's header row (toggle, tabs or title) ends a gutter before the card. */
+/* The open pane's header row (toggle, tabs or title) ends 12px short of the notch's edge. */
 :root:has(.window-island) .right.has-pane .side-pane {
-  --island-reach: calc(var(--island-w) + 2 * var(--gap) - var(--rail-w));
+  --island-reach: calc(var(--island-w) + 2 * var(--gap) + 12px - var(--rail-w));
 }
 :root:has(.window-island) .right.has-pane .side-pane .pane-head {
   padding-right: max(var(--pane-pad-x), var(--island-reach));
