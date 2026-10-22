@@ -61,6 +61,7 @@ export function toConfigOptions(options: SessionConfigOption[] | null | undefine
 
 interface ToolState {
   title: string
+  kind: ToolKind
   done: boolean
   /** Latest diff per path, emitted once the tool succeeds. */
   diffs: Map<string, { path: string; oldText?: string | null; newText: string }>
@@ -80,6 +81,17 @@ function rawOutputText(raw: unknown): string | undefined {
   return text ? text.slice(0, MAX_OUTPUT) : undefined
 }
 
+/** Grok (and others) put the tool's real kind in `_meta` when the first notification has none. */
+function metaKind(meta: unknown): string | undefined {
+  if (!meta || typeof meta !== 'object') return undefined
+  for (const [key, value] of Object.entries(meta as Record<string, unknown>)) {
+    if (!/(^|\/)tool$/.test(key) || !value || typeof value !== 'object') continue
+    const kind = (value as { kind?: unknown }).kind
+    if (typeof kind === 'string') return kind
+  }
+  return undefined
+}
+
 /**
  * Converts ACP `session/update` notifications into the shared event vocabulary. Edits arrive as
  * diff content on a tool call; the diff is emitted when the call completes successfully.
@@ -88,6 +100,8 @@ export class AcpEventMapper {
   private turnId: string | undefined
   private modes: { id: string; label: string; description?: string }[] = []
   private readonly tools = new Map<string, ToolState>()
+  /** Tool calls the agent asked the user about (`session/request_permission`). */
+  private readonly asked = new Set<string>()
 
   constructor(
     private readonly sessionId: string,
@@ -102,6 +116,11 @@ export class AcpEventMapper {
     this.modes = modes
   }
 
+  /** Records that the agent asked the user before running this tool call. */
+  noteApproval(toolId: string) {
+    this.asked.add(toolId)
+  }
+
   map(update: SessionUpdate): SessionEvent[] {
     const out: Draft[] = []
 
@@ -113,7 +132,12 @@ export class AcpEventMapper {
         break
 
       case 'tool_call': {
-        const state = this.track(update.toolCallId, update.title, update.content, out, update.kind)
+        const state = this.track(
+          update.toolCallId,
+          update.title,
+          out,
+          update.kind ?? metaKind(update._meta),
+        )
         this.collectDiffs(state, update.content)
         state.output = textOf(update.content) ?? rawOutputText(update.rawOutput) ?? state.output
         if (update.status === 'completed' || update.status === 'failed') {
@@ -126,9 +150,8 @@ export class AcpEventMapper {
         const state = this.track(
           update.toolCallId,
           update.title ?? undefined,
-          update.content,
           out,
-          update.kind,
+          update.kind ?? metaKind(update._meta),
         )
         this.collectDiffs(state, update.content)
         state.output = textOf(update.content) ?? rawOutputText(update.rawOutput) ?? state.output
@@ -190,23 +213,37 @@ export class AcpEventMapper {
     )
   }
 
-  /** Registers a tool the first time it is seen, announcing it to the UI. */
+  /**
+   * Registers a tool the first time it is seen, announcing it to the UI. Agents often name a tool
+   * by its function first (`run_terminal_command`) and only later say what it does
+   * (``Execute `ls` ``) and what kind it is; those refinements go out as `tool.updated`.
+   */
   private track(
     id: string,
     title: string | undefined,
-    _content: ToolCallContent[] | null | undefined,
     out: Draft[],
     kind: string | null | undefined,
   ): ToolState {
     let state = this.tools.get(id)
     if (!state) {
-      state = { title: title ?? id, done: false, diffs: new Map() }
+      state = { title: title ?? id, kind: toolKind(kind), done: false, diffs: new Map() }
       this.tools.set(id, state)
+      out.push({ type: 'tool.started', toolId: id, kind: state.kind, title: state.title })
+      return state
+    }
+    if (state.done) return state
+    const nextKind = kind ? toolKind(kind) : state.kind
+    const nextTitle = title?.trim() ? title : state.title
+    const kindChanged = nextKind !== state.kind && nextKind !== 'other'
+    const titleChanged = nextTitle !== state.title
+    if (kindChanged || titleChanged) {
+      if (kindChanged) state.kind = nextKind
+      state.title = nextTitle
       out.push({
-        type: 'tool.started',
+        type: 'tool.updated',
         toolId: id,
-        kind: toolKind(kind),
-        title: state.title,
+        ...(kindChanged ? { kind: state.kind } : {}),
+        ...(titleChanged ? { title: state.title } : {}),
       })
     }
     return state
@@ -224,7 +261,13 @@ export class AcpEventMapper {
   private finish(id: string, state: ToolState, ok: boolean, out: Draft[]) {
     if (state.done) return
     state.done = true
-    out.push({ type: 'tool.completed', toolId: id, ok, output: state.output })
+    out.push({
+      type: 'tool.completed',
+      toolId: id,
+      ok,
+      output: state.output,
+      approval: this.asked.delete(id) ? 'asked' : 'not-asked',
+    })
     if (ok) {
       for (const d of state.diffs.values()) {
         out.push({ type: 'diff', path: d.path, ...diffText(d.oldText, d.newText) })

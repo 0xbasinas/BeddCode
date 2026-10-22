@@ -30,12 +30,27 @@ export type TranscriptItem =
       /** When the tool began and ended (epoch ms), for durations. */
       startedAt?: number
       endedAt?: number
+      /** The user's say on it, when the agent asked first (see `approval.requested`'s toolId). */
+      approval?: {
+        requestId: string
+        requestedAt: number
+        resolvedAt?: number
+        /** allow / deny as the chosen option is classed; cancelled when the turn ended first. */
+        outcome?: 'allow' | 'deny' | 'other' | 'cancelled'
+      }
+      /**
+       * Whether the agent asked before running it, as the provider reports when the tool ends.
+       * False means the agent's own policy let it run without a prompt.
+       */
+      asked?: boolean
     }
   | { kind: 'diff'; id: string; path: string; added: number; removed: number; patch: string }
   | {
       kind: 'approval'
       id: string
       requestId: string
+      /** The tool call this is about, when the provider says. */
+      toolId?: string
       title: string
       detail?: string
       /** A plan to approve (markdown), when the agent asks to leave plan mode. */
@@ -226,10 +241,24 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
         },
       ]
       break
+    case 'tool.updated':
+      next.items = current.items.map((item) =>
+        item.kind === 'tool' && item.id === e.toolId
+          ? { ...item, title: e.title ?? item.title, toolKind: e.kind ?? item.toolKind }
+          : item,
+      )
+      break
     case 'tool.completed':
       next.items = current.items.map((item) =>
         item.kind === 'tool' && item.id === e.toolId
-          ? { ...item, status: e.ok ? 'ok' : 'failed', output: e.output, at: e.at, endedAt: e.at }
+          ? {
+              ...item,
+              status: e.ok ? 'ok' : 'failed',
+              output: e.output,
+              at: e.at,
+              endedAt: e.at,
+              asked: e.approval === undefined ? item.asked : e.approval === 'asked',
+            }
           : item,
       )
       break
@@ -248,12 +277,20 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
           kind: 'approval',
           id,
           requestId: e.requestId,
+          toolId: e.toolId,
           title: e.title,
           detail: e.detail,
           plan: e.plan,
           options: e.options,
         },
       ]
+      if (e.toolId) {
+        next.items = next.items.map((item) =>
+          item.kind === 'tool' && item.id === e.toolId && item.status === 'running'
+            ? { ...item, approval: { requestId: e.requestId, requestedAt: e.at } }
+            : item,
+        )
+      }
       next.status = 'needs-you'
       break
     case 'question.requested':
@@ -293,11 +330,21 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     case 'session.config':
       next.config = e.options
       break
-    case 'approval.resolved':
+    case 'approval.resolved': {
+      const request = current.items.find(
+        (item) => item.kind === 'approval' && item.requestId === e.requestId,
+      )
+      const outcome =
+        request?.kind === 'approval'
+          ? (request.options.find((o) => o.id === e.optionId)?.kind ??
+            (e.optionId === 'cancelled' ? 'cancelled' : undefined))
+          : undefined
       next.items = current.items.map((item) =>
         item.kind === 'approval' && item.requestId === e.requestId
           ? { ...item, resolvedOptionId: e.optionId }
-          : item,
+          : item.kind === 'tool' && item.approval?.requestId === e.requestId
+            ? { ...item, approval: { ...item.approval, resolvedAt: e.at, outcome } }
+            : item,
       )
       next.status = waiting(next.items)
         ? 'needs-you'
@@ -305,6 +352,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
           ? 'running'
           : current.status
       break
+    }
     case 'turn.completed':
       next.completedTurns = current.completedTurns + 1
       next.status = e.reason === 'error' ? 'failed' : 'idle'
@@ -314,7 +362,11 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
         if (item.kind === 'question' && !item.answers && !item.dismissed)
           return { ...item, dismissed: true }
         if (item.kind === 'tool' && item.status === 'running' && e.reason !== 'done')
-          return { ...item, status: e.reason === 'cancelled' ? 'cancelled' : 'failed' }
+          return {
+            ...item,
+            status: e.reason === 'cancelled' ? 'cancelled' : 'failed',
+            endedAt: item.endedAt ?? e.at,
+          }
         return item
       })
       if (e.message) next.items = [...next.items, { kind: 'notice', id, message: e.message }]

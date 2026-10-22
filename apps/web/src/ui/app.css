@@ -2648,6 +2648,29 @@ button.tcall-row:hover {
 .tcall.failed .tcall-status {
   color: var(--danger);
 }
+.tcall.awaiting-approval .tcall-status {
+  color: var(--accent);
+}
+.tcall.denied .tcall-status {
+  color: var(--danger);
+}
+.tcall-tag {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.tcall-tag.wait {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.tcall-wait {
+  opacity: 0.8;
+}
 .tcall.failed .tcall-row {
   background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
@@ -2940,9 +2963,44 @@ button.tcall-row:hover .tcall-chevron,
   text-overflow: ellipsis;
 }
 
+/* Environment card docked: a thread too narrow to float it beside the conversation gets it in the
+   flow, between the header and the transcript, so it never covers a line */
+.env-card.docked {
+  position: relative;
+  flex-shrink: 0;
+  align-self: stretch;
+  width: auto;
+  max-width: none;
+  min-width: 0;
+  max-height: 45%;
+  margin: 0 calc(32px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  box-shadow: none;
+}
+.env-card.docked .env-drag,
+.env-card.docked .env-drag:active {
+  cursor: default;
+}
+.env-card.docked .env-drag svg.lucide-grip-horizontal {
+  display: none;
+}
+/* The composer moves aside too when the floating card reaches down beside it */
+.thread.env-composer-aside .composer-wrap {
+  width: calc(
+    100% - calc(64px * var(--ui-scale)) - var(--env-composer-left, 0px) -
+      var(--env-composer-right, 0px)
+  );
+  position: relative;
+  left: calc((var(--env-composer-left, 0px) - var(--env-composer-right, 0px)) / 2);
+}
+
 /* A tighter conversation: less air between messages, tool calls and approvals */
 .transcript {
   padding-top: calc(14px * var(--ui-scale));
+}
+/* Room beside the conversation for the floating Environment card (set by the card itself) */
+.thread .transcript {
+  padding-left: calc(32px * var(--ui-scale) + var(--env-reserve-left, 0px));
+  padding-right: calc(32px * var(--ui-scale) + var(--env-reserve-right, 0px));
 }
 .transcript-inner {
   gap: calc(8px * var(--ui-scale));

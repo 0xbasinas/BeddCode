@@ -111,6 +111,7 @@ Each adapter declares what it really supports: resume, fork, steering mid-turn, 
 - Client methods we must implement: `session/request_permission`, `fs/read_text_file`, `fs/write_text_file`, `terminal/*` (backed by our node-pty terminals).
 - Agent registry catalog for "Add agent", plus "Local ACP command" (executable + args + env). Gemini CLI and OpenCode arrive here.
 - Permission modes come from the agent's ACP session modes; show what it reports.
+- An ACP agent decides itself which tool calls need `session/request_permission`. Grok, for example, runs read-only tools (`read_file`, `list_dir`, `grep`) and a built-in list of read-only shell commands (`ls`, `cat`, `git status`/`log`/`branch`, chained with `&&` or pipes) without asking, in every mode, plus anything already allowed for the session. That is not a BeddCode bug and we add no rules of our own; instead each `tool.completed` says whether the agent asked (`approval: 'asked' | 'not-asked'`) and the transcript tags a command or edit that ran without a prompt.
 - First spike: confirm the registry list and pin protocol version negotiation (v1 and the newer preview).
 
 ### Shared concerns

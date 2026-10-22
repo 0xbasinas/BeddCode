@@ -8,4 +8,15 @@ describe('ui store', () => {
     useUiStore.getState().togglePane('git')
     expect(useUiStore.getState().activePane).toBeNull()
   })
+
+  it('opens the Git pane on its Changes tab even when it showed another tab', () => {
+    useUiStore.getState().openPane('git')
+    useUiStore.getState().setGitTab('commits')
+    useUiStore.getState().showChanges()
+    expect(useUiStore.getState()).toMatchObject({ activePane: 'git', gitTab: 'changes' })
+    // From another pane, too.
+    useUiStore.getState().openPane('files')
+    useUiStore.getState().showChanges()
+    expect(useUiStore.getState().activePane).toBe('git')
+  })
 })

@@ -2,9 +2,10 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { SessionEvent } from '@beddcode/contracts'
+import type { AgentPreview, SessionEvent } from '@beddcode/contracts'
 import { createFakeAdapter } from '@beddcode/provider-core'
 import { createLogger } from '@beddcode/shared'
+import { PreviewCache } from '../agents/previews.ts'
 import { AttachmentStore } from '../attachments/store.ts'
 import { EventStore } from '../store/eventStore.ts'
 import { GitService } from '../workspace/git.ts'
@@ -347,5 +348,49 @@ describe('previewing an agent', () => {
       { name: 'review', description: 'Review the changes', kind: 'command' },
     ])
     expect(preview.config).toEqual([])
+  })
+})
+
+describe('refreshing an old agent preview', () => {
+  const offer = (model: string): AgentPreview => ({
+    modes: [],
+    config: [{ id: 'model', name: 'Model', type: 'select', value: model, choices: [] }],
+    commands: [],
+  })
+
+  it('probes again once the remembered answer is old, and uses the fresh one', async () => {
+    let now = 0
+    const previews = new PreviewCache(undefined, () => now)
+    let probes = 0
+    const adapter = {
+      ...createFakeAdapter(),
+      preview: async () => {
+        probes++
+        return offer('grok-4.7')
+      },
+    }
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'beddcode-previews-'))
+    dirs.push(dir)
+    const manager = new SessionManager({
+      store: new EventStore(':memory:'),
+      attachments: new AttachmentStore(path.join(dir, 'attachments')),
+      git: new GitService(),
+      adapters: [adapter],
+      log: createLogger('test', 'error'),
+      defaultCwd: dir,
+      previews,
+    })
+    previews.set('fake', offer('grok-4.6'))
+
+    // Fresh enough: answered from memory without starting the agent.
+    now = 60_000
+    expect((await manager.previewAgent('fake')).config[0]?.value).toBe('grok-4.6')
+    expect(probes).toBe(0)
+
+    // Hours later the agent has updated itself; the new default shows.
+    now = 3 * 60 * 60_000
+    expect((await manager.previewAgent('fake')).config[0]?.value).toBe('grok-4.7')
+    expect(probes).toBe(1)
+    expect(previews.get('fake')?.config[0]?.value).toBe('grok-4.7')
   })
 })

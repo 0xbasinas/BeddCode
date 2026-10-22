@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  approvalWait,
   defaultOpen,
   formatDuration,
+  ranWithoutAsking,
   summarizeTools,
   toolDuration,
   toolLabel,
+  toolPhase,
   type Tool,
 } from './toolSummary.ts'
 
@@ -99,5 +102,71 @@ describe('defaultOpen', () => {
     expect(defaultOpen([...done, tool({ status: 'running' })])).toBe(true)
     expect(defaultOpen([...done, tool({ status: 'failed' })])).toBe(true)
     expect(defaultOpen([...done, tool({ status: 'cancelled' })])).toBe(true)
+  })
+})
+
+describe('approval timing', () => {
+  const asked = (approval: Tool['approval'], patch: Partial<Tool> = {}) =>
+    tool({ status: 'running', startedAt: 1_000, approval, ...patch })
+
+  it('does not count the wait for the user as run time', () => {
+    // Grok asked at 1 s, the user answered at 17 s, the command finished 30 ms later.
+    const done = asked(
+      { requestId: 'r', requestedAt: 1_005, resolvedAt: 17_000, outcome: 'allow' },
+      { status: 'ok', endedAt: 17_030 },
+    )
+    expect(toolDuration(done)).toBe(30)
+    expect(approvalWait(done)).toBe(15_995)
+  })
+
+  it('has no run time while still waiting, and counts the wait against now', () => {
+    const waiting = asked({ requestId: 'r', requestedAt: 1_000 })
+    expect(toolDuration(waiting, 5_000)).toBeUndefined()
+    expect(approvalWait(waiting, 5_000)).toBe(4_000)
+    expect(approvalWait(tool({ startedAt: 1, endedAt: 2 }))).toBeUndefined()
+  })
+
+  it('shows the answer at once while the agent catches up', () => {
+    expect(toolPhase(asked({ requestId: 'r', requestedAt: 1 }))).toBe('awaiting-approval')
+    expect(
+      toolPhase(asked({ requestId: 'r', requestedAt: 1, resolvedAt: 2, outcome: 'allow' })),
+    ).toBe('approved')
+    expect(
+      toolPhase(asked({ requestId: 'r', requestedAt: 1, resolvedAt: 2, outcome: 'deny' })),
+    ).toBe('denied')
+    expect(
+      toolPhase(
+        asked(
+          { requestId: 'r', requestedAt: 1, resolvedAt: 2, outcome: 'allow' },
+          { status: 'ok' },
+        ),
+      ),
+    ).toBe('ok')
+    expect(toolPhase(tool({ status: 'running' }))).toBe('running')
+  })
+
+  it('points out commands and edits that ran without a prompt, not reads', () => {
+    expect(ranWithoutAsking(tool({ asked: false }))).toBe(true)
+    expect(ranWithoutAsking(tool({ asked: false, toolKind: 'edit' }))).toBe(true)
+    expect(ranWithoutAsking(tool({ asked: false, toolKind: 'read' }))).toBe(false)
+    expect(ranWithoutAsking(tool({ asked: true }))).toBe(false)
+    // Providers that do not report it say nothing.
+    expect(ranWithoutAsking(tool({}))).toBe(false)
+  })
+})
+
+describe('toolLabel for ACP titles', () => {
+  it('reads Grok-style "Execute `cmd`" and "Edit `path`" titles', () => {
+    expect(toolLabel({ title: 'Execute `ls -la`', status: 'ok' })).toEqual({
+      verb: 'Ran',
+      target: 'ls -la',
+      prompt: '$',
+    })
+    expect(toolLabel({ title: 'Edit `/w/hello.py`', status: 'running' })).toEqual({
+      verb: 'Editing',
+      target: '/w/hello.py',
+      prompt: '',
+    })
+    expect(toolLabel({ title: 'Read `/w/a.md`', status: 'ok' }).verb).toBe('Read')
   })
 })

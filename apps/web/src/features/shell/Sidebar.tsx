@@ -234,7 +234,10 @@ ${s.projectPath}`
         </Dropdown>
       </div>
       <div className="side-actions">
-        <button className="row-btn" onClick={() => void navigate({ to: '/' })}>
+        <button
+          className="row-btn"
+          onClick={() => void navigate({ to: '/', search: { compose: true } })}
+        >
           <PenSquare size={18} /> New session
         </button>
         <button

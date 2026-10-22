@@ -117,11 +117,24 @@ export const SessionEvent = z.discriminatedUnion('type', [
     kind: z.enum(['command', 'read', 'edit', 'search', 'other']),
     title: z.string(),
   }),
+  /** The agent said more about a tool it already announced: what kind it is, a better title. */
+  Base.extend({
+    type: z.literal('tool.updated'),
+    toolId: z.string(),
+    kind: z.enum(['command', 'read', 'edit', 'search', 'other']).optional(),
+    title: z.string().optional(),
+  }),
   Base.extend({
     type: z.literal('tool.completed'),
     toolId: z.string(),
     ok: z.boolean(),
     output: z.string().optional(),
+    /**
+     * Whether the agent asked the user before running it. `not-asked` means the agent's own policy
+     * let it run without a prompt (read-only commands, an earlier "allow for this session").
+     * Absent when the provider does not say.
+     */
+    approval: z.enum(['asked', 'not-asked']).optional(),
   }),
   Base.extend({
     type: z.literal('diff'),
@@ -133,6 +146,8 @@ export const SessionEvent = z.discriminatedUnion('type', [
   Base.extend({
     type: z.literal('approval.requested'),
     requestId: z.string(),
+    /** The tool call this request is about, when the provider says. */
+    toolId: z.string().optional(),
     title: z.string(),
     detail: z.string().optional(),
     /** A plan to approve (markdown), when the agent leaves plan mode and asks to start. */

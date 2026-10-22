@@ -19,7 +19,15 @@ import { setMode, useRuntime } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { useUiStore } from '../../stores/ui.ts'
 import { folderName } from '../../ui/format.ts'
-import { clampOffset, loadOffset, saveOffset, type Offset } from './floating.ts'
+import {
+  cardReserve,
+  clampOffset,
+  loadOffset,
+  saveOffset,
+  shouldDock,
+  snapOffset,
+  type Offset,
+} from './floating.ts'
 
 const storage = (): Storage | undefined => {
   try {
@@ -81,33 +89,114 @@ export function EnvironmentCard({
   const toggle = (row: typeof expanded) =>
     setExpanded((current) => (current === row ? undefined : row))
 
-  // Position: kept inside the thread however the window changes.
+  // Position: kept inside the thread however the window changes, snapped to a side edge when
+  // dropped, and docked above the conversation when the thread is too narrow to float beside it.
   const card = useRef<HTMLDivElement>(null)
   const [offset, setOffset] = useState<Offset>(() => loadOffset(storage()))
   const drag = useRef<{ startX: number; startY: number; from: Offset } | null>(null)
   /** The latest position, which is what a drag starts from and what gets saved when it ends. */
   const latest = useRef(offset)
+  const [docked, setDocked] = useState(false)
+  /** Docked, the card starts minimized; this is the user opening it there (not remembered). */
+  const [dockedOpen, setDockedOpen] = useState(false)
+  const collapsed = docked ? !dockedOpen : minimized
 
-  const fit = (next: Offset): Offset => {
-    const parent = card.current?.offsetParent
-    if (!(parent instanceof HTMLElement) || !card.current) return next
-    return clampOffset(
-      next,
-      { width: parent.clientWidth, height: parent.clientHeight },
-      { width: card.current.offsetWidth, height: card.current.offsetHeight },
-    )
+  const sizes = () => {
+    const el = card.current
+    const parent = el?.offsetParent
+    if (!el || !(parent instanceof HTMLElement)) return undefined
+    return {
+      parent,
+      container: { width: parent.clientWidth, height: parent.clientHeight },
+      card: { width: el.offsetWidth, height: el.offsetHeight },
+    }
   }
+  const fit = (next: Offset): Offset => {
+    const s = sizes()
+    return s ? clampOffset(next, s.container, s.card) : next
+  }
+  /**
+   * Keeps the conversation out from under the card: the transcript (every message, tool row and
+   * diff card in it) and, when the card reaches down to it, the composer get padding on the side
+   * the card sits, as much as needed (often none on a wide window), through CSS variables. Runs on
+   * every move of a drag, every size change of the card or the thread, and every resize.
+   */
+  const reserve = () => {
+    const s = sizes()
+    if (!s || !card.current) return
+    const { parent } = s
+    const scroller = parent.querySelector<HTMLElement>('.transcript')
+    const inner = parent.querySelector<HTMLElement>('.transcript-inner')
+    if (!scroller || !inner) return
+    // The scroller's own padding, without the room this card already asked for.
+    const asked = parseFloat(parent.style.getPropertyValue('--env-reserve-left')) || 0
+    const padding = Math.max(0, (parseFloat(getComputedStyle(scroller).paddingLeft) || 0) - asked)
+    const maxWidth = parseFloat(getComputedStyle(inner).maxWidth) || Number.POSITIVE_INFINITY
+    const column = { padding, maxWidth }
+    const dock = shouldDock(s.container.width, column)
+    if (dock !== dockedRef.current) {
+      dockedRef.current = dock
+      setDocked(dock)
+    }
+    let room = { left: 0, right: 0 }
+    let composer = { left: 0, right: 0 }
+    if (!dock) {
+      room = cardReserve(s.container.width, latest.current, s.card, column)
+      const wrap = parent.querySelector<HTMLElement>('.composer-wrap')
+      // The composer only moves aside when the card actually reaches down beside it.
+      if (wrap && latest.current.top + s.card.height + 12 > wrap.offsetTop) composer = room
+    }
+    parent.style.setProperty('--env-reserve-left', `${room.left}px`)
+    parent.style.setProperty('--env-reserve-right', `${room.right}px`)
+    parent.style.setProperty('--env-composer-left', `${composer.left}px`)
+    parent.style.setProperty('--env-composer-right', `${composer.right}px`)
+    parent.classList.toggle('env-composer-aside', composer.left + composer.right > 0)
+  }
+  const dockedRef = useRef(docked)
+  const reserveRef = useRef(reserve)
+  reserveRef.current = reserve
   useEffect(() => {
-    const refit = () =>
-      setOffset((current) => {
-        latest.current = fit(current)
-        return latest.current
-      })
+    reserveRef.current()
+  }, [offset, collapsed, docked])
+  useEffect(() => {
+    const parent = card.current?.offsetParent
+    return () => {
+      if (parent instanceof HTMLElement) {
+        for (const name of [
+          '--env-reserve-left',
+          '--env-reserve-right',
+          '--env-composer-left',
+          '--env-composer-right',
+        ]) {
+          parent.style.removeProperty(name)
+        }
+        parent.classList.remove('env-composer-aside')
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    const refit = () => {
+      // Mid-drag the pointer handler owns the position; only the reserve follows the resize.
+      if (!drag.current) {
+        const next = fit(latest.current)
+        if (next.right !== latest.current.right || next.top !== latest.current.top) {
+          latest.current = next
+          setOffset(next)
+        }
+      }
+      reserveRef.current()
+    }
     refit()
     window.addEventListener('resize', refit)
     const observer = new ResizeObserver(refit)
+    const parent = card.current?.offsetParent
     if (card.current) observer.observe(card.current)
-    if (card.current?.offsetParent) observer.observe(card.current.offsetParent)
+    if (parent) {
+      observer.observe(parent)
+      // The column's own box changes too (the side panes open and close, the composer grows).
+      for (const el of parent.querySelectorAll('.transcript, .composer-wrap')) observer.observe(el)
+    }
     return () => {
       window.removeEventListener('resize', refit)
       observer.disconnect()
@@ -115,7 +204,7 @@ export function EnvironmentCard({
   }, [])
 
   const startDrag = (e: PointerEvent<HTMLDivElement>) => {
-    if ((e.target as Element).closest('button')) return
+    if (docked || (e.target as Element).closest('button')) return
     try {
       // Keeps the drag going when the pointer leaves the title; not every input device allows it.
       e.currentTarget.setPointerCapture(e.pointerId)
@@ -127,13 +216,15 @@ export function EnvironmentCard({
   const moveDrag = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current
     if (!d) return
-    // Dragging right shrinks the distance from the right edge.
+    // Dragging right shrinks the distance from the right edge. A card being dragged hugs no side.
     const next = fit({
       right: d.from.right - (e.clientX - d.startX),
       top: d.from.top + (e.clientY - d.startY),
     })
     latest.current = next
     setOffset(next)
+    // The conversation follows the card live, not only once it is dropped.
+    reserveRef.current()
   }
   const endDrag = (e: PointerEvent<HTMLDivElement>) => {
     if (!drag.current) return
@@ -143,16 +234,22 @@ export function EnvironmentCard({
     } catch {
       // Already released.
     }
-    saveOffset(storage(), latest.current)
+    const s = sizes()
+    const next = s ? snapOffset(latest.current, s.container, s.card) : latest.current
+    latest.current = next
+    setOffset(next)
+    reserveRef.current()
+    saveOffset(storage(), next)
   }
 
   return (
     <div
       ref={card}
-      className={`env-card ${minimized ? 'minimized' : ''}`}
+      className={`env-card ${collapsed ? 'minimized' : ''} ${docked ? 'docked' : ''}`}
       role="dialog"
       aria-label="Session environment"
-      style={{ right: offset.right, top: offset.top }}
+      data-side={docked ? 'docked' : (offset.side ?? 'right')}
+      style={docked ? undefined : { right: offset.right, top: offset.top }}
     >
       <div
         className="session-panel-heading env-drag"
@@ -176,15 +273,15 @@ export function EnvironmentCard({
           </button>
           <button
             className="icon-btn small"
-            aria-label={minimized ? 'Expand' : 'Minimize'}
-            aria-expanded={!minimized}
-            onClick={() => setMinimized(!minimized)}
+            aria-label={collapsed ? 'Expand' : 'Minimize'}
+            aria-expanded={!collapsed}
+            onClick={() => (docked ? setDockedOpen(!dockedOpen) : setMinimized(!minimized))}
           >
-            {minimized ? <ChevronDown size={13} /> : <Minus size={13} />}
+            {collapsed ? <ChevronDown size={13} /> : <Minus size={13} />}
           </button>
         </span>
       </div>
-      {minimized ? (
+      {collapsed ? (
         <div className="env-summary" title="Expand to see the details">
           <GitBranch size={13} /> {session.branch ?? folderName(session.projectPath)}
           <span className="stat">
@@ -194,7 +291,7 @@ export function EnvironmentCard({
         </div>
       ) : (
         <div className="env-body">
-          <button className="menu-row" onClick={() => useUiStore.getState().openPane('git')}>
+          <button className="menu-row" onClick={() => useUiStore.getState().showChanges()}>
             <FileDiff size={16} />
             <span className="menu-text menu-title">Changes</span>
             <span className="stat">

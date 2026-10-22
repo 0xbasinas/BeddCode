@@ -4,6 +4,7 @@ import {
   Check,
   ChevronRight,
   FileText,
+  Hand,
   Loader2,
   Pencil,
   Search,
@@ -12,12 +13,16 @@ import {
   X,
 } from 'lucide-react'
 import {
+  approvalWait,
   defaultOpen,
   formatDuration,
+  ranWithoutAsking,
   summarizeTools,
   toolDuration,
   toolLabel,
+  toolPhase,
   type Tool,
+  type ToolPhase,
 } from './toolSummary.ts'
 
 const ICONS = {
@@ -40,8 +45,14 @@ function useNow(active: boolean): number {
   return now
 }
 
-function StatusIcon({ status }: { status: Tool['status'] }) {
-  switch (status) {
+function StatusIcon({ phase }: { phase: ToolPhase }) {
+  switch (phase) {
+    case 'awaiting-approval':
+      return <Hand size={13} aria-label="Waiting for your approval" />
+    case 'approved':
+      return <Loader2 size={13} className="spin" aria-label="Approved, waiting for the agent" />
+    case 'denied':
+      return <X size={13} aria-label="Denied" />
     case 'running':
       return <Loader2 size={13} className="spin" aria-label="Running" />
     case 'ok':
@@ -59,7 +70,15 @@ function ToolCall({ tool, now }: { tool: Tool; now: number }) {
   const Icon = ICONS[tool.toolKind]
   const label = toolLabel(tool)
   const ms = toolDuration(tool, now)
+  const waited = approvalWait(tool, now)
+  const phase = toolPhase(tool)
   const output = tool.output?.trim()
+  const timing = [
+    ms !== undefined ? `Ran for ${formatDuration(ms)}` : undefined,
+    waited !== undefined ? `waited ${formatDuration(waited)} for your approval` : undefined,
+  ]
+    .filter(Boolean)
+    .join(', ')
 
   const row = (
     <>
@@ -71,18 +90,38 @@ function ToolCall({ tool, now }: { tool: Tool; now: number }) {
           {label.target}
         </code>
       </span>
-      {ms !== undefined && tool.status !== 'cancelled' && (
-        <span className="tcall-time">{formatDuration(ms)}</span>
+      {ranWithoutAsking(tool) && (
+        <span
+          className="tcall-tag"
+          title="The agent ran this without asking you. Its own rules allow some commands (such as ls, cat or git status) without a prompt, and anything you allowed for the whole session."
+        >
+          no prompt
+        </span>
       )}
+      {phase === 'awaiting-approval' && <span className="tcall-tag wait">needs approval</span>}
+      {phase === 'approved' && <span className="tcall-tag">approved</span>}
+      {phase === 'denied' && <span className="tcall-tag">denied</span>}
+      {(ms !== undefined || (waited !== undefined && waited >= 1000)) &&
+        tool.status !== 'cancelled' && (
+          <span className="tcall-time" title={timing}>
+            {ms !== undefined && formatDuration(ms)}
+            {waited !== undefined && waited >= 1000 && (
+              <span className="tcall-wait">
+                {ms !== undefined ? ' · ' : ''}
+                {formatDuration(waited)} approval
+              </span>
+            )}
+          </span>
+        )}
       <span className="tcall-status">
-        <StatusIcon status={tool.status} />
+        <StatusIcon phase={phase} />
       </span>
       {output && <ChevronRight size={13} className="tcall-chevron" />}
     </>
   )
 
   return (
-    <div className={`tcall ${tool.status} ${open ? 'open' : ''}`}>
+    <div className={`tcall ${tool.status} ${phase} ${open ? 'open' : ''}`}>
       {output ? (
         <button className="tcall-row" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
           {row}

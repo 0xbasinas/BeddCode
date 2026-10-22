@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import type { AgentPreview } from '@beddcode/contracts'
+import type { AgentPreview, SessionEvent } from '@beddcode/contracts'
 
 const TTL_MS = 7 * 24 * 60 * 60_000
 
@@ -52,6 +52,12 @@ export class PreviewCache {
     return found.preview
   }
 
+  /** How old the remembered answer is, in ms; undefined when there is none. */
+  ageOf(instanceId: string): number | undefined {
+    const found = this.entries[instanceId]
+    return found ? this.now() - found.at : undefined
+  }
+
   set(instanceId: string, preview: AgentPreview) {
     this.entries[instanceId] = { at: this.now(), preview }
     this.save()
@@ -67,5 +73,62 @@ export class PreviewCache {
     if (!(instanceId in this.entries)) return
     delete this.entries[instanceId]
     this.save()
+  }
+}
+
+/**
+ * Builds a preview from what a real ACP session reports about itself before its first turn, so the
+ * new-session screen follows the agent (a new default model after an update, say) instead of a
+ * probe from days ago. Only the first settings list counts: later ones already carry the choices
+ * the user made for that session, not the agent's defaults. Each session is looked at once.
+ */
+export class PreviewSeeds {
+  private readonly partial = new Map<string, Partial<AgentPreview>>()
+  private readonly done = new Set<string>()
+
+  /**
+   * Returns the preview to remember when the session's first turn starts, else undefined.
+   * `firstTurn` says whether this `turn.started` is the session's very first one; a resumed
+   * session reports the settings it was left with, which are not the agent's defaults.
+   */
+  observe(
+    sessionId: string,
+    event: SessionEvent,
+    firstTurn: () => boolean,
+  ): AgentPreview | undefined {
+    if (this.done.has(sessionId)) return undefined
+    const partial = this.partial.get(sessionId) ?? {}
+    switch (event.type) {
+      case 'session.modes':
+        partial.modes = event.modes
+        partial.currentModeId = event.currentModeId
+        break
+      case 'session.config':
+        partial.config ??= event.options
+        break
+      case 'session.commands':
+        partial.commands = event.commands
+        break
+      case 'turn.started': {
+        this.partial.delete(sessionId)
+        this.done.add(sessionId)
+        if (!firstTurn() || !partial.config) return undefined
+        return {
+          modes: partial.modes ?? [],
+          currentModeId: partial.currentModeId,
+          config: partial.config,
+          commands: partial.commands ?? [],
+        }
+      }
+      default:
+        return undefined
+    }
+    this.partial.set(sessionId, partial)
+    return undefined
+  }
+
+  forget(sessionId: string) {
+    this.partial.delete(sessionId)
+    this.done.delete(sessionId)
   }
 }

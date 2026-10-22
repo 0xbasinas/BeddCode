@@ -14,7 +14,7 @@ import type {
 } from '@beddcode/contracts'
 import type { ProviderAdapter, ProviderSession } from '@beddcode/provider-core'
 import type { Logger } from '@beddcode/shared'
-import type { PreviewCache } from '../agents/previews.ts'
+import { PreviewSeeds, type PreviewCache } from '../agents/previews.ts'
 import type { AttachmentStore } from '../attachments/store.ts'
 import type { EventStore } from '../store/eventStore.ts'
 import type { GitService } from '../workspace/git.ts'
@@ -52,6 +52,11 @@ interface TurnState {
   /** Send this queued message as soon as the interrupted turn ends. */
   sendAfterInterrupt?: string
 }
+
+/** A remembered agent preview older than this is probed again before it is shown. */
+const PREVIEW_REFRESH_MS = 60 * 60_000
+/** How long the new-session screen waits for that fresh probe before showing the old answer. */
+const PREVIEW_REFRESH_WAIT_MS = 4_000
 
 export class SessionManager {
   private readonly live = new Map<string, LiveSession>()
@@ -579,6 +584,7 @@ export class SessionManager {
     const carried = new Set([
       'message.delta',
       'tool.started',
+      'tool.updated',
       'tool.completed',
       'diff',
       'plan.updated',
@@ -611,7 +617,17 @@ export class SessionManager {
   async previewAgent(instanceId: string, cwd?: string): Promise<AgentPreview> {
     const { adapter, instance } = await this.findInstance(instanceId)
     const cached = this.deps.previews?.get(instance.id)
-    if (cached) return cached
+    if (cached) {
+      // Agents update themselves (Grok does), so an old answer is checked again: the fresh one is
+      // used when it comes quickly, else the old one now and the fresh one next time.
+      const age = this.deps.previews?.ageOf(instance.id) ?? 0
+      if (!adapter.preview || age <= PREVIEW_REFRESH_MS) return cached
+      const fresh = this.refreshPreview(instance.id, cwd)
+      const late = new Promise<undefined>((resolve) => {
+        setTimeout(() => resolve(undefined), PREVIEW_REFRESH_WAIT_MS).unref?.()
+      })
+      return (await Promise.race([fresh, late])) ?? cached
+    }
     if (!adapter.preview) {
       return {
         modes: instance.capabilities.permissionModes,
@@ -624,37 +640,48 @@ export class SessionManager {
     return preview
   }
 
+  private readonly refreshing = new Map<string, Promise<AgentPreview | undefined>>()
+  /** Probes an agent again and remembers the answer; one probe per agent at a time. */
+  private refreshPreview(instanceId: string, cwd?: string): Promise<AgentPreview | undefined> {
+    const running = this.refreshing.get(instanceId)
+    if (running) return running
+    const probe = this.findInstance(instanceId)
+      .then(({ adapter }) => adapter.preview?.(instanceId, cwd ?? this.deps.defaultCwd))
+      .then(
+        (preview) => {
+          if (preview) this.deps.previews?.set(instanceId, preview)
+          return preview
+        },
+        (err: unknown) => {
+          this.deps.log.warn(`could not refresh the preview of ${instanceId}`, err)
+          return undefined
+        },
+      )
+      .finally(() => this.refreshing.delete(instanceId))
+    this.refreshing.set(instanceId, probe)
+    return probe
+  }
+
   /** Forget what was remembered for an agent, e.g. after it was removed or re-added. */
   forgetPreview(instanceId: string) {
     this.deps.previews?.clear(instanceId)
   }
 
-  /** The first thing a real session reports about itself becomes the cached preview if there is none. */
-  private readonly seeding = new Map<string, Partial<AgentPreview>>()
+  /** What real ACP sessions report about themselves refreshes the cached preview. */
+  private readonly seeds = new PreviewSeeds()
   private seedPreview(sessionId: string, event: SessionEvent) {
     const previews = this.deps.previews
     if (!previews) return
-    const partial = this.seeding.get(sessionId) ?? {}
-    if (event.type === 'session.modes') {
-      partial.modes = event.modes
-      partial.currentModeId = event.currentModeId
-    } else if (event.type === 'session.config') partial.config = event.options
-    else if (event.type === 'session.commands') partial.commands = event.commands
-    else if (event.type === 'turn.started') {
-      this.seeding.delete(sessionId)
-      const created = this.createdEvent(sessionId)
-      const live = this.live.get(sessionId)
-      if (created && live?.adapter.kind === 'acp' && !previews.get(created.instanceId)) {
-        previews.set(created.instanceId, {
-          modes: partial.modes ?? [],
-          currentModeId: partial.currentModeId,
-          config: partial.config ?? [],
-          commands: partial.commands ?? [],
-        })
-      }
-      return
-    } else return
-    this.seeding.set(sessionId, partial)
+    const preview = this.seeds.observe(
+      sessionId,
+      event,
+      () =>
+        this.deps.store.readSession(sessionId).filter((e) => e.event.type === 'turn.started')
+          .length === 1,
+    )
+    if (!preview || this.live.get(sessionId)?.adapter.kind !== 'acp') return
+    const created = this.createdEvent(sessionId)
+    if (created) previews.set(created.instanceId, preview)
   }
 
   async listCommands(instanceId: string, cwd?: string): Promise<SlashCommand[]> {

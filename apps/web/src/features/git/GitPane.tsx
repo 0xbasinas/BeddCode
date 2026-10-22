@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useUiStore } from '../../stores/ui.ts'
 import { GitBranch } from 'lucide-react'
 import type { SessionView } from '@beddcode/client-runtime'
 import { hostRequest } from '../../stores/host.ts'
@@ -8,14 +9,13 @@ import { CommitsTab } from './CommitsTab.tsx'
 import { PullRequestTab } from './PullRequestTab.tsx'
 import { usePolled } from './usePolled.ts'
 
-type Tab = 'changes' | 'commits' | 'pr'
-
 /**
  * Changes, commits and pull request of the folder a session works in. Git is read live (the
  * working tree changes outside our event log), refreshed on an interval and after each turn.
  */
 export function GitPane({ session }: { session: SessionView }) {
-  const [tab, setTab] = useState<Tab>('changes')
+  const tab = useUiStore((s) => s.gitTab)
+  const setTab = useUiStore((s) => s.setGitTab)
   const [version, setVersion] = useState(0)
   const cwd = session.cwd
   const hostKey = useHostKey()
@@ -86,7 +86,7 @@ export function GitPane({ session }: { session: SessionView }) {
 
       {tab === 'changes' &&
         (status.data ? (
-          <ChangesTab cwd={cwd} status={status.data} onChanged={changed} />
+          <ChangesTab cwd={cwd} status={status.data} refreshKey={key} onChanged={changed} />
         ) : (
           <div className="git-empty muted">{status.error ?? 'Loading…'}</div>
         ))}

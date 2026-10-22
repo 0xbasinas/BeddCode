@@ -220,6 +220,8 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
           )}
         </Dropdown>
       </header>
+      {/* Floats over the thread, or, on a thread too narrow for that, docks here in the flow. */}
+      <EnvironmentCard session={session} hostKey={hostKey} stats={stats} />
       <div className="transcript" ref={scroller}>
         <div className="transcript-inner">
           <div className="session-start">
@@ -322,7 +324,6 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
           />
         }
       />
-      <EnvironmentCard session={session} hostKey={hostKey} stats={stats} />
       {renaming && (
         <RenameSessionDialog
           session={session}

@@ -135,4 +135,61 @@ describe('AcpEventMapper', () => {
       },
     ])
   })
+
+  it('takes the kind from Grok-style _meta and refines the title once the agent says more', () => {
+    const events = run([
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 't9',
+        title: 'run_terminal_command',
+        rawInput: { command: 'ls -la' },
+        _meta: { 'x.ai/tool': { name: 'run_terminal_command', kind: 'execute', read_only: false } },
+      },
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 't9',
+        kind: 'execute',
+        title: 'Execute `ls -la`',
+      },
+      // Repeating what is already known says nothing new.
+      { sessionUpdate: 'tool_call_update', toolCallId: 't9', title: 'Execute `ls -la`' },
+      { sessionUpdate: 'tool_call_update', toolCallId: 't9', status: 'completed' },
+    ])
+    expect(events.map((e) => e.type)).toEqual(['tool.started', 'tool.updated', 'tool.completed'])
+    expect(events[0]).toMatchObject({ kind: 'command', title: 'run_terminal_command' })
+    expect(events[1]).toMatchObject({ title: 'Execute `ls -la`' })
+    expect(events[1]).not.toHaveProperty('kind')
+  })
+
+  it('reports a kind that only arrives with an update', () => {
+    const events = run([
+      { sessionUpdate: 'tool_call', toolCallId: 'k1', title: 'search_replace' },
+      { sessionUpdate: 'tool_call_update', toolCallId: 'k1', kind: 'edit' },
+    ])
+    expect(events[0]).toMatchObject({ type: 'tool.started', kind: 'other' })
+    expect(events[1]).toMatchObject({ type: 'tool.updated', kind: 'edit' })
+  })
+
+  it('says whether the agent asked before running a tool', () => {
+    const mapper = new AcpEventMapper('s1', () => 1)
+    mapper.setTurn('turn-1')
+    const start = (id: string) =>
+      mapper.map({
+        sessionUpdate: 'tool_call',
+        toolCallId: id,
+        title: id,
+        kind: 'execute',
+      } as SessionUpdate)
+    const done = (id: string) =>
+      mapper.map({
+        sessionUpdate: 'tool_call_update',
+        toolCallId: id,
+        status: 'completed',
+      } as SessionUpdate)
+    start('asked')
+    start('auto')
+    mapper.noteApproval('asked')
+    expect(done('asked')[0]).toMatchObject({ type: 'tool.completed', approval: 'asked' })
+    expect(done('auto')[0]).toMatchObject({ type: 'tool.completed', approval: 'not-asked' })
+  })
 })
