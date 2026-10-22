@@ -374,4 +374,25 @@ describe('replica: tool approvals', () => {
     })
     expect(tool(s, 't2').approval).toBeUndefined()
   })
+
+  it("keeps a tool call's input and paths, refined by later updates", () => {
+    const s = timed([
+      { ...created, at: 0 },
+      { type: 'turn.started', at: 0 },
+      { type: 'tool.started', toolId: 't3', kind: 'read', title: 'read_file', input: '{}', at: 1 },
+      {
+        type: 'tool.updated',
+        toolId: 't3',
+        input: '{\n  "path": "/a/b.md"\n}',
+        paths: ['/a/b.md'],
+        at: 2,
+      },
+      { type: 'tool.completed', toolId: 't3', ok: true, output: '# b', at: 3 },
+    ])
+    expect(tool(s, 't3')).toMatchObject({
+      input: '{\n  "path": "/a/b.md"\n}',
+      paths: ['/a/b.md'],
+      output: '# b',
+    })
+  })
 })

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import {
   Ban,
   Check,
@@ -20,6 +20,7 @@ import {
   summarizeTools,
   toolDuration,
   toolLabel,
+  toolDetails,
   toolPhase,
   type Tool,
   type ToolPhase,
@@ -64,15 +65,50 @@ function StatusIcon({ phase }: { phase: ToolPhase }) {
   }
 }
 
-/** One tool call: what it did to what, how it went and how long it took; its output opens on click. */
+/** What a tool call was given and what it gave back, under its row when opened. */
+function ToolDetails({ tool, now, id }: { tool: Tool; now: number; id: string }) {
+  const output = tool.output?.trim()
+  return (
+    <div className="tcall-details" id={id}>
+      <dl className="tcall-facts">
+        {toolDetails(tool, now).map((d, i) => (
+          <div key={i} className="tcall-fact">
+            <dt>{d.label}</dt>
+            <dd className={d.mono ? 'mono' : undefined}>{d.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {tool.input && (
+        <section className="tcall-block">
+          <h4>Input</h4>
+          <pre className="tcall-output">
+            <code>{tool.input}</code>
+          </pre>
+        </section>
+      )}
+      {output ? (
+        <section className="tcall-block">
+          <h4>{tool.status === 'failed' ? 'Error' : 'Output'}</h4>
+          <pre className={`tcall-output ${tool.status === 'failed' ? 'error' : ''}`}>
+            <code>{output}</code>
+          </pre>
+        </section>
+      ) : (
+        tool.status !== 'running' && <p className="tcall-none">No output</p>
+      )}
+    </div>
+  )
+}
+
+/** One tool call: what it did to what, how it went and how long it took; its details open on click. */
 function ToolCall({ tool, now }: { tool: Tool; now: number }) {
   const [open, setOpen] = useState(false)
+  const detailsId = useId()
   const Icon = ICONS[tool.toolKind]
   const label = toolLabel(tool)
   const ms = toolDuration(tool, now)
   const waited = approvalWait(tool, now)
   const phase = toolPhase(tool)
-  const output = tool.output?.trim()
   const timing = [
     ms !== undefined ? `Ran for ${formatDuration(ms)}` : undefined,
     waited !== undefined ? `waited ${formatDuration(waited)} for your approval` : undefined,
@@ -116,24 +152,23 @@ function ToolCall({ tool, now }: { tool: Tool; now: number }) {
       <span className="tcall-status">
         <StatusIcon phase={phase} />
       </span>
-      {output && <ChevronRight size={13} className="tcall-chevron" />}
+      <ChevronRight size={13} className="tcall-chevron" aria-hidden />
     </>
   )
 
   return (
     <div className={`tcall ${tool.status} ${phase} ${open ? 'open' : ''}`}>
-      {output ? (
-        <button className="tcall-row" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-          {row}
-        </button>
-      ) : (
-        <div className="tcall-row">{row}</div>
-      )}
-      {open && output && (
-        <pre className="tcall-output">
-          <code>{output}</code>
-        </pre>
-      )}
+      <button
+        type="button"
+        className="tcall-row"
+        aria-expanded={open}
+        aria-controls={open ? detailsId : undefined}
+        aria-label={`${open ? 'Hide' : 'Show'} details: ${tool.title}`}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {row}
+      </button>
+      {open && <ToolDetails tool={tool} now={now} id={detailsId} />}
     </div>
   )
 }

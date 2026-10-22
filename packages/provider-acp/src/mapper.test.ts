@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionUpdate } from '@agentclientprotocol/sdk'
-import { AcpEventMapper, toolKind } from './mapper.ts'
+import { AcpEventMapper, inputText, toolKind } from './mapper.ts'
 
 const run = (updates: unknown[]) => {
   const mapper = new AcpEventMapper('s1', () => 1)
@@ -191,5 +191,38 @@ describe('AcpEventMapper', () => {
     mapper.noteApproval('asked')
     expect(done('asked')[0]).toMatchObject({ type: 'tool.completed', approval: 'asked' })
     expect(done('auto')[0]).toMatchObject({ type: 'tool.completed', approval: 'not-asked' })
+  })
+
+  it("passes along the tool call's arguments and paths, once each", () => {
+    const events = run([
+      { sessionUpdate: 'tool_call', toolCallId: 'i1', title: 'read_file', rawInput: {} },
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'i1',
+        title: 'Read `/a/b.md`',
+        kind: 'read',
+        rawInput: { path: '/a/b.md', limit: 20 },
+        locations: [{ path: '/a/b.md' }, { path: '/a/b.md' }],
+      },
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'i1',
+        rawInput: { path: '/a/b.md', limit: 20 },
+        locations: [{ path: '/a/b.md' }],
+        status: 'completed',
+      },
+    ])
+    expect(events.map((e) => e.type)).toEqual(['tool.started', 'tool.updated', 'tool.completed'])
+    expect(events[0]).not.toHaveProperty('input')
+    expect(events[1]).toMatchObject({
+      input: '{\n  "path": "/a/b.md",\n  "limit": 20\n}',
+      paths: ['/a/b.md'],
+    })
+  })
+
+  it('caps long input and keeps string input as is', () => {
+    expect(inputText('  ')).toBeUndefined()
+    expect(inputText('ls -la')).toBe('ls -la')
+    expect(inputText({ text: 'x'.repeat(10_000) })!.length).toBe(4_000)
   })
 })

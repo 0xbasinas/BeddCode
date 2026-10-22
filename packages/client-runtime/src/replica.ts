@@ -26,6 +26,10 @@ export type TranscriptItem =
       toolKind: 'command' | 'read' | 'edit' | 'search' | 'other'
       status: 'running' | 'ok' | 'failed' | 'cancelled'
       output?: string
+      /** The arguments it was called with (pretty JSON), when the agent says. */
+      input?: string
+      /** Files it touches, in full, when the agent says. */
+      paths?: string[]
       at?: number
       /** When the tool began and ended (epoch ms), for durations. */
       startedAt?: number
@@ -238,13 +242,21 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
           status: 'running',
           at: e.at,
           startedAt: e.at,
+          ...(e.input !== undefined ? { input: e.input } : {}),
+          ...(e.paths !== undefined ? { paths: e.paths } : {}),
         },
       ]
       break
     case 'tool.updated':
       next.items = current.items.map((item) =>
         item.kind === 'tool' && item.id === e.toolId
-          ? { ...item, title: e.title ?? item.title, toolKind: e.kind ?? item.toolKind }
+          ? {
+              ...item,
+              title: e.title ?? item.title,
+              toolKind: e.kind ?? item.toolKind,
+              ...(e.input !== undefined ? { input: e.input } : {}),
+              ...(e.paths !== undefined ? { paths: e.paths } : {}),
+            }
           : item,
       )
       break

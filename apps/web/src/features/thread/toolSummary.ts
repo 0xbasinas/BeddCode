@@ -130,3 +130,79 @@ export function defaultOpen(tools: Tool[]): boolean {
     tools.some((t) => t.status === 'running' || t.status === 'failed' || t.status === 'cancelled')
   )
 }
+
+const KIND_NAMES: Record<Tool['toolKind'], string> = {
+  command: 'Command',
+  read: 'Read',
+  edit: 'Edit',
+  search: 'Search',
+  other: 'Other tool',
+}
+
+const PHASE_NAMES: Record<ToolPhase, string> = {
+  'awaiting-approval': 'Waiting for your approval',
+  approved: 'Approved, waiting for the agent',
+  denied: 'Denied, waiting for the agent',
+  running: 'Running',
+  ok: 'Done',
+  failed: 'Failed',
+  cancelled: 'Stopped',
+}
+
+/** What the user said about a tool call, or that the agent never asked. */
+export function approvalDecision(tool: Tool): string | undefined {
+  const approval = tool.approval
+  if (!approval)
+    return tool.asked === false ? 'Not asked (allowed by the agent’s own rules)' : undefined
+  if (approval.resolvedAt === undefined && approval.outcome === undefined) return 'Waiting for you'
+  switch (approval.outcome) {
+    case 'allow':
+      return 'Allowed'
+    case 'deny':
+      return 'Denied'
+    case 'cancelled':
+      return 'Cancelled (the turn ended first)'
+    default:
+      return 'Answered'
+  }
+}
+
+export interface ToolDetail {
+  label: string
+  value: string
+  /** Paths, commands and other literal text show in the monospace font. */
+  mono?: boolean
+}
+
+/**
+ * Everything a tool row knows beyond its one-line summary, for when it is opened: what kind of
+ * tool it is, its whole command or path, where it stands, how long it ran and waited, and what the
+ * user decided. Input and output are shown separately, as blocks.
+ */
+export function toolDetails(tool: Tool, now = Date.now()): ToolDetail[] {
+  const label = toolLabel(tool)
+  const ms = toolDuration(tool, now)
+  const waited = approvalWait(tool, now)
+  const decision = approvalDecision(tool)
+  const paths = tool.paths ?? []
+  const isFile = tool.toolKind === 'read' || tool.toolKind === 'edit'
+  const rows: (ToolDetail | false)[] = [
+    { label: 'Tool', value: KIND_NAMES[tool.toolKind] },
+    { label: 'Title', value: tool.title, mono: true },
+    tool.toolKind === 'command' &&
+      label.target !== tool.title && {
+        label: 'Command',
+        value: `${label.prompt ? `${label.prompt} ` : ''}${label.target}`,
+        mono: true,
+      },
+    ...paths.map((p) => ({ label: 'Path', value: p, mono: true })),
+    paths.length === 0 &&
+      isFile &&
+      label.target !== tool.title && { label: 'Path', value: label.target, mono: true },
+    { label: 'Status', value: PHASE_NAMES[toolPhase(tool)] },
+    ms !== undefined && { label: 'Ran for', value: formatDuration(ms) },
+    waited !== undefined && { label: 'Approval wait', value: formatDuration(waited) },
+    decision !== undefined && { label: 'Approval', value: decision },
+  ]
+  return rows.filter((r): r is ToolDetail => r !== false)
+}

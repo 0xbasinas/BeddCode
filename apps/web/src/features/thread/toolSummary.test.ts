@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
+  approvalDecision,
   approvalWait,
   defaultOpen,
   formatDuration,
   ranWithoutAsking,
   summarizeTools,
+  toolDetails,
   toolDuration,
   toolLabel,
   toolPhase,
@@ -168,5 +170,70 @@ describe('toolLabel for ACP titles', () => {
       prompt: '',
     })
     expect(toolLabel({ title: 'Read `/w/a.md`', status: 'ok' }).verb).toBe('Read')
+  })
+})
+
+describe('toolDetails', () => {
+  it('lists kind, the whole command, status, run time, approval wait and the decision', () => {
+    const t = tool({
+      title: 'Execute `echo hi > note.txt`',
+      startedAt: 1_000,
+      endedAt: 9_000,
+      approval: { requestId: 'r', requestedAt: 1_000, resolvedAt: 8_000, outcome: 'allow' },
+      asked: true,
+    })
+    expect(toolDetails(t)).toEqual([
+      { label: 'Tool', value: 'Command' },
+      { label: 'Title', value: 'Execute `echo hi > note.txt`', mono: true },
+      { label: 'Command', value: '$ echo hi > note.txt', mono: true },
+      { label: 'Status', value: 'Done' },
+      { label: 'Ran for', value: '1.0 s' },
+      { label: 'Approval wait', value: '7.0 s' },
+      { label: 'Approval', value: 'Allowed' },
+    ])
+  })
+
+  it('shows every path in full and that the agent did not ask', () => {
+    const t = tool({
+      title: 'Read /workspace/demo/README.md',
+      toolKind: 'read',
+      paths: ['/workspace/demo/.wt/beddcode-8b846a/README.md'],
+      asked: false,
+    })
+    const rows = toolDetails(t)
+    expect(rows.filter((r) => r.label === 'Path')).toEqual([
+      {
+        label: 'Path',
+        value: '/workspace/demo/.wt/beddcode-8b846a/README.md',
+        mono: true,
+      },
+    ])
+    expect(toolDetails({ ...t, paths: undefined })).toContainEqual({
+      label: 'Path',
+      value: '/workspace/demo/README.md',
+      mono: true,
+    })
+    expect(rows.at(-1)).toEqual({
+      label: 'Approval',
+      value: 'Not asked (allowed by the agent’s own rules)',
+    })
+  })
+
+  it('names a failed tool and one still waiting on the user', () => {
+    expect(toolDetails(tool({ status: 'failed' }))).toContainEqual({
+      label: 'Status',
+      value: 'Failed',
+    })
+    const waiting = tool({
+      status: 'running',
+      startedAt: 0,
+      approval: { requestId: 'r', requestedAt: 0 },
+    })
+    expect(toolDetails(waiting, 5_000)).toContainEqual({
+      label: 'Status',
+      value: 'Waiting for your approval',
+    })
+    expect(approvalDecision(waiting)).toBe('Waiting for you')
+    expect(approvalDecision(tool({}))).toBeUndefined()
   })
 })

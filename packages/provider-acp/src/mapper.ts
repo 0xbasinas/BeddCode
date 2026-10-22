@@ -66,7 +66,31 @@ interface ToolState {
   /** Latest diff per path, emitted once the tool succeeds. */
   diffs: Map<string, { path: string; oldText?: string | null; newText: string }>
   output?: string
+  input?: string
+  paths?: string[]
 }
+
+/** The tool's arguments as pretty JSON, capped; nothing for an empty object. */
+export function inputText(raw: unknown): string | undefined {
+  if (raw === undefined || raw === null) return undefined
+  if (typeof raw === 'string') return raw.trim() ? raw.slice(0, MAX_OUTPUT) : undefined
+  if (typeof raw === 'object' && Object.keys(raw as object).length === 0) return undefined
+  let text: string | undefined
+  try {
+    text = JSON.stringify(raw, null, 2)
+  } catch {
+    text = String(raw)
+  }
+  return text ? text.slice(0, MAX_OUTPUT) : undefined
+}
+
+function pathsOf(locations: { path: string }[] | null | undefined): string[] | undefined {
+  const paths = [...new Set((locations ?? []).map((l) => l.path).filter(Boolean))]
+  return paths.length > 0 ? paths : undefined
+}
+
+const sameList = (a: string[] | undefined, b: string[] | undefined) =>
+  (a ?? []).join('\n') === (b ?? []).join('\n')
 
 function textOf(content: ToolCallContent[] | null | undefined): string | undefined {
   const text = (content ?? [])
@@ -137,6 +161,8 @@ export class AcpEventMapper {
           update.title,
           out,
           update.kind ?? metaKind(update._meta),
+          inputText(update.rawInput),
+          pathsOf(update.locations),
         )
         this.collectDiffs(state, update.content)
         state.output = textOf(update.content) ?? rawOutputText(update.rawOutput) ?? state.output
@@ -152,6 +178,8 @@ export class AcpEventMapper {
           update.title ?? undefined,
           out,
           update.kind ?? metaKind(update._meta),
+          inputText(update.rawInput),
+          pathsOf(update.locations),
         )
         this.collectDiffs(state, update.content)
         state.output = textOf(update.content) ?? rawOutputText(update.rawOutput) ?? state.output
@@ -223,12 +251,28 @@ export class AcpEventMapper {
     title: string | undefined,
     out: Draft[],
     kind: string | null | undefined,
+    input?: string,
+    paths?: string[],
   ): ToolState {
     let state = this.tools.get(id)
     if (!state) {
-      state = { title: title ?? id, kind: toolKind(kind), done: false, diffs: new Map() }
+      state = {
+        title: title ?? id,
+        kind: toolKind(kind),
+        done: false,
+        diffs: new Map(),
+        input,
+        paths,
+      }
       this.tools.set(id, state)
-      out.push({ type: 'tool.started', toolId: id, kind: state.kind, title: state.title })
+      out.push({
+        type: 'tool.started',
+        toolId: id,
+        kind: state.kind,
+        title: state.title,
+        ...(input ? { input } : {}),
+        ...(paths ? { paths } : {}),
+      })
       return state
     }
     if (state.done) return state
@@ -236,14 +280,20 @@ export class AcpEventMapper {
     const nextTitle = title?.trim() ? title : state.title
     const kindChanged = nextKind !== state.kind && nextKind !== 'other'
     const titleChanged = nextTitle !== state.title
-    if (kindChanged || titleChanged) {
+    const inputChanged = input !== undefined && input !== state.input
+    const pathsChanged = paths !== undefined && !sameList(paths, state.paths)
+    if (kindChanged || titleChanged || inputChanged || pathsChanged) {
       if (kindChanged) state.kind = nextKind
       state.title = nextTitle
+      if (inputChanged) state.input = input
+      if (pathsChanged) state.paths = paths
       out.push({
         type: 'tool.updated',
         toolId: id,
         ...(kindChanged ? { kind: state.kind } : {}),
         ...(titleChanged ? { title: state.title } : {}),
+        ...(inputChanged ? { input } : {}),
+        ...(pathsChanged ? { paths } : {}),
       })
     }
     return state
