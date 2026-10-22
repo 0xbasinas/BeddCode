@@ -116,7 +116,7 @@ kbd {
   display: grid;
   place-items: center;
   width: calc(30px * var(--ui-scale));
-  height: calc(34px * var(--ui-scale));
+  height: var(--rail-btn-h);
 }
 .rail button:hover {
   background: var(--bg-hover);
@@ -3187,9 +3187,18 @@ button.tcall-row:hover .tcall-chevron,
   flex: 1 1 0;
   min-width: 0;
 }
-/* The least important chips give way first. */
+/* The least important chips give way first; the agent and the line counts never clip. */
 .footer-bar > .spacer ~ * {
   flex-shrink: 3;
+}
+.footer-bar > :first-child,
+.footer-bar > .stat {
+  flex-shrink: 0;
+}
+.footer-bar .chip-lite code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .chip-text {
   min-width: 0;
@@ -3306,6 +3315,14 @@ button.tcall-row:hover .tcall-chevron,
 }
 .pane-head h2 {
   line-height: var(--head-line);
+  flex: none;
+}
+/* A pane header's subtitle (branch, folder) gives way first, ending in an ellipsis. */
+.pane-head > .muted {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .git-tabs {
   box-sizing: border-box;
@@ -3361,18 +3378,22 @@ button.tcall-row:hover .tcall-chevron,
   color: var(--text);
 }
 .right.has-pane .rail {
-  border-left: 1px solid var(--border-subtle);
+  /* The divider at the rail's left edge, drawn as a 1px background so it can start below the
+     window buttons' notch instead of running up into it. */
+  --rail-line-top: 0px;
+  background: linear-gradient(var(--border-subtle), var(--border-subtle)) 0 var(--rail-line-top) /
+    1px 100% no-repeat;
 }
 
 .select-row .link-btn {
   padding-right: 0;
 }
 
-/* The header line's right end: the pane toggle at the start of the open pane's header, the app's
-   own window buttons in a title bar above the panes (frameless desktop window on Linux and
-   Windows). With the pane collapsed the toggle sits over the rail on the header line. */
+/* The header line's right end: the pane toggle at the start of the open pane's header; with the
+   pane collapsed it sits over the rail on the header line (below the window buttons' card when
+   there is one). */
 .pane-collapse,
-.winbar .icon-btn {
+.window-island .icon-btn {
   box-sizing: border-box;
   width: var(--head-btn);
   height: var(--head-btn);
@@ -3393,48 +3414,129 @@ button.tcall-row:hover .tcall-chevron,
 .right:not(.has-pane) .pane-collapse {
   position: fixed;
   z-index: 5;
-  top: calc(var(--titlebar-h) + var(--gap) + (var(--pane-head) - var(--head-btn)) / 2);
+  top: calc(var(--gap) + (var(--pane-head) - var(--head-btn)) / 2);
   right: var(--rail-btn-right);
 }
-/* The title bar: window chrome in the gutter's colour, above every pane (and the Browser pane that
-   overlays the thread in small windows). Dragging it moves the window; its buttons don't. */
-:root:has(.titlebar) {
-  --titlebar-h: 36px;
+
+/* The window buttons' card (frameless desktop window on Linux and Windows): its own card in the
+   window's top-right corner, one gutter from the edges, as tall as the header row and centred on
+   its line, its right edge on the rail's. The right column (or, with the pane collapsed, the
+   thread) gives up that corner: a notch one gutter wider and taller than the card, its corners
+   rounded like the panes'. The rail starts below it, the header row ends before it. */
+:root:has(.window-island) {
+  --island-w: calc(3 * var(--island-btn-w) + 2 * var(--island-btn-gap) + 2 * var(--island-pad));
 }
-#root {
-  box-sizing: border-box;
-  padding-top: var(--titlebar-h);
-}
-.titlebar {
+.window-island {
   position: fixed;
+  /* Above the Browser pane, which overlays the thread in small windows. */
   z-index: 20;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--titlebar-h);
+  top: var(--gap);
+  right: var(--gap);
+  box-sizing: border-box;
+  width: var(--island-w);
+  height: var(--pane-head);
+  padding: var(--island-pad);
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding-right: var(--rail-btn-right);
-  background: var(--bg-app);
+  background: var(--bg-panel);
+  border-radius: var(--radius-panel);
   -webkit-app-region: drag;
 }
 .winbar {
   display: flex;
-  gap: var(--winbar-gap);
+  gap: var(--island-btn-gap);
   -webkit-app-region: no-drag;
 }
-.winbar .icon-btn {
-  height: var(--titlebar-btn-h);
-  color: var(--text-faint);
+.window-island .icon-btn {
+  width: var(--island-btn-w);
+  color: var(--text-muted);
 }
-.winbar .winbar-close:hover {
-  background: var(--danger);
+.window-island .icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.window-island .winbar-close:hover {
+  background: #e81123;
   color: #fff;
 }
-.winbar .icon-btn:focus-visible {
+.window-island .icon-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
+}
+/* The notch: --nw wide from the card's right edge, --notch-h tall. */
+:root:has(.window-island) .right.has-pane,
+:root:has(.window-island)
+  .shell:not(:has(.right.has-pane))
+  :is(.thread, .thread-empty, .new-session) {
+  --r: var(--radius-panel);
+  clip-path: shape(
+    from var(--r) 0,
+    hline to calc(100% - var(--nw) - var(--r)),
+    arc to calc(100% - var(--nw)) var(--r) of var(--r) cw,
+    vline to calc(var(--notch-h) - var(--r)),
+    arc to calc(100% - var(--nw) + var(--r)) var(--notch-h) of var(--r) ccw,
+    hline to calc(100% - var(--r)),
+    arc to 100% calc(var(--notch-h) + var(--r)) of var(--r) cw,
+    vline to calc(100% - var(--r)),
+    arc to calc(100% - var(--r)) 100% of var(--r) cw,
+    hline to var(--r),
+    arc to 0 calc(100% - var(--r)) of var(--r) cw,
+    vline to var(--r),
+    arc to var(--r) 0 of var(--r) cw,
+    close
+  );
+}
+:root:has(.window-island) .right.has-pane {
+  --nw: calc(var(--island-w) + var(--gap));
+}
+:root:has(.window-island) .right.has-pane .rail {
+  padding-top: calc(var(--notch-h) + (var(--rail-btn-h) - 20px) / 2);
+  --rail-line-top: calc(var(--notch-h) + var(--radius-panel));
+}
+/* The open pane's header row (toggle, tabs or title) ends a gutter before the card. */
+:root:has(.window-island) .right.has-pane .side-pane {
+  --island-reach: calc(var(--island-w) + 2 * var(--gap) - var(--rail-w));
+}
+:root:has(.window-island) .right.has-pane .side-pane .pane-head {
+  padding-right: max(var(--pane-pad-x), var(--island-reach));
+}
+:root:has(.window-island) .right.has-pane .side-pane .git-tabs {
+  max-width: calc(100% - var(--toggle-reach) - max(var(--pane-pad-x), var(--island-reach)));
+}
+/* The cut-out corner still moves the window. */
+:root:has(.window-island) .right.has-pane::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--nw);
+  height: var(--notch-h);
+  -webkit-app-region: drag;
+  pointer-events: none;
+}
+/* Pane collapsed: the rail starts a gutter below the card; the thread's corner is cut out instead,
+   its header buttons keeping their usual inset from the cut. */
+:root:has(.window-island)
+  .shell:not(:has(.right.has-pane))
+  :is(.thread, .thread-empty, .new-session) {
+  --nw: calc(var(--island-w) - var(--rail-w));
+}
+:root:has(.window-island) .shell:not(:has(.right.has-pane)) .thread-actions {
+  margin-right: calc(var(--island-w) - var(--rail-w));
+}
+:root:has(.window-island) .right:not(.has-pane) {
+  margin-top: var(--notch-h);
+  height: calc(100% - var(--notch-h));
+}
+:root:has(.window-island) .right:not(.has-pane) .pane-collapse {
+  top: calc(var(--gap) + var(--notch-h) + (var(--pane-head) - var(--head-btn)) / 2);
+}
+/* The window moves by its gutters too; the panes and the resize handles between them don't. */
+:root:has(.window-island) .shell {
+  -webkit-app-region: drag;
+}
+:root:has(.window-island) .shell-panel > *,
+:root:has(.window-island) .shell-sep {
+  -webkit-app-region: no-drag;
 }
 /* A narrow pane keeps its tabs in one row: tighter tabs, then shrinking ones. */
 .side-pane {

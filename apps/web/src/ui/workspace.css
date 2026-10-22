@@ -500,10 +500,10 @@ a {
   .right.browser-open {
     position: absolute;
     /* Over the thread, inside the same gutter as every other pane. */
-    top: calc(var(--titlebar-h) + var(--gap));
+    top: var(--gap);
     right: var(--gap);
     bottom: auto;
-    height: calc(100vh - var(--titlebar-h) - 2 * var(--gap));
+    height: calc(100vh - 2 * var(--gap));
     width: min(calc(720px * var(--ui-scale)), calc(100vw - calc(292px * var(--ui-scale))));
     z-index: 10;
     box-shadow: -12px 0 28px #0005;

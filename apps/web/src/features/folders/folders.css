@@ -109,10 +109,17 @@
   flex: 1 1 0;
 }
 .folder-group .group-title .folder-host {
-  flex: 0 2 auto;
+  flex: 0 1 auto;
+  /* A short host name ("This PC") stays whole; a long one ends in an ellipsis (full name in the
+     tooltip) once the branch badge has given way. */
+  min-width: min(100%, 9ch);
+  max-width: 16ch;
+  white-space: nowrap;
+}
+.folder-group .group-title .folder-host-name {
   min-width: 0;
   overflow: hidden;
-  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 /*
  * "New session here" shows over the host while the pointer is on the folder. It is placed out of

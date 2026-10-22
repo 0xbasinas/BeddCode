@@ -390,7 +390,9 @@ ${s.projectPath}`
                 )}
                 <span className="session-main">
                   <span className="session-top">
-                    <span className="session-title">{s.title}</span>
+                    <span className="session-title" title={s.title}>
+                      {s.title}
+                    </span>
                     <span className="session-time">{timeAgo(s.updatedAt)}</span>
                   </span>
                   <span className="session-meta">
@@ -399,7 +401,10 @@ ${s.projectPath}`
                         {sessionNote(s)}
                       </span>
                     )}
-                    <span className="session-where">
+                    <span
+                      className="session-where"
+                      title={[s.branch, agentLabel(s)].filter(Boolean).join(' · ')}
+                    >
                       {s.branch && (
                         <>
                           <GitBranch size={11} /> <code>{s.branch}</code> ·{' '}
@@ -499,9 +504,9 @@ function FolderGroup({
         {project &&
           (project.isRepo ? (
             project.branch && (
-              <span className="folder-chip">
+              <span className="folder-chip" title={project.branch}>
                 <GitBranch size={10} />
-                {project.branch}
+                <span className="chip-text">{project.branch}</span>
               </span>
             )
           ) : (
@@ -510,9 +515,9 @@ function FolderGroup({
         {fresh && empty && <span className="badge-new">New</span>}
         <span className="spacer" />
         {hostName && (
-          <span className="folder-host">
+          <span className="folder-host" title={hostName}>
             {hostKey === LOCAL_HOST_KEY ? <Monitor size={11} /> : <Server size={11} />}
-            {hostName}
+            <span className="folder-host-name">{hostName}</span>
           </span>
         )}
         <button

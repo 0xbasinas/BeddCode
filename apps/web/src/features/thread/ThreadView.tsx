@@ -368,7 +368,7 @@ function SessionFooter({
       )}
       <span className="spacer" />
       {session.branch && (
-        <span className="chip-lite static">
+        <span className="chip-lite static" title={session.branch}>
           <GitBranch size={14} /> <code>{session.branch}</code>
         </span>
       )}
@@ -402,7 +402,7 @@ function WorktreeChip({ session, hostKey }: { session: SessionView; hostKey: str
     <Dropdown
       trigger={({ toggle }) => (
         <button className="chip-lite" onClick={toggle} aria-label="Worktree" title={session.cwd}>
-          <Folder size={14} /> Worktree
+          <Folder size={14} /> <span className="chip-text">Worktree</span>
         </button>
       )}
       panelClassName="wide"

@@ -70,13 +70,19 @@
   /* Pane toggle at the start of a pane's header: its icon on the content edge. */
   --toggle-left: calc(var(--pane-pad-x) - 8px * var(--ui-scale));
   --toggle-reach: calc(var(--toggle-left) + var(--head-btn) + 4px * var(--ui-scale));
-  /* The app's own title bar (desktop app on Linux and Windows): a slim strip across the top of the
-     window holding the window buttons. 0 without it (browser build, macOS); see WindowBar.tsx. */
-  --titlebar-h: 0px;
-  --titlebar-btn-h: calc(28px * var(--ui-scale));
-  /* Window buttons 10.2px apart (at 0.9 scale); close sits over the rail's icons. */
-  --winbar-gap: calc(var(--gap) + (var(--rail-w) - var(--head-btn)) / 2);
-  /* A header-row button centred over the rail (the collapsed pane toggle, the close button). */
+  /* The window buttons' card (desktop app on Linux and Windows), in the window's top-right corner
+     at the header row's height: buttons as tall as the header buttons, the card's padding centring
+     them on the header line. --island-w is 0 without it (browser build, macOS); see app.css. */
+  --island-w: 0px;
+  --island-btn-w: calc(40px * var(--ui-scale));
+  --island-btn-gap: calc(2px * var(--ui-scale));
+  --island-pad: calc((var(--pane-head) - var(--head-btn)) / 2);
+  /* The notch around the card: the card plus one gutter to its left and below. */
+  --notch-h: calc(var(--pane-head) + var(--gap));
+  /* A header-row button centred over the rail (the collapsed pane toggle). */
   --rail-btn-right: calc(var(--gap) + (var(--rail-w) - var(--head-btn)) / 2);
+  /* Rail icons: 20px in a button this tall; the space above the first one under the notch matches
+     the space between icons. */
+  --rail-btn-h: calc(34px * var(--ui-scale));
   color-scheme: dark;
 }

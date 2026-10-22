@@ -3,10 +3,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { appWindowControls } from '../../ui/desktop.ts'
 
 /**
- * The app's title bar: a slim strip across the top of the window, above the panes, with minimize,
- * maximize/restore and close at its right end, drawn in the app's style. Only inside the frameless desktop window on Linux and Windows; macOS keeps its traffic
- * lights and the browser build has no window to control. Double-clicking a drag region is left to
- * the system (Windows, macOS, and Chromium's own handling on Linux).
+ * The window buttons (minimize, maximize/restore, close) on their own card in the window's top-right
+ * corner, at the header row's height, in a notch cut out of the right column (see app.css). Only
+ * inside the frameless desktop window on Linux and Windows; macOS keeps its traffic lights and the
+ * browser build has no window to control. The card's padding moves the window like any drag
+ * region; double-clicking one is left to the system.
  */
 export function WindowBar() {
   const controls = useMemo(appWindowControls, [])
@@ -23,7 +24,7 @@ export function WindowBar() {
   }, [controls])
   if (!controls) return null
   return (
-    <div className="titlebar">
+    <div className="window-island">
       <div className="winbar" role="group" aria-label="Window">
         <button
           className="icon-btn"
