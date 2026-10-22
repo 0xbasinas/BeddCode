@@ -6,6 +6,8 @@ import {
   FileDiff,
   FolderOpen,
   GitBranch,
+  Layers,
+  Minus,
   Monitor,
   Settings,
   Shield,
@@ -17,6 +19,7 @@ import { setMode, useRuntime } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { useUiStore } from '../../stores/ui.ts'
 import { folderName } from '../../ui/format.ts'
+import { environmentHint } from './environment.ts'
 
 /** The agent's name under the composer. The Environment bar is always there; nothing here hides it. */
 export function SessionChip({ agent }: { agent: string }) {
@@ -35,13 +38,11 @@ export function SessionChip({ agent }: { agent: string }) {
 }
 
 /**
- * Where this session runs and how, as one slim row of chips above the conversation: host, branch,
- * the changes (one click opens them in the Git pane), terminal and files. The chevron opens the
- * rest beneath it (host and worktree details, permission mode, folder, notes, settings) at the
- * bar's width; a click elsewhere or Escape closes it. It sits outside the transcript's scroller,
- * so it stays in view and never covers the conversation.
+ * Where this session runs and how: changes, host, branch, permission mode, terminal, folder, notes.
+ * A small icon at the top right of the thread opens it as a card beneath it, over the thread. A
+ * click elsewhere, Escape, its minimize button or the icon again closes it.
  */
-export function EnvironmentBar({
+export function EnvironmentButton({
   session,
   hostKey,
   stats,
@@ -70,17 +71,29 @@ export function EnvironmentBar({
   const toggle = (row: typeof expanded) =>
     setExpanded((current) => (current === row ? undefined : row))
 
-  // The details open beneath the bar and close again on a click elsewhere or Escape.
-  const [open, setOpen] = useState(false)
+  // Closed by default; the store keeps it open or closed while the app runs (not across restarts).
+  const open = useUiStore((s) => s.environmentOpen)
+  const setOpen = useUiStore((s) => s.setEnvironmentOpen)
   const anchor = useRef<HTMLDivElement>(null)
-  const detailsId = useId()
+  const trigger = useRef<HTMLButtonElement>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
+  const cardId = useId()
+  /** Closes the card; from the keyboard or its own button, focus goes back to the icon. */
+  const close = (refocus: boolean) => {
+    setOpen(false)
+    if (refocus) trigger.current?.focus()
+  }
+  const closeRef = useRef(close)
+  closeRef.current = close
   useEffect(() => {
     if (!open) return
+    // Focus moves into the card when it opens, unless it opened already focused somewhere inside.
+    if (!cardRef.current?.contains(document.activeElement)) cardRef.current?.focus()
     const onPointer = (event: globalThis.PointerEvent) => {
-      if (!anchor.current?.contains(event.target as Node)) setOpen(false)
+      if (!anchor.current?.contains(event.target as Node)) closeRef.current(false)
     }
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
+      if (event.key === 'Escape') closeRef.current(true)
     }
     document.addEventListener('pointerdown', onPointer)
     document.addEventListener('keydown', onKey)
@@ -90,215 +103,194 @@ export function EnvironmentBar({
     }
   }, [open])
 
-  const hostLabel = hostKey === LOCAL_HOST_KEY ? 'This PC' : (host?.name ?? 'Host')
-  const connected = connection === 'connected'
+  const hint = environmentHint(connection === 'connected', stats)
 
   return (
-    <div className="env-bar-wrap">
-      <div className="env-column">
-        <div className="env-anchor" ref={anchor}>
-          <div className="env-bar" role="toolbar" aria-label="Session environment">
-            <span
-              className="env-chip"
-              title={`${host?.name ?? hostLabel} · ${connected ? 'Connected' : 'Reconnecting…'}`}
-            >
-              <Monitor size={13} />
-              <span className="env-chip-text">{hostLabel}</span>
-              <span className={`dot ${connected ? 'ok' : 'warn'}`} />
+    <div className="env-anchor" ref={anchor}>
+      <button
+        ref={trigger}
+        className={`icon-btn env-trigger ${open ? 'open' : ''}`}
+        aria-label="Environment"
+        title="Environment"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? cardId : undefined}
+        onClick={() => setOpen(!open)}
+      >
+        <Layers size={17} />
+        {hint && <span className={`env-hint ${hint}`} aria-hidden="true" />}
+      </button>
+      {open && (
+        <div
+          ref={cardRef}
+          id={cardId}
+          className="env-card"
+          role="dialog"
+          aria-label="Session environment"
+          tabIndex={-1}
+        >
+          <div className="session-panel-heading env-head">
+            <span className="env-title">
+              <Layers size={14} /> Environment
             </span>
-            <span
-              className="env-chip"
-              title={
-                session.worktree
-                  ? `Worktree from ${session.worktree.baseBranch}`
-                  : `Main checkout of ${folderName(session.projectPath)}`
-              }
-            >
-              <GitBranch size={13} />
-              <span className="env-chip-text">
-                {session.branch ?? folderName(session.projectPath)}
-              </span>
+            <span className="env-actions">
+              <button
+                className="icon-btn small"
+                aria-label="Agent settings"
+                onClick={() => {
+                  void navigate({ to: '/settings' })
+                }}
+              >
+                <Settings size={13} />
+              </button>
+              <button className="icon-btn small" aria-label="Minimize" onClick={() => close(true)}>
+                <Minus size={13} />
+              </button>
             </span>
-            <button
-              className="env-chip action"
-              title="Open the changes in the Git pane"
-              onClick={() => useUiStore.getState().showChanges()}
-            >
-              <FileDiff size={13} />
+          </div>
+          <div className="env-body">
+            <button className="menu-row" onClick={() => useUiStore.getState().showChanges()}>
+              <FileDiff size={16} />
+              <span className="menu-text menu-title">Changes</span>
               <span className="stat">
                 <span className="add">+{stats.added}</span>{' '}
                 <span className="del">−{stats.removed}</span>
               </span>
             </button>
-            <span className="env-bar-sep" />
             <button
-              className="icon-btn small"
-              aria-label="Open the terminal"
-              title="Terminal"
-              onClick={() => useUiStore.getState().openPane('terminal')}
+              className="menu-row"
+              aria-expanded={expanded === 'host'}
+              onClick={() => toggle('host')}
             >
-              <SquareTerminal size={13} />
+              <Monitor size={16} />
+              <span className="menu-text menu-title">
+                {hostKey === LOCAL_HOST_KEY ? 'This PC' : (host?.name ?? 'Host')}
+              </span>
+              <span className={`dot ${connection === 'connected' ? 'ok' : 'warn'}`} />
+              <ChevronDown size={12} />
             </button>
+            {expanded === 'host' && (
+              <div className="session-property">
+                {host?.name}
+                <br />
+                {connection === 'connected' ? 'Connected' : 'Reconnecting…'} · {host?.platform}
+              </div>
+            )}
             <button
-              className="icon-btn small"
-              aria-label="Open the files"
-              title="Files"
+              className="menu-row"
+              aria-expanded={expanded === 'branch'}
+              onClick={() => toggle('branch')}
+            >
+              <GitBranch size={16} />
+              <span className="menu-text menu-title">{session.branch ?? 'No branch'}</span>
+              <ChevronDown size={12} />
+            </button>
+            {expanded === 'branch' && (
+              <div className="session-property">
+                {session.worktree
+                  ? `Worktree from ${session.worktree.baseBranch}`
+                  : 'Main checkout'}
+                <br />
+                {session.branch}
+              </div>
+            )}
+            {mode && (
+              <>
+                <button
+                  className="menu-row"
+                  aria-expanded={expanded === 'mode'}
+                  onClick={() => toggle('mode')}
+                >
+                  <Shield size={16} />
+                  <span className="menu-text menu-title">{mode.label}</span>
+                  <ChevronDown size={12} />
+                </button>
+                {expanded === 'mode' && (
+                  <div
+                    className="session-panel-options"
+                    role="group"
+                    aria-label="Session permission mode"
+                  >
+                    {modes.map((option) => (
+                      <button
+                        key={option.id}
+                        className={option.dangerous ? 'danger' : ''}
+                        disabled={connection !== 'connected' || changing}
+                        aria-checked={mode.id === option.id}
+                        role="menuitemradio"
+                        onClick={() => {
+                          setChanging(true)
+                          setError(undefined)
+                          void setMode(session.id, option.id)
+                            .then(
+                              () => setExpanded(undefined),
+                              (err: unknown) =>
+                                setError(err instanceof Error ? err.message : String(err)),
+                            )
+                            .finally(() => setChanging(false))
+                        }}
+                      >
+                        {option.label}
+                        <span className="spacer" />
+                        {mode.id === option.id && <Check size={13} />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+            <button className="menu-row" onClick={() => useUiStore.getState().openPane('terminal')}>
+              <SquareTerminal size={16} />
+              <span className="menu-text menu-title">Terminal</span>
+            </button>
+            <div className="session-panel-heading">Repository</div>
+            <button
+              className="menu-row"
+              title={session.cwd}
               onClick={() => useUiStore.getState().openPane('files')}
             >
-              <FolderOpen size={13} />
+              <FolderOpen size={16} />
+              <span className="menu-text menu-title">{folderName(session.projectPath)}</span>
             </button>
             <button
-              className={`icon-btn small env-toggle ${open ? 'open' : ''}`}
-              aria-label={open ? 'Hide session details' : 'Show session details'}
-              aria-expanded={open}
-              aria-controls={detailsId}
-              onClick={() => setOpen(!open)}
+              className="menu-row"
+              onClick={() => {
+                void navigator.clipboard.writeText(session.cwd).then(
+                  () => setCopied(true),
+                  () => setError('Could not copy the folder path.'),
+                )
+              }}
             >
-              <ChevronDown size={13} />
+              <Copy size={16} />
+              <span className="menu-text menu-title">
+                {copied ? 'Copied folder path' : 'Copy folder path'}
+              </span>
             </button>
-          </div>
-          {open && (
-            <div className="env-details" id={detailsId} role="dialog" aria-label="Session details">
-              <button
-                className="menu-row"
-                aria-expanded={expanded === 'host'}
-                onClick={() => toggle('host')}
-              >
-                <Monitor size={16} />
-                <span className="menu-text menu-title">
-                  {hostKey === LOCAL_HOST_KEY ? 'This PC' : (host?.name ?? 'Host')}
-                </span>
-                <span className={`dot ${connection === 'connected' ? 'ok' : 'warn'}`} />
-                <ChevronDown size={12} />
-              </button>
-              {expanded === 'host' && (
-                <div className="session-property">
-                  {host?.name}
-                  <br />
-                  {connection === 'connected' ? 'Connected' : 'Reconnecting…'} · {host?.platform}
-                </div>
-              )}
-              <button
-                className="menu-row"
-                aria-expanded={expanded === 'branch'}
-                onClick={() => toggle('branch')}
-              >
-                <GitBranch size={16} />
-                <span className="menu-text menu-title">{session.branch ?? 'No branch'}</span>
-                <ChevronDown size={12} />
-              </button>
-              {expanded === 'branch' && (
-                <div className="session-property">
-                  {session.worktree
-                    ? `Worktree from ${session.worktree.baseBranch}`
-                    : 'Main checkout'}
-                  <br />
-                  {session.branch}
-                </div>
-              )}
-              {mode && (
-                <>
-                  <button
-                    className="menu-row"
-                    aria-expanded={expanded === 'mode'}
-                    onClick={() => toggle('mode')}
-                  >
-                    <Shield size={16} />
-                    <span className="menu-text menu-title">{mode.label}</span>
-                    <ChevronDown size={12} />
-                  </button>
-                  {expanded === 'mode' && (
-                    <div
-                      className="session-panel-options"
-                      role="group"
-                      aria-label="Session permission mode"
-                    >
-                      {modes.map((option) => (
-                        <button
-                          key={option.id}
-                          className={option.dangerous ? 'danger' : ''}
-                          disabled={connection !== 'connected' || changing}
-                          aria-checked={mode.id === option.id}
-                          role="menuitemradio"
-                          onClick={() => {
-                            setChanging(true)
-                            setError(undefined)
-                            void setMode(session.id, option.id)
-                              .then(
-                                () => setExpanded(undefined),
-                                (err: unknown) =>
-                                  setError(err instanceof Error ? err.message : String(err)),
-                              )
-                              .finally(() => setChanging(false))
-                          }}
-                        >
-                          {option.label}
-                          <span className="spacer" />
-                          {mode.id === option.id && <Check size={13} />}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-              <div className="session-panel-heading">Repository</div>
-              <button
-                className="menu-row"
-                title={session.cwd}
-                onClick={() => useUiStore.getState().openPane('files')}
-              >
-                <FolderOpen size={16} />
-                <span className="menu-text menu-title">{folderName(session.projectPath)}</span>
-              </button>
-              <button
-                className="menu-row"
-                onClick={() => {
-                  void navigator.clipboard.writeText(session.cwd).then(
-                    () => setCopied(true),
-                    () => setError('Could not copy the folder path.'),
-                  )
+            <div className="session-panel-heading">Notes</div>
+            <div className="session-notes">
+              <textarea
+                aria-label="Session notes"
+                placeholder="Notes for this session…"
+                value={notes}
+                onChange={(event) => {
+                  const value = event.target.value
+                  setNotes(value)
+                  try {
+                    localStorage.setItem(noteKey, value)
+                  } catch {
+                    setError('Notes could not be saved in this browser.')
+                  }
                 }}
-              >
-                <Copy size={16} />
-                <span className="menu-text menu-title">
-                  {copied ? 'Copied folder path' : 'Copy folder path'}
-                </span>
-              </button>
-              <div className="session-panel-heading">Notes</div>
-              <div className="session-notes">
-                <textarea
-                  aria-label="Session notes"
-                  placeholder="Notes for this session…"
-                  value={notes}
-                  onChange={(event) => {
-                    const value = event.target.value
-                    setNotes(value)
-                    try {
-                      localStorage.setItem(noteKey, value)
-                    } catch {
-                      setError('Notes could not be saved in this browser.')
-                    }
-                  }}
-                />
-              </div>
-              <button
-                className="menu-row"
-                onClick={() => {
-                  void navigate({ to: '/settings' })
-                }}
-              >
-                <Settings size={16} />
-                <span className="menu-text menu-title">Agent settings</span>
-              </button>
-              {error && (
-                <p className="composer-error menu-error" role="alert">
-                  {error}
-                </p>
-              )}
+              />
             </div>
-          )}
+            {error && (
+              <p className="composer-error menu-error" role="alert">
+                {error}
+              </p>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

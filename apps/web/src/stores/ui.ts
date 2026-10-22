@@ -6,6 +6,9 @@ export type GitTab = 'changes' | 'commits' | 'pr'
 interface UiState {
   activePane: PaneId | null
   searchOpen: boolean
+  /** The Environment card under the thread's icon; closed at start, kept while the app runs. */
+  environmentOpen: boolean
+  setEnvironmentOpen(open: boolean): void
   setSearchOpen(open: boolean): void
   togglePane(id: PaneId): void
   openPane(id: PaneId): void
@@ -19,6 +22,8 @@ interface UiState {
 export const useUiStore = create<UiState>((set) => ({
   activePane: null,
   searchOpen: false,
+  environmentOpen: false,
+  setEnvironmentOpen: (environmentOpen) => set({ environmentOpen }),
   setSearchOpen: (searchOpen) => set({ searchOpen }),
   togglePane: (id) => set((s) => ({ activePane: s.activePane === id ? null : id })),
   openPane: (id) => set({ activePane: id }),

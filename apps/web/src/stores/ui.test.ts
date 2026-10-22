@@ -19,4 +19,13 @@ describe('ui store', () => {
     useUiStore.getState().showChanges()
     expect(useUiStore.getState().activePane).toBe('git')
   })
+
+  it('starts with the Environment card closed and remembers it only in memory', () => {
+    expect(useUiStore.getState().environmentOpen).toBe(false)
+    useUiStore.getState().setEnvironmentOpen(true)
+    expect(useUiStore.getState().environmentOpen).toBe(true)
+    expect(globalThis.localStorage?.getItem('beddcode.environment-minimized') ?? null).toBeNull()
+    useUiStore.getState().setEnvironmentOpen(false)
+    expect(useUiStore.getState().environmentOpen).toBe(false)
+  })
 })
