@@ -1,41 +1,33 @@
 import { useState } from 'react'
-import { Check, Folder, Server } from 'lucide-react'
-import { Link } from '@tanstack/react-router'
-import { useRuntime } from '../../stores/host.ts'
+import { Check, FolderOpen, Loader2, Plus, Server } from 'lucide-react'
+import { Link, useNavigate } from '@tanstack/react-router'
+import { readyProviders, useRuntime } from '../../stores/host.ts'
 import { HostsDialog } from '../hosts/HostsDialog.tsx'
 import { useUiStore } from '../../stores/ui.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
+import { chooseFolder, hasNativePicker, useFolderFlow } from '../folders/folderFlow.ts'
+import { samePath } from '../folders/folderLogic.ts'
+import { defaultAgent, hostDefaults, usePreferences } from '../../stores/preferences.ts'
+import '../folders/folders.css'
 
-export function Welcome({
-  hostKey,
-  onAddFolder,
-  onSkip,
-}: {
-  hostKey: string
-  onAddFolder(path: string): Promise<void>
-  onSkip(): void
-}) {
-  const { connection, providers, host } = useRuntime(hostKey)
+export function Welcome({ hostKey, onSkip }: { hostKey: string; onSkip(): void }) {
+  const navigate = useNavigate()
+  const { connection, providers, host, projects } = useRuntime(hostKey)
   const [hostsOpen, setHostsOpen] = useState(false)
-  const [adding, setAdding] = useState(false)
-  const [path, setPath] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string>()
+  const picking = useFolderFlow((s) => s.picking || s.browser !== undefined)
+  const lastAdded = useFolderFlow((s) => s.lastAdded[hostKey])
+  const defaults = usePreferences((s) => hostDefaults(s.hosts, host?.hostId ?? hostKey))
   const connected = connection === 'connected'
-  const ready = providers.some((provider) => provider.status === 'ready')
+  const ready = readyProviders(providers).length > 0
+  const agent = defaultAgent(providers, defaults.instanceId)
+  const hostName = hostKey === LOCAL_HOST_KEY ? 'This PC' : (host?.name ?? 'Your host')
+  // The folder just added, else the newest one the host knows.
+  const folder = (lastAdded && projects.find((p) => samePath(p.path, lastAdded))) ?? projects.at(-1)
+  const native = hasNativePicker(hostKey)
 
-  const add = async () => {
-    if (!path.trim() || busy) return
-    setBusy(true)
-    setError(undefined)
-    try {
-      await onAddFolder(path.trim())
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const choose = () => void chooseFolder(hostKey)
+  const start = () =>
+    folder && void navigate({ to: '/', search: { project: folder.path, host: hostKey } })
 
   return (
     <main className="panel welcome-panel">
@@ -55,9 +47,7 @@ export function Welcome({
             <div>
               <h2>Connect a host</h2>
               <p>
-                {connected
-                  ? `${hostKey === LOCAL_HOST_KEY ? 'This PC' : (host?.name ?? 'Your host')} is connected`
-                  : 'Connect this PC or a remote machine'}
+                {connected ? `${hostName} is connected` : 'Connect this PC or a remote machine'}
               </p>
             </div>
             {connected ? (
@@ -68,60 +58,74 @@ export function Welcome({
               </button>
             )}
           </div>
-          <div className="setup-row">
-            <span className="setup-number current">2</span>
-            <div>
-              <h2>Add a folder</h2>
-              <p>Pick a repository for your agent to work in</p>
-            </div>
-            <button
-              className="setup-button primary"
-              disabled={!connected}
-              onClick={() => setAdding((open) => !open)}
-            >
-              <Folder size={13} /> Add folder
-            </button>
-          </div>
-          {adding && (
-            <form
-              className="setup-folder-form"
-              onSubmit={(e) => {
-                e.preventDefault()
-                void add()
-              }}
-            >
-              <label htmlFor="setup-folder">Folder on this host</label>
+          {folder ? (
+            <div className="setup-row">
+              <span className="setup-number complete">
+                <Check size={15} />
+              </span>
               <div>
-                <input
-                  id="setup-folder"
-                  autoFocus
-                  placeholder="Absolute path to your project"
-                  value={path}
-                  onChange={(e) => setPath(e.target.value)}
-                  disabled={busy}
-                />
-                <button
-                  className="setup-button primary"
-                  disabled={busy || !path.trim() || !connected}
-                >
-                  {busy ? 'Adding…' : 'Add folder'}
-                </button>
-              </div>
-              {error && (
-                <p className="composer-error" role="alert">
-                  {error}
+                <h2>Add a folder</h2>
+                <p>
+                  {folder.name} on {hostName}
                 </p>
-              )}
-            </form>
+              </div>
+              <button className="setup-link" disabled={picking} onClick={choose}>
+                Add another
+              </button>
+            </div>
+          ) : (
+            <div className="setup-row">
+              <span className="setup-number current">2</span>
+              <div>
+                <h2>Add a folder</h2>
+                <p>
+                  {picking && native
+                    ? 'Waiting for the folder picker…'
+                    : 'Pick a repository for your agent to work in'}
+                </p>
+                {!picking && (
+                  <div className="setup-hint">
+                    <FolderOpen size={11} />
+                    {native
+                      ? "Opens your system's folder picker"
+                      : `Browse the folders on ${hostName}`}
+                  </div>
+                )}
+              </div>
+              <button
+                className="setup-button primary"
+                disabled={!connected || picking}
+                onClick={choose}
+              >
+                {picking ? (
+                  <>
+                    <Loader2 size={13} className="fb-spin" /> Choosing…
+                  </>
+                ) : (
+                  <>
+                    <FolderOpen size={13} /> Choose folder…
+                  </>
+                )}
+              </button>
+            </div>
           )}
-          <div className="setup-row pending">
-            <span className="setup-number">3</span>
+          <div className={`setup-row ${folder ? '' : 'pending'}`}>
+            <span className={`setup-number ${folder ? 'current' : ''}`}>3</span>
             <div>
               <h2>Start a session</h2>
               <p>
-                {ready ? 'Describe a task and send it' : 'Set up an agent, then describe a task'}
+                {!folder
+                  ? 'Add a folder first, then describe a task'
+                  : ready && agent
+                    ? `${agent.label} is ready in ${folder.name}`
+                    : 'Set up an agent, then describe a task'}
               </p>
             </div>
+            {folder && ready && (
+              <button className="setup-button primary" onClick={start}>
+                <Plus size={13} /> Start a session
+              </button>
+            )}
             {connected && !ready && (
               <Link to="/settings" className="setup-button">
                 Set up agents

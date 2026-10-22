@@ -10,6 +10,7 @@ import type { SessionManager } from '../sessions/sessionManager.ts'
 import type { GitService } from '../workspace/git.ts'
 import type { GithubService } from '../workspace/github.ts'
 import type { ProjectStore } from '../workspace/projects.ts'
+import { browseFolders } from '../workspace/folders.ts'
 import type { FileService } from '../files/files.ts'
 import type { TerminalManager } from '../terminals/manager.ts'
 
@@ -77,6 +78,8 @@ export function createRpcRouter(
     'projects.list': () => projects.list(),
     'projects.add': (p) => projects.add(p.path),
     'projects.remove': async (p) => ({ removed: projects.remove(p.path) }),
+    'projects.initGit': (p) => projects.initGit(p.path),
+    'folders.browse': (p) => browseFolders(p.path, { showHidden: p.showHidden }),
     'git.info': (p) => git.info(p.cwd),
     'git.status': (p) => git.status(p.cwd),
     'git.diff': (p) => git.diff(p.cwd, p.path),

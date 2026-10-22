@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { Check, ChevronDown, Folder, GitBranch, Monitor, Server } from 'lucide-react'
+import { Check, ChevronDown, Folder, FolderPlus, GitBranch, Monitor, Server } from 'lucide-react'
 import type {
   AgentPreview,
   GitBranch as Branch,
@@ -14,7 +14,6 @@ import { ModelMenu, type ModelChoice } from '../composer/Menus.tsx'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import { folderName, timeAgo } from '../../ui/format.ts'
 import {
-  addProject,
   createSession,
   hostRequest,
   prompt,
@@ -24,6 +23,7 @@ import {
 } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { Welcome, setupWasSkipped, skipSetup } from './Welcome.tsx'
+import { chooseFolder } from '../folders/folderFlow.ts'
 import { useAppPreferences } from '../../stores/appPreferences.ts'
 import { modelChoice } from '../../ui/models.ts'
 import {
@@ -60,8 +60,10 @@ export function NewSession({
       : LOCAL_HOST_KEY,
   )
   const { providers, connection, host, replica, projects, synced } = useRuntime(hostKey)
-  const hasWorkspace = useHostStore((s) =>
-    Object.values(s.runtimes).some((r) => r.replica.order.length > 0 || r.projects.length > 0),
+  // The welcome checklist stays up until the first session, so adding a folder never jumps
+  // straight into a composer; its last step starts the session.
+  const hasSessions = useHostStore((s) =>
+    Object.values(s.runtimes).some((r) => r.replica.order.length > 0),
   )
   const [setupSkipped, setSetupSkipped] = useState(setupWasSkipped)
   const [text, setText] = useState('')
@@ -206,14 +208,10 @@ export function NewSession({
     void navigate({ to: '/session/$sessionId', params: { sessionId } })
   }
 
-  if (!initialProject && synced && !hasWorkspace && !setupSkipped)
+  if (!initialProject && synced && !hasSessions && !setupSkipped)
     return (
       <Welcome
         hostKey={hostKey}
-        onAddFolder={async (path) => {
-          const added = await addProject(hostKey, path)
-          setChosenFolder(added.path)
-        }}
         onSkip={() => {
           skipSetup()
           setSetupSkipped(true)
@@ -279,9 +277,9 @@ export function NewSession({
                 value={folder}
                 recent={recentFolders}
                 onChange={setChosenFolder}
-                onAdd={async (p) => {
-                  const added = await addProject(hostKey, p)
-                  setChosenFolder(added.path)
+                onAdd={async () => {
+                  const added = await chooseFolder(hostKey)
+                  if (added) setChosenFolder(added.path)
                 }}
               />
               <HostChip
@@ -435,9 +433,9 @@ function FolderChip({
   value: string
   recent: string[]
   onChange(path: string): void
-  onAdd(path: string): Promise<void>
+  /** Opens the Add folder flow (system picker or folder browser); nothing is typed. */
+  onAdd(): Promise<void>
 }) {
-  const [error, setError] = useState<string>()
   return (
     <Dropdown
       trigger={({ toggle }) => (
@@ -451,22 +449,6 @@ function FolderChip({
     >
       {(close) => (
         <>
-          <div className="menu-heading">Add a folder on this host</div>
-          <input
-            className="path-input"
-            placeholder="Absolute path, e.g. C:\src\my-app"
-            onKeyDown={(e) => {
-              if (e.key !== 'Enter') return
-              const input = e.currentTarget.value.trim()
-              if (!input) return
-              onAdd(input).then(
-                () => close(),
-                (err: unknown) => setError(err instanceof Error ? err.message : String(err)),
-              )
-            }}
-            autoFocus
-          />
-          {error && <div className="composer-error menu-error">{error}</div>}
           {recent.length > 0 && <div className="menu-heading">Projects</div>}
           {recent.map((p) => (
             <button
@@ -485,6 +467,17 @@ function FolderChip({
               {p === value && <Check size={16} />}
             </button>
           ))}
+          {recent.length > 0 && <div className="menu-sep" />}
+          <button
+            className="menu-row"
+            onClick={() => {
+              close()
+              void onAdd()
+            }}
+          >
+            <FolderPlus size={15} />
+            <span className="menu-text">Add folder…</span>
+          </button>
         </>
       )}
     </Dropdown>

@@ -1,0 +1,529 @@
+/* Add folder flow: the sidebar's Folders header, the Add folder menu, the in-app folder browser
+   and the toast that follows. Values follow tokens.css and the approved mockups. */
+
+.folders-head {
+  display: flex;
+  align-items: center;
+  gap: calc(7px * var(--ui-scale));
+  padding: calc(14px * var(--ui-scale)) calc(6px * var(--ui-scale)) calc(6px * var(--ui-scale))
+    calc(10px * var(--ui-scale));
+  color: var(--text-faint);
+  font-size: calc(11.5px * var(--ui-scale));
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+}
+.folders-head .dropdown {
+  margin-left: auto;
+}
+.folders-add {
+  display: flex;
+  align-items: center;
+  gap: calc(5px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  border-radius: calc(7px * var(--ui-scale));
+  color: var(--text-muted);
+  font-size: calc(12px * var(--ui-scale));
+  letter-spacing: 0;
+  text-transform: none;
+}
+.folders-add:hover,
+.folders-add.on {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* Branch and "no git" badges, shared by the sidebar, the menu and the browser. */
+.folder-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  border-radius: calc(6px * var(--ui-scale));
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--ui-scale));
+  font-weight: 400;
+  white-space: nowrap;
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.folder-chip svg {
+  flex: none;
+}
+.folder-chip.faint {
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  color: var(--text-faint);
+}
+.badge-new {
+  flex: none;
+  padding: 0 calc(5px * var(--ui-scale));
+  border: 1px solid rgba(233, 162, 59, 0.4);
+  border-radius: calc(5px * var(--ui-scale));
+  color: var(--accent);
+  font-size: calc(10.5px * var(--ui-scale));
+  font-weight: 500;
+}
+
+/* Sidebar groups */
+.folder-group {
+  margin: 1px 0;
+  border: 1px solid transparent;
+  border-radius: calc(8px * var(--ui-scale));
+  transition:
+    background 0.3s,
+    border-color 0.3s,
+    box-shadow 0.3s;
+}
+.folder-group.fresh {
+  background: var(--bg-card);
+  border-color: var(--border);
+}
+.folder-group.flash {
+  background: rgba(233, 162, 59, 0.07);
+  border-color: rgba(233, 162, 59, 0.55);
+  box-shadow: 0 0 0 3px rgba(233, 162, 59, 0.1);
+}
+.folder-group .group-title .folder-host {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  flex: none;
+  color: var(--text-faint);
+  font-size: calc(11.5px * var(--ui-scale));
+}
+/* The name keeps its room; the branch badge and host give way first in a narrow sidebar. */
+.folder-group .group-title .group-name {
+  flex: 0 1 auto;
+  min-width: 4ch;
+}
+.folder-group .group-title .folder-chip {
+  flex: 0 4 auto;
+  min-width: 0;
+  max-width: none;
+}
+.folder-group .group-title .spacer {
+  flex: 1 1 0;
+}
+.folder-group .group-title .folder-host {
+  flex: 0 2 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+/* "New session here" takes the host's place while the pointer is on the folder. */
+.folder-group .group-title .icon-btn.small {
+  display: none;
+}
+.folder-group:hover .group-title .icon-btn.small,
+.folder-group .group-title:focus-within .icon-btn.small {
+  display: grid;
+}
+.folder-group:hover .group-title .folder-host,
+.folder-group .group-title:focus-within .folder-host {
+  display: none;
+}
+.folder-empty {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(8px * var(--ui-scale))
+    calc(32px * var(--ui-scale));
+  color: var(--text-faint);
+  font-size: calc(12px * var(--ui-scale));
+}
+.folder-empty button {
+  display: flex;
+  align-items: center;
+  gap: calc(5px * var(--ui-scale));
+  padding: 0;
+  color: var(--text-secondary);
+  font-size: inherit;
+}
+.folder-empty button:hover {
+  color: var(--text);
+}
+
+/* Add folder menu */
+.popover.add-folder-pop {
+  width: calc(300px * var(--ui-scale));
+}
+.add-folder-head {
+  align-items: center;
+}
+.add-folder-host {
+  display: flex;
+  align-items: center;
+  gap: calc(5px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(7px * var(--ui-scale));
+  border-radius: calc(6px * var(--ui-scale));
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: calc(12px * var(--ui-scale));
+}
+.add-folder-host:hover:not(:disabled) {
+  background: var(--bg-active);
+}
+.add-folder-host:disabled {
+  cursor: default;
+}
+.add-folder-keys {
+  display: flex;
+  gap: calc(3px * var(--ui-scale));
+}
+.add-folder-keys kbd {
+  padding: 0 calc(4px * var(--ui-scale));
+  border: 1px solid var(--border-strong);
+  border-radius: calc(4px * var(--ui-scale));
+  color: var(--text-muted);
+}
+.add-folder-note {
+  padding: 0 calc(10px * var(--ui-scale)) calc(6px * var(--ui-scale));
+}
+.add-folder-pop .menu-row > svg,
+.recent-folder > svg {
+  flex: none;
+  color: var(--text-muted);
+}
+.recent-folder .menu-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-path {
+  margin-top: calc(2px * var(--ui-scale));
+  overflow: hidden;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: calc(11.5px * var(--ui-scale));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.menu-row.recent-folder.added:disabled {
+  opacity: 1;
+  color: var(--text-faint);
+}
+.recent-folder.added > svg {
+  color: var(--text-faint);
+}
+.recent-added {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  flex: none;
+  color: var(--text-faint);
+  font-size: calc(11.5px * var(--ui-scale));
+}
+
+/* In-app folder browser */
+.folder-browser {
+  width: min(calc(620px * var(--ui-scale)), calc(100vw - calc(32px * var(--ui-scale))));
+  max-height: calc(100vh - calc(64px * var(--ui-scale)));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: calc(12px * var(--ui-scale));
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.65);
+}
+.fb-head {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(10px * var(--ui-scale));
+  padding: calc(16px * var(--ui-scale)) calc(14px * var(--ui-scale)) calc(12px * var(--ui-scale))
+    calc(18px * var(--ui-scale));
+}
+.fb-head > div {
+  flex: 1;
+  min-width: 0;
+}
+.fb-head h2 {
+  margin: 0 0 calc(4px * var(--ui-scale));
+  font-size: calc(15px * var(--ui-scale));
+  font-weight: 600;
+}
+.fb-head p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: calc(12px * var(--ui-scale));
+  line-height: 1.4;
+}
+.fb-host-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: calc(28px * var(--ui-scale));
+  height: calc(28px * var(--ui-scale));
+  border-radius: calc(8px * var(--ui-scale));
+  background: var(--bg-active);
+  color: var(--text-secondary);
+}
+.fb-crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: calc(2px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(14px * var(--ui-scale));
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: calc(12.5px * var(--ui-scale));
+}
+.fb-crumb-wrap {
+  display: flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+}
+.fb-crumb-sep {
+  color: var(--text-faint);
+}
+.fb-crumb {
+  display: flex;
+  align-items: center;
+  gap: calc(5px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(7px * var(--ui-scale));
+  border-radius: calc(6px * var(--ui-scale));
+  color: var(--text-muted);
+}
+.fb-crumb:hover {
+  color: var(--text);
+}
+.fb-crumb.current {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.fb-spin {
+  margin-left: calc(6px * var(--ui-scale));
+  color: var(--text-faint);
+  animation: fb-spin 0.9s linear infinite;
+}
+@keyframes fb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.fb-list {
+  flex: 1;
+  min-height: calc(160px * var(--ui-scale));
+  max-height: calc(360px * var(--ui-scale));
+  overflow-y: auto;
+  padding: calc(6px * var(--ui-scale));
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.fb-row {
+  display: flex;
+  align-items: center;
+  gap: calc(10px * var(--ui-scale));
+  width: 100%;
+  padding: calc(5px * var(--ui-scale)) calc(6px * var(--ui-scale)) calc(5px * var(--ui-scale))
+    calc(10px * var(--ui-scale));
+  min-height: calc(32px * var(--ui-scale));
+  border-radius: calc(7px * var(--ui-scale));
+  font-size: calc(13px * var(--ui-scale));
+  text-align: left;
+  cursor: pointer;
+  outline: 0;
+}
+.fb-row > svg {
+  flex: none;
+  color: var(--text-muted);
+}
+.fb-row:hover,
+.fb-row:focus-visible {
+  background: var(--bg-hover);
+}
+.fb-row.selected {
+  background: var(--bg-hover);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.fb-row.selected > svg {
+  color: var(--text);
+}
+.fb-row.up {
+  color: var(--text-muted);
+}
+.fb-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fb-when {
+  flex: none;
+  width: calc(62px * var(--ui-scale));
+  color: var(--text-faint);
+  font-size: calc(11.5px * var(--ui-scale));
+  text-align: right;
+}
+.fb-open {
+  color: var(--text-faint);
+}
+.fb-message {
+  padding: calc(14px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  color: var(--text-muted);
+  font-size: calc(12.5px * var(--ui-scale));
+}
+.fb-message.error {
+  color: var(--danger);
+}
+.fb-foot {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(12px * var(--ui-scale)) calc(14px * var(--ui-scale));
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-panel);
+}
+.fb-chosen {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: calc(11.5px * var(--ui-scale));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.setup-button.ghost,
+.setup-button.fb-cancel {
+  background: transparent;
+  color: var(--text-muted);
+}
+.setup-button.ghost:hover,
+.setup-button.fb-cancel:hover {
+  color: var(--text);
+}
+
+/* Toast after adding, inside the main panel */
+.main-stack {
+  position: relative;
+}
+.main-stack > main {
+  height: 100%;
+}
+.folder-toast {
+  position: absolute;
+  z-index: 30;
+  right: calc(16px * var(--ui-scale));
+  bottom: calc(16px * var(--ui-scale));
+  width: min(calc(330px * var(--ui-scale)), calc(100% - calc(32px * var(--ui-scale))));
+  display: flex;
+  gap: calc(10px * var(--ui-scale));
+  padding: calc(12px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(12px * var(--ui-scale))
+    calc(13px * var(--ui-scale));
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: calc(10px * var(--ui-scale));
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+  animation: folder-toast-in 0.18s ease-out;
+}
+@keyframes folder-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.folder-toast-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #243a29;
+  color: var(--success);
+}
+.folder-toast-icon.info {
+  background: #3a3020;
+  color: var(--accent);
+}
+.folder-toast-icon.neutral {
+  background: var(--bg-active);
+  color: var(--text-secondary);
+}
+.folder-toast-icon.error {
+  background: rgba(224, 113, 108, 0.16);
+  color: var(--danger);
+}
+.folder-toast-text {
+  flex: 1;
+  min-width: 0;
+}
+.folder-toast-text h4 {
+  margin: 0 0 calc(3px * var(--ui-scale));
+  font-size: calc(13px * var(--ui-scale));
+  font-weight: 500;
+}
+.folder-toast-text p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: calc(12px * var(--ui-scale));
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+}
+.folder-toast-text code {
+  font-size: calc(11.5px * var(--ui-scale));
+}
+.folder-toast-actions {
+  display: flex;
+  gap: calc(6px * var(--ui-scale));
+  margin-top: calc(10px * var(--ui-scale));
+}
+.folder-toast-close {
+  align-self: flex-start;
+  color: var(--text-faint);
+}
+
+/* While the system folder picker is open */
+.folder-picking {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.58);
+}
+.folder-picking-hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(28px * var(--ui-scale));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: calc(10px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--text-secondary);
+  font-size: calc(12.5px * var(--ui-scale));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* Welcome checklist */
+.setup-hint {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  margin-top: calc(5px * var(--ui-scale));
+  color: var(--text-faint);
+  font-size: calc(11.5px * var(--ui-scale));
+}
+.setup-link {
+  padding: 0;
+  color: var(--text-muted);
+  font-size: calc(11.5px * var(--ui-scale));
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 2px;
+}
+.setup-link:hover {
+  color: var(--text);
+}
+.setup-button .fb-spin {
+  margin: 0;
+}

@@ -3,7 +3,7 @@ import { GitBranch, GitDiff, GitInfo, GitLog, GitStatus, Project, PullRequest } 
 import { Device, PairingCode, TailnetStatus } from './hosts.ts'
 import { ConfigOption, SlashCommand } from './events.ts'
 import { PermissionModeOption, ProviderInstance } from './providers.ts'
-import { FileContent, FileEntry, TerminalInfo } from './workspace.ts'
+import { FileContent, FileEntry, FolderListing, TerminalInfo } from './workspace.ts'
 
 /** An ACP agent configured on a host (a command that speaks ACP over stdio). */
 export const AcpAgentSummary = z.object({
@@ -129,6 +129,19 @@ export const RpcMethods = {
   'projects.remove': {
     params: z.object({ path: z.string() }),
     result: z.object({ removed: z.boolean() }),
+  },
+  /** Runs `git init` in a folder that was added but is not a repository yet. */
+  'projects.initGit': {
+    params: z.object({ path: z.string().min(1) }),
+    result: Project,
+  },
+  /**
+   * The subfolders of a folder on the host (its home folder when `path` is omitted), so a folder
+   * can be picked on a machine the system's own picker cannot see. Folders only, never files.
+   */
+  'folders.browse': {
+    params: z.object({ path: z.string().min(1).optional(), showHidden: z.boolean().optional() }),
+    result: FolderListing,
   },
   'git.info': { params: z.object({ cwd: z.string() }), result: GitInfo },
   'git.status': { params: z.object({ cwd: z.string() }), result: GitStatus },

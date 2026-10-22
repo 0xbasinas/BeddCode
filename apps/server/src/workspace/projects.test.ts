@@ -69,4 +69,15 @@ describe('ProjectStore', () => {
     expect(store.remove(dir)).toBe(false)
     await expect(store.add(path.join(tmp(), 'missing'))).rejects.toThrow('does not exist')
   })
+
+  it('initializes git only in an added folder that is not a repository yet', async () => {
+    const store = new ProjectStore(path.join(tmp(), 'projects.json'), new GitService())
+    const plain = tmp()
+    await expect(store.initGit(plain)).rejects.toThrow('Not an added folder')
+    expect((await store.add(plain)).isRepo).toBe(false)
+    expect((await store.initGit(plain)).isRepo).toBe(true)
+    const dir = repo()
+    await store.add(dir)
+    expect(await store.initGit(dir)).toMatchObject({ isRepo: true, branch: 'main' })
+  })
 })
