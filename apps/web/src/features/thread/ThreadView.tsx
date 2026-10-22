@@ -41,7 +41,7 @@ import { buildBlocks, totalChanges } from './blocks.ts'
 import { useFollowEnd } from './useFollowEnd.ts'
 import { folderId, useFiles } from '../files/filesStore.ts'
 import { useUiStore } from '../../stores/ui.ts'
-import { EnvironmentCard, SessionChip } from './SessionPanel.tsx'
+import { EnvironmentBar, SessionChip } from './SessionPanel.tsx'
 import { RenameSessionDialog } from './RenameSessionDialog.tsx'
 
 export function ThreadView({ sessionId }: { sessionId: string }) {
@@ -220,8 +220,8 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
           )}
         </Dropdown>
       </header>
-      {/* Floats over the thread, or, on a thread too narrow for that, docks here in the flow. */}
-      <EnvironmentCard session={session} hostKey={hostKey} stats={stats} />
+      {/* A slim bar above the conversation (outside its scroller, so it never covers a line). */}
+      <EnvironmentBar session={session} hostKey={hostKey} stats={stats} />
       <div className="transcript" ref={scroller}>
         <div className="transcript-inner">
           <div className="session-start">

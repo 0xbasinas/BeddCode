@@ -2877,130 +2877,141 @@ button.tcall-row:hover .tcall-chevron,
   font-size: 12px;
 }
 
-/* Environment: a card that floats over the thread */
+/* Environment: a slim bar of chips above the conversation, aligned to its column. It sits outside
+   the scroller, so it stays put while the conversation scrolls and never covers a line of it. */
 .thread {
   position: relative;
 }
-.env-card {
-  position: absolute;
-  z-index: 12;
-  width: min(300px, calc(100% - 16px));
-  max-height: calc(100% - 96px);
+.env-bar-wrap {
+  flex-shrink: 0;
+  padding: calc(6px * var(--ui-scale)) calc(32px * var(--ui-scale)) 0;
+}
+/* The chat column's width and place; the bar and its details hug their content at its left edge. */
+.env-column {
+  max-width: calc(740px * var(--ui-scale));
+  margin: 0 auto;
+}
+.env-anchor {
+  width: fit-content;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: calc(14px * var(--ui-scale));
-  background: var(--bg-raised);
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
-  overflow: hidden;
 }
-.env-card .env-drag {
-  padding-top: calc(10px * var(--ui-scale));
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
-}
-.env-card .env-drag:active {
-  cursor: grabbing;
-}
-.env-title {
-  display: inline-flex;
+.env-bar {
+  display: flex;
   align-items: center;
-  gap: 6px;
-}
-.env-title svg {
-  color: var(--text-faint);
-}
-.env-actions {
-  display: inline-flex;
-  gap: 2px;
-}
-.env-body {
-  min-height: 0;
-  overflow-y: auto;
-  padding-bottom: calc(10px * var(--ui-scale));
-}
-.env-card .menu-row {
-  padding: calc(7px * var(--ui-scale)) calc(14px * var(--ui-scale));
-  border-radius: 0;
-  min-height: calc(32px * var(--ui-scale));
-}
-.env-card .menu-row > svg {
-  width: calc(16px * var(--ui-scale));
-  height: calc(16px * var(--ui-scale));
+  gap: calc(2px * var(--ui-scale));
+  max-width: 100%;
+  height: calc(32px * var(--ui-scale));
+  padding: 0 calc(3px * var(--ui-scale));
+  border: 1px solid var(--border-subtle);
+  border-radius: calc(9px * var(--ui-scale));
+  background: var(--bg-card);
+  font-size: calc(12px * var(--ui-scale));
   color: var(--text-muted);
 }
-.env-card .menu-row .menu-title {
+.env-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(5px * var(--ui-scale));
+  min-width: 0;
+  height: calc(24px * var(--ui-scale));
+  padding: 0 calc(7px * var(--ui-scale));
+  border: 0;
+  border-radius: calc(6px * var(--ui-scale));
+  background: none;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+}
+.env-chip > svg,
+.env-chip .dot {
+  flex: none;
+}
+.env-chip > svg {
+  color: var(--text-faint);
+}
+.env-chip-text {
+  min-width: 0;
+  max-width: calc(180px * var(--ui-scale));
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.env-chip.action {
+  cursor: pointer;
+}
+.env-chip.action:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.env-bar-sep {
+  flex: none;
+  width: 1px;
+  height: calc(14px * var(--ui-scale));
+  margin: 0 calc(3px * var(--ui-scale));
+  background: var(--border);
+}
+.env-bar .icon-btn.small {
+  flex: none;
+}
+.env-toggle svg {
+  transition: transform 120ms ease;
+}
+.env-toggle.open svg {
+  transform: rotate(180deg);
+}
+/* The details hang beneath the bar at its width (never the column's), in the flow, so they push
+   the conversation down while open instead of covering it. */
+.env-details {
+  width: 0;
+  min-width: max(100%, calc(280px * var(--ui-scale)));
+  max-width: 100%;
+  max-height: min(calc(420px * var(--ui-scale)), 45vh);
+  overflow-y: auto;
+  margin-top: calc(4px * var(--ui-scale));
+  padding-bottom: calc(8px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: calc(10px * var(--ui-scale));
+  background: var(--bg-raised);
+}
+.env-details .menu-row {
+  padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-radius: 0;
+  min-height: calc(30px * var(--ui-scale));
+}
+.env-details .menu-row > svg {
+  width: calc(15px * var(--ui-scale));
+  height: calc(15px * var(--ui-scale));
+  color: var(--text-muted);
+}
+.env-details .menu-row .menu-title {
   font-size: calc(13px * var(--ui-scale));
   color: var(--text-secondary);
 }
-.env-card .session-property {
-  padding: calc(6px * var(--ui-scale)) calc(14px * var(--ui-scale)) calc(8px * var(--ui-scale))
-    calc(40px * var(--ui-scale));
+/* The bar keeps to the transcript's gutters at every width (see .transcript's media queries). */
+@media (max-width: 1279px) {
+  .env-bar-wrap {
+    padding-left: calc(24px * var(--ui-scale));
+    padding-right: calc(24px * var(--ui-scale));
+  }
+}
+@media (max-width: 1040px) {
+  .env-bar-wrap {
+    padding-left: calc(18px * var(--ui-scale));
+    padding-right: calc(18px * var(--ui-scale));
+  }
+}
+.env-details .session-property {
+  padding: calc(4px * var(--ui-scale)) calc(12px * var(--ui-scale)) calc(6px * var(--ui-scale))
+    calc(37px * var(--ui-scale));
   color: var(--text-muted);
   overflow-wrap: anywhere;
   font-size: calc(11px * var(--ui-scale));
 }
 
-/* Environment card: minimized to a title bar, and always present */
-.env-card.minimized {
-  width: auto;
-  min-width: 190px;
-  max-width: min(300px, calc(100% - 16px));
-}
-.env-card.minimized .env-drag {
-  padding-bottom: calc(6px * var(--ui-scale));
-}
-.env-summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 calc(14px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  color: var(--text-muted);
-  font-size: calc(12px * var(--ui-scale));
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Environment card docked: a thread too narrow to float it beside the conversation gets it in the
-   flow, between the header and the transcript, so it never covers a line */
-.env-card.docked {
-  position: relative;
-  flex-shrink: 0;
-  align-self: stretch;
-  width: auto;
-  max-width: none;
-  min-width: 0;
-  max-height: 45%;
-  margin: 0 calc(32px * var(--ui-scale)) calc(6px * var(--ui-scale));
-  box-shadow: none;
-}
-.env-card.docked .env-drag,
-.env-card.docked .env-drag:active {
-  cursor: default;
-}
-.env-card.docked .env-drag svg.lucide-grip-horizontal {
-  display: none;
-}
-/* The composer moves aside too when the floating card reaches down beside it */
-.thread.env-composer-aside .composer-wrap {
-  width: calc(
-    100% - calc(64px * var(--ui-scale)) - var(--env-composer-left, 0px) -
-      var(--env-composer-right, 0px)
-  );
-  position: relative;
-  left: calc((var(--env-composer-left, 0px) - var(--env-composer-right, 0px)) / 2);
-}
-
 /* A tighter conversation: less air between messages, tool calls and approvals */
 .transcript {
   padding-top: calc(14px * var(--ui-scale));
-}
-/* Room beside the conversation for the floating Environment card (set by the card itself) */
-.thread .transcript {
-  padding-left: calc(32px * var(--ui-scale) + var(--env-reserve-left, 0px));
-  padding-right: calc(32px * var(--ui-scale) + var(--env-reserve-right, 0px));
 }
 .transcript-inner {
   gap: calc(8px * var(--ui-scale));
