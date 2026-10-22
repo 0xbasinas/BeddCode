@@ -4,7 +4,11 @@ import type { AgentPreview, SessionEvent } from '@beddcode/contracts'
 
 const TTL_MS = 7 * 24 * 60 * 60_000
 
+/** Bumped when what a preview holds changes, so answers kept by an older version are dropped. */
+const VERSION = 2
+
 interface Stored {
+  v?: number
   at: number
   preview: AgentPreview
 }
@@ -48,7 +52,7 @@ export class PreviewCache {
 
   get(instanceId: string): AgentPreview | undefined {
     const found = this.entries[instanceId]
-    if (!found || this.now() - found.at > TTL_MS) return undefined
+    if (!found || found.v !== VERSION || this.now() - found.at > TTL_MS) return undefined
     return found.preview
   }
 
@@ -59,7 +63,7 @@ export class PreviewCache {
   }
 
   set(instanceId: string, preview: AgentPreview) {
-    this.entries[instanceId] = { at: this.now(), preview }
+    this.entries[instanceId] = { v: VERSION, at: this.now(), preview }
     this.save()
   }
 

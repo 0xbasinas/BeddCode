@@ -1,5 +1,6 @@
 import type { SessionConfigOption, SessionUpdate, ToolCallContent } from '@agentclientprotocol/sdk'
 import type { ConfigOption, SessionEvent } from '@beddcode/contracts'
+import { approvalSetup } from './permissions.ts'
 import { diffText } from '@beddcode/shared'
 
 type Draft<E = SessionEvent> = E extends unknown ? Omit<E, 'sessionId' | 'at' | 'turnId'> : never
@@ -122,7 +123,7 @@ function metaKind(meta: unknown): string | undefined {
  */
 export class AcpEventMapper {
   private turnId: string | undefined
-  private modes: { id: string; label: string; description?: string }[] = []
+  private modes: { id: string; label: string; description?: string; dangerous?: boolean }[] = []
   private readonly tools = new Map<string, ToolState>()
   /** Tool calls the agent asked the user about (`session/request_permission`). */
   private readonly asked = new Set<string>()
@@ -136,7 +137,7 @@ export class AcpEventMapper {
     this.turnId = turnId
   }
 
-  setModes(modes: { id: string; label: string; description?: string }[]) {
+  setModes(modes: { id: string; label: string; description?: string; dangerous?: boolean }[]) {
     this.modes = modes
   }
 
@@ -216,9 +217,16 @@ export class AcpEventMapper {
         })
         break
 
-      case 'config_option_update':
-        out.push({ type: 'session.config', options: toConfigOptions(update.configOptions) })
+      case 'config_option_update': {
+        // The mode option has its own picker: announce it as modes, the rest as settings.
+        const setup = approvalSetup(undefined, toConfigOptions(update.configOptions))
+        if (setup.source === 'config') {
+          this.modes = setup.modes
+          out.push({ type: 'session.modes', modes: setup.modes, currentModeId: setup.current })
+        }
+        out.push({ type: 'session.config', options: setup.rest })
         break
+      }
 
       case 'session_info_update':
         if (typeof update.title === 'string' && update.title.trim()) {

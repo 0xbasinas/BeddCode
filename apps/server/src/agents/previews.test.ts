@@ -26,6 +26,12 @@ describe('PreviewCache', () => {
     expect(new PreviewCache(f).get('acp:other')).toBeUndefined()
   })
 
+  it('drops answers kept by an older version of the app', () => {
+    const f = file()
+    writeFileSync(f, JSON.stringify({ 'acp:grok': { at: Date.now(), preview } }))
+    expect(new PreviewCache(f).get('acp:grok')).toBeUndefined()
+  })
+
   it('lets old answers expire, and forgets on request', () => {
     let now = 0
     const cache = new PreviewCache(undefined, () => now)

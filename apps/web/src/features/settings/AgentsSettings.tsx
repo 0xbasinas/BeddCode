@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Plus, RefreshCw, Trash2 } from 'lucide-react'
-import type { AcpAgentSummary, ProviderInstance } from '@beddcode/contracts'
+import { Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import type { AcpAgentSummary, AgentPreview, ProviderInstance } from '@beddcode/contracts'
 import { hostRequest, refreshProviders, useRuntime } from '../../stores/host.ts'
 import { agentDefaults, hostDefaults, usePreferences } from '../../stores/preferences.ts'
 import { AddAgentDialog } from './AddAgentDialog.tsx'
@@ -31,16 +31,42 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
   const [agents, setAgents] = useState<AcpAgentSummary[]>([])
   const [selected, setSelected] = useState<string>()
   const [adding, setAdding] = useState(false)
+  const [editId, setEditId] = useState<string>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [removeId, setRemoveId] = useState<string>()
   const [help, setHelp] = useState<string>()
   const online = connection === 'connected'
+  // ACP agents only say what they offer (including how much they ask) when a session starts, so
+  // the host starts one briefly to find out; the answer is remembered there.
+  const [offered, setOffered] = useState<{ id: string; data?: AgentPreview; failed?: boolean }>()
+  const acpId = providers.find(
+    (p) => p.id === (selected ?? defaults.instanceId ?? providers[0]?.id),
+  )
+  const previewId = acpId?.kind === 'acp' ? acpId.id : undefined
+  useEffect(() => {
+    if (!online || !previewId) return
+    let cancelled = false
+    setOffered({ id: previewId })
+    hostRequest(hostKey, 'agents.preview', { instanceId: previewId, cwd: host?.defaultCwd }).then(
+      (data) => !cancelled && setOffered({ id: previewId, data }),
+      () => !cancelled && setOffered({ id: previewId, failed: true }),
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [hostKey, online, previewId, epoch, host?.defaultCwd])
   const current =
     providers.find((p) => p.id === selected) ??
     providers.find((p) => p.id === defaults.instanceId) ??
     providers[0]
   const saved = agentDefaults(defaults, current)
+  const agentOffer = current && offered?.id === current.id ? offered : undefined
+  const permissionModes = current
+    ? current.capabilities.permissionModes.length > 0
+      ? current.capabilities.permissionModes
+      : (agentOffer?.data?.modes ?? [])
+    : []
   const efforts = current
     ? modelEfforts(
         current.capabilities.models ?? [],
@@ -171,6 +197,16 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                   {STATUS[provider.status]}
                 </span>
               </button>
+              {configured && (
+                <button
+                  className="icon-btn"
+                  aria-label={`Edit ${provider.label}`}
+                  disabled={!online || busy}
+                  onClick={() => setEditId(configured.id)}
+                >
+                  <Pencil size={15} />
+                </button>
+              )}
               {configured && (
                 <button
                   className="icon-btn"
@@ -315,7 +351,7 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                 </Select>
               </div>
             ) : null}
-            {current.capabilities.permissionModes.length > 0 && (
+            {permissionModes.length > 0 && (
               <div className="setting-row">
                 <div className="setting-label">
                   <label htmlFor="default-mode">Default permission mode</label>
@@ -335,7 +371,7 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                   }
                 >
                   <option value="">Agent default</option>
-                  {current.capabilities.permissionModes.map((mode) => (
+                  {permissionModes.map((mode) => (
                     <option key={mode.id} value={mode.id}>
                       {mode.label}
                       {mode.dangerous && !/full access/i.test(mode.label) ? ' · full access' : ''}
@@ -344,19 +380,26 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                 </Select>
               </div>
             )}
-            {current.capabilities.permissionModes.find((m) => m.id === saved.permissionMode)
-              ?.dangerous && (
+            {permissionModes.find((m) => m.id === saved.permissionMode)?.dangerous && (
               <p className="settings-notice">
                 New sessions will use this agent's full-access mode. It may change files and run
                 commands without asking.
               </p>
             )}
+            {current.kind === 'acp' && permissionModes.length > 0 && (
+              <p className="settings-empty">
+                {agentOffer?.data?.modes.some((m) => m.id === 'approve-all')
+                  ? "This agent does not report approval modes over ACP. BeddCode switches it with the agent's own command where that is known (Grok), and otherwise answers its permission prompts with Allow. Your choice applies when a session starts and can be changed in the session."
+                  : "These are the modes the agent itself reports. Each prompt it raises offers the agent's own choices, such as allow once or always."}
+              </p>
+            )}
             {!current.capabilities.models?.length &&
               !current.capabilities.efforts?.length &&
-              !current.capabilities.permissionModes.length && (
+              permissionModes.length === 0 && (
                 <p className="settings-empty">
-                  This agent reports its choices when a session starts. Its own configuration
-                  supplies the defaults.
+                  {current.kind === 'acp' && online && !agentOffer?.failed
+                    ? "Reading this agent's settings…"
+                    : 'This agent reports its choices when a session starts. Its own configuration supplies the defaults.'}
                 </p>
               )}
           </div>
@@ -424,13 +467,18 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
         Defaults are saved in this app for each host and apply to new sessions. Existing sessions
         keep their current choices.
       </p>
-      {adding && (
+      {(adding || editId) && (
         <AddAgentDialog
           hostKey={hostKey}
           agents={agents}
-          onClose={() => setAdding(false)}
+          editing={agents.find((a) => a.id === editId)}
+          onClose={() => {
+            setAdding(false)
+            setEditId(undefined)
+          }}
           onAdded={() => {
             setAdding(false)
+            setEditId(undefined)
             void refresh()
           }}
         />

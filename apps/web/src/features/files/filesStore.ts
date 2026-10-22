@@ -1,7 +1,8 @@
 import { create } from 'zustand'
-import type { FileEntry, RpcMethodName, RpcParams, RpcResult } from '@beddcode/contracts'
+import type { FileEntry, MediaKind, RpcMethodName, RpcParams, RpcResult } from '@beddcode/contracts'
 import { hostRequest } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
+import { mediaKindOf } from './mediaKind.ts'
 
 /**
  * Names one folder on one host. The store's `cwd` arguments are these ids; a bare path means the
@@ -37,6 +38,8 @@ export interface Doc {
   size: number
   binary: boolean
   tooLarge: boolean
+  /** An image, video or audio file: shown, not edited. */
+  media?: MediaKind
   dirty: boolean
   /** The file changed on disk while there were unsaved edits. */
   conflict: boolean
@@ -107,8 +110,13 @@ export const useFiles = create<FilesState>((set, get) => {
       const folder = get().byCwd[cwd] ?? empty()
       if (folder.docs[path]) return get().activate(cwd, path)
       try {
-        const file = await request(cwd, 'files.read', { path })
+        const kind = mediaKindOf(path)
+        const shown = kind ? await request(cwd, 'files.media', { path }) : null
+        const file = shown
+          ? { content: '', mtime: shown.mtime, size: shown.size, binary: false, tooLarge: false }
+          : await request(cwd, 'files.read', { path })
         const doc: Doc = {
+          media: shown?.kind,
           path,
           content: file.content,
           mtime: file.mtime,
@@ -205,8 +213,15 @@ export const useFiles = create<FilesState>((set, get) => {
     },
 
     async reload(cwd, path) {
-      const file = await request(cwd, 'files.read', { path })
       const doc = get().byCwd[cwd]?.docs[path]
+      if (doc?.media) {
+        // Shown, not edited: just have the viewer fetch it again.
+        const shown = await request(cwd, 'files.media', { path })
+        if (shown)
+          patchDoc(cwd, path, { mtime: shown.mtime, size: shown.size, version: doc.version + 1 })
+        return
+      }
+      const file = await request(cwd, 'files.read', { path })
       patchDoc(cwd, path, {
         content: file.content,
         mtime: file.mtime,

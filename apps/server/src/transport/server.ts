@@ -26,6 +26,7 @@ import type { AgentCatalog } from '../agents/catalog.ts'
 import type { AttachmentStore } from '../attachments/store.ts'
 import type { SessionManager } from '../sessions/sessionManager.ts'
 import type { FileWatchers } from '../files/watcher.ts'
+import { serveMedia } from '../files/media.ts'
 import { createRpcRouter, type RpcContext, type WorkspaceServices } from './rpc.ts'
 
 function parsePairRequest(body: unknown): { code: string; deviceName: string } | null {
@@ -143,6 +144,12 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     if (url === '/health' && req.method === 'GET') {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ ok: true, protocol: PROTOCOL_VERSION, host: hostInfo }))
+      return
+    }
+
+    // Images, video and audio for the Files pane. The ticket in the address is the credential.
+    if (url?.startsWith('/media/') && (req.method === 'GET' || req.method === 'HEAD')) {
+      void serveMedia(options.workspace.files.media, url.slice('/media/'.length), req, res)
       return
     }
 

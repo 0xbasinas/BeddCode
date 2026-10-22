@@ -131,3 +131,45 @@ describe('AgentCatalog downloads', () => {
     expect(await catalog.add({ registryId: 'npx-agent' })).toMatchObject({ command: 'npx' })
   })
 })
+
+describe('AgentCatalog edits', () => {
+  it('changes how an agent is started, keeping its id and where it came from', async () => {
+    const { catalog, store, changes } = setup()
+    const added = await catalog.add({ label: 'Grok', command: 'grok', args: ['agent', 'stdio'] })
+    const before = changes()
+    const updated = await catalog.update({
+      id: added.id,
+      label: ' Grok Build ',
+      command: '/opt/tools/grok',
+      args: ['agent', '--model', 'grok-4.7', 'stdio'],
+      env: { XAI_LOG: '1' },
+    })
+    expect(updated).toEqual({
+      id: added.id,
+      label: 'Grok Build',
+      command: '/opt/tools/grok',
+      args: ['agent', '--model', 'grok-4.7', 'stdio'],
+      env: { XAI_LOG: '1' },
+    })
+    expect(store.get(added.id)).toMatchObject({ label: 'Grok Build', env: { XAI_LOG: '1' } })
+    expect(catalog.list()).toHaveLength(1)
+    // The host drops what it remembered about the agent (its detection, its saved settings).
+    expect(changes()).toBe(before + 1)
+  })
+
+  it('keeps a registry agent tied to the registry, and refuses an unknown id', async () => {
+    const { catalog, store } = setup()
+    const added = await catalog.add({ registryId: 'npx-agent' })
+    await catalog.update({
+      id: added.id,
+      label: 'Mine',
+      command: 'npx',
+      args: ['-y', 'x'],
+      env: {},
+    })
+    expect(store.get(added.id)?.registryId).toBe('npx-agent')
+    await expect(
+      catalog.update({ id: 'nope', label: 'x', command: 'x', args: [], env: {} }),
+    ).rejects.toThrow('Unknown agent')
+  })
+})

@@ -4,6 +4,7 @@ import type { SessionView } from '@beddcode/client-runtime'
 import { hostRequest, onHostFrame, sendHostFrame, useRuntime } from '../../stores/host.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
 import { formatBytes } from '../../ui/format.ts'
+import { MediaViewer } from './MediaViewer.tsx'
 import { Editor, type EditorPosition } from './Editor.tsx'
 import { FileTree } from './FileTree.tsx'
 import { baseName, languageName } from './fileIcons.ts'
@@ -183,6 +184,7 @@ function EditorColumn({ cwd }: { cwd: string }) {
   const { activate, close, setDraft, save, reload } = useFiles.getState()
   const [position, setPosition] = useState<EditorPosition>({ line: 1, col: 1 })
   const [saveError, setSaveError] = useState<string>()
+  const [mediaInfo, setMediaInfo] = useState('')
   const doc = folder.active ? folder.docs[folder.active] : undefined
   // Reads the text the editor currently holds, for the Save and Overwrite buttons.
   const textRef = useRef<(() => string) | null>(null)
@@ -190,8 +192,35 @@ function EditorColumn({ cwd }: { cwd: string }) {
 
   useEffect(() => setSaveError(undefined), [folder.active])
 
+  // Many tabs scroll sideways: the wheel scrolls them, and the open one is always brought into view.
+  const tabsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const strip = tabsRef.current
+    if (!strip) return
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaX !== 0 || strip.scrollWidth <= strip.clientWidth) return
+      strip.scrollLeft += e.deltaY
+      e.preventDefault()
+    }
+    strip.addEventListener('wheel', onWheel, { passive: false })
+    return () => strip.removeEventListener('wheel', onWheel)
+  }, [])
+  useEffect(() => {
+    tabsRef.current
+      ?.querySelector('[aria-selected="true"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [folder.active, folder.tabs.length])
+
   if (!doc) return null
   const crumbs = doc.path.split('/')
+  const closeTab = (path: string) => {
+    if (
+      folder.docs[path]?.dirty &&
+      !window.confirm(`${baseName(path)} has unsaved changes. Close it anyway?`)
+    )
+      return
+    close(cwd, path)
+  }
   const doSave = async (text: string, force = false) => {
     setSaveError(undefined)
     try {
@@ -203,7 +232,7 @@ function EditorColumn({ cwd }: { cwd: string }) {
 
   return (
     <div className="editor-col">
-      <div className="editor-tabs" role="tablist">
+      <div className="editor-tabs" role="tablist" ref={tabsRef}>
         {folder.tabs.map((path) => {
           const d = folder.docs[path]
           return (
@@ -212,6 +241,10 @@ function EditorColumn({ cwd }: { cwd: string }) {
               className="editor-tab"
               aria-selected={path === folder.active}
               role="tab"
+              // Middle-click closes a tab, as in a browser.
+              onAuxClick={(e) => {
+                if (e.button === 1) closeTab(path)
+              }}
             >
               <button onClick={() => activate(cwd, path)} title={path}>
                 {baseName(path)}
@@ -222,14 +255,7 @@ function EditorColumn({ cwd }: { cwd: string }) {
                     ? `${baseName(path)} has unsaved changes; close`
                     : `Close ${baseName(path)}`
                 }
-                onClick={() => {
-                  if (
-                    d?.dirty &&
-                    !window.confirm(`${baseName(path)} has unsaved changes. Close it anyway?`)
-                  )
-                    return
-                  close(cwd, path)
-                }}
+                onClick={() => closeTab(path)}
               >
                 {d?.dirty ? <span className="dirty-dot" /> : <X size={13} />}
               </button>
@@ -246,7 +272,7 @@ function EditorColumn({ cwd }: { cwd: string }) {
           </span>
         ))}
         <span className="spacer" />
-        {!doc.binary && !doc.tooLarge && !doc.error && (
+        {!doc.binary && !doc.tooLarge && !doc.error && !doc.media && (
           <button
             className="save-btn"
             disabled={!doc.dirty}
@@ -271,6 +297,14 @@ function EditorColumn({ cwd }: { cwd: string }) {
           <h3>Can&apos;t open this file</h3>
           <p>{doc.error}</p>
         </div>
+      ) : doc.media ? (
+        <MediaViewer
+          cwd={cwd}
+          path={doc.path}
+          kind={doc.media}
+          version={doc.version}
+          onInfo={setMediaInfo}
+        />
       ) : doc.binary ? (
         <div className="pane-empty">
           <span className="empty-icon">
@@ -298,10 +332,14 @@ function EditorColumn({ cwd }: { cwd: string }) {
       )}
 
       <div className="pane-foot">
-        <span>
-          Ln {position.line}, Col {position.col} · Spaces: {tabSize} · {languageName(doc.path)} ·
-          UTF-8
-        </span>
+        {doc.media ? (
+          <span>{mediaInfo}</span>
+        ) : (
+          <span>
+            Ln {position.line}, Col {position.col} · Spaces: {tabSize} · {languageName(doc.path)} ·
+            UTF-8
+          </span>
+        )}
         <span>{doc.dirty ? '● 1 unsaved change · Ctrl S to save' : ''}</span>
       </div>
     </div>

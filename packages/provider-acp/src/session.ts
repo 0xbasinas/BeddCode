@@ -7,7 +7,7 @@ import type {
   SessionConfigOption,
   SessionUpdate,
 } from '@agentclientprotocol/sdk'
-import type { SessionEvent } from '@beddcode/contracts'
+import type { ConfigOption, SessionEvent } from '@beddcode/contracts'
 import type { ProviderSession, PromptInput, StartSessionInput } from '@beddcode/provider-core'
 import {
   JsonRpcClient,
@@ -17,6 +17,8 @@ import {
   type Transport,
 } from '@beddcode/shared'
 import { AcpEventMapper, toConfigOptions } from './mapper.ts'
+import { allowOption, approvalSetup, type ModeSource } from './permissions.ts'
+import type { AgentProfile } from './profiles.ts'
 import { TerminalManager } from './terminals.ts'
 
 type Draft<E = SessionEvent> = E extends unknown ? Omit<E, 'sessionId' | 'at' | 'turnId'> : never
@@ -40,6 +42,8 @@ export interface AcpSessionDeps {
   log: Logger
   label: string
   clientVersion?: string
+  /** What is known about this particular agent's approval setting (see profiles.ts). */
+  profile?: AgentProfile
 }
 
 interface SetupResponse {
@@ -57,7 +61,14 @@ export class AcpSession implements ProviderSession {
   private readonly queue = createAsyncQueue<SessionEvent>()
   private readonly rpc: JsonRpcClient
   private readonly mapper: AcpEventMapper
-  private modes: { id: string; label: string; description?: string }[] = []
+  private modes: { id: string; label: string; description?: string; dangerous?: boolean }[] = []
+  /** Where the approval modes came from, which decides how a change is sent (see permissions.ts). */
+  private modeSource: ModeSource = 'modes'
+  private modeOptionId: string | undefined
+  /** Mode `approve-all`, for agents with no mode of their own: answer permission requests with Allow. */
+  private approveAll = false
+  /** While a quiet prompt runs, the agent's words about it are not shown. */
+  private quiet = false
   private readonly terminals: TerminalManager
   private readonly pending = new Map<string, (optionId: string | null) => void>()
   private readonly ready: Promise<void>
@@ -175,10 +186,8 @@ export class AcpSession implements ProviderSession {
       }
 
       this.emit({ type: 'session.provider-session', providerSessionId: this.acpSessionId })
-      await this.announceModes(modes)
-      if (configOptions?.length) {
-        this.emit({ type: 'session.config', options: toConfigOptions(configOptions) })
-      }
+      const rest = await this.announceModes(modes, toConfigOptions(configOptions))
+      if (rest.length > 0) this.emit({ type: 'session.config', options: rest })
       // Settings chosen before the session started (model, thinking level, ...).
       for (const [id, value] of Object.entries(this.input.config ?? {})) {
         try {
@@ -209,23 +218,64 @@ export class AcpSession implements ProviderSession {
     return message
   }
 
-  /** Reports the agent's own modes and applies the one the user asked for, if the agent has it. */
-  private async announceModes(modes: Modes | undefined) {
-    const list = (modes?.availableModes ?? []).map((m) => ({
-      id: m.id,
-      label: m.name,
-      description: m.description ?? undefined,
-    }))
-    if (list.length === 0) return
-    this.modes = list
-    this.mapper.setModes(list)
-    let current = modes?.currentModeId
+  /**
+   * Reports how much the agent asks (its mode option, its modes, or the app's own choice when it
+   * has neither) and applies the one the user asked for. Returns the settings that are left.
+   */
+  private async announceModes(modes: Modes | undefined, options: ConfigOption[]) {
+    const setup = approvalSetup(modes, options, this.deps.profile)
+    this.modeSource = setup.source
+    this.modeOptionId = setup.optionId
+    this.modes = setup.modes
+    this.mapper.setModes(setup.modes)
+    let current = setup.current
     const wanted = this.input.permissionMode
-    if (wanted && wanted !== current && list.some((m) => m.id === wanted)) {
-      await this.rpc.request('session/set_mode', { sessionId: this.acpSessionId, modeId: wanted })
+    if (wanted && wanted !== current && setup.modes.some((m) => m.id === wanted)) {
+      await this.applyMode(wanted)
       current = wanted
     }
-    this.emit({ type: 'session.modes', modes: list, currentModeId: current })
+    this.emit({ type: 'session.modes', modes: setup.modes, currentModeId: current })
+    return setup.rest
+  }
+
+  /**
+   * Sends a slash command to the agent as a prompt that is not shown: it is the agent's own way of
+   * changing a setting. Its reply is dropped, and no turn is reported.
+   */
+  private async quietPrompt(text: string) {
+    this.quiet = true
+    try {
+      await this.rpc.request(
+        'session/prompt',
+        { sessionId: this.acpSessionId, prompt: [{ type: 'text', text }] },
+        { timeoutMs: SESSION_TIMEOUT },
+      )
+    } finally {
+      this.quiet = false
+    }
+  }
+
+  private async applyMode(modeId: string) {
+    if (this.modeSource === 'client') this.approveAll = modeId === 'approve-all'
+    else if (this.modeSource === 'command') {
+      const command = this.deps.profile?.modes.find((m) => m.id === modeId)?.command
+      if (this.inflightTurn) throw new Error('Wait for the current turn to finish, then switch.')
+      if (command) await this.quietPrompt(command)
+    } else if (this.modeSource === 'config' && this.modeOptionId) {
+      await this.sendConfig(this.modeOptionId, modeId)
+    } else {
+      await this.rpc.request('session/set_mode', { sessionId: this.acpSessionId, modeId })
+    }
+  }
+
+  /** Reports settings; the mode option has its own picker, so it is announced as modes instead. */
+  private emitConfig(all: ConfigOption[]) {
+    const setup = approvalSetup(undefined, all)
+    if (setup.source === 'config') {
+      this.modes = setup.modes
+      this.emit({ type: 'session.modes', modes: setup.modes, currentModeId: setup.current })
+    }
+    this.emit({ type: 'session.config', options: setup.rest })
   }
 
   async prompt(input: PromptInput): Promise<void> {
@@ -310,9 +360,7 @@ export class AcpSession implements ProviderSession {
       },
       { timeoutMs: SESSION_TIMEOUT },
     )
-    if (res.configOptions) {
-      this.emit({ type: 'session.config', options: toConfigOptions(res.configOptions) })
-    }
+    if (res.configOptions) this.emitConfig(toConfigOptions(res.configOptions))
   }
 
   async interrupt() {
@@ -322,7 +370,7 @@ export class AcpSession implements ProviderSession {
 
   async setPermissionMode(modeId: string) {
     await this.ready
-    await this.rpc.request('session/set_mode', { sessionId: this.acpSessionId, modeId })
+    await this.applyMode(modeId)
     // Not every agent follows a switch with `current_mode_update`; report it ourselves.
     this.emit({ type: 'session.modes', modes: this.modes, currentModeId: modeId })
   }
@@ -352,6 +400,12 @@ export class AcpSession implements ProviderSession {
     if (method !== 'session/update' || this.replaying) return
     const p = params as { sessionId?: string; update?: SessionUpdate }
     if (p.sessionId !== this.acpSessionId || !p.update) return
+    if (
+      this.quiet &&
+      (p.update.sessionUpdate === 'agent_message_chunk' ||
+        p.update.sessionUpdate === 'agent_thought_chunk')
+    )
+      return
     for (const event of this.mapper.map(p.update)) this.queue.push(event)
   }
 
@@ -410,6 +464,12 @@ export class AcpSession implements ProviderSession {
 
   /** Shows the agent's own options and returns the one the user picks, by its own id. */
   private askPermission(req: RequestPermissionRequest): Promise<unknown> {
+    // Approving everything: the protocol lets a client answer on the user's behalf.
+    if (this.approveAll) {
+      const allow = allowOption(req.options)
+      if (allow)
+        return Promise.resolve({ outcome: { outcome: 'selected', optionId: allow.optionId } })
+    }
     const requestId = `req-${++this.approvalCount}`
     const tool = req.toolCall
     if (tool.toolCallId) this.mapper.noteApproval(tool.toolCallId)

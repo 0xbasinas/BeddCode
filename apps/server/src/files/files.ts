@@ -1,7 +1,8 @@
 import { existsSync, realpathSync } from 'node:fs'
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { FileContent, FileEntry } from '@beddcode/contracts'
+import type { FileContent, FileEntry, FileMedia } from '@beddcode/contracts'
+import { MediaTickets, mediaType } from './media.ts'
 
 export const MAX_EDIT_BYTES = 2 * 1024 * 1024
 
@@ -35,6 +36,9 @@ const RESULT_LIMIT = 50
  * must stay inside it (also through symlinks and junctions).
  */
 export class FileService {
+  /** Tickets for showing media files; the HTTP route serves what they name. */
+  readonly media = new MediaTickets()
+
   /** Resolves `rel` inside `cwd`, or throws when it would leave it. */
   resolve(cwd: string, rel: string): string {
     let base: string
@@ -107,6 +111,22 @@ export class FileService {
       content: text.charCodeAt(0) === 0xfeff ? text.slice(1) : text,
       binary: false,
       tooLarge: false,
+    }
+  }
+
+  /** A ticketed address for an image, video or audio file, or null for any other file. */
+  async mediaFor(cwd: string, rel: string): Promise<FileMedia | null> {
+    const type = mediaType(rel)
+    if (!type) return null
+    const file = this.resolve(cwd, rel)
+    const info = await stat(file).catch(() => null)
+    if (!info?.isFile()) throw new FileError(`Not a file: ${rel}`)
+    return {
+      url: `/media/${this.media.issue(file, type.mime)}`,
+      kind: type.kind,
+      mime: type.mime,
+      size: info.size,
+      mtime: info.mtimeMs,
     }
   }
 

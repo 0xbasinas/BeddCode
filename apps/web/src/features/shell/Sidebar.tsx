@@ -512,7 +512,6 @@ function FolderGroup({
           ) : (
             <span className="folder-chip faint">no git</span>
           ))}
-        {fresh && empty && <span className="badge-new">New</span>}
         <span className="spacer" />
         {hostName && (
           <span className="folder-host" title={hostName}>
@@ -529,12 +528,9 @@ function FolderGroup({
         </button>
       </div>
       {children ?? (
-        <div className="folder-empty">
-          No sessions yet <span>·</span>
-          <button onClick={startHere}>
-            <Plus size={12} /> Start a session here
-          </button>
-        </div>
+        <button className="folder-empty" onClick={startHere}>
+          <Plus size={13} /> New session
+        </button>
       )}
     </section>
   )

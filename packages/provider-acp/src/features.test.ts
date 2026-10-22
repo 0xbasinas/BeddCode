@@ -7,6 +7,7 @@ import type { SessionEvent } from '@beddcode/contracts'
 import { JsonRpcClient, createLogger, type Transport } from '@beddcode/shared'
 import { createAcpAdapter } from './adapter.ts'
 import { AcpAgentStore } from './config.ts'
+import { CLIENT_MODES } from './permissions.ts'
 import { groupReplay, listAcpSessions, readAcpSession, withAcpAgent } from './history.ts'
 import { AcpEventMapper, toConfigOptions } from './mapper.ts'
 import { AcpSession } from './session.ts'
@@ -507,8 +508,9 @@ describe('previewing an agent before a session', () => {
     const a = agent({ ...init(), 'session/new': () => ({ sessionId: 'acp-1' }) })
     const adapter = createAcpAdapter({ store, log, createTransport: () => a.transport })
     expect(await adapter.preview?.('acp:plain')).toEqual({
-      modes: [],
-      currentModeId: undefined,
+      // No modes of its own: the app's two choices, so the picker is always there.
+      modes: CLIENT_MODES,
+      currentModeId: 'ask',
       config: [],
       commands: [],
     })

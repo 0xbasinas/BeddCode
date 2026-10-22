@@ -23,6 +23,7 @@ const summary = (a: AcpAgentConfig): AcpAgentSummary => ({
   label: a.label,
   command: a.command,
   args: a.args,
+  env: a.env,
   registryId: a.registryId,
 })
 
@@ -54,6 +55,20 @@ export class AgentCatalog {
         ? await this.fromRegistry(params.registryId, params.acceptDownload === true)
         : this.fromCommand(params)
     const saved = this.store.put(config)
+    this.onChange()
+    return summary(saved)
+  }
+
+  async update(p: RpcParams<'agents.update'>): Promise<AcpAgentSummary> {
+    const existing = this.store.get(p.id)
+    if (!existing) throw new Error(`Unknown agent: ${p.id}`)
+    const saved = this.store.put({
+      ...existing,
+      label: p.label.trim(),
+      command: p.command.trim(),
+      args: p.args,
+      env: p.env,
+    })
     this.onChange()
     return summary(saved)
   }

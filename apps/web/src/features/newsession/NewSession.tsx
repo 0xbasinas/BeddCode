@@ -183,7 +183,10 @@ export function NewSession({
 
   const nativeModes = agent?.capabilities.permissionModes ?? []
   const modes = nativeModes.length > 0 ? nativeModes : (offered?.modes ?? [])
-  const shownModeId = modeId ?? offered?.currentModeId
+  // A remembered choice from another agent may not exist here; then the agent's own current mode
+  // (what it starts in) is what is shown and what applies.
+  const validModeId = modes.some((m) => m.id === modeId) ? modeId : undefined
+  const shownModeId = validModeId ?? offered?.currentModeId
   const slashCommands = commands.length > 0 ? commands : (offered?.commands ?? [])
   const recentFolders = useMemo(
     () =>
@@ -202,7 +205,7 @@ export function NewSession({
     const sessionId = await createSession(hostKey, {
       instanceId: agent.id,
       cwd: folder || undefined,
-      permissionMode: modeId,
+      permissionMode: validModeId,
       model: choice.model,
       effort: choice.effort,
       config: Object.keys(configValues).length > 0 ? configValues : undefined,

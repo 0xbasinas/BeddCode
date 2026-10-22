@@ -3295,7 +3295,6 @@ button.tcall-row:hover .tcall-chevron,
 }
 .thread .thread-head {
   padding-bottom: 0;
-  border-bottom: 1px solid var(--border-subtle);
 }
 .thread-actions {
   height: var(--pane-head);
@@ -3596,4 +3595,102 @@ button.tcall-row:hover .tcall-chevron,
 /* macOS: room for the traffic lights at the left of the sidebar's header. */
 :root[data-platform='darwin'] .sidebar-top {
   padding-left: 76px;
+}
+
+/* Desktop window buttons' card: the content under the notch (search, URL bar, the first rail icon)
+   sat right against its bottom edge. Move the content, not the buttons, a little further down. */
+:root:has(.window-island) {
+  --island-clear: calc(8px * var(--ui-scale));
+}
+:root:has(.window-island) .right.has-pane .side-pane .pane-head {
+  margin-bottom: var(--island-clear);
+}
+:root:has(.window-island) .right.has-pane .side-pane .git-tabs {
+  margin-bottom: calc((var(--pane-head) - var(--tabs-h)) / 2 + var(--island-clear));
+}
+:root:has(.window-island) .right.has-pane .rail {
+  padding-top: calc(var(--notch-h) + var(--island-clear) + (var(--rail-btn-h) - 20px) / 2);
+}
+
+/* With a file open, the tab row is the pane's header row: centred on the header line and ending
+   before the window buttons' card, with the breadcrumb and Save button starting below its notch. */
+:root:has(.window-island) .right.has-pane .side-pane .editor-tabs {
+  box-sizing: border-box;
+  height: var(--pane-head);
+  align-items: center;
+  padding-top: 0;
+  padding-right: max(calc(8px * var(--ui-scale)), var(--island-reach));
+}
+:root:has(.window-island) .right.has-pane .side-pane .breadcrumb {
+  margin-top: calc(var(--gap) + var(--island-clear));
+}
+
+/* Images, video and audio in the Files pane. */
+.media-view {
+  flex: 1;
+  min-height: 0;
+  margin: 0 calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: calc(10px * var(--ui-scale));
+  background: var(--bg-code);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.media-scroll {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  display: flex;
+  /* Centred while it fits; margin:auto lets a larger image scroll from its top-left corner. */
+}
+.media-scroll img {
+  margin: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  cursor: zoom-in;
+  /* Shows transparency without a bright slab. */
+  background: repeating-conic-gradient(var(--bg-hover) 0 25%, transparent 0 50%) 0 0 / 16px 16px;
+}
+.media-scroll.actual img {
+  max-width: none;
+  max-height: none;
+  object-fit: none;
+  cursor: zoom-out;
+}
+.media-view video {
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+.media-view audio {
+  width: min(100%, calc(420px * var(--ui-scale)));
+  margin: 0 calc(16px * var(--ui-scale));
+}
+
+/* Editor tabs: compact, long names cut with an ellipsis, and no scrollbar bar (the wheel scrolls). */
+.editor-tabs {
+  scrollbar-width: none;
+}
+.editor-tabs::-webkit-scrollbar {
+  display: none;
+}
+.editor-tab {
+  flex: 0 1 auto;
+  min-width: calc(76px * var(--ui-scale));
+  max-width: calc(168px * var(--ui-scale));
+}
+.editor-tab > button:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  display: block;
+}
+.editor-tab > button:last-child {
+  flex: none;
 }

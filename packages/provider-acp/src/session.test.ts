@@ -7,6 +7,7 @@ import { createLogger, type Transport } from '@beddcode/shared'
 import { createAcpAdapter } from './adapter.ts'
 import { AcpAgentStore } from './config.ts'
 import { AcpSession } from './session.ts'
+import { grokProfile } from './profiles.ts'
 
 type Msg = {
   id?: number
@@ -502,5 +503,175 @@ describe('createAcpAdapter', () => {
       'Unknown ACP agent',
     )
     writeFileSync(path.join(dir, 'unused'), '')
+  })
+})
+
+describe('AcpSession: approval modes', () => {
+  const MODE_OPTION = {
+    id: 'mode',
+    name: 'Session Mode',
+    category: 'mode',
+    type: 'select',
+    currentValue: 'ask',
+    options: [
+      { value: 'ask', name: 'Ask' },
+      { value: 'code', name: 'Code' },
+    ],
+  }
+  const MODEL_OPTION = {
+    id: 'model',
+    name: 'Model',
+    category: 'model',
+    type: 'select',
+    currentValue: 'm1',
+    options: [{ value: 'm1', name: 'M1' }],
+  }
+  const permission = {
+    sessionId: 'acp-1',
+    toolCall: { toolCallId: 't1', title: 'Run ls', rawInput: { command: 'ls' } },
+    options: [
+      { optionId: 'once', name: 'Allow once', kind: 'allow_once' },
+      { optionId: 'always', name: 'Always allow', kind: 'allow_always' },
+      { optionId: 'no', name: 'Reject', kind: 'reject_once' },
+    ],
+  }
+
+  it("uses the agent's mode option, sends changes through it, and keeps it out of the settings", async () => {
+    const agent = fakeAgent()
+    agent.auto['session/new'] = () => ({
+      sessionId: 'acp-1',
+      configOptions: [MODEL_OPTION, MODE_OPTION],
+    })
+    agent.auto['session/set_config_option'] = (p) => ({
+      configOptions: [MODEL_OPTION, { ...MODE_OPTION, currentValue: p.value }],
+    })
+    const session = start(agent, { permissionMode: 'code' })
+    const events: SessionEvent[] = []
+    for await (const e of session.events) {
+      events.push(e)
+      if (e.type === 'session.config') break
+    }
+    expect(agent.sent('session/set_mode')).toHaveLength(0)
+    expect(agent.sent('session/set_config_option')[0]?.params).toMatchObject({
+      configId: 'mode',
+      value: 'code',
+    })
+    const modes = events.findLast((e) => e.type === 'session.modes')
+    expect(modes).toMatchObject({ currentModeId: 'code', modes: [{ id: 'ask' }, { id: 'code' }] })
+    const config = events.findLast((e) => e.type === 'session.config')
+    expect(config).toMatchObject({ options: [{ id: 'model' }] })
+    await session.close()
+  })
+
+  it('follows the agent when it changes its own mode', async () => {
+    const agent = fakeAgent()
+    agent.auto['session/new'] = () => ({ sessionId: 'acp-1', configOptions: [MODE_OPTION] })
+    const session = start(agent)
+    await nextEvent(session, (e) => e.type === 'session.modes')
+    agent.update({
+      sessionUpdate: 'config_option_update',
+      configOptions: [{ ...MODE_OPTION, currentValue: 'code' }],
+    })
+    expect(await nextEvent(session, (e) => e.type === 'session.modes')).toMatchObject({
+      currentModeId: 'code',
+    })
+    await session.close()
+  })
+
+  it('offers asking or approving everything when the agent has no modes, switchable mid-session', async () => {
+    const agent = fakeAgent()
+    agent.auto['session/new'] = () => ({ sessionId: 'acp-1' })
+    const session = start(agent)
+    expect(await nextEvent(session, (e) => e.type === 'session.modes')).toMatchObject({
+      currentModeId: 'ask',
+      modes: [{ id: 'ask' }, { id: 'approve-all', dangerous: true }],
+    })
+
+    // Asking: the request is shown and waits for the user.
+    const first = agent.ask('session/request_permission', permission)
+    const shown = await nextEvent(session, (e) => e.type === 'approval.requested')
+    if (shown.type !== 'approval.requested') throw new Error('unreachable')
+    await session.respondToApproval(shown.requestId, 'no')
+    expect((await first).result).toEqual({ outcome: { outcome: 'selected', optionId: 'no' } })
+
+    // Approving everything: answered at once with allow-once, never touching the agent's own modes.
+    await session.setPermissionMode('approve-all')
+    const second = await agent.ask('session/request_permission', {
+      ...permission,
+      toolCall: { toolCallId: 't2', title: 'Run pwd' },
+    })
+    expect(second.result).toEqual({ outcome: { outcome: 'selected', optionId: 'once' } })
+    expect(agent.sent('session/set_mode')).toHaveLength(0)
+    expect(agent.sent('session/set_config_option')).toHaveLength(0)
+
+    // And back to asking.
+    await session.setPermissionMode('ask')
+    const third = agent.ask('session/request_permission', permission)
+    await nextEvent(session, (e) => e.type === 'approval.requested')
+    await session.interrupt()
+    expect((await third).result).toEqual({ outcome: { outcome: 'cancelled' } })
+    await session.close()
+  })
+
+  it('can start out approving everything, and still asks when there is nothing to allow with', async () => {
+    const agent = fakeAgent()
+    agent.auto['session/new'] = () => ({ sessionId: 'acp-1' })
+    const session = start(agent, { permissionMode: 'approve-all' })
+    expect(await nextEvent(session, (e) => e.type === 'session.modes')).toMatchObject({
+      currentModeId: 'approve-all',
+    })
+    const reply = await agent.ask('session/request_permission', permission)
+    expect(reply.result).toEqual({ outcome: { outcome: 'selected', optionId: 'once' } })
+
+    const pending = agent.ask('session/request_permission', {
+      ...permission,
+      options: [{ optionId: 'no', name: 'Reject', kind: 'reject_once' }],
+    })
+    await nextEvent(session, (e) => e.type === 'approval.requested')
+    await session.interrupt()
+    expect((await pending).result).toEqual({ outcome: { outcome: 'cancelled' } })
+    await session.close()
+  })
+
+  it('switches a known agent with its own slash command, quietly, from the setting it starts with', async () => {
+    const agent = fakeAgent()
+    agent.auto['session/new'] = () => ({ sessionId: 'acp-1' })
+    // The agent answers its own slash command in prose.
+    agent.auto['session/prompt'] = () => {
+      agent.update({
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'always-approve changed' },
+      })
+      return { stopReason: 'end_turn' }
+    }
+    const profile = grokProfile(() => '[ui]\npermission_mode = "always-approve"\n')
+    const session = new AcpSession(
+      { sessionId: 's1', cwd: '/work', permissionMode: 'ask' },
+      { transport: agent.transport, log, label: 'Fake', profile },
+    )
+    const events: SessionEvent[] = []
+    const watch = (async () => {
+      for await (const e of session.events) events.push(e)
+    })()
+    // Starts out always-approve by its own config; the user asked to ask, so it is told so.
+    await agent.waitFor((m) => m.method === 'session/prompt')
+    expect(agent.sent('session/prompt')[0]?.params).toMatchObject({
+      prompt: [{ type: 'text', text: '/always-approve off' }],
+    })
+    await session.setPermissionMode('approve-all')
+    expect(agent.sent('session/prompt').at(-1)?.params).toMatchObject({
+      prompt: [{ type: 'text', text: '/always-approve on' }],
+    })
+    await session.close()
+    await watch
+    expect(events.filter((e) => e.type === 'turn.started')).toHaveLength(0)
+    // That reply is not shown, and no turn is reported.
+    expect(events.some((e) => e.type === 'message.delta')).toBe(false)
+    const modes = events.filter((e) => e.type === 'session.modes')
+    expect(modes[0]).toMatchObject({
+      currentModeId: 'ask',
+      modes: [{ id: 'ask' }, { id: 'approve-all' }],
+    })
+    expect(modes.at(-1)).toMatchObject({ currentModeId: 'approve-all' })
   })
 })

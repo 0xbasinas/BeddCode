@@ -7,26 +7,31 @@ import { customAgentInput, type EnvironmentVariable } from './customAgent.ts'
 export function AddAgentDialog({
   hostKey,
   agents,
+  editing,
   onClose,
   onAdded,
 }: {
   hostKey: string
   agents: AcpAgentSummary[]
+  /** An agent already on this host: the form opens filled in and saves changes to it. */
+  editing?: AcpAgentSummary
   onClose(): void
   onAdded(): void
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
-  const [mode, setMode] = useState<'registry' | 'custom'>('registry')
+  const [mode, setMode] = useState<'registry' | 'custom'>(editing ? 'custom' : 'registry')
   const [entries, setEntries] = useState<RegistryEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [registryError, setRegistryError] = useState<string>()
   const [retry, setRetry] = useState(0)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string>()
-  const [name, setName] = useState('')
-  const [command, setCommand] = useState('')
-  const [args, setArgs] = useState('')
-  const [variables, setVariables] = useState<EnvironmentVariable[]>([])
+  const [name, setName] = useState(editing?.label ?? '')
+  const [command, setCommand] = useState(editing?.command ?? '')
+  const [args, setArgs] = useState(editing?.args.join('\n') ?? '')
+  const [variables, setVariables] = useState<EnvironmentVariable[]>(
+    Object.entries(editing?.env ?? {}).map(([name, value]) => ({ name, value })),
+  )
   const [error, setError] = useState<string>()
   const [busy, setBusy] = useState(false)
   /** The user agreed to download the selected agent's program. */
@@ -78,6 +83,19 @@ export function AddAgentDialog({
   const add = async () => {
     setError(undefined)
     try {
+      if (editing) {
+        const input = customAgentInput(name, command, args, variables)
+        setBusy(true)
+        await hostRequest(hostKey, 'agents.update', {
+          id: editing.id,
+          label: input.label,
+          command: input.command,
+          args: input.args ?? [],
+          env: input.env ?? {},
+        })
+        onAdded()
+        return
+      }
       const input =
         mode === 'custom'
           ? customAgentInput(name, command, args, variables)
@@ -117,7 +135,7 @@ export function AddAgentDialog({
         }}
       >
         <header className="agent-dialog-head">
-          {mode === 'custom' && (
+          {mode === 'custom' && !editing && (
             <button
               type="button"
               className="icon-btn"
@@ -132,7 +150,9 @@ export function AddAgentDialog({
             </button>
           )}
           <div>
-            <h2 id="add-agent-heading">{mode === 'custom' ? 'Custom agent' : 'Add an agent'}</h2>
+            <h2 id="add-agent-heading">
+              {editing ? 'Edit agent' : mode === 'custom' ? 'Custom agent' : 'Add an agent'}
+            </h2>
             {mode === 'registry' && <p>Pick a coding agent to run on this host.</p>}
           </div>
           <button
@@ -344,11 +364,15 @@ export function AddAgentDialog({
             Cancel
           </button>
           <button className="settings-button primary" type="submit" disabled={busy || !canAdd}>
-            {busy
-              ? entry?.download && mode === 'registry'
-                ? 'Downloading…'
-                : 'Adding…'
-              : 'Add agent'}
+            {editing
+              ? busy
+                ? 'Saving…'
+                : 'Save changes'
+              : busy
+                ? entry?.download && mode === 'registry'
+                  ? 'Downloading…'
+                  : 'Adding…'
+                : 'Add agent'}
           </button>
         </footer>
       </form>

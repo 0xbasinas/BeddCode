@@ -11,6 +11,8 @@ import {
 import { instanceIdFor, type AcpAgentConfig, type AcpAgentStore } from './config.ts'
 import { AcpSession } from './session.ts'
 import { AcpEventMapper, toConfigOptions } from './mapper.ts'
+import { approvalSetup } from './permissions.ts'
+import { profileFor } from './profiles.ts'
 import { listAcpSessions, readAcpSession, withAcpAgent } from './history.ts'
 
 /**
@@ -101,14 +103,15 @@ export function createAcpAdapter(options: AcpAdapterOptions): ProviderAdapter {
             .catch(() => {})
         }
         const commands = events.findLast((e) => e.type === 'session.commands')
+        const setup = approvalSetup(
+          res.modes,
+          toConfigOptions(res.configOptions),
+          profileFor(config.command),
+        )
         return {
-          modes: (res.modes?.availableModes ?? []).map((m) => ({
-            id: m.id,
-            label: m.name,
-            description: m.description ?? undefined,
-          })),
-          currentModeId: res.modes?.currentModeId,
-          config: toConfigOptions(res.configOptions),
+          modes: setup.modes,
+          currentModeId: setup.current,
+          config: setup.rest,
           commands: commands?.type === 'session.commands' ? commands.commands : [],
         }
       })
@@ -140,7 +143,12 @@ export function createAcpAdapter(options: AcpAdapterOptions): ProviderAdapter {
           { cwd: input.cwd, env: { ...process.env, ...config.env } },
           log,
         )
-      return new AcpSession(input, { transport, log, label: config.label })
+      return new AcpSession(input, {
+        transport,
+        log,
+        label: config.label,
+        profile: profileFor(config.command),
+      })
     },
   }
 }

@@ -302,6 +302,19 @@ describe('server', () => {
     expect(browsed.path).toBe(dir)
     expect(browsed.entries).toEqual([expect.objectContaining({ name: 'sub', isRepo: false })])
     expect((await c.rpc('folders.browse', { path: 'relative' })).ok).toBe(false)
+
+    // An image is fetched over HTTP with the ticket the connection handed out, and only with it.
+    writeFileSync(path.join(dir, 'pic.png'), Buffer.from([137, 80, 78, 71]))
+    const shown = (await c.rpc('files.media', { cwd: dir, path: 'pic.png' })).result as {
+      url: string
+      kind: string
+    }
+    expect(shown.kind).toBe('image')
+    const fetched = await fetch(`http://127.0.0.1:${server.port}${shown.url}`)
+    expect(fetched.status).toBe(200)
+    expect([...new Uint8Array(await fetched.arrayBuffer())]).toEqual([137, 80, 78, 71])
+    expect((await fetch(`http://127.0.0.1:${server.port}/media/guess`)).status).toBe(404)
+    expect((await c.rpc('files.media', { cwd: dir, path: 'README.md' })).result).toBeNull()
   })
 
   it('runs a terminal over the connection: attach, input, output, reattach with history, close', async () => {

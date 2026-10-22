@@ -73,6 +73,7 @@ export function createRpcRouter(
     'providers.list': () => sessions.listProviders(),
     'agents.list': async () => agents.list(),
     'agents.add': (p) => agents.add(p),
+    'agents.update': (p) => agents.update(p),
     'agents.remove': (p) => agents.remove(p.id),
     'agents.registry': (p) => agents.searchRegistry(p.query),
     'projects.list': () => projects.list(),
@@ -107,6 +108,7 @@ export function createRpcRouter(
     },
     'files.list': async (p) => ({ entries: await files.list(p.cwd, p.dir) }),
     'files.read': (p) => files.read(p.cwd, p.path),
+    'files.media': (p) => files.mediaFor(p.cwd, p.path),
     'files.write': async (p) => ({
       mtime: await files.write(p.cwd, p.path, p.content, p.expectedMtime),
     }),

@@ -36,6 +36,23 @@ export const FileContent = z.object({
 })
 export type FileContent = z.infer<typeof FileContent>
 
+/** Files the Files pane shows instead of editing. */
+export const MediaKind = z.enum(['image', 'video', 'audio'])
+export type MediaKind = z.infer<typeof MediaKind>
+
+/**
+ * Where to fetch a media file from. `url` is relative to the host's HTTP address and holds a
+ * short-lived ticket for this one file; ask again when it stops working.
+ */
+export const FileMedia = z.object({
+  url: z.string(),
+  kind: MediaKind,
+  mime: z.string(),
+  size: z.number().int(),
+  mtime: z.number(),
+})
+export type FileMedia = z.infer<typeof FileMedia>
+
 /** A folder shown while choosing one to add. Only folders are listed, never files. */
 export const FolderEntry = z.object({
   name: z.string(),

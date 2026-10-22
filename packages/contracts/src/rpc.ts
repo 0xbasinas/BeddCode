@@ -3,7 +3,7 @@ import { GitBranch, GitDiff, GitInfo, GitLog, GitStatus, Project, PullRequest } 
 import { Device, PairingCode, TailnetStatus } from './hosts.ts'
 import { ConfigOption, SlashCommand } from './events.ts'
 import { PermissionModeOption, ProviderInstance } from './providers.ts'
-import { FileContent, FileEntry, FolderListing, TerminalInfo } from './workspace.ts'
+import { FileContent, FileEntry, FileMedia, FolderListing, TerminalInfo } from './workspace.ts'
 
 /** An ACP agent configured on a host (a command that speaks ACP over stdio). */
 export const AcpAgentSummary = z.object({
@@ -12,6 +12,8 @@ export const AcpAgentSummary = z.object({
   command: z.string(),
   args: z.array(z.string()),
   registryId: z.string().optional(),
+  /** Environment variables the agent is started with (kept on this host's own configuration). */
+  env: z.record(z.string(), z.string()).default({}),
 })
 export type AcpAgentSummary = z.infer<typeof AcpAgentSummary>
 
@@ -108,6 +110,17 @@ export const RpcMethods = {
         env: z.record(z.string(), z.string()).optional(),
       }),
     ]),
+    result: AcpAgentSummary,
+  },
+  /** Changes how an agent is started. Its id, and where it came from, stay the same. */
+  'agents.update': {
+    params: z.object({
+      id: z.string(),
+      label: z.string().min(1),
+      command: z.string().min(1),
+      args: z.array(z.string()),
+      env: z.record(z.string(), z.string()),
+    }),
     result: AcpAgentSummary,
   },
   'agents.remove': {
@@ -210,6 +223,11 @@ export const RpcMethods = {
     result: z.object({ entries: z.array(FileEntry) }),
   },
   'files.read': { params: z.object({ cwd: z.string(), path: z.string() }), result: FileContent },
+  /** An address for showing an image, video or audio file; null when the file is not one. */
+  'files.media': {
+    params: z.object({ cwd: z.string(), path: z.string() }),
+    result: FileMedia.nullable(),
+  },
   /** Saves a file. With `expectedMtime` it refuses to overwrite a newer version on disk. */
   'files.write': {
     params: z.object({
