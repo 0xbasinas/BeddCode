@@ -3407,18 +3407,6 @@ button.tcall-row:hover .tcall-chevron,
   gap: var(--winbar-gap);
   -webkit-app-region: no-drag;
 }
-/* A quiet divider in the middle of the separation, marking the window controls' own zone. */
-.winbar::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: calc(var(--winbar-sep) / -2);
-  width: 1px;
-  height: calc(16px * var(--ui-scale));
-  transform: translateY(-50%);
-  background: var(--border);
-  pointer-events: none;
-}
 .winbar .icon-btn {
   color: var(--text-faint);
 }

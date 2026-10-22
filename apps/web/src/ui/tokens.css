@@ -74,7 +74,7 @@
   /* Window buttons: their own zone at the top right, close centred over the rail. The gap between
      buttons is chosen so that, with the pane collapsed, the gutter between the thread and the rail
      falls exactly between maximize and close. --winbar-sep keeps every header control clear of
-     the zone (a 1px divider sits in its middle). Both spans are 0 without the window buttons. */
+     the zone. Both spans are 0 without the window buttons. */
   --winbar-gap: calc(var(--gap) + (var(--rail-w) - var(--head-btn)) / 2);
   --winbar-sep: 16px;
   --winbar-right: calc(var(--gap) + (var(--rail-w) - var(--head-btn)) / 2);
