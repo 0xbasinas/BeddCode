@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -292,6 +292,16 @@ describe('server', () => {
     const { sessionId } = created.result as { sessionId: string }
     expect((await c.rpc('worktrees.remove', { sessionId })).result).toEqual({ removed: true })
     expect((await c.rpc('projects.remove', { path: dir })).result).toEqual({ removed: true })
+
+    // The folder browser lists subfolders only (never files), straight off the host's disk.
+    mkdirSync(path.join(dir, 'sub'))
+    const browsed = (await c.rpc('folders.browse', { path: dir })).result as {
+      path: string
+      entries: { name: string; isRepo: boolean }[]
+    }
+    expect(browsed.path).toBe(dir)
+    expect(browsed.entries).toEqual([expect.objectContaining({ name: 'sub', isRepo: false })])
+    expect((await c.rpc('folders.browse', { path: 'relative' })).ok).toBe(false)
   })
 
   it('runs a terminal over the connection: attach, input, output, reattach with history, close', async () => {

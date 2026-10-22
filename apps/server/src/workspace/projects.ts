@@ -47,6 +47,19 @@ export class ProjectStore {
     return this.describe(root)
   }
 
+  /**
+   * Makes an added folder a git repository. Only folders already in the list qualify, so this
+   * cannot be pointed at an arbitrary path, and a folder that already is a repository is left as is.
+   */
+  async initGit(folder: string): Promise<Project> {
+    const stored = this.paths().find((p) => samePath(p, folder))
+    if (!stored) throw new Error(`Not an added folder: ${folder}`)
+    if (!isDirectory(stored)) throw new Error(`Folder does not exist: ${stored}`)
+    const info = await this.git.info(stored)
+    if (!info.isRepo) await this.git.init(stored)
+    return this.describe(stored)
+  }
+
   remove(folder: string): boolean {
     const paths = this.paths()
     const next = paths.filter((p) => !samePath(p, folder))

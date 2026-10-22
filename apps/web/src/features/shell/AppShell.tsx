@@ -6,6 +6,9 @@ import { RightRail } from './RightRail.tsx'
 import { Sidebar } from './Sidebar.tsx'
 import { useAppPreferences } from '../../stores/appPreferences.ts'
 import { useUiStore } from '../../stores/ui.ts'
+import { FolderBrowserLayer } from '../folders/FolderBrowserDialog.tsx'
+import { FolderPickerHint, FolderToast } from '../folders/FolderToast.tsx'
+import { chooseFolder, useFolderFlow } from '../folders/folderFlow.ts'
 
 export function AppShell() {
   const rightPanel = usePanelRef()
@@ -41,45 +44,73 @@ export function AppShell() {
         useUiStore.getState().setSearchOpen(true)
         if (settings) void navigate({ to: '/' })
       }
+      // Ctrl/Cmd+O: Browse… for a folder on the host the Add folder menu points at.
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        !event.shiftKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === 'o'
+      ) {
+        event.preventDefault()
+        void chooseFolder(useFolderFlow.getState().menuHostKey)
+      }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [navigate, settings])
-  if (settings) return <Outlet />
-  return (
-    <Group
-      orientation="horizontal"
-      className="shell"
-      defaultLayout={layout.defaultLayout}
-      onLayoutChanged={layout.onLayoutChanged}
-    >
-      <Panel
-        id="sidebar"
-        className="shell-panel"
-        defaultSize="24%"
-        minSize="220px"
-        maxSize="520px"
-        groupResizeBehavior="preserve-pixel-size"
-      >
-        <Sidebar />
-      </Panel>
-      <Separator className="shell-sep" />
-      <Panel id="main" className="shell-panel" minSize="320px">
+  const layers = (
+    <>
+      <FolderBrowserLayer />
+      <FolderPickerHint />
+    </>
+  )
+  if (settings)
+    return (
+      <>
         <Outlet />
-      </Panel>
-      <Separator className="shell-sep" />
-      <Panel
-        id="right"
-        className="shell-panel"
-        panelRef={rightPanel}
-        defaultSize="30%"
-        minSize="280px"
-        maxSize="75%"
-        groupResizeBehavior="preserve-pixel-size"
+        {layers}
+      </>
+    )
+  return (
+    <>
+      <Group
+        orientation="horizontal"
+        className="shell"
+        defaultLayout={layout.defaultLayout}
+        onLayoutChanged={layout.onLayoutChanged}
       >
-        <RightRail wantWidth={wantWidth} />
-      </Panel>
-    </Group>
+        <Panel
+          id="sidebar"
+          className="shell-panel"
+          defaultSize="24%"
+          minSize="220px"
+          maxSize="520px"
+          groupResizeBehavior="preserve-pixel-size"
+        >
+          <Sidebar />
+        </Panel>
+        <Separator className="shell-sep" />
+        <Panel id="main" className="shell-panel" minSize="320px">
+          <div className="main-stack">
+            <Outlet />
+            <FolderToast />
+          </div>
+        </Panel>
+        <Separator className="shell-sep" />
+        <Panel
+          id="right"
+          className="shell-panel"
+          panelRef={rightPanel}
+          defaultSize="30%"
+          minSize="280px"
+          maxSize="75%"
+          groupResizeBehavior="preserve-pixel-size"
+        >
+          <RightRail wantWidth={wantWidth} />
+        </Panel>
+      </Group>
+      {layers}
+    </>
   )
 }
 

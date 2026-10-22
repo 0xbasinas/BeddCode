@@ -391,30 +391,6 @@ a {
 .setup-button:disabled {
   opacity: 0.4;
 }
-.setup-folder-form {
-  padding: 0 calc(16px * var(--ui-scale)) calc(16px * var(--ui-scale)) calc(54px * var(--ui-scale));
-  font-size: calc(12px * var(--ui-scale));
-}
-.setup-folder-form label {
-  display: block;
-  color: var(--text-muted);
-  margin-bottom: calc(8px * var(--ui-scale));
-}
-.setup-folder-form > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: calc(8px * var(--ui-scale));
-}
-.setup-folder-form input {
-  flex: 1;
-  min-width: calc(150px * var(--ui-scale));
-  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  border: 1px solid var(--border);
-  border-radius: calc(6px * var(--ui-scale));
-  background: var(--bg-code);
-  color: var(--text);
-  font-size: calc(12px * var(--ui-scale));
-}
 .welcome-content footer {
   display: flex;
   align-items: center;

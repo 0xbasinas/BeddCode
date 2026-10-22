@@ -2,13 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, Globe, Plus, RotateCw, X } from 'lucide-react'
 import { useBrowser, type BrowserTab } from './browserStore.ts'
 import { normalizeUrl } from './url.ts'
-
-declare global {
-  interface Window {
-    /** Present only inside the desktop app, where pages can be shown in an isolated webview. */
-    beddcodeDesktop?: { platform: string }
-  }
-}
+import '../../ui/desktop.ts'
 
 /** The subset of Electron's <webview> element this pane uses. */
 interface WebviewElement extends HTMLElement {

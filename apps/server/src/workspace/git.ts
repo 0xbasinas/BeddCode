@@ -64,6 +64,12 @@ export class GitService {
     )
   }
 
+  /** Turns a plain folder into a repository (`git init`, with the user's own defaults). */
+  async init(cwd: string): Promise<void> {
+    if (!isDirectory(cwd)) throw new GitError(`Folder does not exist: ${cwd}`)
+    await this.git(cwd, ['init', '-q'])
+  }
+
   async info(cwd: string): Promise<GitInfo> {
     if (!isDirectory(cwd)) throw new GitError(`Folder does not exist: ${cwd}`)
     const inside = await this.gitRaw(cwd, ['rev-parse', '--is-inside-work-tree'])

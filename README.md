@@ -58,7 +58,7 @@ Useful options and troubleshooting:
 
 ### Projects, worktrees and git
 
-- Add folders with `projects.add` (the sidebar's add-folder button). New sessions can run in the folder itself or in a **worktree** (`<repo>/.wt/<branch>`, ignored by git), so several agents can work in parallel on separate branches.
+- Add folders from the sidebar's **Add folder** menu: Browse… opens the system folder picker in the desktop app (an in-app folder browser, backed by `folders.browse`, on remote hosts and in the plain web app), and recent folders are one click away. Nothing is typed. New sessions can run in the folder itself or in a **worktree** (`<repo>/.wt/<branch>`, ignored by git), so several agents can work in parallel on separate branches.
 - The git pane (changes, commits, pull request) reads the session's folder live through your own `git`. Pull requests use your signed-in GitHub CLI (`gh`); BeddCode never stores a token, and pushing or opening a PR only happens when you click the button.
 
 ### Panes

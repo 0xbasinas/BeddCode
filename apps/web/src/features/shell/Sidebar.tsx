@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
   ArrowDownWideNarrow,
   Check,
   ChevronDown,
   Folder,
-  FolderPlus,
+  FolderGit2,
   GitBranch,
   Monitor,
   PenSquare,
@@ -17,13 +17,16 @@ import {
   X,
 } from 'lucide-react'
 import type { SessionView } from '@beddcode/client-runtime'
+import type { Project } from '@beddcode/contracts'
 import { Dropdown } from '../../ui/Dropdown.tsx'
-import { addProject, useAllSessions, useHostStore } from '../../stores/host.ts'
+import { useAllSessions, useHostStore } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { HostsDialog } from '../hosts/HostsDialog.tsx'
 import { folderName, timeAgo } from '../../ui/format.ts'
 import { useUiStore } from '../../stores/ui.ts'
-import { Select } from '../../ui/Select.tsx'
+import { AddFolderMenu } from '../folders/AddFolderMenu.tsx'
+import { isFresh, useFolderFlow } from '../folders/folderFlow.ts'
+import { foldersWithoutSessions, samePath } from '../folders/folderLogic.ts'
 
 type Filter = 'all' | 'needs-you' | 'done'
 
@@ -127,6 +130,27 @@ export function Sidebar() {
 ${s.projectPath}`
   for (const s of visible) groups.set(groupKey(s), [...(groups.get(groupKey(s)) ?? []), s])
 
+  // Added folders show up straight away, before any session runs in them.
+  const sessionGroups = [...groups].map(([key, list]) => ({
+    key,
+    hostKey: hostOf.get(list[0]!.id) ?? LOCAL_HOST_KEY,
+    projectPath: list[0]!.projectPath,
+    list,
+  }))
+  const projectsOf = (hostKey: string): Project[] => runtimes[hostKey]?.projects ?? []
+  const emptyFolders =
+    filter === 'all' && !(searchOpen && query)
+      ? foldersWithoutSessions(
+          entries
+            .filter((e) => selectedHost === 'all' || e.key === selectedHost)
+            .flatMap((e) => projectsOf(e.key).map((project) => ({ hostKey: e.key, project }))),
+          sessionGroups,
+        )
+      : []
+  const hasFolders = entries.some((e) => projectsOf(e.key).length > 0)
+  const hostLabel = (hostKey: string) =>
+    hostKey === LOCAL_HOST_KEY ? 'This PC' : (runtimes[hostKey]?.host?.name ?? 'Remote host')
+
   const tab = (id: Filter, label: string, count?: number) => (
     <button className="tab" role="tab" aria-selected={filter === id} onClick={() => setFilter(id)}>
       {label}
@@ -222,7 +246,10 @@ ${s.projectPath}`
         >
           <Search size={18} />
         </button>
-        <AddFolder />
+      </div>
+      <div className="folders-head">
+        Folders
+        <AddFolderMenu />
       </div>
       {searchOpen && (
         <div className="session-search">
@@ -301,7 +328,7 @@ ${s.projectPath}`
       )}
 
       <div className="session-list">
-        {visible.length === 0 && (
+        {sessionGroups.length === 0 && emptyFolders.length === 0 && (
           <div className="sidebar-empty">
             <span className="empty-icon">
               {searchOpen && query ? (
@@ -316,7 +343,9 @@ ${s.projectPath}`
               {searchOpen && query
                 ? 'No matching sessions'
                 : all.length === 0
-                  ? 'No sessions yet'
+                  ? hasFolders
+                    ? 'No sessions yet'
+                    : 'No folders yet'
                   : 'All caught up'}
             </h3>
             <p>
@@ -325,79 +354,77 @@ ${s.projectPath}`
                 : local?.connection !== 'connected' && online === 0
                   ? 'Connecting to host…'
                   : all.length === 0
-                    ? 'Sessions you start will appear here, grouped by folder.'
+                    ? hasFolders
+                      ? 'Sessions you start will appear here, grouped by folder.'
+                      : 'Add a folder and it shows up here. Sessions you start are grouped under it.'
                     : 'No sessions need your attention right now.'}
             </p>
-            {all.length === 0 && <AddFolder expanded />}
           </div>
         )}
-        {[...groups].map(([key, list]) => {
-          const project = list[0]!.projectPath
-          const hostKey = hostOf.get(list[0]!.id) ?? LOCAL_HOST_KEY
-          const hostName = hostKey === LOCAL_HOST_KEY ? 'This PC' : runtimes[hostKey]?.host?.name
-          return (
-            <section key={key}>
-              <div className="group-title" title={project}>
-                <Folder size={14} />
-                <span className="group-name">{folderName(project)}</span>
-                <span>{multiHost || hostName ? hostName : undefined}</span>
-                <span className="spacer" />
-                <button
-                  className="icon-btn small"
-                  aria-label={`New session in ${folderName(project)}`}
-                  onClick={() => void navigate({ to: '/', search: { project, host: hostKey } })}
-                >
-                  <Plus size={15} />
-                </button>
-              </div>
-              {list.map((s) => (
-                <Link
-                  key={s.id}
-                  to="/session/$sessionId"
-                  params={{ sessionId: s.id }}
-                  activeOptions={{ exact: true, includeSearch: false }}
-                  className="session-row"
-                  activeProps={{ className: 'session-row active' }}
-                >
-                  {s.status === 'idle' && s.items.length > 0 && s.lastTurnReason !== 'cancelled' ? (
-                    <Check className="session-done" size={12} />
-                  ) : (
-                    <span
-                      className={`dot ${s.lastTurnReason === 'cancelled' ? 'cancelled' : s.status}`}
-                    />
-                  )}
-                  <span className="session-main">
-                    <span className="session-top">
-                      <span className="session-title">{s.title}</span>
-                      <span className="session-time">{timeAgo(s.updatedAt)}</span>
-                    </span>
-                    <span className="session-meta">
-                      {sessionNote(s) && (
-                        <span className={`session-note ${s.status}`} title={sessionNote(s)}>
-                          {sessionNote(s)}
-                        </span>
-                      )}
-                      <span className="session-where">
-                        {s.branch && (
-                          <>
-                            <GitBranch size={11} /> <code>{s.branch}</code> ·{' '}
-                          </>
-                        )}
-                        {agentLabel(s)}
-                      </span>
-                      {(s.added > 0 || s.removed > 0) && (
-                        <span className="stat">
-                          <span className="add">+{s.added}</span>{' '}
-                          <span className="del">−{s.removed}</span>
-                        </span>
-                      )}
-                    </span>
+        {sessionGroups.map(({ key, hostKey, projectPath, list }) => (
+          <FolderGroup
+            key={key}
+            hostKey={hostKey}
+            path={projectPath}
+            project={projectsOf(hostKey).find((p) => samePath(p.path, projectPath))}
+            hostName={hostLabel(hostKey)}
+          >
+            {list.map((s) => (
+              <Link
+                key={s.id}
+                to="/session/$sessionId"
+                params={{ sessionId: s.id }}
+                activeOptions={{ exact: true, includeSearch: false }}
+                className="session-row"
+                activeProps={{ className: 'session-row active' }}
+              >
+                {s.status === 'idle' && s.items.length > 0 && s.lastTurnReason !== 'cancelled' ? (
+                  <Check className="session-done" size={12} />
+                ) : (
+                  <span
+                    className={`dot ${s.lastTurnReason === 'cancelled' ? 'cancelled' : s.status}`}
+                  />
+                )}
+                <span className="session-main">
+                  <span className="session-top">
+                    <span className="session-title">{s.title}</span>
+                    <span className="session-time">{timeAgo(s.updatedAt)}</span>
                   </span>
-                </Link>
-              ))}
-            </section>
-          )
-        })}
+                  <span className="session-meta">
+                    {sessionNote(s) && (
+                      <span className={`session-note ${s.status}`} title={sessionNote(s)}>
+                        {sessionNote(s)}
+                      </span>
+                    )}
+                    <span className="session-where">
+                      {s.branch && (
+                        <>
+                          <GitBranch size={11} /> <code>{s.branch}</code> ·{' '}
+                        </>
+                      )}
+                      {agentLabel(s)}
+                    </span>
+                    {(s.added > 0 || s.removed > 0) && (
+                      <span className="stat">
+                        <span className="add">+{s.added}</span>{' '}
+                        <span className="del">−{s.removed}</span>
+                      </span>
+                    )}
+                  </span>
+                </span>
+              </Link>
+            ))}
+          </FolderGroup>
+        ))}
+        {emptyFolders.map(({ hostKey, project }) => (
+          <FolderGroup
+            key={`${hostKey}\n${project.path}`}
+            hostKey={hostKey}
+            path={project.path}
+            project={project}
+            hostName={hostLabel(hostKey)}
+          />
+        ))}
       </div>
 
       <div className="sidebar-foot">
@@ -423,72 +450,84 @@ ${s.projectPath}`
   )
 }
 
-/** Adds a folder on a host to its projects list, then offers a session in it. */
-function AddFolder({ expanded = false }: { expanded?: boolean }) {
+/**
+ * One folder in the sidebar: its name, git branch (or "no git") and host, then its sessions. A
+ * folder without sessions yet offers to start one; a folder just added is marked New, and one
+ * picked again while already here lights up briefly.
+ */
+function FolderGroup({
+  hostKey,
+  path,
+  project,
+  hostName,
+  children,
+}: {
+  hostKey: string
+  path: string
+  project?: Project
+  hostName?: string
+  children?: ReactNode
+}) {
   const navigate = useNavigate()
-  const entries = useHostStore((s) => s.entries)
-  const runtimes = useHostStore((s) => s.runtimes)
-  const [hostKey, setHostKey] = useState(LOCAL_HOST_KEY)
-  const [error, setError] = useState<string>()
+  const fresh = useFolderFlow((s) => isFresh(s.fresh, hostKey, path))
+  const highlight = useFolderFlow((s) => s.highlight)
+  const flashing = highlight?.hostKey === hostKey && samePath(highlight.path, path)
+  const ref = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (!flashing || !highlight) return
+    ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    const timer = setTimeout(() => {
+      if (useFolderFlow.getState().highlight?.id === highlight.id)
+        useFolderFlow.setState({ highlight: undefined })
+    }, 2400)
+    return () => clearTimeout(timer)
+  }, [flashing, highlight])
+  const name = project?.name ?? folderName(path)
+  const empty = !children
+  const startHere = () => void navigate({ to: '/', search: { project: path, host: hostKey } })
   return (
-    <Dropdown
-      placement="bottom"
-      align="end"
-      panelClassName="wide"
-      trigger={({ toggle }) => (
-        <button
-          className={expanded ? 'empty-action' : 'icon-btn'}
-          aria-label="Add folder"
-          onClick={toggle}
-        >
-          <FolderPlus size={expanded ? 14 : 18} />
-          {expanded && 'Add a folder'}
-        </button>
-      )}
+    <section
+      ref={ref}
+      className={`folder-group ${flashing ? 'flash' : fresh && empty ? 'fresh' : ''}`}
     >
-      {(close) => (
-        <>
-          <div className="menu-heading">
-            {entries.length > 1 ? 'Add a folder on' : 'Add a folder on this host'}
-          </div>
-          {entries.length > 1 && (
-            <Select
-              className="path-input"
-              value={hostKey}
-              onChange={(e) => setHostKey(e.target.value)}
-              aria-label="Host"
-            >
-              {entries.map((e) => (
-                <option
-                  key={e.key}
-                  value={e.key}
-                  disabled={runtimes[e.key]?.connection !== 'connected'}
-                >
-                  {runtimes[e.key]?.host?.name ?? e.name}
-                </option>
-              ))}
-            </Select>
-          )}
-          <input
-            className="path-input"
-            placeholder="Absolute path, e.g. C:\src\my-app"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key !== 'Enter') return
-              const value = e.currentTarget.value.trim()
-              if (!value) return
-              addProject(hostKey, value).then(
-                (project) => {
-                  close()
-                  void navigate({ to: '/', search: { project: project.path, host: hostKey } })
-                },
-                (err: unknown) => setError(err instanceof Error ? err.message : String(err)),
-              )
-            }}
-          />
-          {error && <div className="composer-error menu-error">{error}</div>}
-        </>
+      <div className="group-title" title={path}>
+        {project && !project.isRepo ? <Folder size={14} /> : <FolderGit2 size={14} />}
+        <span className="group-name">{name}</span>
+        {project &&
+          (project.isRepo ? (
+            project.branch && (
+              <span className="folder-chip">
+                <GitBranch size={10} />
+                {project.branch}
+              </span>
+            )
+          ) : (
+            <span className="folder-chip faint">no git</span>
+          ))}
+        {fresh && empty && <span className="badge-new">New</span>}
+        <span className="spacer" />
+        {hostName && (
+          <span className="folder-host">
+            {hostKey === LOCAL_HOST_KEY ? <Monitor size={11} /> : <Server size={11} />}
+            {hostName}
+          </span>
+        )}
+        <button
+          className="icon-btn small"
+          aria-label={`New session in ${name}`}
+          onClick={startHere}
+        >
+          <Plus size={15} />
+        </button>
+      </div>
+      {children ?? (
+        <div className="folder-empty">
+          No sessions yet <span>·</span>
+          <button onClick={startHere}>
+            <Plus size={12} /> Start a session here
+          </button>
+        </div>
       )}
-    </Dropdown>
+    </section>
   )
 }

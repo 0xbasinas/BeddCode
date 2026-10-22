@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 
 // Dev: the Vite server URL. Packaged: the built web app next to the desktop bundle.
 const webUrl = process.env.BEDDCODE_WEB_URL
@@ -39,6 +39,26 @@ function createWindow() {
   if (webUrl) void win.loadURL(webUrl)
   else void win.loadFile(path.join(__dirname, '../../web/dist/index.html'))
 }
+
+// The system's own folder picker, for adding a folder on this computer. Only the app's own page
+// may open it (not pages shown in the browser pane), and it only ever returns a path the user chose.
+ipcMain.handle('beddcode:pick-folder', async (event, options: unknown) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win || event.sender !== win.webContents) return null
+  const defaultPath =
+    typeof options === 'object' &&
+    options !== null &&
+    typeof (options as { defaultPath?: unknown }).defaultPath === 'string'
+      ? (options as { defaultPath: string }).defaultPath
+      : undefined
+  const result = await dialog.showOpenDialog(win, {
+    title: 'Choose a folder',
+    buttonLabel: 'Select',
+    defaultPath,
+    properties: ['openDirectory', 'createDirectory'],
+  })
+  return result.canceled ? null : (result.filePaths[0] ?? null)
+})
 
 app.whenReady().then(() => {
   createWindow()
