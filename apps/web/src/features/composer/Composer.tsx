@@ -16,7 +16,7 @@ import {
   EMPTY_ATTACHMENTS,
   useAttachments,
 } from './attachments.ts'
-import { insertCommand, matchCommands } from './slash.ts'
+import { insertCommand, matchCommands } from '@beddcode/client-runtime'
 import { ModeMenu, type ModeItem } from './Menus.tsx'
 
 interface ComposerProps {

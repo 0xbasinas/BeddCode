@@ -8,12 +8,20 @@ import {
   GitBranch,
   Robot,
 } from 'phosphor-react-native'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import type { SlashCommand } from '@beddcode/contracts'
 import { Pressable, StyleSheet, View } from 'react-native'
 
 import { Composer } from '@/features/composer/Composer'
 import { ModelPicker } from '@/features/composer/ModelPicker'
-import { createSession, prompt, readyProviders, useHostStore, useRuntime } from '@/host/store'
+import {
+  createSession,
+  hostRequest,
+  prompt,
+  readyProviders,
+  useHostStore,
+  useRuntime,
+} from '@/host/store'
 import { colors, radius } from '@/theme/tokens'
 import { Button } from '@/ui/Button'
 import { Header } from '@/ui/Header'
@@ -175,6 +183,25 @@ export default function NewSessionScreen() {
     modelId,
   ])
 
+  // The agent's slash commands for this folder, so `/` works before the session exists.
+  const [commands, setCommands] = useState<SlashCommand[]>([])
+  const connected = runtime.connection === 'connected'
+  useEffect(() => {
+    setCommands([])
+    if (!host || !agent?.capabilities.commands || !connected) return
+    let cancelled = false
+    hostRequest(host, 'commands.list', {
+      instanceId: agent.id,
+      cwd: chosenFolder || undefined,
+    }).then(
+      (list) => !cancelled && setCommands(list),
+      () => {},
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [host, agent?.id, agent?.capabilities.commands, chosenFolder, connected])
+
   const send = async (value: string, _attachments: string[]) => {
     if (!host) throw new Error('Add a host first')
     if (!agent) throw new Error('No agent is ready on this host')
@@ -253,6 +280,7 @@ export default function NewSessionScreen() {
             <Composer
               placeholder="Describe a task, or paste an issue link…"
               onSend={send}
+              commands={commands}
               mode={
                 mode
                   ? {

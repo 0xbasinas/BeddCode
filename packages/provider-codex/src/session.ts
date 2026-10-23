@@ -11,6 +11,14 @@ import {
 } from '@beddcode/shared'
 import { CodexEventMapper, commandTitle, fileChangeTitle, type FileChange } from './mapper.ts'
 import { skillsToCommands } from './history.ts'
+import {
+  CODEX_BUILTINS,
+  codexPromptsDir,
+  expandPrompt,
+  parseSlash,
+  readCodexPrompt,
+  scanCodexPrompts,
+} from './commands.ts'
 import { modeById, sandboxPolicy, type CodexMode } from './modes.ts'
 
 type Draft<E = SessionEvent> = E extends unknown ? Omit<E, 'sessionId' | 'at' | 'turnId'> : never
@@ -20,6 +28,8 @@ export interface CodexSessionDeps {
   transport: Transport
   log: Logger
   clientVersion?: string
+  /** Where custom prompts are read from (defaults to Codex's own folder). */
+  promptsDir?: string
 }
 
 const ALLOW = 'allow'
@@ -131,22 +141,73 @@ export class CodexSession implements ProviderSession {
     }
   }
 
-  /** Codex lists its skills per folder; they appear in the composer as commands. */
+  /** Codex's own commands, the user's custom prompts and the folder's skills, for the composer. */
   private async announceSkills() {
+    let skills: Obj[] = []
     try {
       const res = await this.rpc.request<{ data: { skills: Obj[] }[] }>('skills/list', {
         cwds: [this.input.cwd],
       })
-      const skills = res.data.flatMap((entry) => entry.skills).filter((s) => s.enabled !== false)
+      skills = res.data.flatMap((entry) => entry.skills).filter((s) => s.enabled !== false)
       for (const s of skills) {
         if (typeof s.name === 'string' && typeof s.path === 'string')
           this.skills.set(s.name, s.path)
       }
-      if (this.closed) return
-      this.emit({ type: 'session.commands', commands: skillsToCommands(skills) })
     } catch (err) {
       this.deps.log.debug(`could not read Codex skills for ${this.sessionId}`, err)
     }
+    if (this.closed) return
+    this.emit({
+      type: 'session.commands',
+      commands: [
+        ...CODEX_BUILTINS,
+        ...scanCodexPrompts(this.promptsDir),
+        ...skillsToCommands(skills),
+      ],
+    })
+  }
+
+  private get promptsDir(): string {
+    return this.deps.promptsDir ?? codexPromptsDir()
+  }
+
+  /** `/prompts:<name> args` becomes the prompt's text with the arguments filled in. */
+  private expand(text: string): string {
+    const slash = parseSlash(text)
+    const template = slash && readCodexPrompt(slash.name, this.promptsDir)
+    return template ? expandPrompt(template, slash.args) : text
+  }
+
+  /**
+   * Starts the turn for a message: Codex's `/compact` and `/review` have their own requests;
+   * everything else (custom prompts expanded) is a normal turn.
+   */
+  private async startCodexTurn(text: string): Promise<void> {
+    const slash = parseSlash(text)
+    if (slash?.name === 'compact' && !this.skills.has('compact')) {
+      await this.rpc.request('thread/compact/start', { threadId: this.threadId })
+      return
+    }
+    if (slash?.name === 'review' && !this.skills.has('review')) {
+      const res = await this.rpc.request<{ turn: { id: string } }>('review/start', {
+        threadId: this.threadId,
+        target: slash.args
+          ? { type: 'custom', instructions: slash.args }
+          : { type: 'uncommittedChanges' },
+        delivery: 'inline',
+      })
+      this.codexTurnId = res.turn.id
+      return
+    }
+    const res = await this.rpc.request<{ turn: { id: string } }>('turn/start', {
+      threadId: this.threadId,
+      input: this.inputFor(this.expand(text)),
+      // Sent with every turn, so a model chosen mid-session sticks for the rest of the thread.
+      ...(this.model ? { model: this.model } : {}),
+      ...(this.effort ? { effort: this.effort } : {}),
+      ...this.takeModeOverride(),
+    })
+    this.codexTurnId = res.turn.id
   }
 
   /** A leading `/skill` or `$skill` names a skill, which Codex takes as its own input item. */
@@ -176,15 +237,7 @@ export class CodexSession implements ProviderSession {
     this.turnWaiters.push(done)
 
     try {
-      const res = await this.rpc.request<{ turn: { id: string } }>('turn/start', {
-        threadId: this.threadId,
-        input: this.inputFor(input.text),
-        // Sent with every turn, so a model chosen mid-session sticks for the rest of the thread.
-        ...(this.model ? { model: this.model } : {}),
-        ...(this.effort ? { effort: this.effort } : {}),
-        ...this.takeModeOverride(),
-      })
-      this.codexTurnId = res.turn.id
+      await this.startCodexTurn(input.text)
     } catch (err) {
       // Report the failure as a finished turn so the UI never waits on one that cannot complete.
       this.turnWaiters.splice(this.turnWaiters.indexOf(done), 1)
@@ -209,7 +262,7 @@ export class CodexSession implements ProviderSession {
     try {
       await this.rpc.request('turn/steer', {
         threadId: this.threadId,
-        input: this.inputFor(input.text),
+        input: this.inputFor(this.expand(input.text)),
         expectedTurnId: this.codexTurnId,
       })
     } catch (err) {

@@ -187,6 +187,7 @@ export function ThreadPane({
               )
             }}
             attachments={draft}
+            commands={session.commands}
             onRemoveAttachment={(key) => useAttachments.getState().remove(session.id, [key])}
             onAttach={() => setAttachMenu(true)}
             mode={

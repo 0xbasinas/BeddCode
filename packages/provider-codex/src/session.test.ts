@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { SessionEvent } from '@beddcode/contracts'
 import { createLogger, type Transport } from '@beddcode/shared'
@@ -75,7 +78,7 @@ const start = (
 ) =>
   new CodexSession(
     { sessionId: 's1', cwd: '/work', ...input },
-    { transport: server.transport, log },
+    { transport: server.transport, log, promptsDir: '/nonexistent-prompts' },
   )
 
 async function nextEvent(session: CodexSession, pred: (e: SessionEvent) => boolean) {
@@ -495,8 +498,13 @@ describe('steering, questions, plans and skills', () => {
     })
     const session = start(server)
     const listed = await nextEvent(session, (e) => e.type === 'session.commands')
+    expect(listed.type === 'session.commands' && listed.commands.map((c) => c.name)).toEqual([
+      'compact',
+      'review',
+      'pdf',
+    ])
     expect(listed).toMatchObject({
-      commands: [{ name: 'pdf', description: 'Work with PDFs', kind: 'skill' }],
+      commands: [{}, {}, { name: 'pdf', description: 'Work with PDFs', kind: 'skill' }],
     })
 
     const turn = session.prompt({ text: '/pdf merge these files' })
@@ -545,3 +553,64 @@ describe('switching models', () => {
     await session.close()
   })
 })
+
+describe('Codex commands', () => {
+  it('sends /compact and /review through their own requests', async () => {
+    const server = fakeServer()
+    server.auto['thread/compact/start'] = () => ({})
+    server.auto['review/start'] = () => ({ turn: { id: 'rv1' }, reviewThreadId: 'th1' })
+    const session = start(server)
+    await nextEvent(session, (e) => e.type === 'session.commands')
+
+    const compact = session.prompt({ text: '/compact' })
+    await server.waitFor((m) => m.method === 'thread/compact/start')
+    expect(server.sent('thread/compact/start')[0]?.params).toEqual({ threadId: 'th1' })
+    completeTurn(server)
+    await compact
+
+    const review = session.prompt({ text: '/review focus on error handling' })
+    await server.waitFor((m) => m.method === 'review/start')
+    expect(server.sent('review/start')[0]?.params).toEqual({
+      threadId: 'th1',
+      target: { type: 'custom', instructions: 'focus on error handling' },
+      delivery: 'inline',
+    })
+    completeTurn(server)
+    await review
+
+    const plain = session.prompt({ text: '/review' })
+    await new Promise((r) => setTimeout(r, 5))
+    expect(server.sent('review/start')[1]?.params?.target).toEqual({ type: 'uncommittedChanges' })
+    completeTurn(server)
+    await plain
+    expect(server.sent('turn/start')).toHaveLength(0)
+    await session.close()
+  })
+
+  it('expands a custom prompt with its arguments', async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'codex-prompts-'))
+    writeFileSync(
+      path.join(dir, 'fix.md'),
+      '---\ndescription: Fix an issue\nargument-hint: <issue> [PRIORITY=x]\n---\nFix issue $1 with priority $PRIORITY. All: $ARGUMENTS',
+    )
+    const server = fakeServer()
+    const session = new CodexSession(
+      { sessionId: 's1', cwd: '/work' },
+      { transport: server.transport, log, promptsDir: dir },
+    )
+    const listed = await nextEvent(session, (e) => e.type === 'session.commands')
+    expect(listed).toMatchObject({
+      commands: [{}, {}, { name: 'prompts:fix', description: 'Fix an issue', hint: '<issue> [PRIORITY=x]' }],
+    })
+    const turn = session.prompt({ text: '/prompts:fix 42 PRIORITY=high' })
+    await server.waitFor((m) => m.method === 'turn/start')
+    expect(server.sent('turn/start')[0]?.params?.input).toEqual([
+      { type: 'text', text: 'Fix issue 42 with priority high. All: 42', text_elements: [] },
+    ])
+    completeTurn(server)
+    await turn
+    await session.close()
+    rmSync(dir, { recursive: true, force: true })
+  })
+})
+

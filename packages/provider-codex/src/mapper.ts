@@ -261,6 +261,12 @@ export class CodexEventMapper {
     if (!item) return
     this.items.delete(item.id)
     switch (item.type) {
+      case 'exitedReviewMode': {
+        // The review's findings arrive as the item that ends review mode.
+        const text = str(item.review)
+        if (text) out.push({ type: 'message.delta', role: 'assistant', text })
+        break
+      }
       case 'agentMessage': {
         const text = str(item.text)
         if (text && !this.streamed.has(item.id))
