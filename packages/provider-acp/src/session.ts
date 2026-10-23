@@ -288,6 +288,22 @@ export class AcpSession implements ProviderSession {
         const model = shown.find((o) => o.category === 'model')
         if (model) await this.sendConfig(model.id, this.input.model)
       }
+      if (this.input.textOnly) {
+        const reasoning = shown.find(
+          (o) =>
+            o.type === 'select' &&
+            (o.category === 'thought_level' ||
+              /^(reasoning[_-]effort|thinking[_-]level|thought[_-]level)$/i.test(o.id)),
+        )
+        const fast = ['none', 'off', 'minimal', 'low'].find((level) =>
+          reasoning?.choices?.some((c) => c.value === level),
+        )
+        if (reasoning && fast && reasoning.value !== fast) {
+          await this.sendConfig(reasoning.id, fast).catch((err) =>
+            this.deps.log.debug('Agent kept its default reasoning setting', err),
+          )
+        }
+      }
       if (shown.length > 0) this.emit({ type: 'session.config', options: shown })
       // Settings chosen before the session started (model, thinking level, ...).
       for (const [id, value] of Object.entries(this.input.config ?? {})) {

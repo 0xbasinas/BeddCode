@@ -72,10 +72,10 @@ function recordingAdapter() {
       return session
     },
   }
-  return { adapter, starts, prompts, modeCalls }
+  return { adapter, instance, starts, prompts, modeCalls }
 }
 
-function setup() {
+function setup(detectTtlMs?: number) {
   const store = new EventStore(':memory:')
   const attachments = new AttachmentStore(path.join(tmp(), 'att'))
   const rec = recordingAdapter()
@@ -87,6 +87,7 @@ function setup() {
       adapters: [rec.adapter],
       log: createLogger('test', 'error'),
       defaultCwd: tmp(),
+      detectTtlMs,
     })
   return { store, attachments, manager: make(), make, ...rec }
 }
@@ -95,6 +96,37 @@ const events = (store: EventStore, sessionId: string) =>
   store.readSession(sessionId).map((e) => e.event)
 
 describe('SessionManager: composer features', () => {
+  it('reuses known agents and requests a supported lower effort without changing the model', async () => {
+    const { manager, adapter, instance, store } = setup(0)
+    instance.capabilities = {
+      ...caps,
+      models: [{ id: 'selected', label: 'Selected', efforts: ['low', 'high'] }],
+    }
+    const detect = vi.spyOn(adapter, 'detect')
+    const generate = vi.fn(async () => '{"message":"fix: faster draft"}')
+    adapter.generateText = generate
+    const context = vi
+      .spyOn(GitService.prototype, 'generationContext')
+      .mockResolvedValue({ text: 'diff', truncated: false })
+    try {
+      const { sessionId } = await manager.create({ instanceId: 'rec', model: 'selected' })
+      const before = detect.mock.calls.length
+      await manager.generateGitText({
+        sessionId,
+        instanceId: 'rec',
+        kind: 'commit',
+        paths: ['a.txt'],
+      })
+      expect(detect).toHaveBeenCalledTimes(before)
+      expect(generate).toHaveBeenCalledWith(
+        expect.objectContaining({ model: 'selected', effort: 'low' }),
+      )
+    } finally {
+      context.mockRestore()
+      await manager.close()
+      store.close()
+    }
+  })
   it('generates Git text for a selected folder without starting a conversation', async () => {
     const { manager, adapter, store, starts } = setup()
     const folder = tmp()

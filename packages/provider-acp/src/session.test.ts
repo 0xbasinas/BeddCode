@@ -574,6 +574,41 @@ describe('createAcpAdapter', () => {
 })
 
 describe('AcpSession: text generation', () => {
+  it.each([true, false])(
+    'uses low reasoning only for internal generation: %s',
+    async (textOnly) => {
+      const agent = fakeAgent()
+      agent.auto['session/new'] = () => ({
+        sessionId: 'acp-1',
+        modes: MODES,
+        configOptions: [
+          {
+            id: 'reasoning_effort',
+            name: 'Reasoning',
+            category: 'thought_level',
+            type: 'select',
+            currentValue: 'high',
+            options: [
+              { value: 'low', name: 'Low' },
+              { value: 'high', name: 'High' },
+            ],
+          },
+        ],
+      })
+      agent.auto['session/set_config_option'] = () => ({})
+      const session = start(agent, { textOnly })
+      const { turn, promptId } = await beginPrompt(session, agent)
+      if (textOnly)
+        expect(agent.sent('session/set_config_option')[0]?.params).toMatchObject({
+          configId: 'reasoning_effort',
+          value: 'low',
+        })
+      else expect(agent.sent('session/set_config_option')).toHaveLength(0)
+      agent.reply(promptId, { stopReason: 'end_turn' })
+      await turn
+      await session.close()
+    },
+  )
   it('declines permissions, files, terminals and questions without performing their actions', async () => {
     const agent = fakeAgent()
     const dir = tmp()

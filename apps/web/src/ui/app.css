@@ -240,6 +240,31 @@ kbd {
   padding: calc(4px * var(--ui-scale)) calc(10px * var(--ui-scale));
   font-weight: 500;
 }
+.folder-toggle {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) 0;
+  border-radius: var(--radius-control);
+  text-align: left;
+}
+.folder-toggle > svg {
+  flex: none;
+  color: var(--text-muted);
+}
+.folder-toggle:hover .group-name,
+.folder-toggle:hover .folder-chevron {
+  color: var(--text);
+}
+.folder-chevron.open {
+  transform: rotate(90deg);
+}
+.folder-session-count {
+  flex: none;
+  font-size: calc(11px * var(--ui-scale));
+  font-variant-numeric: tabular-nums;
+}
 .group-title span {
   color: var(--text-faint);
   font-weight: 400;

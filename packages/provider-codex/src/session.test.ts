@@ -89,7 +89,7 @@ const completeTurn = (s: ReturnType<typeof fakeServer>, status = 'completed') =>
 describe('CodexSession', () => {
   it('isolates metadata generation in an ephemeral read-only thread', async () => {
     const server = fakeServer()
-    const session = start(server, { textOnly: true })
+    const session = start(server, { textOnly: true, effort: 'low' })
     await nextEvent(session, (e) => e.type === 'session.provider-session')
     expect(server.sent('thread/start')[0]?.params).toMatchObject({
       ephemeral: true,
@@ -98,6 +98,11 @@ describe('CodexSession', () => {
       config: { 'features.shell_tool': false, mcp_servers: {} },
     })
     expect(server.sent('skills/list')).toHaveLength(0)
+    const turn = session.prompt({ text: 'Draft JSON' })
+    await server.waitFor((m) => m.method === 'turn/start')
+    expect(server.sent('turn/start')[0]?.params).toMatchObject({ effort: 'low' })
+    completeTurn(server)
+    await turn
     await session.close()
   })
   it("starts a thread with the mode's approval policy and sandbox and records the thread id", async () => {

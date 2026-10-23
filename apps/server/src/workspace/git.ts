@@ -146,9 +146,11 @@ export class GitService {
 
   /** Root of the repository, or an error when `cwd` is not inside one. */
   private async root(cwd: string): Promise<string> {
-    const info = await this.info(cwd)
-    if (!info.isRepo || !info.root) throw new GitError('This folder is not a git repository')
-    return info.root
+    if (!isDirectory(cwd)) throw new GitError(`Folder does not exist: ${cwd}`)
+    const root = await this.gitRaw(cwd, ['rev-parse', '--show-toplevel'])
+    if (root.code !== 0 || !root.stdout.trim())
+      throw new GitError('This folder is not a git repository')
+    return path.resolve(root.stdout.trim())
   }
 
   private async baseline(cwd: string): Promise<string> {
@@ -158,16 +160,12 @@ export class GitService {
 
   async status(cwd: string): Promise<GitStatus> {
     const root = await this.root(cwd)
-    const info = await this.info(cwd)
-    const porcelain = await this.git(root, [
-      'status',
-      '--porcelain=v1',
-      '-z',
-      '--untracked-files=all',
+    const [info, porcelain, stats] = await Promise.all([
+      this.info(root),
+      this.git(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all']),
+      this.baseline(root).then((base) => this.git(root, ['diff', base, '--numstat', '-z'])),
     ])
-    const numstat = parseNumstat(
-      await this.git(root, ['diff', await this.baseline(root), '--numstat', '-z']),
-    )
+    const numstat = parseNumstat(stats)
 
     const files: GitFile[] = []
     const entries = porcelain.split('\0')
@@ -203,10 +201,20 @@ export class GitService {
   async diff(cwd: string, file: string): Promise<GitDiff> {
     const root = await this.root(cwd)
     assertRelative(file)
+    return this.diffAtRoot(root, file)
+  }
+
+  private async diffAtRoot(
+    root: string,
+    file: string,
+    known?: { baseline: string; tracked: boolean },
+  ): Promise<GitDiff> {
     const abs = path.join(root, file)
 
-    const tracked = await this.gitRaw(root, ['ls-files', '--error-unmatch', '--', file])
-    if (tracked.code !== 0 && existsSync(abs)) {
+    const tracked =
+      known?.tracked ??
+      (await this.gitRaw(root, ['ls-files', '--error-unmatch', '--', file])).code === 0
+    if (!tracked && existsSync(abs)) {
       // Untracked: the whole file is new.
       const text = readText(abs)
       if (text === null) return { path: file, patch: '', added: 0, removed: 0, truncated: true }
@@ -216,7 +224,7 @@ export class GitService {
 
     const out = await this.git(root, [
       'diff',
-      await this.baseline(root),
+      known?.baseline ?? (await this.baseline(root)),
       '--no-color',
       '--no-ext-diff',
       '--no-textconv',
@@ -292,14 +300,30 @@ export class GitService {
         throw new GitError('A selected file is no longer changed')
       let text = `Selected files:\n${selected.join('\n')}\n\n`
       let truncated = false
-      for (const file of selected) {
-        if (text.length >= limit) {
-          truncated = true
-          break
+      const [baseline, trackedOutput] = await Promise.all([
+        this.baseline(root),
+        this.git(root, ['ls-files', '-z', '--', ...selected]),
+      ])
+      const tracked = new Set(trackedOutput.split('\0').map(toPosix))
+      // Resolve repository metadata once, then limit concurrent diff processes and preserve order.
+      batches: for (let offset = 0; offset < selected.length; offset += 4) {
+        const batch = selected.slice(offset, offset + 4)
+        const diffs = await Promise.all(
+          batch.map((file) =>
+            this.diffAtRoot(root, file, {
+              baseline,
+              tracked: tracked.has(file),
+            }),
+          ),
+        )
+        for (const diff of diffs) {
+          if (text.length >= limit) {
+            truncated = true
+            break batches
+          }
+          text += `\nFile: ${JSON.stringify(diff.path)}\n${diff.patch || '[Binary file or no textual diff]'}\n`
+          truncated ||= diff.truncated
         }
-        const diff = await this.diff(root, file)
-        text += `\nFile: ${JSON.stringify(file)}\n${diff.patch || '[Binary file or no textual diff]'}\n`
-        truncated ||= diff.truncated
       }
       return { text: text.slice(0, limit), truncated: truncated || text.length > limit }
     }

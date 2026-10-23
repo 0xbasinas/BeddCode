@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   ArrowDownWideNarrow,
@@ -80,12 +80,13 @@ export function sessionNote(s: SessionView): string {
 }
 
 const OPEN_DONE_KEY = 'beddcode.done-open'
+const COLLAPSED_PROJECTS_KEY = 'beddcode.collapsed-projects'
 
-/** The folders whose Done section the user opened, remembered between runs. */
-function useOpenDoneSections(): [Set<string>, (key: string) => void] {
+/** Section choices remembered per host and folder between runs. */
+function useRememberedSections(storageKey: string): [Set<string>, (key: string) => void] {
   const [open, setOpen] = useState<Set<string>>(() => {
     try {
-      const saved: unknown = JSON.parse(localStorage.getItem(OPEN_DONE_KEY) ?? '[]')
+      const saved: unknown = JSON.parse(localStorage.getItem(storageKey) ?? '[]')
       return new Set(
         Array.isArray(saved) ? saved.filter((k): k is string => typeof k === 'string') : [],
       )
@@ -93,18 +94,21 @@ function useOpenDoneSections(): [Set<string>, (key: string) => void] {
       return new Set()
     }
   })
-  const toggle = useCallback((key: string) => {
-    setOpen((current) => {
-      const next = new Set(current)
-      if (!next.delete(key)) next.add(key)
-      try {
-        localStorage.setItem(OPEN_DONE_KEY, JSON.stringify([...next]))
-      } catch {
-        // Still works for this window.
-      }
-      return next
-    })
-  }, [])
+  const toggle = useCallback(
+    (key: string) => {
+      setOpen((current) => {
+        const next = new Set(current)
+        if (!next.delete(key)) next.add(key)
+        try {
+          localStorage.setItem(storageKey, JSON.stringify([...next]))
+        } catch {
+          // Still works for this window.
+        }
+        return next
+      })
+    },
+    [storageKey],
+  )
   return [open, toggle]
 }
 
@@ -123,7 +127,8 @@ export function Sidebar() {
   /** The right-click menu: where it opened, and for which session. */
   const [menu, setMenu] = useState<{ x: number; y: number; session: SessionView } | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
-  const [openDone, toggleDone] = useOpenDoneSections()
+  const [openDone, toggleDone] = useRememberedSections(OPEN_DONE_KEY)
+  const [collapsedProjects, toggleProject] = useRememberedSections(COLLAPSED_PROJECTS_KEY)
   const openId = useRouterState({
     select: (r) => /^\/session\/([^/]+)/.exec(r.location.pathname)?.[1],
   })
@@ -509,6 +514,9 @@ ${s.projectPath}`
             path={projectPath}
             project={projectsOf(hostKey).find((p) => samePath(p.path, projectPath))}
             hostName={hostLabel(hostKey)}
+            collapsed={collapsedProjects.has(key)}
+            onToggle={() => toggleProject(key)}
+            sessionCount={list.length}
           >
             {renderGroup(list, key)}
           </FolderGroup>
@@ -520,6 +528,8 @@ ${s.projectPath}`
             path={project.path}
             project={project}
             hostName={hostLabel(hostKey)}
+            collapsed={collapsedProjects.has(`${hostKey}\n${project.path}`)}
+            onToggle={() => toggleProject(`${hostKey}\n${project.path}`)}
           />
         ))}
       </div>
@@ -557,7 +567,7 @@ ${s.projectPath}`
 }
 
 /**
- * One folder in the sidebar: its name, git branch (or "no git") and host, then its sessions. A
+ * One folder in the sidebar: its collapsible name and host, then its sessions. A
  * folder without sessions yet offers to start one; a folder just added is marked New, and one
  * picked again while already here lights up briefly.
  */
@@ -566,15 +576,22 @@ function FolderGroup({
   path,
   project,
   hostName,
+  collapsed,
+  onToggle,
+  sessionCount,
   children,
 }: {
   hostKey: string
   path: string
   project?: Project
   hostName?: string
+  collapsed: boolean
+  onToggle(): void
+  sessionCount?: number
   children?: ReactNode
 }) {
   const navigate = useNavigate()
+  const contentId = useId()
   const fresh = useFolderFlow((s) => isFresh(s.fresh, hostKey, path))
   const highlight = useFolderFlow((s) => s.highlight)
   const flashing = highlight?.hostKey === hostKey && samePath(highlight.path, path)
@@ -597,19 +614,21 @@ function FolderGroup({
       className={`folder-group ${flashing ? 'flash' : fresh && empty ? 'fresh' : ''}`}
     >
       <div className="group-title" title={path}>
-        {project && !project.isRepo ? <Folder size={14} /> : <FolderGit2 size={14} />}
-        <span className="group-name">{name}</span>
-        {project &&
-          (project.isRepo ? (
-            project.branch && (
-              <span className="folder-chip" title={project.branch}>
-                <GitBranch size={10} />
-                <span className="chip-text">{project.branch}</span>
-              </span>
-            )
-          ) : (
-            <span className="folder-chip faint">no git</span>
-          ))}
+        <button
+          className="folder-toggle"
+          aria-label={`${collapsed ? 'Expand' : 'Collapse'} project ${name}`}
+          aria-expanded={!collapsed}
+          aria-controls={contentId}
+          onClick={onToggle}
+        >
+          <ChevronRight size={12} className={`folder-chevron ${collapsed ? '' : 'open'}`} />
+          {project && !project.isRepo ? <Folder size={14} /> : <FolderGit2 size={14} />}
+          <span className="group-name">{name}</span>
+          {collapsed && Boolean(sessionCount) && (
+            <span className="folder-session-count">{sessionCount}</span>
+          )}
+        </button>
+        {project && !project.isRepo && <span className="folder-chip faint">no git</span>}
         <span className="spacer" />
         {hostName && (
           <span className="folder-host" title={hostName}>
@@ -625,11 +644,13 @@ function FolderGroup({
           <Plus size={15} />
         </button>
       </div>
-      {children ?? (
-        <button className="folder-empty" onClick={startHere}>
-          <Plus size={13} /> New session
-        </button>
-      )}
+      <div id={contentId} hidden={collapsed}>
+        {children ?? (
+          <button className="folder-empty" onClick={startHere}>
+            <Plus size={13} /> New session
+          </button>
+        )}
+      </div>
     </section>
   )
 }

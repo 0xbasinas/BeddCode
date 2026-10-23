@@ -12,6 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { GitService, parseLog, parseNumstat } from './git.ts'
+import { runCommand } from '@beddcode/shared'
 
 const dirs: string[] = []
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })))
@@ -226,6 +227,35 @@ describe('GitService.commit, push and log', () => {
     expect(pr.text).toContain('feat: visible')
     expect(pr.text).not.toContain('unselected content')
     await expect(git.generationContext(dir, 'pr', [], '--help')).rejects.toThrow('valid base')
+  })
+
+  it('prepares ordered multi-file context without rediscovering the repository per file', async () => {
+    const dir = repo()
+    const files = Array.from({ length: 16 }, (_, i) => `selected-${i}.txt`)
+    for (const file of files) writeFileSync(path.join(dir, file), 'initial\n')
+    sh(dir, 'add', '-A')
+    sh(dir, 'commit', '-qm', 'selected fixtures')
+    for (const file of files) writeFileSync(path.join(dir, file), `updated ${file}\n`)
+    writeFileSync(path.join(dir, 'new.txt'), 'new untracked content\n')
+    writeFileSync(path.join(dir, 'b.txt'), 'excluded content\n')
+    let calls = 0
+    const service = new GitService((file, args, options) => {
+      calls++
+      return runCommand(file, args, options)
+    })
+    const selected = [...files, 'new.txt']
+    const result = await service.generationContext(dir, 'commit', selected)
+    expect(result.truncated).toBe(false)
+    expect(result.text).not.toContain('excluded content')
+    let previous = -1
+    for (const file of selected) {
+      const position = result.text.indexOf(`File: ${JSON.stringify(file)}`)
+      expect(position).toBeGreaterThan(previous)
+      previous = position
+    }
+    expect(result.text).toContain('new untracked content')
+    // A broad process budget catches repeated metadata discovery without timing-dependent tests.
+    expect(calls).toBeLessThan(50)
   })
 
   it("reports git's own error when there is nothing to commit", async () => {

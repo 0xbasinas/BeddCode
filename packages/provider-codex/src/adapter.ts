@@ -117,6 +117,7 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): ProviderA
             sessionId: randomUUID(),
             cwd: input.cwd,
             model: input.model,
+            effort: input.effort,
             permissionMode: 'read-only',
             textOnly: true,
           },

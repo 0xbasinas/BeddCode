@@ -134,6 +134,7 @@ describe('ClaudeSession', () => {
       settingSources: [],
       persistSession: false,
       maxTurns: 1,
+      thinking: { type: 'disabled' },
     })
     await session.close()
   })

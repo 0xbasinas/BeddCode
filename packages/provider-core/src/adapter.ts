@@ -89,6 +89,7 @@ export interface ProviderAdapter {
     cwd: string
     prompt: string
     model?: string
+    effort?: string
   }): Promise<string>
 
   /** Conversations the agent's CLI has stored for a folder, newest first. */

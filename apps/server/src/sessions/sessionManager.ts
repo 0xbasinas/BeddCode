@@ -100,9 +100,11 @@ export class SessionManager {
     if (params.sessionId && !created) throw new Error('Session not found')
     const folder = created?.cwd ?? params.cwd
     if (!folder) throw new Error('Choose a working folder')
-    const found = (await this.detect()).find(
-      (d) => d.instance.id === params.instanceId && d.instance.status === 'ready',
-    )
+    // The selected instance was already detected for the picker. Starting it verifies current
+    // credentials; do not rediscover every other provider just to generate a short draft.
+    const available = (d: { instance: ProviderInstance }) =>
+      d.instance.id === params.instanceId && d.instance.status === 'ready'
+    const found = this.detected?.instances.find(available) ?? (await this.detect()).find(available)
     if (!found?.adapter.generateText)
       throw new Error('Choose an available agent that supports text generation')
     const context = await this.deps.git.generationContext(
@@ -114,14 +116,21 @@ export class SessionManager {
     // Supplying the diff avoids loading project instructions, hooks or MCP configuration.
     const cwd = await mkdtemp(path.join(os.tmpdir(), 'beddcode-git-text-'))
     try {
+      const model =
+        created && params.sessionId && found.instance.id === created.instanceId
+          ? this.deps.store.sessionMeta([params.sessionId]).get(params.sessionId)?.model
+          : undefined
+      const efforts =
+        found.instance.capabilities.models?.find((m) => m.id === model)?.efforts ??
+        found.instance.capabilities.efforts ??
+        []
+      const effort = ['minimal', 'low'].find((e) => efforts.includes(e))
       const text = await found.adapter.generateText({
         instanceId: found.instance.id,
         cwd,
         prompt: gitTextPrompt(params.kind, context),
-        model:
-          created && params.sessionId && found.instance.id === created.instanceId
-            ? this.deps.store.sessionMeta([params.sessionId]).get(params.sessionId)?.model
-            : undefined,
+        model,
+        effort,
       })
       const current = await this.deps.git.generationContext(
         folder,

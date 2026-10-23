@@ -136,6 +136,7 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
             sessionId: randomUUID(),
             cwd: input.cwd,
             model: input.model,
+            effort: input.effort,
             textOnly: true,
           },
           { queryFn, log, executablePath: executable() ?? undefined, env },
