@@ -245,7 +245,7 @@ describe('server', () => {
     const { server } = await boot()
     const c = await Client.connect(server.port)
 
-    const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'beddcode-api-')))
+    const dir = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'beddcode-api-')))
     cleanup.push(() => rmSync(dir, { recursive: true, force: true }))
     const sh = (...args: string[]) => execFileSync('git', args, { cwd: dir, windowsHide: true })
     sh('init', '-q', '-b', 'main')
@@ -320,7 +320,7 @@ describe('server', () => {
   it('runs a terminal over the connection: attach, input, output, reattach with history, close', async () => {
     const { server } = await boot()
     const c = await Client.connect(server.port)
-    const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'beddcode-term-api-')))
+    const dir = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'beddcode-term-api-')))
     cleanup.push(() => {
       // Windows keeps a just-killed shell's folder locked for a moment; a leftover temp dir is harmless.
       try {
@@ -363,7 +363,7 @@ describe('server', () => {
   it('serves files and pushes change notifications to watchers', async () => {
     const { server } = await boot()
     const c = await Client.connect(server.port)
-    const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'beddcode-files-api-')))
+    const dir = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'beddcode-files-api-')))
     cleanup.push(() =>
       rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 150 }),
     )

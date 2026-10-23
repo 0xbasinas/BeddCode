@@ -9,7 +9,7 @@ import { ProjectStore } from './projects.ts'
 const dirs: string[] = []
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })))
 const tmp = () => {
-  const d = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'beddcode-proj-')))
+  const d = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'beddcode-proj-')))
   dirs.push(d)
   return d
 }

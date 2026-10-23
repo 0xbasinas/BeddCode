@@ -39,8 +39,8 @@ export function grokProfile(read: () => string | undefined = readGrokConfig): Ag
 
 /** The profile for an agent started by this command, if there is one. */
 export function profileFor(command: string): AgentProfile | undefined {
-  const name = path
-    .basename(command)
+  // Either kind of separator: a Windows path means the same on any machine reading it.
+  const name = (command.split(/[\\/]/).pop() ?? command)
     .replace(/\.(exe|cmd|bat)$/i, '')
     .toLowerCase()
   return name === 'grok' ? grokProfile() : undefined

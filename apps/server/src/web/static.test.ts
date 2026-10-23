@@ -11,7 +11,7 @@ afterEach(async () => {
 })
 
 function site() {
-  const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'beddcode-web-')))
+  const root = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'beddcode-web-')))
   cleanup.push(() => rmSync(root, { recursive: true, force: true }))
   mkdirSync(path.join(root, 'assets'))
   writeFileSync(path.join(root, 'index.html'), '<html>app</html>')
@@ -104,7 +104,7 @@ describe('findWebRoot', () => {
   })
 
   it('ignores a folder that has no index page', () => {
-    const empty = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'beddcode-empty-')))
+    const empty = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'beddcode-empty-')))
     cleanup.push(() => rmSync(empty, { recursive: true, force: true }))
     expect(findWebRoot({ BEDDCODE_WEB_ROOT: empty })).not.toBe(empty)
   })

@@ -1,5 +1,13 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -9,7 +17,7 @@ const dirs: string[] = []
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })))
 
 const tmp = () => {
-  const d = mkdtempSync(path.join(os.tmpdir(), 'beddcode-git-'))
+  const d = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'beddcode-git-')))
   dirs.push(d)
   return d
 }

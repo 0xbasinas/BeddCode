@@ -23,7 +23,7 @@ afterEach(async () => {
 })
 const track = (m: TerminalManager) => (managers.push(m), m)
 const tmp = () => {
-  const d = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'beddcode-term-')))
+  const d = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'beddcode-term-')))
   dirs.push(d)
   return d
 }

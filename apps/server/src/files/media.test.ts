@@ -12,7 +12,7 @@ afterEach(async () => {
 })
 
 function tmp() {
-  const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'beddcode-media-')))
+  const dir = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'beddcode-media-')))
   cleanup.push(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }))
   return dir
 }

@@ -188,6 +188,8 @@ describe('installBinary', () => {
     } catch {
       return // this machine's tar cannot write zip; the extraction path is covered on Windows
     }
+    // GNU tar accepts `-a -cf d.zip` and writes a tar stream; only a real zip can test unzip.
+    if (archive.subarray(0, 2).toString() !== 'PK') return
     files.set('/d.zip', archive)
     if (process.platform !== 'win32') {
       try {

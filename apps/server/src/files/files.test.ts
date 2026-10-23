@@ -21,7 +21,7 @@ afterEach(() =>
     .forEach((d) => rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })),
 )
 const tmp = () => {
-  const d = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'beddcode-files-')))
+  const d = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'beddcode-files-')))
   dirs.push(d)
   return d
 }

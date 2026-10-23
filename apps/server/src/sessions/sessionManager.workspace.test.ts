@@ -14,7 +14,7 @@ import { SessionManager } from './sessionManager.ts'
 const dirs: string[] = []
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })))
 const tmp = () => {
-  const d = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'beddcode-ws-')))
+  const d = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'beddcode-ws-')))
   dirs.push(d)
   return d
 }

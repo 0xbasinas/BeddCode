@@ -17,7 +17,7 @@ import { browseFolders, crumbsOf, FolderBrowseError, readGitHead } from './folde
 const dirs: string[] = []
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })))
 const tmp = () => {
-  const d = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'beddcode-folders-')))
+  const d = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'beddcode-folders-')))
   dirs.push(d)
   return d
 }
