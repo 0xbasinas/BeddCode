@@ -2,7 +2,15 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { classifyPeer, defaultGuard, needsToken, originAllowed, peerAllowed } from './guard.ts'
+import {
+  classifyPeer,
+  classifyRequest,
+  defaultGuard,
+  forwardedAddress,
+  needsToken,
+  originAllowed,
+  peerAllowed,
+} from './guard.ts'
 import { PairingManager } from './pairing.ts'
 import { TokenStore } from './tokens.ts'
 
@@ -13,6 +21,62 @@ const tmp = () => {
   dirs.push(d)
   return d
 }
+
+describe('classifyRequest (reverse proxies)', () => {
+  it('keeps this machine trusted when no proxy is involved', () => {
+    expect(
+      classifyRequest('127.0.0.1', { host: '127.0.0.1:3773', origin: 'http://127.0.0.1:3773' }),
+    ).toBe('loopback')
+  })
+
+  it('classifies Tailscale Serve traffic by the relayed tailnet address, so it needs a token', () => {
+    const peer = classifyRequest('127.0.0.1', {
+      'x-forwarded-for': '100.101.1.2',
+      'x-forwarded-host': 'box.tail.ts.net:3773',
+      'tailscale-user-login': 'me@example.com',
+    })
+    expect(peer).toBe('tailnet')
+    expect(needsToken(peer, defaultGuard())).toBe(true)
+    expect(peerAllowed(peer, defaultGuard())).toBe(true)
+  })
+
+  it('treats a tailnet identity without an address as a tailnet peer', () => {
+    expect(classifyRequest('::1', { 'tailscale-user-login': 'me@example.com' })).toBe('tailnet')
+  })
+
+  it('refuses Funnel (internet) traffic and unknown relayed peers', () => {
+    expect(
+      classifyRequest('127.0.0.1', {
+        'tailscale-funnel-request': '?1',
+        'x-forwarded-for': '100.64.0.9',
+      }),
+    ).toBe('other')
+    expect(classifyRequest('127.0.0.1', { 'x-forwarded-for': '8.8.8.8' })).toBe('other')
+    expect(classifyRequest('127.0.0.1', { via: '1.1 proxy' })).toBe('other')
+    expect(peerAllowed('other', defaultGuard())).toBe(false)
+  })
+
+  it('never grants loopback trust through a proxy, even for a relayed local address', () => {
+    expect(classifyRequest('127.0.0.1', { 'x-forwarded-for': '127.0.0.1' })).toBe('other')
+    expect(classifyRequest('127.0.0.1', { 'x-real-ip': '::1' })).toBe('other')
+  })
+
+  it('trusts only the rightmost forwarded address (the one the local proxy added)', () => {
+    expect(forwardedAddress({ 'x-forwarded-for': '127.0.0.1, 100.70.0.5' })).toBe('100.70.0.5')
+    expect(classifyRequest('127.0.0.1', { 'x-forwarded-for': '127.0.0.1, 192.168.1.4' })).toBe(
+      'lan',
+    )
+    expect(forwardedAddress({ forwarded: 'for=127.0.0.1, for="[fd7a:115c:a1e0::5]:443"' })).toBe(
+      'fd7a:115c:a1e0::5',
+    )
+    expect(forwardedAddress({ 'x-real-ip': '100.70.0.5:1234' })).toBe('100.70.0.5')
+  })
+
+  it('ignores proxy headers from peers that are not this machine', () => {
+    expect(classifyRequest('100.80.0.1', { 'x-forwarded-for': '127.0.0.1' })).toBe('tailnet')
+    expect(classifyRequest('8.8.8.8', { 'x-forwarded-for': '100.80.0.1' })).toBe('other')
+  })
+})
 
 describe('classifyPeer', () => {
   it.each([

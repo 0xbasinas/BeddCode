@@ -82,6 +82,7 @@ export function createRpcRouter(
     'projects.add': (p) => projects.add(p.path),
     'projects.remove': async (p) => ({ removed: projects.remove(p.path) }),
     'projects.initGit': (p) => projects.initGit(p.path),
+    'projects.setScripts': (p) => projects.setScripts(p.path, p.scripts),
     'folders.browse': (p) => browseFolders(p.path, { showHidden: p.showHidden }),
     'git.info': (p) => git.info(p.cwd),
     'git.status': (p) => git.status(p.cwd),
@@ -132,7 +133,17 @@ export function createRpcRouter(
     },
     'files.search': async (p) => ({ paths: await files.search(p.cwd, p.query) }),
     'worktrees.remove': async (p) => ({ removed: await sessions.removeWorktree(p.sessionId) }),
-    'sessions.create': (p) => sessions.create(p),
+    'sessions.create': async (p) => {
+      const created = await sessions.create(p)
+      if (p.workspace?.mode === 'worktree' && p.cwd) {
+        // The project's setup commands (installing dependencies...) run in the new worktree.
+        const info = sessions.sessionInfo(created.sessionId)
+        for (const script of projects.scriptsFor(p.cwd).filter((s) => s.runOnWorktreeCreate)) {
+          if (info) terminals.create({ cwd: info.cwd, command: script.command, title: script.name })
+        }
+      }
+      return created
+    },
     'attachments.upload': async (p) => {
       const saved = attachments.save(p.name, Buffer.from(p.dataBase64, 'base64'))
       return { id: saved.id, name: saved.name, size: saved.size }
@@ -176,6 +187,12 @@ export function createRpcRouter(
       await sessions.interrupt(p.sessionId)
       return {}
     },
+    'sessions.setPinned': async (p) => {
+      sessions.setPinned(p.sessionId, p.pinned)
+      return {}
+    },
+    'sessions.turnDiff': (p) => sessions.turnDiff(p.sessionId, p.after, p.path),
+    'sessions.undoTurn': (p) => sessions.undoTurn(p.sessionId, p.after),
     'sessions.setDone': async (p) => {
       sessions.setDone(p.sessionId, p.done)
       return {}

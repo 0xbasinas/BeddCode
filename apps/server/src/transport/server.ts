@@ -10,7 +10,7 @@ import {
 } from '@beddcode/contracts'
 import type { Logger } from '@beddcode/shared'
 import {
-  classifyPeer,
+  classifyRequest,
   defaultGuard,
   needsToken,
   originAllowed,
@@ -125,7 +125,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
   )
 
   const http = createServer((req, res) => {
-    const peer = classifyPeer(req.socket.remoteAddress)
+    const peer = classifyRequest(req.socket.remoteAddress, req.headers)
     const origin = req.headers.origin
     const url = (req.url ?? '').split('?')[0]
 
@@ -194,14 +194,16 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     path: '/ws',
     // Refuse before the upgrade completes: wrong network, or a web page that is not ours.
     verifyClient: ({ req }, done) => {
-      const peer = classifyPeer(req.socket.remoteAddress)
+      const peer = classifyRequest(req.socket.remoteAddress, req.headers)
       if (!peerAllowed(peer, guard)) return done(false, 403, 'network')
       if (!originAllowed(req.headers.origin, guard, req.headers.host))
         return done(false, 403, 'origin')
       done(true)
     },
   })
-  wss.on('connection', (ws, req) => handleConnection(ws, classifyPeer(req.socket.remoteAddress)))
+  wss.on('connection', (ws, req) =>
+    handleConnection(ws, classifyRequest(req.socket.remoteAddress, req.headers)),
+  )
 
   function handleConnection(ws: WebSocket, peer: PeerClass) {
     // Trusted peers (this machine) are in at once; everyone else proves a token in `hello`.

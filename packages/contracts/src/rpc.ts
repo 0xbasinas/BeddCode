@@ -1,5 +1,14 @@
 import { z } from 'zod'
-import { GitBranch, GitDiff, GitInfo, GitLog, GitStatus, Project, PullRequest } from './git.ts'
+import {
+  GitBranch,
+  GitDiff,
+  GitInfo,
+  GitLog,
+  GitStatus,
+  Project,
+  ProjectScript,
+  PullRequest,
+} from './git.ts'
 import { Device, PairingCode, TailnetStatus } from './hosts.ts'
 import { ConfigOption, SlashCommand } from './events.ts'
 import { PermissionModeOption, ProviderInstance } from './providers.ts'
@@ -154,6 +163,11 @@ export const RpcMethods = {
     params: z.object({ path: z.string() }),
     result: z.object({ removed: z.boolean() }),
   },
+  /** Replaces the saved commands of an added folder. */
+  'projects.setScripts': {
+    params: z.object({ path: z.string().min(1), scripts: z.array(ProjectScript).max(20) }),
+    result: Project,
+  },
   /** Runs `git init` in a folder that was added but is not a repository yet. */
   'projects.initGit': {
     params: z.object({ path: z.string().min(1) }),
@@ -238,6 +252,9 @@ export const RpcMethods = {
       cwd: z.string(),
       cols: z.number().int().min(2).max(500).optional(),
       rows: z.number().int().min(2).max(200).optional(),
+      /** A command to type into the new shell (a project script), and the tab's name for it. */
+      command: z.string().trim().min(1).max(2000).optional(),
+      title: z.string().trim().min(1).max(40).optional(),
     }),
     result: TerminalInfo,
   },
@@ -442,6 +459,24 @@ export const RpcMethods = {
   'sessions.setDone': {
     params: z.object({ sessionId: z.string(), done: z.boolean() }),
     result: z.object({}),
+  },
+  /** Pins a session to the top of the sidebar, or unpins it. */
+  'sessions.setPinned': {
+    params: z.object({ sessionId: z.string(), pinned: z.boolean() }),
+    result: z.object({}),
+  },
+  /** One file's diff for a finished turn (see the `turn.changes` event), by that turn's `after`. */
+  'sessions.turnDiff': {
+    params: z.object({ sessionId: z.string(), after: z.string(), path: z.string() }),
+    result: GitDiff,
+  },
+  /**
+   * Puts the files the latest turn changed back the way they were before it. Only while the
+   * agent is idle and nothing changed in the folder since the turn ended.
+   */
+  'sessions.undoTurn': {
+    params: z.object({ sessionId: z.string(), after: z.string() }),
+    result: z.object({ restored: z.number().int() }),
   },
   'sessions.setMode': {
     params: z.object({ sessionId: z.string(), modeId: z.string() }),

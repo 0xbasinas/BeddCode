@@ -263,6 +263,46 @@ function EditsCard({ files, cwd }: { files: EditedFile[]; cwd: string }) {
   )
 }
 
+type ChangesItem = Extract<TranscriptItem, { kind: 'changes' }>
+
+/** What a turn changed in the folder, from the host's before/after snapshots. Undo lives on desktop. */
+function ChangesCard({ item }: { item: ChangesItem }) {
+  const [open, setOpen] = useState(item.files.length <= 3 && !item.reverted)
+  const added = item.files.reduce((n, f) => n + f.added, 0)
+  const removed = item.files.reduce((n, f) => n + f.removed, 0)
+  return (
+    <View style={[styles.card, item.reverted ? { opacity: 0.7 } : null]}>
+      <Pressable style={styles.cardHead} onPress={() => setOpen((v) => !v)}>
+        <Icon icon={PencilSimpleLine} size={18} />
+        <View style={{ flex: 1 }}>
+          <Text size={13.5}>
+            {item.reverted ? 'Undone: ' : ''}Changed {item.files.length} file
+            {item.files.length === 1 ? '' : 's'}
+            {item.truncated ? '+' : ''} this turn
+          </Text>
+          <Diffstat added={added} removed={removed} />
+        </View>
+        <Icon icon={open ? CaretDown : CaretRight} size={15} />
+      </Pressable>
+      {open &&
+        item.files.map((f) => (
+          <View key={f.path} style={styles.fileBlock}>
+            <View style={styles.fileRow}>
+              <Text size={13} numberOfLines={1} style={{ flex: 1 }}>
+                {f.path}
+              </Text>
+              {f.binary ? (
+                <Faint size={11.5}>binary</Faint>
+              ) : (
+                <Diffstat added={f.added} removed={f.removed} />
+              )}
+            </View>
+          </View>
+        ))}
+    </View>
+  )
+}
+
 /** The conversation: what you asked, what the agent said and did, and anything it waits on. */
 export function Transcript({
   session,
@@ -331,6 +371,8 @@ export function Transcript({
                 {item.message}
               </Muted>
             )
+          case 'changes':
+            return <ChangesCard item={item} />
           case 'error':
             return (
               <View style={styles.errorBox}>

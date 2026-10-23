@@ -401,6 +401,10 @@ export async function setSessionDone(sessionId: string, done: boolean) {
   await sessionRequest(sessionId, 'sessions.setDone', { sessionId, done })
 }
 
+export async function setSessionPinned(sessionId: string, pinned: boolean) {
+  await sessionRequest(sessionId, 'sessions.setPinned', { sessionId, pinned })
+}
+
 export async function setMode(sessionId: string, modeId: string) {
   await sessionRequest(sessionId, 'sessions.setMode', { sessionId, modeId })
 }

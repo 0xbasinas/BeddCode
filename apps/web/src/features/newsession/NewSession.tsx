@@ -31,6 +31,7 @@ import {
   useRuntime,
 } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
+import { clearHandoff, peekHandoff } from '../../stores/handoff.ts'
 import { Welcome, setupWasSkipped, skipSetup } from './Welcome.tsx'
 import { showWelcome } from './welcomeLogic.ts'
 import { chooseFolder } from '../folders/folderFlow.ts'
@@ -80,7 +81,9 @@ export function NewSession({
     Object.values(s.runtimes).some((r) => r.replica.order.length > 0),
   )
   const [setupSkipped, setSetupSkipped] = useState(setupWasSkipped)
-  const [text, setText] = useState('')
+  // "Continue with another agent" leaves a summary of the old session to start from.
+  const [text, setText] = useState(() => peekHandoff(hostKey) ?? '')
+  useEffect(() => clearHandoff(), [])
   const [instanceId, setInstanceId] = useState<string>()
   const defaults = usePreferences((s) => hostDefaults(s.hosts, host?.hostId ?? hostKey))
   const [selection, setSelection] = useState<{
@@ -124,7 +127,14 @@ export function NewSession({
     useComposerWorkspace.setState({
       workspace:
         !welcome && folder
-          ? { hostKey, cwd: folder, draftId, title: folderName(folder), instanceId: agent?.id }
+          ? {
+              hostKey,
+              cwd: folder,
+              draftId,
+              title: folderName(folder),
+              instanceId: agent?.id,
+              projectPath: folder,
+            }
           : undefined,
     })
     return () => useComposerWorkspace.setState({ workspace: undefined })
@@ -274,7 +284,14 @@ export function NewSession({
           onTextChange={setText}
           placeholder="Describe a task, or paste an issue link…"
           busy={false}
-          disabled={connection !== 'connected' || !agent}
+          disabled={connection !== 'connected' || !agent || (!!folder && repo === 'loading')}
+          disabledReason={
+            connection !== 'connected'
+              ? 'the host is connected'
+              : !agent
+                ? 'an agent is ready'
+                : 'the folder is read'
+          }
           autoFocus
           hostKey={hostKey}
           draftId={draftId}

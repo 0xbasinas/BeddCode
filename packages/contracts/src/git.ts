@@ -6,12 +6,24 @@ export const GitPrText = z.object({
 })
 
 /** A folder the user works in on a host. Git details are filled in when it is a repository. */
+/** A command saved for a project, run with one click in a terminal (see `projects.setScripts`). */
+export const ProjectScript = z.object({
+  id: z.string().min(1).max(64),
+  name: z.string().trim().min(1).max(40),
+  command: z.string().trim().min(1).max(2000),
+  /** Also run it in every new worktree of the project (e.g. installing dependencies). */
+  runOnWorktreeCreate: z.boolean().optional(),
+})
+export type ProjectScript = z.infer<typeof ProjectScript>
+
 export const Project = z.object({
   /** Absolute path (the repository root when the folder is inside a repository). */
   path: z.string(),
   name: z.string(),
   isRepo: z.boolean(),
   branch: z.string().optional(),
+  /** Saved commands for this project. */
+  scripts: z.array(ProjectScript).optional(),
 })
 export type Project = z.infer<typeof Project>
 

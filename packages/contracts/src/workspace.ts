@@ -6,6 +6,8 @@ export const TerminalInfo = z.object({
   cwd: z.string(),
   /** Shell name for the tab label, e.g. `pwsh` or `bash`. */
   shell: z.string(),
+  /** What the terminal was opened to run (a project script), for its tab. */
+  title: z.string().optional(),
   cols: z.number().int(),
   rows: z.number().int(),
   /** Exit code once the shell has ended (null when killed by a signal); absent while running. */

@@ -438,3 +438,76 @@ describe('parsers', () => {
     ])
   })
 })
+
+describe('GitService snapshots (turn checkpoints)', () => {
+  it('snapshots tracked and untracked files without touching the index, HEAD or branches', async () => {
+    const dir = repo()
+    writeFileSync(path.join(dir, 'staged.txt'), 'staged\n')
+    sh(dir, 'add', 'staged.txt')
+    writeFileSync(path.join(dir, 'loose.txt'), 'untracked\n')
+    writeFileSync(path.join(dir, '.gitignore'), 'ignored.log\n')
+    writeFileSync(path.join(dir, 'ignored.log'), 'noise\n')
+    const statusBefore = sh(dir, 'status', '--porcelain')
+    const head = sh(dir, 'rev-parse', 'HEAD')
+
+    const snap = await git.snapshot(dir, 'refs/beddcode/checkpoints/s1/t1-before')
+    expect(sh(dir, 'status', '--porcelain')).toBe(statusBefore)
+    expect(sh(dir, 'rev-parse', 'HEAD')).toBe(head)
+    expect(sh(dir, 'rev-parse', 'refs/beddcode/checkpoints/s1/t1-before').trim()).toBe(snap)
+    const files = sh(dir, 'ls-tree', '-r', '--name-only', snap).trim().split('\n')
+    expect(files.sort()).toEqual(['.gitignore', 'a.txt', 'b.txt', 'loose.txt', 'staged.txt'])
+    expect(sh(dir, 'branch', '--list').trim()).toBe('* main')
+  })
+
+  it('lists what changed between snapshots, diffs a file, and undoes the changes', async () => {
+    const dir = repo()
+    writeFileSync(path.join(dir, 'keep.txt'), 'untracked and untouched\n')
+    const before = await git.snapshot(dir)
+    writeFileSync(path.join(dir, 'a.txt'), 'one\nTWO\nthree\nfour\n')
+    rmSync(path.join(dir, 'b.txt'))
+    mkdirSync(path.join(dir, 'src'))
+    writeFileSync(path.join(dir, 'src', 'new.ts'), 'export const x = 1\n')
+    const after = await git.snapshot(dir)
+
+    const { files, truncated } = await git.snapshotChanges(dir, before, after)
+    expect(truncated).toBe(false)
+    expect(files).toEqual([
+      { path: 'a.txt', status: 'M', added: 2, removed: 1 },
+      { path: 'b.txt', status: 'D', added: 0, removed: 1 },
+      { path: 'src/new.ts', status: 'A', added: 1, removed: 0 },
+    ])
+    const diff = await git.snapshotDiff(dir, before, after, 'a.txt')
+    expect(diff.patch).toContain('+TWO')
+    expect(diff.patch).toContain('-two')
+
+    expect(await git.matchesSnapshot(dir, after)).toBe(true)
+    expect(await git.restoreSnapshot(dir, before, after)).toBe(3)
+    expect(readFileSync(path.join(dir, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\n')
+    expect(readFileSync(path.join(dir, 'b.txt'), 'utf8')).toBe('bee\n')
+    expect(existsSync(path.join(dir, 'src', 'new.ts'))).toBe(false)
+    expect(readFileSync(path.join(dir, 'keep.txt'), 'utf8')).toBe('untracked and untouched\n')
+    expect(await git.matchesSnapshot(dir, before)).toBe(true)
+    expect(sh(dir, 'status', '--porcelain').trim()).toBe('?? keep.txt')
+  })
+
+  it('works on a repository with no commits yet, and rejects bad input', async () => {
+    const dir = tmp()
+    sh(dir, 'init', '-q', '-b', 'main')
+    const before = await git.snapshot(dir)
+    writeFileSync(path.join(dir, 'first.txt'), 'hello\n')
+    const after = await git.snapshot(dir)
+    expect((await git.snapshotChanges(dir, before, after)).files).toEqual([
+      { path: 'first.txt', status: 'A', added: 1, removed: 0 },
+    ])
+    await expect(git.snapshotDiff(dir, before, 'HEAD; rm -rf /', 'x')).rejects.toThrow(/snapshot/)
+    await expect(git.snapshotDiff(dir, before, after, '../etc/passwd')).rejects.toThrow(/inside/)
+  })
+
+  it('drops snapshot refs by prefix', async () => {
+    const dir = repo()
+    await git.snapshot(dir, 'refs/beddcode/checkpoints/s9/t1-before')
+    await git.snapshot(dir, 'refs/beddcode/checkpoints/s9/t1-after')
+    await git.dropSnapshots(dir, 'refs/beddcode/checkpoints/s9/')
+    expect(sh(dir, 'for-each-ref', 'refs/beddcode/').trim()).toBe('')
+  })
+})

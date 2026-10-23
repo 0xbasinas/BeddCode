@@ -104,7 +104,15 @@ export class TerminalManager {
     } = {},
   ) {}
 
-  create(params: { cwd: string; cols?: number; rows?: number; shell?: ShellSpec }): TerminalInfo {
+  create(params: {
+    cwd: string
+    cols?: number
+    rows?: number
+    shell?: ShellSpec
+    /** Typed into the shell once it starts, as if the user had (a project script). */
+    command?: string
+    title?: string
+  }): TerminalInfo {
     const shell = params.shell ?? (this.options.shell ?? defaultShell)()
     const cols = params.cols ?? 80
     const rows = params.rows ?? 24
@@ -122,7 +130,15 @@ export class TerminalManager {
     })
     const id = randomUUID()
     const term: Terminal = {
-      info: { id, cwd: params.cwd, shell: shell.name, cols, rows, createdAt: Date.now() },
+      info: {
+        id,
+        cwd: params.cwd,
+        shell: shell.name,
+        ...(params.title ? { title: params.title } : {}),
+        cols,
+        rows,
+        createdAt: Date.now(),
+      },
       pty,
       buffer: '',
       pending: '',
@@ -135,6 +151,9 @@ export class TerminalManager {
 
     pty.onData((data) => this.onData(term, data))
     pty.onExit(({ exitCode }) => this.onExit(term, exitCode))
+    // The shell reads it once it is ready, so it shows up in the terminal like typed input and the
+    // shell stays open afterwards for the output and a rerun.
+    if (params.command) pty.write(`${params.command.replace(/\r?\n/g, ' ')}\r`)
     return { ...term.info }
   }
 
