@@ -42,6 +42,12 @@ This builds the web app, bundles the host (`apps/desktop/scripts/build-host.mjs`
 
 The server uses Node's file watcher with the `tsx` TypeScript loader. Electron waits for both the host's `/health` endpoint and the web UI port before opening, with a 30-second startup timeout. If startup fails, inspect the server output in that terminal. To start the host separately, run `pnpm --filter @beddcode/server start`; the UI reconnects automatically when it becomes available.
 
+### Android app
+
+The `Android` workflow (`.github/workflows/android.yml`) builds the phone app as an APK, so it runs without a dev server. Pushing a tag such as `v0.2.0` attaches `BeddCode-<version>-android.apk` to that release, and **Actions → Android → Run workflow** builds one on demand as a downloadable artifact. Install it by opening the file on the phone and allowing installs from that source.
+
+It is signed with the debug key unless you add the repository secrets `ANDROID_KEYSTORE_BASE64` (your `.jks`, base64-encoded), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Keep using the same key: Android only installs an update over an app signed by the same one. The build is arm64 only. To build locally, run `pnpm --filter @beddcode/mobile exec expo prebuild --platform android` and then `./gradlew assembleRelease` in `apps/mobile/android` (JDK 17 and the Android SDK).
+
 ### Server environment
 
 - `BEDDCODE_PORT` (default 3773), `BEDDCODE_HOST` (default 127.0.0.1), `BEDDCODE_HOME` (data dir, default `~/.beddcode`)
