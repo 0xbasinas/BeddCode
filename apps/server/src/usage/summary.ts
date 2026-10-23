@@ -49,6 +49,7 @@ export function summarizeUsage(
 
   const totals = empty()
   const byModel = new Map<string, Totals>()
+  const byAgent = new Map<string, Totals & { reports: number }>()
   const bySession = new Map<string, Totals>()
   const byDay = new Map<string, Totals>()
   // Every day of the period appears, so a quiet day is a gap and not a missing bar.
@@ -62,6 +63,11 @@ export function summarizeUsage(
     add(totals, e)
     const info = meta.get(e.sessionId)
     const model = e.model ?? info?.model ?? (info ? agentOf(info.instanceId) : 'Unknown')
+    const agentId = info?.instanceId ?? 'unknown'
+    const agent = byAgent.get(agentId) ?? { ...empty(), reports: 0 }
+    byAgent.set(agentId, agent)
+    add(agent, e)
+    agent.reports++
     for (const [map, key] of [
       [byModel, model],
       [bySession, e.sessionId],
@@ -77,6 +83,9 @@ export function summarizeUsage(
   return {
     since,
     totals,
+    byAgent: [...byAgent]
+      .map(([instanceId, t]) => ({ instanceId, label: agentOf(instanceId), ...t }))
+      .sort(byTokens),
     byModel: [...byModel].map(([model, t]) => ({ model, ...t })).sort(byTokens),
     bySession: [...bySession]
       .map(([sessionId, t]) => ({

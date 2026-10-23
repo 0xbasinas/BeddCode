@@ -16,9 +16,33 @@ export class JsonRpcError extends Error {
   constructor(
     readonly code: number,
     message: string,
+    /** What the other end attached to the error (agents often put the real reason here). */
+    readonly data?: unknown,
   ) {
     super(message)
   }
+}
+
+const DETAIL_KEYS = ['details', 'errorMessage', 'message', 'detail', 'title']
+
+/** The reason an error's `data` gives, if it gives one: a string under a usual key, or nested under `error`. */
+export function rpcErrorDetail(data: unknown, depth = 0): string | undefined {
+  if (!data || typeof data !== 'object' || Array.isArray(data) || depth > 3) return undefined
+  const record = data as Record<string, unknown>
+  for (const key of DETAIL_KEYS) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return rpcErrorDetail(record.error, depth + 1)
+}
+
+/** An error as one line for the user: the message, and the agent's own reason when it adds to it. */
+export function describeRpcError(err: unknown): string {
+  if (err instanceof JsonRpcError) {
+    const detail = rpcErrorDetail(err.data)
+    return detail && !err.message.includes(detail) ? `${err.message}: ${detail}` : err.message
+  }
+  return err instanceof Error ? err.message : String(err)
 }
 
 type Json = unknown
@@ -123,7 +147,7 @@ export class JsonRpcClient {
       method?: string
       params?: Json
       result?: Json
-      error?: { code?: number; message?: string }
+      error?: { code?: number; message?: string; data?: unknown }
     }
     try {
       msg = JSON.parse(line)
@@ -141,12 +165,23 @@ export class JsonRpcClient {
         this.log?.error(`notification handler failed for ${msg.method}`, err)
       }
     } else if (msg.id !== undefined) {
-      const p = this.pending.get(msg.id)
+      // Some agents answer with the id as a string ("7" for 7); it is the same request.
+      const key =
+        typeof msg.id === 'string' && !this.pending.has(msg.id) && /^\d+$/.test(msg.id)
+          ? Number(msg.id)
+          : msg.id
+      const p = this.pending.get(key)
       if (!p) return
-      this.pending.delete(msg.id)
-      if (msg.error)
-        p.reject(new JsonRpcError(msg.error.code ?? -32000, msg.error.message ?? 'request failed'))
-      else p.resolve(msg.result)
+      this.pending.delete(key)
+      if (msg.error) {
+        p.reject(
+          new JsonRpcError(
+            msg.error.code ?? -32000,
+            msg.error.message ?? 'request failed',
+            msg.error.data,
+          ),
+        )
+      } else p.resolve(msg.result)
     }
   }
 
@@ -159,7 +194,8 @@ export class JsonRpcClient {
         err instanceof JsonRpcError
           ? err
           : new JsonRpcError(-32603, err instanceof Error ? err.message : String(err))
-      if (!this.closed) this.write({ id, error: { code: e.code, message: e.message } })
+      if (!this.closed)
+        this.write({ id, error: { code: e.code, message: e.message, data: e.data } })
     }
   }
 

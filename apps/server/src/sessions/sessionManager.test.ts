@@ -99,6 +99,22 @@ describe('SessionManager', () => {
     })
     expect(() => manager.rename('missing', 'No session')).toThrow('Unknown session')
   })
+  it('files a session as done and back, and rejects unknown sessions', async () => {
+    const { store, manager } = setup({ resume: true })
+    const { sessionId } = await manager.create({ instanceId: 'stub' })
+    await manager.close()
+    manager.setDone(sessionId, true)
+    expect(store.readSession(sessionId).at(-1)?.event).toMatchObject({
+      type: 'session.done',
+      done: true,
+    })
+    manager.setDone(sessionId, false)
+    expect(store.readSession(sessionId).at(-1)?.event).toMatchObject({
+      type: 'session.done',
+      done: false,
+    })
+    expect(() => manager.setDone('missing', true)).toThrow('Unknown session')
+  })
   it('refuses to start a session on a provider that is not ready', async () => {
     const { manager } = setup({ resume: true, status: 'needs-sign-in' })
     await expect(manager.create({ instanceId: 'stub' })).rejects.toThrow('not ready')

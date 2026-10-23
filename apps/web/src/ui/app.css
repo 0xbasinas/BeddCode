@@ -3765,3 +3765,60 @@ button.tcall-row:hover .tcall-chevron,
 .host-banner-actions button:disabled {
   opacity: 0.6;
 }
+
+/* The Done section under a folder, and the right-click menu on a session. */
+.done-toggle {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  width: calc(100% - 16px * var(--ui-scale));
+  margin: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border-radius: calc(7px * var(--ui-scale));
+  color: var(--text-muted);
+  font-size: calc(12px * var(--ui-scale));
+}
+.done-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+.done-toggle svg {
+  transition: transform 120ms ease;
+}
+.done-toggle svg.open {
+  transform: rotate(90deg);
+}
+.done-toggle span {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.context-menu {
+  z-index: 60;
+  width: auto;
+  min-width: calc(200px * var(--ui-scale));
+}
+
+/* "Fork from here" gets a row of its own room under the reply, so it never presses against the
+   next message or the composer. */
+.has-fork {
+  margin-bottom: calc(30px * var(--ui-scale));
+}
+.has-fork .fork-here {
+  top: 100%;
+  margin: calc(4px * var(--ui-scale)) 0 0;
+}
+
+/* The fork button is always there, as a quiet icon; it brightens when pointed at. */
+.has-fork .fork-here {
+  opacity: 0.55;
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  color: var(--text-muted);
+}
+.has-fork .fork-here:hover,
+.has-fork .fork-here:focus-visible {
+  opacity: 1;
+  color: var(--text);
+}
+.has-fork {
+  margin-bottom: calc(28px * var(--ui-scale));
+}

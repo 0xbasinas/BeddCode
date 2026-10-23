@@ -103,3 +103,30 @@ describe('summarizeUsage', () => {
     expect(summarizeUsage(store, 7, now).bySession[0]?.title).toBe('After')
   })
 })
+
+describe('summarizeUsage by agent', () => {
+  it('adds up each agent apart, with how many reports it made', () => {
+    const { store, created, usage } = setup()
+    created('a', 'One')
+    created('b', 'Two', { instanceId: 'acp:grok' })
+    usage('a', now, { model: 'sonnet', inputTokens: 100, outputTokens: 10 })
+    usage('a', now, { model: 'sonnet', inputTokens: 50, outputTokens: 5 })
+    usage('b', now, { model: 'grok-4.7', inputTokens: 900, outputTokens: 90, costUsd: 0.02 })
+    const label = (id: string) => (id === 'acp:grok' ? 'Grok' : 'Claude Code')
+    const summary = summarizeUsage(store, 7, now, label)
+    expect(summary.byAgent.map((a) => [a.label, a.reports, totalTokens(a)])).toEqual([
+      ['Grok', 1, 990],
+      ['Claude Code', 2, 165],
+    ])
+    expect(summary.byAgent[0]?.costUsd).toBeCloseTo(0.02, 10)
+  })
+
+  it('counts a cost-only report (no tokens) for the agent that made it', () => {
+    const { store, created, usage } = setup()
+    created('b', 'Two', { instanceId: 'acp:x' })
+    usage('b', now, { inputTokens: 0, outputTokens: 0, costUsd: 0.04 })
+    const summary = summarizeUsage(store, 7, now)
+    expect(summary.byAgent[0]).toMatchObject({ instanceId: 'acp:x', reports: 1 })
+    expect(summary.totals.costUsd).toBeCloseTo(0.04, 10)
+  })
+})

@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Link, useNavigate } from '@tanstack/react-router'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   ArrowDownWideNarrow,
   Check,
+  CheckCheck,
   ChevronDown,
+  ChevronRight,
   Folder,
   FolderGit2,
   GitBranch,
@@ -14,12 +16,15 @@ import {
   Server,
   Settings,
   Layers,
+  Undo2,
   X,
 } from 'lucide-react'
 import type { SessionView } from '@beddcode/client-runtime'
 import type { Project } from '@beddcode/contracts'
+import { ContextMenu, type ContextMenuItem } from '../../ui/ContextMenu.tsx'
 import { Dropdown } from '../../ui/Dropdown.tsx'
-import { useAllSessions, useHostStore } from '../../stores/host.ts'
+import { setSessionDone, useAllSessions, useHostStore } from '../../stores/host.ts'
+import { doneMenuAction, doneOpen, isFiledAway, splitDone } from './doneSessions.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { HostsDialog } from '../hosts/HostsDialog.tsx'
 import { folderName, timeAgo } from '../../ui/format.ts'
@@ -74,6 +79,35 @@ export function sessionNote(s: SessionView): string {
   return activityLine(s)
 }
 
+const OPEN_DONE_KEY = 'beddcode.done-open'
+
+/** The folders whose Done section the user opened, remembered between runs. */
+function useOpenDoneSections(): [Set<string>, (key: string) => void] {
+  const [open, setOpen] = useState<Set<string>>(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(OPEN_DONE_KEY) ?? '[]')
+      return new Set(
+        Array.isArray(saved) ? saved.filter((k): k is string => typeof k === 'string') : [],
+      )
+    } catch {
+      return new Set()
+    }
+  })
+  const toggle = useCallback((key: string) => {
+    setOpen((current) => {
+      const next = new Set(current)
+      if (!next.delete(key)) next.add(key)
+      try {
+        localStorage.setItem(OPEN_DONE_KEY, JSON.stringify([...next]))
+      } catch {
+        // Still works for this window.
+      }
+      return next
+    })
+  }, [])
+  return [open, toggle]
+}
+
 export function Sidebar() {
   const navigate = useNavigate()
   const entries = useHostStore((s) => s.entries)
@@ -86,6 +120,13 @@ export function Sidebar() {
   const setSearchOpen = useUiStore((s) => s.setSearchOpen)
   const [query, setQuery] = useState('')
   const searchInput = useRef<HTMLInputElement>(null)
+  /** The right-click menu: where it opened, and for which session. */
+  const [menu, setMenu] = useState<{ x: number; y: number; session: SessionView } | null>(null)
+  const closeMenu = useCallback(() => setMenu(null), [])
+  const [openDone, toggleDone] = useOpenDoneSections()
+  const openId = useRouterState({
+    select: (r) => /^\/session\/([^/]+)/.exec(r.location.pathname)?.[1],
+  })
   useEffect(() => {
     if (!searchOpen) return
     // A shortcut from Settings also mounts the composer, which normally takes initial focus.
@@ -112,11 +153,7 @@ export function Sidebar() {
           .includes(query.toLowerCase()),
     )
     .filter((s) =>
-      filter === 'all'
-        ? true
-        : filter === 'needs-you'
-          ? s.status === 'needs-you'
-          : s.status === 'idle',
+      filter === 'all' ? true : filter === 'needs-you' ? s.status === 'needs-you' : isFiledAway(s),
     )
     .sort(
       (a, b) =>
@@ -151,6 +188,103 @@ ${s.projectPath}`
   const hasFolders = entries.some((e) => projectsOf(e.key).length > 0)
   const hostLabel = (hostKey: string) =>
     hostKey === LOCAL_HOST_KEY ? 'This PC' : (runtimes[hostKey]?.host?.name ?? 'Remote host')
+
+  const sessionRow = (s: SessionView) => (
+    <Link
+      key={s.id}
+      to="/session/$sessionId"
+      params={{ sessionId: s.id }}
+      activeOptions={{ exact: true, includeSearch: false }}
+      className="session-row"
+      onContextMenu={(e) => {
+        e.preventDefault()
+        setMenu({ x: e.clientX, y: e.clientY, session: s })
+      }}
+      activeProps={{ className: 'session-row active' }}
+    >
+      {s.status === 'idle' && s.items.length > 0 && s.lastTurnReason !== 'cancelled' ? (
+        <Check className="session-done" size={12} />
+      ) : (
+        <span className={`dot ${s.lastTurnReason === 'cancelled' ? 'cancelled' : s.status}`} />
+      )}
+      <span className="session-main">
+        <span className="session-top">
+          <span className="session-title" title={s.title}>
+            {s.title}
+          </span>
+          <span className="session-time">{timeAgo(s.updatedAt)}</span>
+        </span>
+        <span className="session-meta">
+          {sessionNote(s) && (
+            <span className={`session-note ${s.status}`} title={sessionNote(s)}>
+              {sessionNote(s)}
+            </span>
+          )}
+          <span
+            className="session-where"
+            title={[s.branch, agentLabel(s)].filter(Boolean).join(' · ')}
+          >
+            {s.branch && (
+              <>
+                <GitBranch size={11} /> <code>{s.branch}</code> ·{' '}
+              </>
+            )}
+            {agentLabel(s)}
+          </span>
+          {(s.added > 0 || s.removed > 0) && (
+            <span className="stat">
+              <span className="add">+{s.added}</span> <span className="del">−{s.removed}</span>
+            </span>
+          )}
+        </span>
+      </span>
+    </Link>
+  )
+
+  /** A folder's sessions: the list, then its Done section (closed until asked for). */
+  const renderGroup = (list: SessionView[], groupKey: string) => {
+    // On the Done tab the filed sessions are the list itself.
+    if (filter === 'done') return list.map(sessionRow)
+    const { active, done } = splitDone(list)
+    const open = doneOpen({
+      chosen: openDone.has(groupKey),
+      searching: searchOpen && query !== '',
+      activeId: openId,
+      done,
+    })
+    return (
+      <>
+        {active.map(sessionRow)}
+        {done.length > 0 && (
+          <>
+            <button
+              className="done-toggle"
+              aria-expanded={open}
+              onClick={() => toggleDone(groupKey)}
+            >
+              <ChevronRight size={13} className={open ? 'open' : undefined} />
+              Done <span>{done.length}</span>
+            </button>
+            {open && done.map(sessionRow)}
+          </>
+        )}
+      </>
+    )
+  }
+
+  const menuItems = (session: SessionView): ContextMenuItem[] => {
+    const action = doneMenuAction(session)
+    return [
+      {
+        id: 'done',
+        label: action.label,
+        hint: action.hint,
+        icon: action.kind === 'restore' ? <Undo2 size={15} /> : <CheckCheck size={15} />,
+        disabled: action.kind === 'busy',
+        onSelect: () => void setSessionDone(session.id, action.kind === 'file'),
+      },
+    ]
+  }
 
   const tab = (id: Filter, label: string, count?: number) => (
     <button className="tab" role="tab" aria-selected={filter === id} onClick={() => setFilter(id)}>
@@ -289,7 +423,7 @@ ${s.projectPath}`
       {all.length > 0 && (
         <div className="sidebar-filters">
           <div className="tabs" role="tablist" aria-label="Session status">
-            {tab('all', `All ${all.length}`)}
+            {tab('all', `All ${all.filter((s) => !isFiledAway(s)).length}`)}
             {tab('needs-you', 'Needs you', needsYou)}
             {tab('done', 'Done')}
           </div>
@@ -376,56 +510,7 @@ ${s.projectPath}`
             project={projectsOf(hostKey).find((p) => samePath(p.path, projectPath))}
             hostName={hostLabel(hostKey)}
           >
-            {list.map((s) => (
-              <Link
-                key={s.id}
-                to="/session/$sessionId"
-                params={{ sessionId: s.id }}
-                activeOptions={{ exact: true, includeSearch: false }}
-                className="session-row"
-                activeProps={{ className: 'session-row active' }}
-              >
-                {s.status === 'idle' && s.items.length > 0 && s.lastTurnReason !== 'cancelled' ? (
-                  <Check className="session-done" size={12} />
-                ) : (
-                  <span
-                    className={`dot ${s.lastTurnReason === 'cancelled' ? 'cancelled' : s.status}`}
-                  />
-                )}
-                <span className="session-main">
-                  <span className="session-top">
-                    <span className="session-title" title={s.title}>
-                      {s.title}
-                    </span>
-                    <span className="session-time">{timeAgo(s.updatedAt)}</span>
-                  </span>
-                  <span className="session-meta">
-                    {sessionNote(s) && (
-                      <span className={`session-note ${s.status}`} title={sessionNote(s)}>
-                        {sessionNote(s)}
-                      </span>
-                    )}
-                    <span
-                      className="session-where"
-                      title={[s.branch, agentLabel(s)].filter(Boolean).join(' · ')}
-                    >
-                      {s.branch && (
-                        <>
-                          <GitBranch size={11} /> <code>{s.branch}</code> ·{' '}
-                        </>
-                      )}
-                      {agentLabel(s)}
-                    </span>
-                    {(s.added > 0 || s.removed > 0) && (
-                      <span className="stat">
-                        <span className="add">+{s.added}</span>{' '}
-                        <span className="del">−{s.removed}</span>
-                      </span>
-                    )}
-                  </span>
-                </span>
-              </Link>
-            ))}
+            {renderGroup(list, key)}
           </FolderGroup>
         ))}
         {emptyFolders.map(({ hostKey, project }) => (
@@ -458,6 +543,15 @@ ${s.projectPath}`
         </button>
       </div>
       {hostsOpen && <HostsDialog onClose={() => setHostsOpen(false)} />}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          label={`${menu.session.title}`}
+          items={menuItems(menu.session)}
+          onClose={closeMenu}
+        />
+      )}
     </aside>
   )
 }

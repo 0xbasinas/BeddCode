@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { SessionUpdate } from '@agentclientprotocol/sdk'
 import type { SessionEvent } from '@beddcode/contracts'
 import { JsonRpcClient, createLogger, type Transport } from '@beddcode/shared'
-import { createAcpAdapter } from './adapter.ts'
+import { createAcpAdapter, probeEnvironment } from './adapter.ts'
 import { AcpAgentStore } from './config.ts'
 import { CLIENT_MODES } from './permissions.ts'
 import { groupReplay, listAcpSessions, readAcpSession, withAcpAgent } from './history.ts'
@@ -535,5 +535,47 @@ describe('previewing an agent before a session', () => {
       { configId: 'web', type: 'boolean', value: true },
     ])
     await session.close()
+  })
+})
+
+describe('starting Grok', () => {
+  const grok = () => {
+    const store = new AcpAgentStore(path.join(tmp(), 'acp.json'))
+    store.put({ id: 'grok', label: 'Grok', command: 'grok', args: ['agent', 'stdio'] })
+    return store
+  }
+
+  it('starts it in the chosen mode by flag, and does not have to switch it afterwards', async () => {
+    const launches: string[][] = []
+    const a = agent({ ...init(), 'session/new': () => ({ sessionId: 'acp-1' }) })
+    const adapter = createAcpAdapter({
+      store: grok(),
+      log,
+      createTransport: (config) => {
+        launches.push(config.args)
+        return a.transport
+      },
+    })
+    const session = await adapter.startSession('acp:grok', {
+      sessionId: 's1',
+      cwd: '/w',
+      permissionMode: 'ask',
+    })
+    const modes = await nextEvent(session as AcpSession, (e) => e.type === 'session.modes')
+    expect(launches).toEqual([['--permission-mode', 'default', 'agent', '--no-leader', 'stdio']])
+    expect(modes).toMatchObject({ currentModeId: 'ask' })
+    // The flag did the work: no quiet slash command was sent.
+    expect(a.sent('session/prompt')).toHaveLength(0)
+    await session.close()
+  })
+
+  it('looks around with an environment that cannot open a sign-in page', () => {
+    expect(probeEnvironment({ A: '1' }, { PATH: '/bin' })).toMatchObject({
+      NO_BROWSER: 'true',
+      A: '1',
+      PATH: '/bin',
+    })
+    // The agent's own settings still win.
+    expect(probeEnvironment({ NO_BROWSER: 'false' }, {}).NO_BROWSER).toBe('false')
   })
 })

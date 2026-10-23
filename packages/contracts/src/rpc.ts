@@ -412,6 +412,11 @@ export const RpcMethods = {
     params: z.object({ sessionId: z.string(), title: z.string().trim().min(1).max(120) }),
     result: z.object({}),
   },
+  /** Moves a session into the sidebar's Done section, or back out of it. */
+  'sessions.setDone': {
+    params: z.object({ sessionId: z.string(), done: z.boolean() }),
+    result: z.object({}),
+  },
   'sessions.setMode': {
     params: z.object({ sessionId: z.string(), modeId: z.string() }),
     result: z.object({}),

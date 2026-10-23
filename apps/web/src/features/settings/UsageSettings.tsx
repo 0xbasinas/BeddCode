@@ -3,6 +3,7 @@ import { RefreshCw } from 'lucide-react'
 import type { UsageLimits, UsageSummary } from '@beddcode/contracts'
 import { hostRequest, useRuntime } from '../../stores/host.ts'
 import {
+  formatCost,
   formatReset,
   formatTokens,
   percentOfTotal,
@@ -56,6 +57,8 @@ export function UsageSettings({ hostKey }: { hostKey: string }) {
   const withWindows = (limits ?? []).filter((l) => l.windows.length > 0)
   const withoutWindows = (limits ?? []).filter((l) => l.windows.length === 0 && l.note)
   const asked = limits !== undefined
+  const agents = summary?.byAgent ?? []
+  const agentPercents = percentOfTotal(agents, tokensOf)
   const models = summary?.byModel ?? []
   const modelPercents = percentOfTotal(models, tokensOf)
   const sessions = (summary?.bySession ?? []).slice(0, 5)
@@ -134,6 +137,36 @@ export function UsageSettings({ hostKey }: { hostKey: string }) {
         <p className="settings-empty">Asking your agents about their plans…</p>
       )}
 
+      {agents.length > 0 && (
+        <>
+          <div className="settings-section-head">
+            <h3>By agent · last 7 days</h3>
+          </div>
+          <div className="settings-card">
+            {agents.map((a, i) => (
+              <div className="setting-row usage-row" key={a.instanceId}>
+                <div className="setting-label">
+                  <span>{a.label}</span>
+                  <small>
+                    {[
+                      `${a.reports} ${a.reports === 1 ? 'report' : 'reports'}`,
+                      formatTokens(tokensOf(a)),
+                      formatCost(a.costUsd),
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </small>
+                </div>
+                <div className="usage-meter">
+                  <Bar percent={agentPercents[i] ?? 0} />
+                  <span className="usage-percent">{agentPercents[i]}%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
       <div className="settings-section-head">
         <h3>By model · last 7 days</h3>
       </div>
@@ -147,7 +180,9 @@ export function UsageSettings({ hostKey }: { hostKey: string }) {
             <div className="setting-row usage-row" key={m.model}>
               <div className="setting-label">
                 <span>{m.model}</span>
-                <small>{formatTokens(tokensOf(m))}</small>
+                <small>
+                  {[formatTokens(tokensOf(m)), formatCost(m.costUsd)].filter(Boolean).join(' · ')}
+                </small>
               </div>
               <div className="usage-meter">
                 <Bar percent={modelPercents[i] ?? 0} />

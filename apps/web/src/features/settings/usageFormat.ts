@@ -9,6 +9,12 @@ type Counts = Pick<
 export const tokensOf = (t: Counts) =>
   t.inputTokens + t.outputTokens + t.cacheReadTokens + t.cacheWriteTokens
 
+/** $0.02, $1.40, under a cent as <$0.01; nothing when no cost was reported. */
+export function formatCost(usd: number): string | undefined {
+  if (!(usd > 0)) return undefined
+  return usd < 0.01 ? '<$0.01' : `$${usd.toFixed(2)}`
+}
+
 /** 950 tokens, 184k tokens, 1.3M tokens. */
 export function formatTokens(n: number): string {
   if (n < 1000) return `${n} tokens`

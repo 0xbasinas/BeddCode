@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  formatCost,
   formatReset,
   formatTokens,
   percentOfTotal,
@@ -14,6 +15,15 @@ describe('formatTokens', () => {
     expect(formatTokens(184_300)).toBe('184k tokens')
     expect(formatTokens(61_000)).toBe('61k tokens')
     expect(formatTokens(1_250_000)).toBe('1.3M tokens')
+  })
+})
+
+describe('formatCost', () => {
+  it('writes dollars and cents, and nothing when there was no cost', () => {
+    expect(formatCost(0.0184)).toBe('$0.02')
+    expect(formatCost(1.4)).toBe('$1.40')
+    expect(formatCost(0.002)).toBe('<$0.01')
+    expect(formatCost(0)).toBeUndefined()
   })
 })
 

@@ -14,6 +14,10 @@ export const UsageSummary = z.object({
   /** Start of the period, epoch ms. */
   since: z.number(),
   totals: Tokens,
+  /** Per agent (Claude Code, Codex, an ACP agent), with how many reports made up the counts. */
+  byAgent: z.array(
+    Tokens.extend({ instanceId: z.string(), label: z.string(), reports: z.number() }),
+  ),
   byModel: z.array(Tokens.extend({ model: z.string() })),
   bySession: z.array(
     Tokens.extend({

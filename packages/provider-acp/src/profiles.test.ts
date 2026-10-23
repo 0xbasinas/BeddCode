@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { approvalSetup } from './permissions.ts'
-import { grokMode, grokProfile, profileFor } from './profiles.ts'
+import { grokLaunchArgs, grokMode, grokProfile, profileFor } from './profiles.ts'
 
 describe('grokMode', () => {
   const ui = (body: string) =>
@@ -46,5 +46,45 @@ describe('profiles', () => {
     const profile = grokProfile(() => undefined)
     const legacy = { availableModes: [{ id: 'default', name: 'Default' }] }
     expect(approvalSetup(legacy, [], profile).source).toBe('modes')
+  })
+})
+
+describe('grokLaunchArgs', () => {
+  it('starts in the chosen mode by flag, before `agent`, in its own process', () => {
+    expect(grokLaunchArgs(['agent', 'stdio'], 'ask')).toEqual([
+      '--permission-mode',
+      'default',
+      'agent',
+      '--no-leader',
+      'stdio',
+    ])
+    expect(grokLaunchArgs(['agent', 'stdio'], 'approve-all')).toEqual([
+      '--permission-mode',
+      'bypassPermissions',
+      'agent',
+      '--no-leader',
+      'stdio',
+    ])
+  })
+
+  it('leaves the mode to the agent when none was chosen, and respects an explicit leader choice', () => {
+    expect(grokLaunchArgs(['agent', 'stdio'], undefined)).toEqual(['agent', '--no-leader', 'stdio'])
+    expect(grokLaunchArgs(['agent', '--leader', 'stdio'], 'ask')).toEqual([
+      '--permission-mode',
+      'default',
+      'agent',
+      '--leader',
+      'stdio',
+    ])
+  })
+
+  it('does not touch a command that is not `grok agent ...`', () => {
+    expect(grokLaunchArgs(['--model', 'x', 'agent', 'stdio'], 'ask')).toEqual([
+      '--model',
+      'x',
+      'agent',
+      'stdio',
+    ])
+    expect(grokLaunchArgs([], 'ask')).toEqual([])
   })
 })

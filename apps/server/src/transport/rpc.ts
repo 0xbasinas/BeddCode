@@ -74,7 +74,7 @@ export function createRpcRouter(
     'agents.list': async () => agents.list(),
     'agents.add': (p) => agents.add(p),
     'agents.update': (p) => agents.update(p),
-    'usage.summary': async (p) => sessions.usageSummary(p.days),
+    'usage.summary': (p) => sessions.usageSummary(p.days),
     'usage.limits': () => sessions.usageLimits(),
     'agents.remove': (p) => agents.remove(p.id),
     'agents.registry': (p) => agents.searchRegistry(p.query),
@@ -158,6 +158,10 @@ export function createRpcRouter(
     },
     'sessions.interrupt': async (p) => {
       await sessions.interrupt(p.sessionId)
+      return {}
+    },
+    'sessions.setDone': async (p) => {
+      sessions.setDone(p.sessionId, p.done)
       return {}
     },
     'sessions.rename': async (p) => {

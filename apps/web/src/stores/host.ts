@@ -396,6 +396,11 @@ export async function interrupt(sessionId: string) {
   await sessionRequest(sessionId, 'sessions.interrupt', { sessionId })
 }
 
+/** Moves a session into the sidebar's Done section, or back out of it. */
+export async function setSessionDone(sessionId: string, done: boolean) {
+  await sessionRequest(sessionId, 'sessions.setDone', { sessionId, done })
+}
+
 export async function setMode(sessionId: string, modeId: string) {
   await sessionRequest(sessionId, 'sessions.setMode', { sessionId, modeId })
 }

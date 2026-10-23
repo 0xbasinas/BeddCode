@@ -91,6 +91,8 @@ export interface SessionView {
   worktree?: { baseBranch: string }
   createdAt: number
   updatedAt: number
+  /** In the sidebar's Done section, by the user's choice; a new turn takes it out again. */
+  done?: boolean
   status: SessionStatus
   lastTurnReason?: 'done' | 'cancelled' | 'error'
   items: TranscriptItem[]
@@ -112,6 +114,8 @@ export interface SessionView {
   /** Started outside BeddCode and brought in. */
   imported?: boolean
   /** Modes reported by the agent for this session, when it reports any. */
+  /** How much of the agent's context window is in use, when the agent says. */
+  context?: { used: number; size: number }
   modes?: { id: string; label: string; description?: string; dangerous?: boolean }[]
   currentModeId?: string
 }
@@ -182,9 +186,17 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     case 'session.renamed':
       next.title = e.title
       break
+    case 'session.done':
+      next.done = e.done || undefined
+      // Filing a session away is not activity: it keeps its place in time.
+      next.updatedAt = current.updatedAt
+      break
     case 'session.model':
       next.model = e.model
       next.effort = e.effort
+      break
+    case 'session.context':
+      next.context = { used: e.used, size: e.size }
       break
     case 'session.provider-session':
       return { ...state, lastSeq: stored.seq }
@@ -193,6 +205,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.currentModeId = e.currentModeId
       break
     case 'turn.started':
+      next.done = undefined
       next.turns = current.turns + 1
       next.status = 'running'
       next.lastTurnReason = undefined

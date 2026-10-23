@@ -73,10 +73,8 @@ export class SessionManager {
   constructor(private readonly deps: SessionManagerDeps) {}
 
   /** What the agents used over the last `days` days, from the usage they reported. */
-  usageSummary(days: number): UsageSummary {
-    const labels = new Map(
-      (this.detected?.instances ?? []).map((d) => [d.instance.id, d.instance.label]),
-    )
+  async usageSummary(days: number): Promise<UsageSummary> {
+    const labels = new Map((await this.detect()).map((d) => [d.instance.id, d.instance.label]))
     return summarizeUsage(this.deps.store, days, Date.now(), (id) => labels.get(id) ?? id)
   }
 
@@ -93,7 +91,7 @@ export class SessionManager {
               instanceId: instance.id,
               label: instance.label,
               windows: [],
-              note: `${instance.label} does not report plan limits. Its token use is counted below.`,
+              note: `${instance.label} does not report plan limits to other apps. What it reports for each turn (tokens, and cost when it says) is counted below; its own app shows the account allowance.`,
             }
           }
           try {
@@ -379,6 +377,12 @@ export class SessionManager {
   rename(sessionId: string, title: string): void {
     if (!this.createdEvent(sessionId)) throw new Error(`Unknown session: ${sessionId}`)
     this.deps.store.append({ type: 'session.renamed', sessionId, at: Date.now(), title })
+  }
+
+  /** Moves a session to the Done section (or back); only the sidebar looks at it. */
+  setDone(sessionId: string, done: boolean): void {
+    if (!this.createdEvent(sessionId)) throw new Error(`Unknown session: ${sessionId}`)
+    this.deps.store.append({ type: 'session.done', sessionId, at: Date.now(), done })
   }
 
   /** Deletes the worktree a session was started in. The session's branch and history are kept. */

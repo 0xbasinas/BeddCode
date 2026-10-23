@@ -84,6 +84,8 @@ export const SessionEvent = z.discriminatedUnion('type', [
   /** The provider's own session id, kept so a stopped session can be resumed later. */
   Base.extend({ type: z.literal('session.provider-session'), providerSessionId: z.string() }),
   Base.extend({ type: z.literal('session.renamed'), title: z.string().trim().min(1).max(120) }),
+  /** The user moved the session to, or back out of, the sidebar's Done section. */
+  Base.extend({ type: z.literal('session.done'), done: z.boolean() }),
   /** The model and reasoning effort in use changed (set by the user during the session). */
   Base.extend({
     type: z.literal('session.model'),
@@ -219,6 +221,12 @@ export const SessionEvent = z.discriminatedUnion('type', [
     cacheReadTokens: z.number().int().nonnegative().optional(),
     cacheWriteTokens: z.number().int().nonnegative().optional(),
     costUsd: z.number().nonnegative().optional(),
+  }),
+  /** How full the agent's context window is, as the agent reports it (ACP `usage_update`). */
+  Base.extend({
+    type: z.literal('session.context'),
+    used: z.number().int().nonnegative(),
+    size: z.number().int().nonnegative(),
   }),
   Base.extend({ type: z.literal('error'), message: z.string() }),
 ])

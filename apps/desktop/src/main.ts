@@ -13,6 +13,13 @@ const webUrl = process.env.BEDDCODE_WEB_URL
 const WINDOW_MAXIMIZED = 'beddcode:window-maximized'
 const DAEMON_STATUS = 'beddcode:daemon-status'
 
+// Windows names a notification's sender by the app's user model id. Installed builds use the id the
+// installer gave their Start menu shortcut (appId in electron-builder.yml), which shows the shortcut's
+// name, BeddCode. From source there is no shortcut, so the id itself is what shows; make it the name.
+if (process.platform === 'win32') {
+  app.setAppUserModelId(app.isPackaged ? 'dev.beddcode.app' : 'BeddCode')
+}
+
 // The local host: started with the app, restarted if it stops, stopped with the app. Off when
 // BEDDCODE_NO_DAEMON=1 (a host run by hand is found and used anyway; see daemon.ts).
 let daemon: Daemon | null = null

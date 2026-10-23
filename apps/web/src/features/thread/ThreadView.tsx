@@ -131,6 +131,15 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             {hostKey === LOCAL_HOST_KEY ? 'This PC' : (host?.name ?? hostKey)} ·{' '}
             {folderName(session.projectPath)}
             {session.branch ? ` · ${session.branch}` : ''}
+            {session.context && session.context.size > 0 && (
+              <span
+                title={`${session.context.used.toLocaleString()} of ${session.context.size.toLocaleString()} tokens of the agent's context window`}
+              >
+                {' · '}
+                Context{' '}
+                {Math.min(100, Math.round((session.context.used / session.context.size) * 100))}%
+              </span>
+            )}
             {session.forkedFrom && (
               <>
                 {' · '}

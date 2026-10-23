@@ -123,6 +123,11 @@ function metaKind(meta: unknown): string | undefined {
  */
 export class AcpEventMapper {
   private turnId: string | undefined
+  /** The session's cost so far, as `usage_update` reports it (cumulative). */
+  private costSeen = 0
+  private costFromTurns = false
+  /** A resumed conversation's first total holds its earlier turns, counted when they ran. */
+  private costBaseline = false
   private modes: { id: string; label: string; description?: string; dangerous?: boolean }[] = []
   private readonly tools = new Map<string, ToolState>()
   /** Tool calls the agent asked the user about (`session/request_permission`). */
@@ -135,6 +140,16 @@ export class AcpEventMapper {
 
   setTurn(turnId: string | undefined) {
     this.turnId = turnId
+  }
+
+  /** This continues an earlier conversation: its first cost total is a starting point, not new. */
+  continuesEarlierConversation() {
+    this.costBaseline = true
+  }
+
+  /** The agent gives cost with each turn's usage, so the running total is not counted again. */
+  noteTurnCost() {
+    this.costFromTurns = true
   }
 
   setModes(modes: { id: string; label: string; description?: string; dangerous?: boolean }[]) {
@@ -225,6 +240,31 @@ export class AcpEventMapper {
           out.push({ type: 'session.modes', modes: setup.modes, currentModeId: setup.current })
         }
         out.push({ type: 'session.config', options: setup.rest })
+        break
+      }
+
+      case 'usage_update': {
+        // The window the agent's context fills, and its running cost for the session.
+        if (update.size > 0) {
+          out.push({ type: 'session.context', used: update.used, size: update.size })
+        }
+        const cost = update.cost
+        if (cost && cost.currency === 'USD' && this.costBaseline) {
+          this.costSeen = cost.amount
+          this.costBaseline = false
+        } else if (cost && cost.currency === 'USD' && cost.amount >= this.costSeen) {
+          const delta = cost.amount - this.costSeen
+          this.costSeen = cost.amount
+          // An agent that reports cost with each turn's usage has it counted there already.
+          if (delta > 0 && !this.costFromTurns) {
+            out.push({
+              type: 'session.usage',
+              inputTokens: 0,
+              outputTokens: 0,
+              costUsd: delta,
+            })
+          }
+        }
         break
       }
 

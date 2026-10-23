@@ -13,6 +13,11 @@ export interface AgentProfile {
   modes: (ApprovalMode & { command: string })[]
   /** The mode the agent will start in according to its own configuration, if it can be read. */
   current(): string | undefined
+  /**
+   * The arguments to start the agent with so it begins in `modeId` whatever its own configuration
+   * says (a launch flag beats the config file), when it takes such flags.
+   */
+  launchArgs?(args: string[], modeId: string | undefined): string[]
 }
 
 /** Grok: `/always-approve on|off` switches a running session; `~/.grok/config.toml` sets the default. */
@@ -34,7 +39,27 @@ export function grokProfile(read: () => string | undefined = readGrokConfig): Ag
       },
     ],
     current: () => grokMode(read()),
+    launchArgs: grokLaunchArgs,
   }
+}
+
+/**
+ * `grok --permission-mode <default|bypassPermissions> agent --no-leader stdio`. The mode is a
+ * top-level flag and beats the user's config file; `bypassPermissions` is always-approve (checked
+ * with Grok 1.0: `--always-approve` before `agent` does nothing for `agent stdio`, and after it
+ * loses to `--permission-mode default`). `--no-leader` gives the session its own process instead
+ * of joining a shared one that may carry another setup.
+ */
+export function grokLaunchArgs(args: string[], modeId: string | undefined): string[] {
+  if (args[0] !== 'agent') return args
+  const mode =
+    modeId === 'approve-all'
+      ? ['--permission-mode', 'bypassPermissions']
+      : modeId === 'ask'
+        ? ['--permission-mode', 'default']
+        : []
+  const leader = args.includes('--no-leader') || args.includes('--leader') ? [] : ['--no-leader']
+  return [...mode, 'agent', ...leader, ...args.slice(1)]
 }
 
 /** The profile for an agent started by this command, if there is one. */

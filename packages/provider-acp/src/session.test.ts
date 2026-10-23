@@ -6,7 +6,7 @@ import type { SessionEvent } from '@beddcode/contracts'
 import { createLogger, type Transport } from '@beddcode/shared'
 import { createAcpAdapter } from './adapter.ts'
 import { AcpAgentStore } from './config.ts'
-import { AcpSession } from './session.ts'
+import { AcpSession, isChooser } from './session.ts'
 import { grokProfile } from './profiles.ts'
 
 type Msg = {
@@ -63,7 +63,13 @@ function fakeAgent(caps: Record<string, unknown> = {}) {
             JSON.stringify(
               result instanceof Error
                 ? { jsonrpc: '2.0', id: msg.id, error: { code: -32000, message: result.message } }
-                : { jsonrpc: '2.0', id: msg.id, result },
+                : result && typeof result === 'object' && 'rpcError' in result
+                  ? {
+                      jsonrpc: '2.0',
+                      id: msg.id,
+                      error: (result as { rpcError: unknown }).rpcError,
+                    }
+                  : { jsonrpc: '2.0', id: msg.id, result },
             ),
           ),
         )
@@ -675,3 +681,381 @@ describe('AcpSession: approval modes', () => {
     expect(modes.at(-1)).toMatchObject({ currentModeId: 'approve-all' })
   })
 })
+
+describe('AcpSession: a turn that never answers', () => {
+  const timing = {
+    BEDDCODE_ACP_IDLE_MS: '120',
+    BEDDCODE_ACP_CHECK_MS: '15',
+    BEDDCODE_ACP_CANCEL_GRACE_MS: '40',
+  }
+  const withTiming = async (fn: () => Promise<void>) => {
+    const before = { ...process.env }
+    Object.assign(process.env, timing)
+    try {
+      await fn()
+    } finally {
+      for (const key of Object.keys(timing)) {
+        if (before[key] === undefined) delete process.env[key]
+        else process.env[key] = before[key]
+      }
+    }
+  }
+  const collect = (session: AcpSession) => {
+    const events: SessionEvent[] = []
+    void (async () => {
+      for await (const e of session.events) events.push(e)
+    })()
+    return events
+  }
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+  it('is cancelled and then ended when the agent goes silent', async () => {
+    await withTiming(async () => {
+      const agent = fakeAgent()
+      const session = start(agent)
+      const events = collect(session)
+      await session.prompt({ text: 'go' })
+      expect(agent.sent('session/cancel')).toHaveLength(1)
+      expect(events.find((e) => e.type === 'error')).toMatchObject({
+        message: expect.stringContaining('stopped responding'),
+      })
+      expect(events.filter((e) => e.type === 'turn.completed')).toMatchObject([{ reason: 'error' }])
+      await session.close()
+    })
+  })
+
+  it('is left alone while the agent keeps showing signs of work', async () => {
+    await withTiming(async () => {
+      const agent = fakeAgent()
+      const session = start(agent)
+      const events = collect(session)
+      const turn = session.prompt({ text: 'go' })
+      const promptId = (await agent.waitFor((m) => m.method === 'session/prompt')).id as number
+      for (let i = 0; i < 12; i++) {
+        agent.update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '.' } })
+        await sleep(30)
+      }
+      expect(events.some((e) => e.type === 'error')).toBe(false)
+      agent.reply(promptId, { stopReason: 'end_turn' })
+      await turn
+      expect(events.filter((e) => e.type === 'turn.completed')).toMatchObject([{ reason: 'done' }])
+      await session.close()
+    })
+  })
+
+  it('does not count the time it waits for the user', async () => {
+    await withTiming(async () => {
+      const agent = fakeAgent()
+      const session = start(agent)
+      const events = collect(session)
+      const turn = session.prompt({ text: 'go' })
+      const promptId = (await agent.waitFor((m) => m.method === 'session/prompt')).id as number
+      const asked = agent.ask('session/request_permission', {
+        sessionId: 'acp-1',
+        toolCall: { toolCallId: 't1', title: 'Run it' },
+        options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
+      })
+      await sleep(400)
+      expect(events.some((e) => e.type === 'error')).toBe(false)
+      const request = events.find((e) => e.type === 'approval.requested')
+      if (request?.type !== 'approval.requested') throw new Error('no approval')
+      await session.respondToApproval(request.requestId, 'ok')
+      await asked
+      agent.reply(promptId, { stopReason: 'end_turn' })
+      await turn
+      expect(events.some((e) => e.type === 'error')).toBe(false)
+      await session.close()
+    })
+  })
+
+  it('is ended as cancelled when the agent ignores a cancel', async () => {
+    await withTiming(async () => {
+      const agent = fakeAgent()
+      const session = start(agent)
+      const events = collect(session)
+      const turn = session.prompt({ text: 'go' })
+      await agent.waitFor((m) => m.method === 'session/prompt')
+      await session.interrupt()
+      await turn
+      expect(events.filter((e) => e.type === 'turn.completed')).toMatchObject([
+        { reason: 'cancelled' },
+      ])
+      await session.close()
+    })
+  })
+})
+
+describe('AcpSession: forms and questions', () => {
+  const form = {
+    sessionId: 'acp-1',
+    mode: 'form',
+    message: 'Where to?',
+    requestedSchema: {
+      type: 'object',
+      properties: {
+        env: {
+          type: 'string',
+          title: 'Environment',
+          oneOf: [
+            { const: 'stg', title: 'Staging' },
+            { const: 'prod', title: 'Production' },
+          ],
+        },
+      },
+    },
+  }
+
+  it('shows an elicitation form as a question and answers with the values the agent defined', async () => {
+    const agent = fakeAgent()
+    const session = start(agent)
+    const reply = agent.ask('elicitation/create', form)
+    const asked = await nextEvent(session, (e) => e.type === 'question.requested')
+    if (asked.type !== 'question.requested') throw new Error('unreachable')
+    expect(asked.questions).toMatchObject([
+      {
+        id: 'env',
+        question: 'Where to?',
+        options: [{ label: 'Staging' }, { label: 'Production' }],
+      },
+    ])
+    await session.answerQuestion?.(asked.requestId, { env: ['Production'] })
+    expect((await reply).result).toEqual({ action: 'accept', content: { env: 'prod' } })
+    await session.close()
+  })
+
+  it('declines a form it cannot show, and one that is dismissed', async () => {
+    const agent = fakeAgent()
+    const session = start(agent)
+    expect(
+      (await agent.ask('elicitation/create', { sessionId: 'acp-1', mode: 'url', message: 'x' }))
+        .result,
+    ).toEqual({ action: 'decline' })
+    const reply = agent.ask('elicitation/create', form)
+    await nextEvent(session, (e) => e.type === 'question.requested')
+    await session.interrupt()
+    expect((await reply).result).toEqual({ action: 'decline' })
+    await session.close()
+  })
+
+  it("answers Grok's own question request in the shape it expects", async () => {
+    const agent = fakeAgent()
+    const session = start(agent)
+    const reply = agent.ask('_x.ai/ask_user_question', {
+      sessionId: 'acp-1',
+      toolCallId: 't1',
+      questions: [
+        { question: 'Which database?', options: [{ label: 'Postgres' }, { label: 'SQLite' }] },
+      ],
+    })
+    const asked = await nextEvent(session, (e) => e.type === 'question.requested')
+    if (asked.type !== 'question.requested') throw new Error('unreachable')
+    await session.answerQuestion?.(asked.requestId, { q0: ['SQLite'] })
+    expect((await reply).result).toEqual({
+      outcome: 'accepted',
+      answers: { 'Which database?': ['SQLite'] },
+      annotations: {},
+    })
+    await session.close()
+  })
+
+  it("hands Grok's finished plan to the user, and tells it what they decided", async () => {
+    const agent = fakeAgent()
+    const session = start(agent)
+    const first = agent.ask('_x.ai/exit_plan_mode', {
+      sessionId: 'acp-1',
+      toolCallId: 't1',
+      planContent: '# Plan\n- one',
+    })
+    const request = await nextEvent(session, (e) => e.type === 'approval.requested')
+    if (request.type !== 'approval.requested') throw new Error('unreachable')
+    expect(request).toMatchObject({ title: 'Plan ready for review', plan: '# Plan\n- one' })
+    expect(request.options.map((o) => o.id)).toEqual(['approve', 'revise'])
+    await session.respondToApproval(request.requestId, 'approve')
+    expect((await first).result).toEqual({ outcome: 'approved' })
+
+    const second = agent.ask('x.ai/exit_plan_mode', {
+      sessionId: 'acp-1',
+      toolCallId: 't2',
+      planContent: '# Plan 2',
+    })
+    const again = await nextEvent(
+      session,
+      (e) => e.type === 'approval.requested' && e.plan === '# Plan 2',
+    )
+    if (again.type !== 'approval.requested') throw new Error('unreachable')
+    await session.respondToApproval(again.requestId, 'revise')
+    expect((await second).result).toMatchObject({
+      outcome: 'cancelled',
+      feedback: expect.stringContaining('keep planning'),
+    })
+    await session.close()
+  })
+})
+
+describe('AcpSession: models outside the config options', () => {
+  const MODELS = {
+    currentModelId: 'm1',
+    availableModels: [
+      { modelId: 'm1', name: 'Model 1' },
+      { modelId: 'm2', name: 'Model 2' },
+    ],
+  }
+
+  it('shows them as a model setting and changes it with session/set_model', async () => {
+    const agent = fakeAgent()
+    agent.auto['session/new'] = () => ({ sessionId: 'acp-1', models: MODELS })
+    agent.auto['session/set_model'] = () => ({})
+    const session = start(agent)
+    const config = await nextEvent(session, (e) => e.type === 'session.config')
+    expect(config).toMatchObject({
+      options: [
+        {
+          id: 'model',
+          category: 'model',
+          value: 'm1',
+          choices: [{ value: 'm1' }, { value: 'm2' }],
+        },
+      ],
+    })
+    await session.setConfigOption?.('model', 'm2')
+    expect(agent.sent('session/set_model')[0]?.params).toMatchObject({
+      sessionId: 'acp-1',
+      modelId: 'm2',
+    })
+    expect(await nextEvent(session, (e) => e.type === 'session.config')).toMatchObject({
+      options: [{ id: 'model', value: 'm2' }],
+    })
+    await session.close()
+  })
+
+  it("leaves the agent's own model option alone", async () => {
+    const agent = fakeAgent()
+    agent.auto['session/new'] = () => ({
+      sessionId: 'acp-1',
+      models: MODELS,
+      configOptions: [
+        {
+          id: 'model',
+          name: 'Model',
+          category: 'model',
+          type: 'select',
+          currentValue: 'x',
+          options: [{ value: 'x', name: 'X' }],
+        },
+      ],
+    })
+    const session = start(agent)
+    const config = await nextEvent(session, (e) => e.type === 'session.config')
+    if (config.type !== 'session.config') throw new Error('unreachable')
+    expect(config.options).toHaveLength(1)
+    expect(config.options[0]).toMatchObject({ value: 'x' })
+    await session.close()
+  })
+})
+
+describe('AcpSession: starting and resuming', () => {
+  it("tries again when the agent's session storage is not ready yet", async () => {
+    const agent = fakeAgent()
+    let calls = 0
+    agent.auto['session/new'] = () =>
+      ++calls < 3
+        ? { rpcError: { code: -32000, message: 'Internal error', data: { code: 'FS_NOT_FOUND' } } }
+        : { sessionId: 'acp-1' }
+    const session = start(agent)
+    await nextEvent(session, (e) => e.type === 'session.modes')
+    expect(calls).toBe(3)
+    await session.close()
+  })
+
+  it("reports the agent's own reason when it refuses", async () => {
+    const agent = fakeAgent()
+    agent.auto['session/new'] = () => ({
+      rpcError: { code: -32603, message: 'Internal error', data: { details: 'quota exceeded' } },
+    })
+    const session = start(agent)
+    const failed = await nextEvent(session, (e) => e.type === 'error')
+    expect(failed).toMatchObject({ message: 'Internal error: quota exceeded' })
+    await session.close()
+  })
+
+  it('keeps a replay that arrives after the load has answered out of the transcript', async () => {
+    const agent = fakeAgent({ sessionCapabilities: {} })
+    agent.auto['session/load'] = () => {
+      // The agent answers, then replays the conversation a moment later.
+      setTimeout(
+        () =>
+          agent.update({
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: 'old words' },
+          }),
+        40,
+      )
+      setTimeout(
+        () =>
+          agent.update({
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: 'more old words' },
+          }),
+        90,
+      )
+      return { modes: MODES }
+    }
+    const session = start(agent, { resumeId: 'acp-1' })
+    const events: SessionEvent[] = []
+    void (async () => {
+      for await (const e of session.events) events.push(e)
+    })()
+    await nextEventFrom(events, (e) => e.type === 'session.modes')
+    // Live words after the replay is over are shown.
+    agent.update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'fresh' } })
+    await new Promise((r) => setTimeout(r, 30))
+    const words = events
+      .filter((e) => e.type === 'message.delta')
+      .map((e) => (e as { text: string }).text)
+    expect(words).toEqual(['fresh'])
+    await session.close()
+  })
+})
+
+describe('permission choosers', () => {
+  it('knows a request that offers several allow choices of one kind', () => {
+    expect(
+      isChooser([{ kind: 'allow_once' }, { kind: 'allow_once' }, { kind: 'reject_once' }]),
+    ).toBe(true)
+    expect(
+      isChooser([{ kind: 'allow_once' }, { kind: 'allow_always' }, { kind: 'reject_once' }]),
+    ).toBe(false)
+    expect(isChooser([])).toBe(false)
+  })
+
+  it('shows what is being chosen between instead of a command', async () => {
+    const agent = fakeAgent()
+    const session = start(agent)
+    void agent.ask('session/request_permission', {
+      sessionId: 'acp-1',
+      toolCall: {
+        toolCallId: 't1',
+        title: 'Pick a branch',
+        content: [{ type: 'content', content: { type: 'text', text: 'main or develop?' } }],
+      },
+      options: [
+        { optionId: 'a', name: 'main', kind: 'allow_once' },
+        { optionId: 'b', name: 'develop', kind: 'allow_once' },
+      ],
+    })
+    expect(await nextEvent(session, (e) => e.type === 'approval.requested')).toMatchObject({
+      title: 'Pick a branch',
+      detail: 'main or develop?',
+    })
+    await session.close()
+  })
+})
+
+async function nextEventFrom(events: SessionEvent[], pred: (e: SessionEvent) => boolean) {
+  for (let i = 0; i < 400; i++) {
+    const found = events.find(pred)
+    if (found) return found
+    await new Promise((r) => setTimeout(r, 10))
+  }
+  throw new Error('event never arrived')
+}

@@ -22,6 +22,35 @@ const created = {
 }
 
 describe('replica', () => {
+  it('files a session as done without counting it as activity, and a new turn takes it back out', () => {
+    const filed = fold([
+      { ...created },
+      { type: 'turn.started', turnId: 't1' },
+      { type: 'turn.completed', reason: 'done', turnId: 't1' },
+    ])
+    const before = filed.sessions.s1!
+    expect(before.done).toBeUndefined()
+    const done = applyEvent(filed, {
+      seq: 99,
+      event: { sessionId: 's1', at: 500, type: 'session.done', done: true },
+    })
+    expect(done.sessions.s1).toMatchObject({
+      done: true,
+      updatedAt: before.updatedAt,
+      status: 'idle',
+    })
+    const back = applyEvent(done, {
+      seq: 100,
+      event: { sessionId: 's1', at: 600, type: 'session.done', done: false },
+    })
+    expect(back.sessions.s1!.done).toBeUndefined()
+    const again = applyEvent(done, {
+      seq: 101,
+      event: { sessionId: 's1', at: 700, type: 'turn.started', turnId: 't2' },
+    })
+    expect(again.sessions.s1).toMatchObject({ done: undefined, status: 'running' })
+  })
+
   it('merges assistant deltas of one turn into a single message', () => {
     const s = fold([
       created,

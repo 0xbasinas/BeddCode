@@ -82,10 +82,11 @@ export function Transcript({
             {canFork && (
               <button
                 className="fork-here"
-                title="Start a new session from here"
+                title="Fork from here: start a new session from this point"
+                aria-label="Fork from here"
                 onClick={() => void onFork(turnNo)}
               >
-                <GitFork size={13} /> Fork from here
+                <GitFork size={14} />
               </button>
             )}
           </div>

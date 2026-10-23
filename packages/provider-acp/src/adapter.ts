@@ -28,8 +28,22 @@ export const acpCapabilities: ProviderCapabilities = {
   imageInput: true,
   usage: false,
   commands: true,
+  // Forms an agent asks for (elicitation, Grok's questions) are shown as questions.
+  questions: true,
   history: true,
   permissionModes: [],
+}
+
+/**
+ * The environment for a process that only looks around (previews, history): it must never open a
+ * sign-in page. NO_BROWSER is honoured by Gemini CLI and ignored by the rest. The agent's own
+ * settings win over it.
+ */
+export function probeEnvironment(
+  agentEnv: Record<string, string>,
+  base: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return { ...base, NO_BROWSER: 'true', ...agentEnv }
 }
 
 export interface AcpAdapterOptions {
@@ -54,12 +68,14 @@ export function createAcpAdapter(options: AcpAdapterOptions): ProviderAdapter {
   const configFor = (instanceId: string) =>
     options.store.list().find((a) => instanceIdFor(a.id) === instanceId)
 
+  // Looking around (previews, history) must never open a sign-in page: NO_BROWSER is honoured by
+  // Gemini CLI and ignored by the rest.
   const transportFor = (config: AcpAgentConfig, cwd: string): Transport =>
     options.createTransport?.(config, cwd) ??
     spawnTransport(
       resolveExecutable(config.command) ?? config.command,
       config.args,
-      { cwd, env: { ...process.env, ...config.env } },
+      { cwd, env: probeEnvironment(config.env) },
       log,
     )
   const requireConfig = (instanceId: string) => {
@@ -135,11 +151,20 @@ export function createAcpAdapter(options: AcpAdapterOptions): ProviderAdapter {
     async startSession(instanceId, input) {
       const config = configFor(instanceId)
       if (!config) throw new Error(`Unknown ACP agent: ${instanceId}`)
+      // Agents we know start in the chosen mode by their own flags, whatever their config says.
+      const profile = profileFor(config.command)
+      const launched = profile?.launchArgs
+        ? profile.launchArgs(config.args, input.permissionMode)
+        : config.args
+      const launchedMode =
+        profile?.launchArgs && profile.modes.some((m) => m.id === input.permissionMode)
+          ? input.permissionMode
+          : undefined
       const transport =
-        options.createTransport?.(config, input.cwd) ??
+        options.createTransport?.({ ...config, args: launched }, input.cwd) ??
         spawnTransport(
           resolveExecutable(config.command) ?? config.command,
-          config.args,
+          launched,
           { cwd: input.cwd, env: { ...process.env, ...config.env } },
           log,
         )
@@ -147,7 +172,8 @@ export function createAcpAdapter(options: AcpAdapterOptions): ProviderAdapter {
         transport,
         log,
         label: config.label,
-        profile: profileFor(config.command),
+        profile,
+        launchedMode,
       })
     },
   }
