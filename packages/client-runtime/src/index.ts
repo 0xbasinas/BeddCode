@@ -1,6 +1,7 @@
 export * from './blocks.ts'
 export * from './doneSessions.ts'
 export * from './nesting.ts'
+export * from './alertLink.ts'
 export * from './format.ts'
 export * from './hostCatalog.ts'
 export * from './hostClient.ts'

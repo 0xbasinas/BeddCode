@@ -7,6 +7,7 @@ import {
   FolderSimplePlus,
   GitBranch,
   Robot,
+  TreeStructure,
 } from 'phosphor-react-native'
 import { useEffect, useMemo, useState } from 'react'
 import type { SlashCommand } from '@beddcode/contracts'
@@ -54,6 +55,7 @@ export default function NewSessionScreen() {
   const chosenFolder = folder === undefined ? startFolder : folder
   const project = projects.find((p) => p.path === chosenFolder)
   const [worktree, setWorktree] = useState(true)
+  const [agentTools, setAgentTools] = useState(false)
   const useWorktree = Boolean(chosenFolder && project?.isRepo && worktree)
 
   const modes = agent?.capabilities.permissionModes ?? []
@@ -213,6 +215,7 @@ export default function NewSessionScreen() {
       model: model?.id,
       effort,
       workspace: useWorktree ? { mode: 'worktree' } : undefined,
+      agentTools: agentTools || undefined,
     })
     await prompt(sessionId, value)
     router.replace({ pathname: '/session/[id]', params: { id: sessionId } })
@@ -315,6 +318,22 @@ export default function NewSessionScreen() {
                   'workspace',
                 )
               : null}
+            <Pressable
+              style={[styles.chip, agentTools && { borderColor: colors.accent }]}
+              onPress={() => setAgentTools((v) => !v)}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: agentTools }}
+              accessibilityLabel="Can start other agents"
+            >
+              <Icon icon={TreeStructure} size={14} color={agentTools ? colors.accent : undefined} />
+              <Text
+                size={12.5}
+                color={agentTools ? colors.accent : colors.textSecondary}
+                numberOfLines={1}
+              >
+                {agentTools ? 'Can start agents' : 'Single agent'}
+              </Text>
+            </Pressable>
           </View>
         </View>
       </View>
