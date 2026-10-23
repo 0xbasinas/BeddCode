@@ -11,6 +11,7 @@ import { useRouterState } from '@tanstack/react-router'
 import { useSession, useSessionHostKey } from '../../stores/host.ts'
 import { HostScopeProvider } from '../../stores/HostScope.tsx'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
+import { useComposerWorkspace, type PaneWorkspace } from '../../stores/composerWorkspace.ts'
 import { useUiStore, type PaneId } from '../../stores/ui.ts'
 import { isMac } from '../../ui/desktop.ts'
 import { MissingFolder, useFolderMissing } from './MissingFolder.tsx'
@@ -41,10 +42,30 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
   const lastLabel = panes.find((p) => p.id === lastPane)?.label ?? 'pane'
   const sessionId = useActiveSessionId()
   const session = useSession(sessionId)
-  const hostKey = useSessionHostKey(sessionId) ?? LOCAL_HOST_KEY
+  const sessionHostKey = useSessionHostKey(sessionId)
+  const composer = useComposerWorkspace((s) => s.workspace)
+  const isComposer = useRouterState({ select: (s) => s.location.pathname === '/' })
+  const workspace: PaneWorkspace | undefined = session
+    ? {
+        cwd: session.cwd,
+        sessionId: session.id,
+        draftId: session.id,
+        title: session.title,
+        instanceId: session.instanceId,
+        branch: session.branch,
+        status: session.status,
+        worktree: Boolean(session.worktree),
+      }
+    : isComposer
+      ? composer
+      : undefined
+  const hostKey = sessionId
+    ? (sessionHostKey ?? LOCAL_HOST_KEY)
+    : ((isComposer ? composer?.hostKey : undefined) ?? LOCAL_HOST_KEY)
+  const workspaceKey = workspace ? JSON.stringify([hostKey, workspace.cwd, workspace.draftId]) : ''
   // The editor needs room: the files pane grows once a file is open.
   const editorOpen = useFiles((s) =>
-    session ? (s.byCwd[folderId(hostKey, session.cwd)] ?? EMPTY_FOLDER).tabs.length > 0 : false,
+    workspace ? (s.byCwd[folderId(hostKey, workspace.cwd)] ?? EMPTY_FOLDER).tabs.length > 0 : false,
   )
 
   // Room for what is open: the editor wants a wide column, the browser a wider one still.
@@ -53,17 +74,17 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
     if (wanted) wantWidth(wanted)
   }, [wanted, wantWidth])
 
-  const folderMissing = useFolderMissing(hostKey, session)
+  const folderMissing = useFolderMissing(hostKey, workspace)
 
-  const needSession = (render: (s: NonNullable<typeof session>) => ReactNode) =>
-    session ? (
+  const needFolder = (render: (s: PaneWorkspace) => ReactNode) =>
+    workspace ? (
       folderMissing ? (
-        <MissingFolder session={session} />
+        <MissingFolder session={workspace} />
       ) : (
-        render(session)
+        render(workspace)
       )
     ) : (
-      <div className="git-empty muted">Open a session to use this pane.</div>
+      <div className="git-empty muted">Choose a folder in the composer to use this pane.</div>
     )
 
   return (
@@ -87,11 +108,13 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
           aria-label={activePane}
         >
           <HostScopeProvider hostKey={hostKey}>
-            {activePane === 'git' && needSession((s) => <GitPane key={s.id} session={s} />)}
+            {activePane === 'git' &&
+              needFolder((s) => <GitPane key={workspaceKey} workspace={s} />)}
             {activePane === 'terminal' &&
-              needSession((s) => <TerminalPane key={s.id} session={s} />)}
-            {activePane === 'files' && needSession((s) => <FilesPane key={s.id} session={s} />)}
-            {activePane === 'browser' && <BrowserPane />}
+              needFolder((s) => <TerminalPane key={workspaceKey} workspace={s} />)}
+            {activePane === 'files' &&
+              needFolder((s) => <FilesPane key={workspaceKey} workspace={s} />)}
+            {activePane === 'browser' && <BrowserPane draftId={workspace?.draftId} />}
           </HostScopeProvider>
         </section>
       )}

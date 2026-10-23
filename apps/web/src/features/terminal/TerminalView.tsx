@@ -21,9 +21,11 @@ const THEME = {
 export function TerminalView({
   id,
   onSize,
+  onSelection,
 }: {
   id: string
   onSize?(size: { cols: number; rows: number }): void
+  onSelection?(text: string): void
 }) {
   const container = useRef<HTMLDivElement>(null)
   // A new connection means the server forgot our subscription: attach again.
@@ -31,6 +33,8 @@ export function TerminalView({
   const { epoch } = useRuntime(hostKey)
   const onSizeRef = useRef(onSize)
   onSizeRef.current = onSize
+  const onSelectionRef = useRef(onSelection)
+  onSelectionRef.current = onSelection
 
   useEffect(() => {
     const el = container.current
@@ -69,6 +73,10 @@ export function TerminalView({
       }
     })
     const stopInput = term.onData((data) => sendHostFrame(hostKey, { t: 'term.input', id, data }))
+    const stopSelection = term.onSelectionChange(() =>
+      onSelectionRef.current?.(term.getSelection()),
+    )
+    onSelectionRef.current?.('')
 
     sendHostFrame(hostKey, { t: 'term.attach', id })
     reportSize()
@@ -87,6 +95,7 @@ export function TerminalView({
       sendHostFrame(hostKey, { t: 'term.detach', id })
       stopFrames()
       stopInput.dispose()
+      stopSelection.dispose()
       term.dispose()
     }
   }, [hostKey, id, epoch])

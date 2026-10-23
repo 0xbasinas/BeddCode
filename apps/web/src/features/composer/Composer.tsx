@@ -10,20 +10,14 @@ import { ArrowUp, Paperclip, Plus, Square, X } from 'lucide-react'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import { formatBytes } from '../../ui/format.ts'
 import type { SlashCommand } from '@beddcode/contracts'
-import { upload } from '../../stores/host.ts'
+import {
+  attachUpload,
+  attachmentDraftKey,
+  EMPTY_ATTACHMENTS,
+  useAttachments,
+} from './attachments.ts'
 import { insertCommand, matchCommands } from './slash.ts'
 import { ModeMenu, type ModeItem } from './Menus.tsx'
-
-const MAX_BYTES = 20 * 1024 * 1024
-
-interface Attached {
-  key: number
-  name: string
-  size: number
-  status: 'uploading' | 'done' | 'error'
-  id?: string
-  error?: string
-}
 
 interface ComposerProps {
   text: string
@@ -35,6 +29,8 @@ interface ComposerProps {
   autoFocus?: boolean
   /** The host files are uploaded to; attachments must live where the agent runs. */
   hostKey: string
+  /** Session id, or a separate draft for the new-session composer. */
+  draftId?: string
   onSend(text: string, attachmentIds: string[]): Promise<void>
   onStop?(): void
   modes?: ModeItem[]
@@ -50,55 +46,59 @@ interface ComposerProps {
   above?: ReactNode
 }
 
-let nextKey = 1
-
 export function Composer(props: ComposerProps) {
-  const [files, setFiles] = useState<Attached[]>([])
+  const draftId = props.draftId ?? 'new-session'
+  const draft = attachmentDraftKey(props.hostKey, draftId)
+  const files = useAttachments((s) => s.drafts[draft] ?? EMPTY_ATTACHMENTS)
+  const latest = useRef({ draft, text: props.text })
+  latest.current = { draft, text: props.text }
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
   const [error, setError] = useState<string | null>(null)
+  const [sending, setSending] = useState(false)
+  const sendingRef = useRef(false)
   const [dragging, setDragging] = useState(false)
   const input = useRef<HTMLInputElement>(null)
 
-  const patch = (key: number, next: Partial<Attached>) =>
-    setFiles((fs) => fs.map((f) => (f.key === key ? { ...f, ...next } : f)))
-
   const addFiles = (list: FileList | File[]) => {
     for (const file of Array.from(list)) {
-      const key = nextKey++
-      const base = { key, name: file.name || 'pasted-file', size: file.size }
-      if (file.size > MAX_BYTES) {
-        setFiles((fs) => [...fs, { ...base, status: 'error', error: 'Larger than 20 MB' }])
-        continue
-      }
-      setFiles((fs) => [...fs, { ...base, status: 'uploading' }])
-      upload(props.hostKey, file).then(
-        (saved) => patch(key, { status: 'done', id: saved.id }),
-        (err: unknown) =>
-          patch(key, {
-            status: 'error',
-            error: err instanceof Error ? err.message : 'Upload failed',
-          }),
-      )
+      void attachUpload(props.hostKey, draftId, file)
     }
   }
 
   const ready = files.filter((f) => f.status === 'done')
-  const uploading = files.some((f) => f.status === 'uploading')
+  const pending = files.some((f) => f.status !== 'done')
   // Sending is allowed while the agent works: the host steers the message in or queues it.
   const canSend =
-    !props.disabled && !uploading && (props.text.trim().length > 0 || ready.length > 0)
+    !props.disabled && !pending && !sending && (props.text.trim().length > 0 || ready.length > 0)
 
   const send = async () => {
-    if (!canSend) return
+    if (!canSend || sendingRef.current) return
+    sendingRef.current = true
+    setSending(true)
     setError(null)
     try {
       await props.onSend(
         props.text.trim(),
         ready.map((f) => f.id!),
       )
-      props.onTextChange('')
-      setFiles([])
+      if (mounted.current && latest.current.draft === draft && latest.current.text === props.text) {
+        props.onTextChange('')
+      }
+      useAttachments.getState().remove(
+        draft,
+        ready.map((f) => f.key),
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send')
+    } finally {
+      sendingRef.current = false
+      setSending(false)
     }
   }
 
@@ -150,7 +150,7 @@ export function Composer(props: ComposerProps) {
                 {f.status === 'error' && <span className="muted">{f.error}</span>}
                 <button
                   aria-label={`Remove ${f.name}`}
-                  onClick={() => setFiles((fs) => fs.filter((x) => x.key !== f.key))}
+                  onClick={() => useAttachments.getState().remove(draft, [f.key])}
                 >
                   <X size={12} />
                 </button>

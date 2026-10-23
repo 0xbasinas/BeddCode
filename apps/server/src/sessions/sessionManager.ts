@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import path from 'node:path'
+import { mkdtemp, rm } from 'node:fs/promises'
+import os from 'node:os'
+import { gitTextPrompt, parseGitText } from '../workspace/gitText.ts'
 import type {
   AgentPreview,
   HistoryEntry,
@@ -69,8 +72,72 @@ export class SessionManager {
     at: number
     instances: { adapter: ProviderAdapter; instance: ProviderInstance }[]
   } | null = null
+  private readonly gitGenerations = new Set<string>()
 
   constructor(private readonly deps: SessionManagerDeps) {}
+
+  async generateGitText(params: RpcParams<'git.generate'>): Promise<RpcResult<'git.generate'>> {
+    const key = JSON.stringify([params.sessionId ?? params.cwd, params.kind])
+    if (this.gitGenerations.has(key))
+      throw new Error('A draft is already being generated for this workspace')
+    this.gitGenerations.add(key)
+    try {
+      return await this.generateGitTextOnce(params)
+    } finally {
+      this.gitGenerations.delete(key)
+    }
+  }
+
+  private async generateGitTextOnce(
+    params: RpcParams<'git.generate'>,
+  ): Promise<RpcResult<'git.generate'>> {
+    const event = params.sessionId
+      ? this.deps.store
+          .readSession(params.sessionId)
+          .find((e) => e.event.type === 'session.created')?.event
+      : undefined
+    const created = event?.type === 'session.created' ? event : undefined
+    if (params.sessionId && !created) throw new Error('Session not found')
+    const folder = created?.cwd ?? params.cwd
+    if (!folder) throw new Error('Choose a working folder')
+    const found = (await this.detect()).find(
+      (d) => d.instance.id === params.instanceId && d.instance.status === 'ready',
+    )
+    if (!found?.adapter.generateText)
+      throw new Error('Choose an available agent that supports text generation')
+    const context = await this.deps.git.generationContext(
+      folder,
+      params.kind,
+      params.paths,
+      params.base,
+    )
+    // Supplying the diff avoids loading project instructions, hooks or MCP configuration.
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'beddcode-git-text-'))
+    try {
+      const text = await found.adapter.generateText({
+        instanceId: found.instance.id,
+        cwd,
+        prompt: gitTextPrompt(params.kind, context),
+        model:
+          created && params.sessionId && found.instance.id === created.instanceId
+            ? this.deps.store.sessionMeta([params.sessionId]).get(params.sessionId)?.model
+            : undefined,
+      })
+      const current = await this.deps.git.generationContext(
+        folder,
+        params.kind,
+        params.paths,
+        params.base,
+      )
+      if (current.text !== context.text)
+        throw new Error(
+          'The changes moved while generating. Review the files and generate a new draft.',
+        )
+      return { ...parseGitText(params.kind, text), truncated: context.truncated }
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  }
 
   /** What the agents used over the last `days` days, from the usage they reported. */
   async usageSummary(days: number): Promise<UsageSummary> {

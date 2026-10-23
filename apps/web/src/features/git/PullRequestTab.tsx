@@ -6,6 +6,7 @@ import { agoLabel } from '../../ui/format.ts'
 import { hostRequest } from '../../stores/host.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
 import { usePolled } from './usePolled.ts'
+import { GenerateGitText } from './GenerateGitText.tsx'
 
 const CHECK_ICON = {
   success: <CircleCheck size={16} className="ok" />,
@@ -20,12 +21,18 @@ export function PullRequestTab({
   log,
   refreshKey,
   onChanged,
+  sessionId,
+  instanceId,
+  defaultBase,
 }: {
   cwd: string
   branch: string | undefined
   log: GitLog | undefined
   refreshKey: unknown
   onChanged(): void
+  sessionId?: string
+  instanceId?: string
+  defaultBase?: string
 }) {
   const hostKey = useHostKey()
   const pr = usePolled(
@@ -35,17 +42,18 @@ export function PullRequestTab({
   )
 
   if (pr.loading) return <div className="git-empty muted">Checking GitHub…</div>
-  if (pr.error) {
-    return (
-      <div className="git-empty">
-        <div>Pull requests are unavailable</div>
-        <div className="muted">{pr.error}</div>
-      </div>
-    )
-  }
   if (!pr.data) {
     return (
-      <CreatePr cwd={cwd} branch={branch} log={log} onCreated={() => (pr.refresh(), onChanged())} />
+      <CreatePr
+        cwd={cwd}
+        branch={branch}
+        log={log}
+        sessionId={sessionId}
+        instanceId={instanceId}
+        defaultBase={defaultBase}
+        availabilityError={pr.error}
+        onCreated={() => (pr.refresh(), onChanged())}
+      />
     )
   }
   return <PrDetails pr={pr.data} />
@@ -131,11 +139,19 @@ function CreatePr({
   branch,
   log,
   onCreated,
+  sessionId,
+  instanceId,
+  defaultBase,
+  availabilityError,
 }: {
   cwd: string
   branch: string | undefined
   log: GitLog | undefined
   onCreated(): void
+  sessionId?: string
+  instanceId?: string
+  defaultBase?: string
+  availabilityError?: string
 }) {
   const hostKey = useHostKey()
   const first = log ? [...log.unpushed, ...log.pushed].at(-1) : undefined
@@ -144,6 +160,8 @@ function CreatePr({
   const [draft, setDraft] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
+  const [base, setBase] = useState(log?.base ?? defaultBase ?? 'main')
+  const [generating, setGenerating] = useState(false)
 
   const create = async () => {
     setBusy(true)
@@ -154,7 +172,7 @@ function CreatePr({
         title: title.trim(),
         body,
         draft,
-        base: log?.base,
+        base: base.trim(),
       })
       onCreated()
     } catch (err) {
@@ -168,26 +186,60 @@ function CreatePr({
   return (
     <>
       <div className="git-scroll pr">
+        {availabilityError && (
+          <div className="composer-error" role="alert">
+            {availabilityError}. You can still generate and copy a draft.
+          </div>
+        )}
         <div className="pr-head">
           <span className="state none">No pull request</span>
         </div>
         <div className="branches">
-          <code>{branch ?? 'HEAD'}</code> <ArrowRight size={13} />{' '}
-          <code>{log?.base ?? 'main'}</code>
+          <code>{branch ?? 'HEAD'}</code> <ArrowRight size={13} /> <code>{base}</code>
         </div>
         {nothing ? (
           <div className="muted">Commit some changes on this branch first.</div>
         ) : (
           <>
+            <label className="git-field-label">
+              Base branch
+              <input
+                className="field"
+                aria-label="Base branch"
+                value={base}
+                disabled={busy || generating}
+                onChange={(e) => setBase(e.target.value)}
+              />
+            </label>
+            <GenerateGitText
+              sessionId={sessionId}
+              cwd={cwd}
+              preferredInstanceId={instanceId}
+              kind="pr"
+              base={base}
+              disabled={busy || !base.trim() || branch === base.trim()}
+              onBusy={setGenerating}
+              onGenerated={(draft) => {
+                setTitle(draft.title ?? '')
+                setBody(draft.body ?? '')
+              }}
+            />
+            <p className="muted small">
+              Generates from committed changes compared with the base branch.
+            </p>
             <input
               className="field"
               placeholder="Title"
+              aria-label="Pull request title"
+              readOnly={generating || busy}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
             <textarea
               className="field"
               placeholder="Describe the change"
+              aria-label="Pull request description"
+              readOnly={generating || busy}
               rows={6}
               value={body}
               onChange={(e) => setBody(e.target.value)}
@@ -205,10 +257,18 @@ function CreatePr({
         <div className="git-actions">
           <button
             className="primary"
-            disabled={nothing || busy || title.trim().length === 0}
+            disabled={
+              Boolean(availabilityError) ||
+              nothing ||
+              busy ||
+              generating ||
+              !base.trim() ||
+              branch === base.trim() ||
+              title.trim().length === 0
+            }
             onClick={() => void create()}
           >
-            {busy ? 'Creating…' : 'Create pull request'}
+            {busy ? 'Creating…' : 'Push & create pull request'}
           </button>
         </div>
       </div>

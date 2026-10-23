@@ -1,8 +1,9 @@
 import { existsSync, realpathSync } from 'node:fs'
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { FileContent, FileEntry, FileMedia } from '@beddcode/contracts'
 import { MediaTickets, mediaType } from './media.ts'
+import { MAX_ATTACHMENT_BYTES } from '../attachments/store.ts'
 
 export const MAX_EDIT_BYTES = 2 * 1024 * 1024
 
@@ -38,6 +39,27 @@ const RESULT_LIMIT = 50
 export class FileService {
   /** Tickets for showing media files; the HTTP route serves what they name. */
   readonly media = new MediaTickets()
+
+  async readAttachment(cwd: string, rel: string): Promise<Buffer> {
+    const file = await open(this.resolve(cwd, rel), 'r')
+    try {
+      const info = await file.stat()
+      if (!info.isFile()) throw new FileError(`Not a file: ${rel}`)
+      if (info.size > MAX_ATTACHMENT_BYTES) throw new FileError('Attachment is larger than 20 MB')
+      // Bound the read too: a file can grow after stat.
+      const data = Buffer.alloc(Math.min(info.size + 1, MAX_ATTACHMENT_BYTES + 1))
+      let length = 0
+      while (length < data.length) {
+        const { bytesRead } = await file.read(data, length, data.length - length, null)
+        if (!bytesRead) break
+        length += bytesRead
+      }
+      if (length > info.size) throw new FileError('File changed while attaching; try again')
+      return data.subarray(0, length)
+    } finally {
+      await file.close()
+    }
+  }
 
   /** Resolves `rel` inside `cwd`, or throws when it would leave it. */
   resolve(cwd: string, rel: string): string {

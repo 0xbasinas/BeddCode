@@ -122,6 +122,21 @@ const start = (
 }
 
 describe('ClaudeSession', () => {
+  it('uses an ephemeral tool-free configuration for metadata generation', async () => {
+    const h = fakeSdk()
+    const session = new ClaudeSession(
+      { sessionId: 'metadata', cwd: '/scratch', textOnly: true },
+      { queryFn: h.queryFn, log },
+    )
+    expect(h.lastOptions()).toMatchObject({
+      tools: [],
+      mcpServers: {},
+      settingSources: [],
+      persistSession: false,
+      maxTurns: 1,
+    })
+    await session.close()
+  })
   it('relays a permission request and returns the allow decision to Claude', async () => {
     const h = fakeSdk()
     const session = start(h)

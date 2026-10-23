@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -117,7 +117,7 @@ async function boot(store = new EventStore(':memory:'), guard?: GuardOptions, ho
     () => terminals.shutdown(),
     () => watchers.closeAll(),
   )
-  return { server, store, tokens, pairing }
+  return { server, store, tokens, pairing, attachments }
 }
 
 class Client {
@@ -401,6 +401,33 @@ describe('server', () => {
     writeFileSync(path.join(dir, 'b.txt'), 'new')
     await c.until((fs) => fs.some((f) => f.t === 'fs.changed' && f.paths.includes('b.txt')))
     c.send({ t: 'fs.unwatch', cwd: dir })
+  })
+
+  it('snapshots workspace attachments and delivers them through a prompt', async () => {
+    const { server, store, attachments } = await boot()
+    const c = await Client.connect(server.port)
+    const cwd = mkdtempSync(path.join(os.tmpdir(), 'beddcode-context-'))
+    cleanup.push(() => rmSync(cwd, { recursive: true, force: true }))
+    const image = Buffer.from([137, 80, 78, 71, 0, 255])
+    writeFileSync(path.join(cwd, 'image.png'), image)
+    const saved = await c.rpc('attachments.fromFile', { cwd, path: 'image.png' })
+    expect(saved.ok).toBe(true)
+    const { id } = saved.result as { id: string }
+    writeFileSync(path.join(cwd, 'image.png'), 'changed after attaching')
+    expect(readFileSync(attachments.get(id)!.path)).toEqual(image)
+    const created = await c.rpc('sessions.create', { instanceId: 'fake', cwd })
+    const { sessionId } = created.result as { sessionId: string }
+    expect((await c.rpc('sessions.prompt', { sessionId, text: '', attachments: [id] })).ok).toBe(
+      true,
+    )
+    const user = store
+      .readSession(sessionId)
+      .map((e) => e.event)
+      .find((e) => e.type === 'message.delta' && e.role === 'user')
+    expect(user).toMatchObject({
+      attachments: [{ name: 'image.png', path: attachments.get(id)!.path }],
+    })
+    expect((await c.rpc('attachments.fromFile', { cwd, path: '../outside' })).ok).toBe(false)
   })
 
   it('rejects unknown methods and bad params', async () => {

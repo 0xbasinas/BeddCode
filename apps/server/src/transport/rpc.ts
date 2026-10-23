@@ -88,6 +88,7 @@ export function createRpcRouter(
     'git.diff': (p) => git.diff(p.cwd, p.path),
     'git.log': (p) => git.log(p.cwd),
     'git.branches': (p) => git.branches(p.cwd),
+    'git.generate': (p) => sessions.generateGitText(p),
     'git.commit': (p) => git.commit(p.cwd, p.message, p.paths, p.push),
     'git.push': async (p) => {
       await git.push(p.cwd)
@@ -95,9 +96,20 @@ export function createRpcRouter(
     },
     'git.pr.get': (p) => github.pullRequest(p.cwd),
     'git.pr.create': async (p) => {
+      const info = await git.info(p.cwd)
+      if (!info.branch || info.detached)
+        throw new Error('Create a branch before opening a pull request')
+      if (p.base && (p.base.trim() === info.branch || p.base.startsWith('-')))
+        throw new Error('Choose a different base branch for the pull request')
       // The branch has to exist on GitHub before a pull request can be opened from it.
       await git.push(p.cwd)
-      return { url: await github.createPullRequest(p.cwd, p) }
+      try {
+        return { url: await github.createPullRequest(p.cwd, p) }
+      } catch (err) {
+        throw new Error(
+          `Branch pushed, but pull request creation failed: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
     },
     'terminals.create': async (p) => {
       if (!isDirectory(p.cwd)) throw new Error(`Folder does not exist: ${p.cwd}`)
@@ -123,6 +135,10 @@ export function createRpcRouter(
     'sessions.create': (p) => sessions.create(p),
     'attachments.upload': async (p) => {
       const saved = attachments.save(p.name, Buffer.from(p.dataBase64, 'base64'))
+      return { id: saved.id, name: saved.name, size: saved.size }
+    },
+    'attachments.fromFile': async (p) => {
+      const saved = attachments.save(p.path, await files.readAttachment(p.cwd, p.path))
       return { id: saved.id, name: saved.name, size: saved.size }
     },
     'sessions.prompt': (p) => sessions.prompt(p.sessionId, p.text, p.attachments, p.mode),

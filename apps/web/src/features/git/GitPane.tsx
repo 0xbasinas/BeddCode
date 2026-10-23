@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useUiStore } from '../../stores/ui.ts'
-import { GitBranch } from 'lucide-react'
-import type { SessionView } from '@beddcode/client-runtime'
+import { GitBranch, RotateCw } from 'lucide-react'
+import type { PaneWorkspace } from '../../stores/composerWorkspace.ts'
 import { hostRequest } from '../../stores/host.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
 import { ChangesTab } from './ChangesTab.tsx'
@@ -13,14 +13,14 @@ import { usePolled } from './usePolled.ts'
  * Changes, commits and pull request of the folder a session works in. Git is read live (the
  * working tree changes outside our event log), refreshed on an interval and after each turn.
  */
-export function GitPane({ session }: { session: SessionView }) {
+export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
   const tab = useUiStore((s) => s.gitTab)
   const setTab = useUiStore((s) => s.setGitTab)
   const [version, setVersion] = useState(0)
-  const cwd = session.cwd
+  const cwd = workspace.cwd
   const hostKey = useHostKey()
   // A finished turn usually means files changed.
-  const key = `${hostKey}:${cwd}:${session.status}:${version}`
+  const key = `${hostKey}:${cwd}:${workspace.status}:${version}`
 
   const info = usePolled(() => hostRequest(hostKey, 'git.info', { cwd }), key)
   const status = usePolled(() => hostRequest(hostKey, 'git.status', { cwd }), key)
@@ -73,6 +73,9 @@ export function GitPane({ session }: { session: SessionView }) {
         {(info.data.ahead ?? 0) > 0 && <span className="add">↑{info.data.ahead}</span>}
         {(info.data.behind ?? 0) > 0 && <span className="del">↓{info.data.behind}</span>}
         <span className="spacer" />
+        <button className="icon-btn" aria-label="Refresh Git" title="Refresh Git" onClick={changed}>
+          <RotateCw size={14} />
+        </button>
         {tab === 'commits' && log.data?.base ? (
           <span className="muted">vs {log.data.base}</span>
         ) : (
@@ -86,7 +89,16 @@ export function GitPane({ session }: { session: SessionView }) {
 
       {tab === 'changes' &&
         (status.data ? (
-          <ChangesTab cwd={cwd} status={status.data} refreshKey={key} onChanged={changed} />
+          <ChangesTab
+            cwd={cwd}
+            sessionId={workspace.sessionId}
+            instanceId={workspace.instanceId}
+            status={status.data}
+            refreshKey={key}
+            onChanged={changed}
+            onOpenCommits={() => setTab('commits')}
+            onOpenPr={() => setTab('pr')}
+          />
         ) : (
           <div className="git-empty muted">{status.error ?? 'Loading…'}</div>
         ))}
@@ -104,8 +116,11 @@ export function GitPane({ session }: { session: SessionView }) {
         ))}
       {tab === 'pr' && (
         <PullRequestTab
+          sessionId={workspace.sessionId}
+          instanceId={workspace.instanceId}
           cwd={cwd}
           branch={info.data.branch}
+          defaultBase={info.data.defaultBranch}
           log={log.data}
           refreshKey={version}
           onChanged={changed}

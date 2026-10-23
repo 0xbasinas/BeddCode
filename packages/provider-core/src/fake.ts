@@ -17,6 +17,7 @@ import type {
 export const FAKE_INSTANCE_ID = 'fake'
 
 const baseCapabilities: ProviderCapabilities = {
+  textGeneration: true,
   resume: false,
   fork: false,
   steer: false,
@@ -66,6 +67,15 @@ export function createFakeAdapter(options: FakeAdapterOptions = {}): ProviderAda
   const stored = options.history ?? []
 
   return {
+    generateText: async ({ prompt }) =>
+      prompt.includes('"message"')
+        ? JSON.stringify({
+            message: 'feat: update workspace behavior\n\nImprove the selected files.',
+          })
+        : JSON.stringify({
+            title: 'Improve workspace behavior',
+            body: '## Summary\n\nImprove workspace behavior.\n\n## Testing\n\nNot run by the description generator.',
+          }),
     kind: 'fake',
     async detect(): Promise<ProviderInstance[]> {
       return [

@@ -143,6 +143,7 @@ export class AcpSession implements ProviderSession {
   private watchdog: ReturnType<typeof setInterval> | undefined
   private endTurn: (() => void) | undefined
   private canSendImages = false
+  private canCloseSession = false
 
   constructor(
     private readonly input: StartSessionInput,
@@ -182,12 +183,14 @@ export class AcpSession implements ProviderSession {
         'initialize',
         {
           protocolVersion: PROTOCOL_VERSION,
-          clientCapabilities: {
-            fs: { readTextFile: true, writeTextFile: true },
-            terminal: true,
-            // Forms an agent wants filled in go to the user as questions.
-            elicitation: { form: {} },
-          },
+          clientCapabilities: this.input.textOnly
+            ? {}
+            : {
+                fs: { readTextFile: true, writeTextFile: true },
+                terminal: true,
+                // Forms an agent wants filled in go to the user as questions.
+                elicitation: { form: {} },
+              },
           clientInfo: {
             name: 'beddcode',
             title: 'BeddCode',
@@ -203,6 +206,9 @@ export class AcpSession implements ProviderSession {
       }
 
       const caps = init.agentCapabilities
+      this.canCloseSession = Boolean(
+        caps?.sessionCapabilities && 'close' in caps.sessionCapabilities,
+      )
       this.canSendImages = caps?.promptCapabilities?.image === true
       this.authMethods = (init.authMethods ?? []).map((m) => m.name)
       const extra = this.input.additionalDirectories ?? []
@@ -278,6 +284,10 @@ export class AcpSession implements ProviderSession {
       }
       const rest = await this.announceModes(modes, agentOptions)
       const shown = this.withModel(rest)
+      if (this.input.textOnly && this.input.model) {
+        const model = shown.find((o) => o.category === 'model')
+        if (model) await this.sendConfig(model.id, this.input.model)
+      }
       if (shown.length > 0) this.emit({ type: 'session.config', options: shown })
       // Settings chosen before the session started (model, thinking level, ...).
       for (const [id, value] of Object.entries(this.input.config ?? {})) {
@@ -342,7 +352,11 @@ export class AcpSession implements ProviderSession {
     // Started with a flag for a mode: that is the mode it is in, whatever its config file says.
     let current =
       setup.source === 'command' && this.deps.launchedMode ? this.deps.launchedMode : setup.current
-    const wanted = this.input.permissionMode
+    const wanted = this.input.textOnly
+      ? ['read-only', 'readonly', 'plan', 'ask', 'default', 'normal']
+          .map((id) => setup.modes.find((m) => m.id.toLowerCase() === id)?.id)
+          .find(Boolean)
+      : this.input.permissionMode
     if (wanted && wanted !== current && setup.modes.some((m) => m.id === wanted)) {
       await this.applyMode(wanted)
       current = wanted
@@ -581,6 +595,14 @@ export class AcpSession implements ProviderSession {
     this.closed = true
     this.cancelAllPending()
     this.terminals.releaseAll()
+    if (this.input.textOnly && this.acpSessionId) {
+      if (this.inflightTurn) this.rpc.notify('session/cancel', { sessionId: this.acpSessionId })
+      if (this.canCloseSession) {
+        await this.rpc
+          .request('session/close', { sessionId: this.acpSessionId }, { timeoutMs: 1500 })
+          .catch(() => {})
+      }
+    }
     this.rpc.close()
     this.queue.close()
   }
@@ -612,6 +634,16 @@ export class AcpSession implements ProviderSession {
   }
 
   private async onClientRequest(method: string, params: unknown): Promise<unknown> {
+    if (this.input.textOnly) {
+      const message =
+        'The agent requested a tool or question while generating text. Try another agent.'
+      this.emit({ type: 'error', message }, this.currentTurn())
+      if (method === 'session/request_permission') return { outcome: { outcome: 'cancelled' } }
+      if (method === 'elicitation/create') return { action: 'decline' }
+      if (GROK_QUESTION_METHODS.includes(method) || GROK_PLAN_METHODS.includes(method))
+        return { outcome: 'cancelled' }
+      throw new JsonRpcError(-32601, message)
+    }
     const p = (params ?? {}) as Obj
     switch (method) {
       case 'session/request_permission':
@@ -788,6 +820,8 @@ export class AcpSession implements ProviderSession {
   private fail(message: string) {
     if (this.closed) return
     this.closed = true
+    this.stopWatchdog()
+    this.cancelAllPending()
     this.terminals.releaseAll()
     this.emit({ type: 'error', message }, this.currentTurn())
     if (this.inflightTurn) {
@@ -795,5 +829,6 @@ export class AcpSession implements ProviderSession {
       this.inflightTurn = null
     }
     this.queue.close()
+    this.rpc.close()
   }
 }

@@ -172,6 +172,25 @@ export const RpcMethods = {
   'git.diff': { params: z.object({ cwd: z.string(), path: z.string() }), result: GitDiff },
   'git.log': { params: z.object({ cwd: z.string() }), result: GitLog },
   'git.branches': { params: z.object({ cwd: z.string() }), result: z.array(GitBranch) },
+  /** Generate editable Git text with an installed agent; this never commits or pushes. */
+  'git.generate': {
+    params: z
+      .object({
+        sessionId: z.string().min(1).optional(),
+        cwd: z.string().min(1).optional(),
+        instanceId: z.string(),
+        kind: z.enum(['commit', 'pr']),
+        paths: z.array(z.string()).max(200).optional(),
+        base: z.string().optional(),
+      })
+      .refine((p) => Boolean(p.sessionId || p.cwd), 'Choose a session or working folder'),
+    result: z.object({
+      message: z.string().optional(),
+      title: z.string().optional(),
+      body: z.string().optional(),
+      truncated: z.boolean(),
+    }),
+  },
   /** Commits exactly the listed paths (everything else is left uncommitted). */
   'git.commit': {
     params: z.object({
@@ -180,7 +199,7 @@ export const RpcMethods = {
       paths: z.array(z.string()).min(1),
       push: z.boolean().optional(),
     }),
-    result: z.object({ hash: z.string(), pushed: z.boolean() }),
+    result: z.object({ hash: z.string(), pushed: z.boolean(), pushError: z.string().optional() }),
   },
   'git.push': { params: z.object({ cwd: z.string() }), result: z.object({}) },
   /** The pull request for the current branch, or null when there is none. */
@@ -289,6 +308,11 @@ export const RpcMethods = {
       /** Standard base64 of the file contents. */
       dataBase64: z.string(),
     }),
+    result: z.object({ id: z.string(), name: z.string(), size: z.number().int() }),
+  },
+  /** Snapshot a file from the workspace on its host, including images and other binary files. */
+  'attachments.fromFile': {
+    params: z.object({ cwd: z.string(), path: z.string().min(1) }),
     result: z.object({ id: z.string(), name: z.string(), size: z.number().int() }),
   },
   /**

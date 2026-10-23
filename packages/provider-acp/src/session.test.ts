@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -40,6 +40,7 @@ function fakeAgent(caps: Record<string, unknown> = {}) {
   const received: Msg[] = []
   const waiters: (() => void)[] = []
   let nextId = 100
+  let closed = false
 
   const auto: Record<string, (p: Record<string, unknown>) => unknown> = {
     initialize: () => ({
@@ -78,10 +79,14 @@ function fakeAgent(caps: Record<string, unknown> = {}) {
     },
     onLine: (h) => (lineHandler = h),
     onClose: (h) => (closeHandler = h),
-    close: () => closeHandler(),
+    close: () => {
+      closed = true
+      closeHandler()
+    },
   }
 
   const agent = {
+    isClosed: () => closed,
     transport,
     received,
     auto,
@@ -483,6 +488,62 @@ describe('AcpSession: client methods', () => {
 })
 
 describe('createAcpAdapter', () => {
+  it('generates text with the chosen ACP instance in a separate session and closes it', async () => {
+    const dir = tmp()
+    const store = new AcpAgentStore(path.join(dir, 'agents.json'))
+    store.put({ id: 'first', label: 'First', command: process.execPath })
+    store.put({ id: 'second', label: 'Second', command: process.execPath })
+    const agent = fakeAgent({ sessionCapabilities: { close: {} } })
+    agent.auto['session/close'] = () => ({})
+    agent.auto['session/prompt'] = () => {
+      agent.update({
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: '{"message":"fix: ' },
+      })
+      agent.update({
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'align Git controls"}' },
+      })
+      return { stopReason: 'end_turn' }
+    }
+    let chosen = ''
+    const adapter = createAcpAdapter({
+      store,
+      log,
+      createTransport: (config, cwd) => {
+        chosen = config.id
+        expect(cwd).toBe(dir)
+        return agent.transport
+      },
+    })
+    expect((await adapter.detect())[1]?.capabilities.textGeneration).toBe(true)
+    expect(
+      await adapter.generateText!({
+        instanceId: 'acp:second',
+        cwd: dir,
+        prompt: 'Draft JSON only',
+      }),
+    ).toBe('{"message":"fix: align Git controls"}')
+    expect(chosen).toBe('second')
+    expect(agent.sent('initialize')[0]?.params?.clientCapabilities).toEqual({})
+    expect(agent.sent('session/new')[0]?.params).toMatchObject({ cwd: dir, mcpServers: [] })
+    expect(agent.sent('session/prompt')).toHaveLength(1)
+    expect(agent.sent('session/close')).toHaveLength(1)
+    expect(agent.isClosed()).toBe(true)
+  })
+
+  it('returns ACP authentication failures and closes the generation process', async () => {
+    const dir = tmp()
+    const store = new AcpAgentStore(path.join(dir, 'agents.json'))
+    store.put({ id: 'here', label: 'Here', command: process.execPath })
+    const agent = fakeAgent()
+    agent.auto['session/new'] = () => new Error('Sign in to this agent first')
+    const adapter = createAcpAdapter({ store, log, createTransport: () => agent.transport })
+    await expect(
+      adapter.generateText!({ instanceId: 'acp:here', cwd: dir, prompt: 'Draft JSON' }),
+    ).rejects.toThrow('Sign in')
+    expect(agent.isClosed()).toBe(true)
+  })
   it('lists configured agents with install status and starts sessions through the transport', async () => {
     const dir = tmp()
     const store = new AcpAgentStore(path.join(dir, 'agents.json'))
@@ -509,6 +570,70 @@ describe('createAcpAdapter', () => {
       'Unknown ACP agent',
     )
     writeFileSync(path.join(dir, 'unused'), '')
+  })
+})
+
+describe('AcpSession: text generation', () => {
+  it('declines permissions, files, terminals and questions without performing their actions', async () => {
+    const agent = fakeAgent()
+    const dir = tmp()
+    const file = path.join(dir, 'keep.txt')
+    const marker = path.join(dir, 'terminal-marker.txt')
+    writeFileSync(file, 'keep this content')
+    const session = start(agent, { cwd: dir, textOnly: true, permissionMode: 'approve-all' })
+    await nextEvent(session, (e) => e.type === 'session.modes')
+    const permission = await agent.ask('session/request_permission', {
+      sessionId: 'acp-1',
+      toolCall: { toolCallId: 't1', title: 'Write' },
+      options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+    })
+    expect(permission.result).toEqual({ outcome: { outcome: 'cancelled' } })
+    expect(await agent.ask('fs/read_text_file', { path: file })).toHaveProperty('error')
+    expect(
+      await agent.ask('fs/write_text_file', { path: file, content: 'replaced' }),
+    ).toHaveProperty('error')
+    expect(
+      await agent.ask('terminal/create', { command: `echo changed > "${marker}"` }),
+    ).toHaveProperty('error')
+    expect((await agent.ask('elicitation/create', { mode: 'form' })).result).toEqual({
+      action: 'decline',
+    })
+    expect(readFileSync(file, 'utf8')).toBe('keep this content')
+    expect(existsSync(marker)).toBe(false)
+    const events = await drain(session)
+    expect(
+      events.filter((e) => e.type === 'question.requested' || e.type === 'approval.requested'),
+    ).toEqual([])
+    expect(events.some((e) => e.type === 'error')).toBe(true)
+  })
+
+  it('selects a read-only mode and applies the saved model when the agent offers them', async () => {
+    const agent = fakeAgent()
+    agent.auto['session/new'] = () => ({
+      sessionId: 'acp-1',
+      modes: {
+        currentModeId: 'auto',
+        availableModes: [
+          { id: 'auto', name: 'Auto' },
+          { id: 'read-only', name: 'Read only' },
+        ],
+      },
+      models: {
+        currentModelId: 'old',
+        availableModels: [
+          { modelId: 'old', name: 'Old' },
+          { modelId: 'chosen', name: 'Chosen' },
+        ],
+      },
+    })
+    agent.auto['session/set_model'] = () => ({})
+    const session = start(agent, { textOnly: true, model: 'chosen' })
+    const { turn, promptId } = await beginPrompt(session, agent)
+    expect(agent.sent('session/set_mode')[0]?.params).toMatchObject({ modeId: 'read-only' })
+    expect(agent.sent('session/set_model')[0]?.params).toMatchObject({ modelId: 'chosen' })
+    agent.reply(promptId, { stopReason: 'end_turn' })
+    await turn
+    await session.close()
   })
 })
 

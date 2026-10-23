@@ -30,6 +30,7 @@ export type ModelOption = z.infer<typeof ModelOption>
 
 /** What a provider really supports. The UI reads these flags, never the provider kind. */
 export const ProviderCapabilities = z.object({
+  textGeneration: z.boolean().optional(),
   resume: z.boolean(),
   fork: z.boolean(),
   steer: z.boolean(),

@@ -23,6 +23,8 @@ export interface StartSessionInput {
   config?: Record<string, string | boolean>
   /** Provider-native id to resume, when the provider supports it. */
   resumeId?: string
+  /** Internal text generation from supplied context; adapters restrict tools for this job. */
+  textOnly?: boolean
 }
 
 export interface PromptInput {
@@ -81,6 +83,13 @@ export interface ProviderAdapter {
   detect(): Promise<ProviderInstance[]>
   capabilities(instanceId: string): ProviderCapabilities
   startSession(instanceId: string, input: StartSessionInput): Promise<ProviderSession>
+  /** Isolated text generation using the CLI's existing account, outside a user conversation. */
+  generateText?(input: {
+    instanceId: string
+    cwd: string
+    prompt: string
+    model?: string
+  }): Promise<string>
 
   /** Conversations the agent's CLI has stored for a folder, newest first. */
   listHistory?(instanceId: string, cwd?: string): Promise<HistoryItem[]>

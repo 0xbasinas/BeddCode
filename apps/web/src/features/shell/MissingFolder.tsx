@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { FolderX } from 'lucide-react'
-import type { SessionView } from '@beddcode/client-runtime'
 import { hostRequest, useRuntime } from '../../stores/host.ts'
 
+type Folder = { cwd: string; worktree?: boolean }
+
 /** True once the host says the session's folder is gone (a deleted worktree, a moved project). */
-export function useFolderMissing(hostKey: string, session: SessionView | undefined): boolean {
+export function useFolderMissing(hostKey: string, session: Folder | undefined): boolean {
   const { epoch } = useRuntime(hostKey)
   const cwd = session?.cwd
   const [missing, setMissing] = useState(false)
@@ -27,7 +28,7 @@ export function useFolderMissing(hostKey: string, session: SessionView | undefin
 }
 
 /** Shown in place of a pane whose folder no longer exists, instead of a raw error. */
-export function MissingFolder({ session }: { session: SessionView }) {
+export function MissingFolder({ session }: { session: Folder }) {
   return (
     <div className="git-empty">
       <FolderX size={22} />

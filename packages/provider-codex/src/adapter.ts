@@ -14,10 +14,13 @@ import { discoverCodexModels } from './models.ts'
 import { createCodexHistory, createWithAppServer, listCodexSkills } from './history.ts'
 import { createCodexMcp } from './mcp.ts'
 import { readCodexLimits } from './limits.ts'
+import { generateSessionText } from '@beddcode/provider-core'
+import { randomUUID } from 'node:crypto'
 
 export const CODEX_INSTANCE_ID = 'codex'
 
 export const codexCapabilities: ProviderCapabilities = {
+  textGeneration: true,
   resume: true,
   fork: true,
   steer: true,
@@ -102,6 +105,26 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): ProviderA
   }
 
   return {
+    generateText: async (input) => {
+      const exe = executable()
+      if (!exe) throw new Error('Codex is not installed on this host')
+      const transport =
+        options.createTransport?.(input.cwd) ??
+        spawnTransport(exe, ['app-server'], { env, cwd: input.cwd }, log)
+      return generateSessionText(
+        new CodexSession(
+          {
+            sessionId: randomUUID(),
+            cwd: input.cwd,
+            model: input.model,
+            permissionMode: 'read-only',
+            textOnly: true,
+          },
+          { transport, log },
+        ),
+        input.prompt,
+      )
+    },
     kind: 'codex',
     detect: async () => [await detectInstance()],
     capabilities: () => capabilities,

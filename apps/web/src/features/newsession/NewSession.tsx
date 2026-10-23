@@ -27,6 +27,7 @@ import { showWelcome } from './welcomeLogic.ts'
 import { chooseFolder } from '../folders/folderFlow.ts'
 import { useAppPreferences } from '../../stores/appPreferences.ts'
 import { modelChoice } from '../../ui/models.ts'
+import { projectDraftId, useComposerWorkspace } from '../../stores/composerWorkspace.ts'
 import {
   agentDefaults,
   defaultAgent,
@@ -107,6 +108,18 @@ export function NewSession({
   const setChoice = (next: ModelChoice) => setSelection({ key: selectionKey, modeId, choice: next })
 
   const folder = chosenFolder || projects[0]?.path || host?.defaultCwd || ''
+  const welcome = showWelcome({ initialProject, compose, synced, hasSessions, setupSkipped })
+  const draftId = projectDraftId(folder)
+
+  useEffect(() => {
+    useComposerWorkspace.setState({
+      workspace:
+        !welcome && folder
+          ? { hostKey, cwd: folder, draftId, title: folderName(folder), instanceId: agent?.id }
+          : undefined,
+    })
+    return () => useComposerWorkspace.setState({ workspace: undefined })
+  }, [hostKey, folder, draftId, agent?.id, welcome])
 
   // Look at the folder's repository whenever it changes: branches for the picker, and whether
   // worktrees are possible at all.
@@ -215,7 +228,7 @@ export function NewSession({
     void navigate({ to: '/session/$sessionId', params: { sessionId } })
   }
 
-  if (showWelcome({ initialProject, compose, synced, hasSessions, setupSkipped }))
+  if (welcome)
     return (
       <Welcome
         hostKey={hostKey}
@@ -230,7 +243,7 @@ export function NewSession({
     <main className="panel new-session">
       <header className="thread-head">
         <h1>New session</h1>
-        <div className="thread-meta">Nothing runs until you send</div>
+        <div className="thread-meta">The agent starts when you send</div>
       </header>
       <div className="new-body">
         <h2>{agent ? `What should ${agent.label} work on?` : 'What should we work on?'}</h2>
@@ -249,6 +262,7 @@ export function NewSession({
           disabled={connection !== 'connected' || !agent}
           autoFocus
           hostKey={hostKey}
+          draftId={draftId}
           commands={slashCommands}
           onSend={send}
           modes={modes}

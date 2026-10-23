@@ -1,7 +1,7 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ProviderCapabilities, ProviderInstance, SessionEvent } from '@beddcode/contracts'
 import type { ProviderAdapter, ProviderSession, StartSessionInput } from '@beddcode/provider-core'
 import { createAsyncQueue, createLogger } from '@beddcode/shared'
@@ -95,6 +95,79 @@ const events = (store: EventStore, sessionId: string) =>
   store.readSession(sessionId).map((e) => e.event)
 
 describe('SessionManager: composer features', () => {
+  it('generates Git text for a selected folder without starting a conversation', async () => {
+    const { manager, adapter, store, starts } = setup()
+    const folder = tmp()
+    adapter.generateText = async () => '{"message":"fix: describe the selected folder"}'
+    const context = vi
+      .spyOn(GitService.prototype, 'generationContext')
+      .mockResolvedValue({ text: 'folder diff', truncated: false })
+    try {
+      expect(
+        await manager.generateGitText({
+          cwd: folder,
+          instanceId: 'rec',
+          kind: 'commit',
+          paths: ['app.ts'],
+        }),
+      ).toEqual({ message: 'fix: describe the selected folder', truncated: false })
+      expect(context).toHaveBeenCalledWith(folder, 'commit', ['app.ts'], undefined)
+      expect(starts).toHaveLength(0)
+      await expect(
+        manager.generateGitText({
+          sessionId: 'missing',
+          cwd: folder,
+          instanceId: 'rec',
+          kind: 'commit',
+        }),
+      ).rejects.toThrow('Session not found')
+    } finally {
+      context.mockRestore()
+      await manager.close()
+      store.close()
+    }
+  })
+  it('generates an isolated editable Git draft without adding a conversation turn', async () => {
+    const { manager, adapter, store } = setup()
+    let scratch = ''
+    adapter.generateText = async (input) => {
+      scratch = input.cwd
+      return '{"message":"fix: preserve selected changes"}'
+    }
+    const context = vi
+      .spyOn(GitService.prototype, 'generationContext')
+      .mockResolvedValue({ text: 'selected diff', truncated: false })
+    try {
+      const { sessionId } = await manager.create({ instanceId: 'rec' })
+      const before = store.readSession(sessionId).length
+      expect(
+        await manager.generateGitText({
+          sessionId,
+          instanceId: 'rec',
+          kind: 'commit',
+          paths: ['file.ts'],
+        }),
+      ).toEqual({ message: 'fix: preserve selected changes', truncated: false })
+      expect(store.readSession(sessionId)).toHaveLength(before)
+      expect(scratch).toContain('beddcode-git-text-')
+      expect(existsSync(scratch)).toBe(false)
+      context
+        .mockResolvedValueOnce({ text: 'old diff', truncated: false })
+        .mockResolvedValueOnce({ text: 'new diff', truncated: false })
+      await expect(
+        manager.generateGitText({
+          sessionId,
+          instanceId: 'rec',
+          kind: 'commit',
+          paths: ['file.ts'],
+        }),
+      ).rejects.toThrow('changes moved')
+    } finally {
+      context.mockRestore()
+      await manager.close()
+      store.close()
+    }
+  })
   it("records the starting mode, model and effort, and announces the provider's modes", async () => {
     const { store, manager, starts } = setup()
     const { sessionId } = await manager.create({

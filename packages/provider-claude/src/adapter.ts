@@ -13,11 +13,14 @@ import { scanClaudeCommands } from './commands.ts'
 import { createClaudeHistory, type ClaudeHistorySdk } from './history.ts'
 import { createClaudeMcp } from './mcp.ts'
 import { readClaudeLimits } from './limits.ts'
+import { generateSessionText } from '@beddcode/provider-core'
+import { randomUUID } from 'node:crypto'
 
 export const CLAUDE_INSTANCE_ID = 'claude'
 
 /** Claude's own permission mode ids, passed through unchanged. */
 export const claudeCapabilities: ProviderCapabilities = {
+  textGeneration: true,
   resume: true,
   fork: true,
   steer: true,
@@ -126,6 +129,19 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
   }
 
   return {
+    generateText: (input) =>
+      generateSessionText(
+        new ClaudeSession(
+          {
+            sessionId: randomUUID(),
+            cwd: input.cwd,
+            model: input.model,
+            textOnly: true,
+          },
+          { queryFn, log, executablePath: executable() ?? undefined, env },
+        ),
+        input.prompt,
+      ),
     kind: 'claude',
     detect: async () => [await detectInstance()],
     capabilities: () => capabilities,

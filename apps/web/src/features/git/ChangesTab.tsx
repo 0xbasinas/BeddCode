@@ -6,6 +6,7 @@ import { hostRequest } from '../../stores/host.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
 import { commitLabel, diffRefreshKey, groupByDirectory, selectedPaths } from './changes.ts'
 import { usePolled } from './usePolled.ts'
+import { GenerateGitText } from './GenerateGitText.tsx'
 
 const STATUS_COLOR: Record<GitFile['status'], string> = {
   M: 'var(--accent)',
@@ -19,6 +20,10 @@ export function ChangesTab({
   status,
   refreshKey,
   onChanged,
+  sessionId,
+  instanceId,
+  onOpenCommits,
+  onOpenPr,
 }: {
   cwd: string
   status: GitStatus
@@ -26,6 +31,10 @@ export function ChangesTab({
   refreshKey: string
   /** Called after a commit or push so the other tabs refresh. */
   onChanged(): void
+  sessionId?: string
+  instanceId?: string
+  onOpenCommits(): void
+  onOpenPr(): void
 }) {
   const hostKey = useHostKey()
   const [overrides, setOverrides] = useState<Record<string, boolean>>({})
@@ -34,6 +43,8 @@ export function ChangesTab({
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState<'commit' | 'push' | null>(null)
   const [error, setError] = useState<string>()
+  const [generating, setGenerating] = useState(false)
+  const [success, setSuccess] = useState<string>()
 
   const groups = useMemo(() => groupByDirectory(status.files), [status.files])
   const selected = useMemo(() => selectedPaths(status.files, overrides), [status.files, overrides])
@@ -48,8 +59,9 @@ export function ChangesTab({
   const commit = async (push: boolean) => {
     setBusy(push ? 'push' : 'commit')
     setError(undefined)
+    setSuccess(undefined)
     try {
-      await hostRequest(hostKey, 'git.commit', {
+      const result = await hostRequest(hostKey, 'git.commit', {
         cwd,
         message: message.trim(),
         paths: selected,
@@ -57,6 +69,8 @@ export function ChangesTab({
       })
       setMessage('')
       setOverrides({})
+      setSuccess(`Committed ${result.hash.slice(0, 7)}${result.pushed ? ' and pushed' : ''}.`)
+      if (result.pushError) setError(`Commit saved. Push failed: ${result.pushError}`)
       onChanged()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -71,11 +85,23 @@ export function ChangesTab({
         <Check size={22} />
         <div>Nothing to commit</div>
         <div className="muted">Your working tree is clean.</div>
+        {success && <div role="status">{success}</div>}
+        {error && (
+          <div className="composer-error" role="alert">
+            {error}
+          </div>
+        )}
+        <button className="secondary" onClick={onOpenCommits}>
+          View commits & push
+        </button>
+        <button className="secondary" onClick={onOpenPr}>
+          Open pull request
+        </button>
       </div>
     )
   }
 
-  const canCommit = selected.length > 0 && message.trim().length > 0 && busy === null
+  const canCommit = selected.length > 0 && message.trim().length > 0 && busy === null && !generating
   const rowKey = (f: GitFile) => f.path
 
   return (
@@ -86,6 +112,7 @@ export function ChangesTab({
             className={`checkbox ${allSelected ? 'on' : selected.length > 0 ? 'some' : ''}`}
             onClick={toggleAll}
             aria-label="Select all"
+            disabled={busy !== null}
           >
             {allSelected ? <Check size={13} /> : selected.length > 0 ? <Minus size={13} /> : null}
           </button>
@@ -127,6 +154,7 @@ export function ChangesTab({
                       <button
                         className={`checkbox ${checked ? 'on' : ''}`}
                         aria-label={`Include ${file.path}`}
+                        disabled={busy !== null}
                         onClick={() => setOverrides((o) => ({ ...o, [file.path]: !checked }))}
                       >
                         {checked && <Check size={13} />}
@@ -161,21 +189,47 @@ export function ChangesTab({
       </div>
 
       <div className="git-footer">
+        <GenerateGitText
+          sessionId={sessionId}
+          cwd={cwd}
+          preferredInstanceId={instanceId}
+          kind="commit"
+          paths={selected}
+          disabled={selected.length === 0 || busy !== null}
+          onBusy={setGenerating}
+          onGenerated={(draft) => setMessage(draft.message ?? '')}
+        />
         <div className="commit-box">
           <textarea
             value={message}
-            placeholder="Commit message"
-            rows={2}
+            aria-label="Commit message"
+            placeholder="Summary, then an optional description"
+            rows={4}
+            readOnly={generating || busy !== null}
             onChange={(e) => setMessage(e.target.value)}
           />
           <span className="count">{message.length}</span>
         </div>
-        {error && <div className="composer-error">{error}</div>}
+        {success && (
+          <div className="git-success" role="status">
+            {success}
+          </div>
+        )}
+        {error && (
+          <div className="composer-error" role="alert">
+            {error}
+          </div>
+        )}
+        {error?.startsWith('Commit saved.') && (
+          <button className="link-btn" onClick={onOpenCommits}>
+            Open commits to retry push
+          </button>
+        )}
         <div className="git-actions">
-          <button className="primary" disabled={!canCommit} onClick={() => void commit(false)}>
+          <button className="secondary" disabled={!canCommit} onClick={() => void commit(false)}>
             {busy === 'commit' ? 'Committing…' : commitLabel(selected.length)}
           </button>
-          <button className="secondary" disabled={!canCommit} onClick={() => void commit(true)}>
+          <button className="primary" disabled={!canCommit} onClick={() => void commit(true)}>
             {busy === 'push' ? 'Pushing…' : 'Commit & push'}
           </button>
         </div>

@@ -45,7 +45,19 @@ const toPosix = (p: string) => p.replace(/\\/g, '/')
 
 /** Everything the app needs from git, by shelling out to the user's own `git`. */
 export class GitService {
+  private readonly writes = new Map<string, Promise<unknown>>()
   constructor(private readonly run: Runner = defaultRunner) {}
+
+  private async write<T>(root: string, action: () => Promise<T>): Promise<T> {
+    const previous = this.writes.get(root) ?? Promise.resolve()
+    const pending = previous.catch(() => {}).then(action)
+    this.writes.set(root, pending)
+    try {
+      return await pending
+    } finally {
+      if (this.writes.get(root) === pending) this.writes.delete(root)
+    }
+  }
 
   private async git(cwd: string, args: string[], timeoutMs?: number): Promise<string> {
     const res = await this.gitRaw(cwd, args, timeoutMs)
@@ -56,12 +68,13 @@ export class GitService {
   }
 
   private gitRaw(cwd: string, args: string[], timeoutMs?: number): Promise<RunResult> {
-    return this.run('git', ['-c', 'core.quotepath=false', ...args], { cwd, timeoutMs }).catch(
-      (err: NodeJS.ErrnoException) => {
-        if (err.code === 'ENOENT') throw new GitError('Git is not installed on this host')
-        throw err
-      },
-    )
+    return this.run('git', ['--literal-pathspecs', '-c', 'core.quotepath=false', ...args], {
+      cwd,
+      timeoutMs,
+    }).catch((err: NodeJS.ErrnoException) => {
+      if (err.code === 'ENOENT') throw new GitError('Git is not installed on this host')
+      throw err
+    })
   }
 
   /** Turns a plain folder into a repository (`git init`, with the user's own defaults). */
@@ -165,7 +178,7 @@ export class GitService {
       const y = entry[1]!
       const file = entry.slice(3)
       // A rename lists its old path as the next entry; it is not a file of its own.
-      if (x === 'R' || x === 'C') i++
+      const oldPath = x === 'R' || x === 'C' ? entries[++i] : undefined
 
       const untracked = x === '?'
       const letter = untracked ? 'A' : x !== ' ' ? x : y
@@ -178,6 +191,7 @@ export class GitService {
         path: toPosix(file),
         status,
         staged: !untracked && x !== ' ',
+        ...(oldPath ? { oldPath: toPosix(oldPath) } : {}),
         added: counts.added,
         removed: counts.removed,
       })
@@ -204,6 +218,8 @@ export class GitService {
       'diff',
       await this.baseline(root),
       '--no-color',
+      '--no-ext-diff',
+      '--no-textconv',
       '--unified=3',
       '--',
       file,
@@ -228,22 +244,101 @@ export class GitService {
   }
 
   /**
-   * Commits exactly `paths`. The index is rebuilt from them, so files staged elsewhere are not
-   * swept in; anything not listed stays as an uncommitted change.
+   * Commits exactly `paths`, including both sides of selected renames. Unrelated staged
+   * files retain their staging state and remain outside this commit.
    */
   async commit(cwd: string, message: string, paths: string[], push = false) {
     const root = await this.root(cwd)
+    return this.write(root, () => this.commitSelected(root, message, paths, push))
+  }
+
+  private async commitSelected(root: string, message: string, paths: string[], push: boolean) {
+    if (!paths.length || !message.trim())
+      throw new GitError('Choose files and enter a commit message')
     paths.forEach(assertRelative)
-    await this.gitRaw(root, ['reset', '-q'])
-    await this.git(root, ['add', '-A', '--', ...paths])
-    await this.git(root, ['commit', '-m', message])
+    const status = await this.status(root)
+    const chosen = status.files.filter((f) => paths.includes(f.path))
+    if (chosen.length !== new Set(paths).size)
+      throw new GitError('The selected files changed. Refresh and try again.')
+    const commitPaths = [
+      ...new Set(chosen.flatMap((f) => (f.oldPath ? [f.path, f.oldPath] : [f.path]))),
+    ]
+    // A staged rename has already removed oldPath from the index; adding it again fails.
+    await this.git(root, ['add', '-A', '--', ...chosen.map((f) => f.path)])
+    // --only excludes unrelated staged files and preserves their staging state.
+    await this.git(root, ['commit', '--only', '-m', message.trim(), '--', ...commitPaths])
     const hash = (await this.git(root, ['rev-parse', 'HEAD'])).trim()
-    if (push) await this.push(root)
+    if (push) {
+      try {
+        await this.pushDirect(root)
+      } catch (err) {
+        return { hash, pushed: false, pushError: err instanceof Error ? err.message : String(err) }
+      }
+    }
     return { hash, pushed: push }
+  }
+
+  /** Collect bounded, read-only context for a metadata draft. */
+  async generationContext(cwd: string, kind: 'commit' | 'pr', paths: string[] = [], base?: string) {
+    const root = await this.root(cwd)
+    const limit = 80_000
+    if (kind === 'commit') {
+      if (!paths.length || paths.length > 200)
+        throw new GitError('Select between 1 and 200 files to describe')
+      paths.forEach(assertRelative)
+      const status = await this.status(root)
+      const selected = [...new Set(paths)]
+      if (selected.some((p) => !status.files.some((f) => f.path === p)))
+        throw new GitError('A selected file is no longer changed')
+      let text = `Selected files:\n${selected.join('\n')}\n\n`
+      let truncated = false
+      for (const file of selected) {
+        if (text.length >= limit) {
+          truncated = true
+          break
+        }
+        const diff = await this.diff(root, file)
+        text += `\nFile: ${JSON.stringify(file)}\n${diff.patch || '[Binary file or no textual diff]'}\n`
+        truncated ||= diff.truncated
+      }
+      return { text: text.slice(0, limit), truncated: truncated || text.length > limit }
+    }
+    const info = await this.info(root)
+    const branch = base?.trim() || info.defaultBranch
+    if (
+      !branch ||
+      branch.startsWith('-') ||
+      (await this.gitRaw(root, ['check-ref-format', '--branch', branch])).code !== 0
+    )
+      throw new GitError('Choose a valid base branch')
+    const ref =
+      (await this.gitRaw(root, ['rev-parse', '--verify', '-q', `refs/remotes/origin/${branch}`]))
+        .code === 0
+        ? `refs/remotes/origin/${branch}`
+        : branch
+    await this.git(root, ['rev-parse', '--verify', '--end-of-options', `${ref}^{commit}`])
+    const commits = await this.git(root, ['log', '-n', '50', '--format=%s', `${ref}..HEAD`, '--'])
+    if (!commits.trim())
+      throw new GitError('There are no commits ahead of the base branch to describe')
+    const patch = await this.git(root, [
+      'diff',
+      '--no-ext-diff',
+      '--no-textconv',
+      '--no-color',
+      '--unified=3',
+      `${ref}...HEAD`,
+      '--',
+    ])
+    const text = `Branch: ${info.branch}\nBase: ${branch}\nCommits:\n${commits}\n\n${patch}`
+    return { text: text.slice(0, limit), truncated: text.length > limit }
   }
 
   async push(cwd: string): Promise<void> {
     const root = await this.root(cwd)
+    return this.write(root, () => this.pushDirect(root))
+  }
+
+  private async pushDirect(root: string): Promise<void> {
     const info = await this.info(root)
     if (info.detached || !info.branch) throw new GitError('Cannot push a detached HEAD')
     const args = info.upstream ? ['push'] : ['push', '-u', 'origin', 'HEAD']

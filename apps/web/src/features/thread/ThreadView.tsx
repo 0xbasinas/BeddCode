@@ -262,6 +262,8 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
         </p>
       )}
       <Composer
+        key={sessionId}
+        draftId={sessionId}
         text={text}
         onTextChange={setText}
         placeholder={

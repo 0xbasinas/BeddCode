@@ -1,8 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Globe, Plus, RotateCw, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Globe, Plus, RotateCw, X, MousePointer2 } from 'lucide-react'
 import { useBrowser, type BrowserTab } from './browserStore.ts'
 import { normalizeUrl } from './url.ts'
 import '../../ui/desktop.ts'
+import { useHostKey } from '../../stores/HostScope.tsx'
+import { attachUpload, stageAttachment } from '../composer/attachments.ts'
+import { hostRequest } from '../../stores/host.ts'
+import {
+  CANCEL_PICK_SCRIPT,
+  elementContext,
+  pickElement,
+  PICK_ELEMENT_SCRIPT,
+  type PickedElement,
+} from './elementPicker.ts'
 
 /** The subset of Electron's <webview> element this pane uses. */
 interface WebviewElement extends HTMLElement {
@@ -13,18 +23,112 @@ interface WebviewElement extends HTMLElement {
   canGoBack(): boolean
   canGoForward(): boolean
   getURL(): string
+  executeJavaScript<T>(code: string): Promise<T>
+  capturePage(rect: PickedElement['rect']): Promise<{ toDataURL(): string }>
 }
 
 const isDesktop = () => typeof window !== 'undefined' && Boolean(window.beddcodeDesktop)
 
 /** A small tabbed browser for previewing the app an agent is building. */
-export function BrowserPane() {
+export function BrowserPane({ draftId }: { draftId?: string }) {
+  const hostKey = useHostKey()
   const { tabs, active, open, close, activate } = useBrowser()
   const current = tabs.find((t) => t.id === active)
   const [address, setAddress] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const [nav, setNav] = useState({ back: false, forward: false })
   const view = useRef<WebviewElement | null>(null)
+  const frame = useRef<HTMLIFrameElement>(null)
+  const [picking, setPicking] = useState(false)
+  const [pickError, setPickError] = useState<string>()
+  const picker = useRef<{ cancel(): void } | null>(null)
+
+  useEffect(() => {
+    setPicking(false)
+    setPickError(undefined)
+    return () => {
+      picker.current?.cancel()
+      picker.current = null
+    }
+  }, [current?.id, current?.url, hostKey, draftId, reloadKey])
+
+  // Focus can still be on the toolbar while the pointer moves into the guest page.
+  useEffect(() => {
+    if (!picking) return
+    const cancelOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      picker.current?.cancel()
+      picker.current = null
+      setPicking(false)
+    }
+    document.addEventListener('keydown', cancelOnEscape, true)
+    return () => document.removeEventListener('keydown', cancelOnEscape, true)
+  }, [picking])
+
+  const pick = async () => {
+    if (picker.current) {
+      picker.current.cancel()
+      picker.current = null
+      setPicking(false)
+      return
+    }
+    if (!draftId) return
+    setPickError(undefined)
+    const webview = view.current
+    let cancelled = false
+    let page: Document | undefined
+    const request = {
+      cancel: () => {
+        cancelled = true
+        if (webview) void webview.executeJavaScript(CANCEL_PICK_SCRIPT).catch(() => {})
+        else page?.dispatchEvent(new Event('beddcode:cancel-element-picker'))
+      },
+    }
+    picker.current = request
+    setPicking(true)
+    try {
+      let element: PickedElement | null
+      if (webview) {
+        element = await webview.executeJavaScript<PickedElement | null>(PICK_ELEMENT_SCRIPT)
+      } else {
+        // The browser's same-origin policy applies to iframe previews.
+        try {
+          page = frame.current?.contentWindow?.document
+        } catch {
+          throw new Error(
+            'Open this preview in the desktop app to pick elements from another origin.',
+          )
+        }
+        if (!page) throw new Error('Wait for the preview to load, then try again.')
+        element = await pickElement(page)
+      }
+      if (!element || cancelled) return
+      void attachUpload(
+        hostKey,
+        draftId,
+        new File([elementContext(element)], 'browser-element.txt', { type: 'text/plain' }),
+      )
+      if (webview && element.rect.width > 0 && element.rect.height > 0) {
+        // Reserve the screenshot chip now so Send waits for both attachments.
+        void stageAttachment(hostKey, draftId, 'browser-element.png', 0, async () => {
+          const image = await webview.capturePage(element.rect)
+          return hostRequest(hostKey, 'attachments.upload', {
+            name: 'browser-element.png',
+            dataBase64: image.toDataURL().split(',')[1]!,
+          })
+        })
+      }
+    } catch (err) {
+      if (!cancelled) setPickError(err instanceof Error ? err.message : 'Could not pick an element')
+    } finally {
+      if (picker.current === request) {
+        picker.current = null
+        setPicking(false)
+      }
+    }
+  }
 
   // The address bar follows the active tab.
   useEffect(() => setAddress(current?.url ?? ''), [current?.id, current?.url])
@@ -77,6 +181,21 @@ export function BrowserPane() {
       >
         <button
           type="button"
+          className={`icon-btn ${picking ? 'active' : ''}`}
+          aria-label={picking ? 'Cancel element picker' : 'Pick element'}
+          aria-pressed={picking}
+          title={
+            draftId
+              ? 'Pick an element to attach to message'
+              : 'Choose a folder to attach an element'
+          }
+          disabled={!draftId || !current || current.url === 'about:blank'}
+          onClick={() => void pick()}
+        >
+          <MousePointer2 size={17} />
+        </button>
+        <button
+          type="button"
           className="icon-btn"
           aria-label="Back"
           disabled={!nav.back}
@@ -114,11 +233,23 @@ export function BrowserPane() {
         </div>
       </form>
 
+      {picking && (
+        <div className="banner" role="status">
+          Click an element to attach it. Press Escape to cancel.
+        </div>
+      )}
+      {pickError && (
+        <div className="banner error" role="alert">
+          {pickError}
+        </div>
+      )}
+
       {current && current.url !== 'about:blank' ? (
         isDesktop() ? (
           <DesktopPage key={current.id} tab={current} viewRef={view} onNav={setNav} />
         ) : (
           <iframe
+            ref={frame}
             key={`${current.id}:${current.url}:${reloadKey}`}
             className="page-frame"
             src={current.url}

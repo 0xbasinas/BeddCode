@@ -84,13 +84,23 @@ Useful options and troubleshooting:
 ### Projects, worktrees and git
 
 - Add folders from the sidebar's **Add folder** menu: Browse… opens the system folder picker in the desktop app (an in-app folder browser, backed by `folders.browse`, on remote hosts and in the plain web app), and recent folders are one click away. Nothing is typed. New sessions can run in the folder itself or in a **worktree** (`<repo>/.wt/<branch>`, ignored by git), so several agents can work in parallel on separate branches.
-- The git pane (changes, commits, pull request) reads the session's folder live through your own `git`. Pull requests use your signed-in GitHub CLI (`gh`); BeddCode never stores a token, and pushing or opening a PR only happens when you click the button.
+- The git pane (changes, commits, pull request) reads the selected folder live through your own `git`, including before a conversation starts. Pull requests use your signed-in GitHub CLI (`gh`); BeddCode never stores a token, and pushing or opening a PR only happens when you click the button.
+
+In **Git → Changes**, select files and click **Generate message** to draft a commit summary and description with Claude Code, Codex, or a configured ACP agent on that host. The themed agent picker chooses which account generates the draft. Edit the result, then choose **Commit** or **Commit & push**. Unselected staged files keep their staging state. If pushing fails after a successful commit, the app keeps the commit and links to **Commits** for a push-only retry. A branch without an upstream shows **Publish branch**.
+
+In **Git → PR**, choose a base branch and click **Generate PR draft**. The draft uses committed branch changes, excluding uncommitted files. Review and edit it before clicking **Push & create pull request**. Draft generation also works when GitHub is unavailable; creating the PR requires `gh` authentication. Generation runs separately from the conversation in a temporary folder and supplies the diff as context. Native Claude runs without tools and Codex uses an ephemeral read-only thread. ACP generation advertises no client tools, declines file, terminal and permission requests, and selects a read-only or asking mode when offered. ACP has no universal switch to disable an agent's own tools; reported tool use rejects the draft. The agent must already be signed in and return the requested JSON. Generation closes its process afterward, and closes its provider session when the agent supports that operation.
 
 ### Panes
 
-- **Terminal:** real shells (PowerShell 7 on Windows, `$SHELL` elsewhere) run on the host in the session's folder and survive closing the app; reconnecting replays their recent output.
+Choose a folder and host in the new-session composer, then open Terminal, Files, or Git from the right rail. These tools work without sending a message or starting an agent. Switching folders switches the tools to that folder; terminals and open files stay associated with their original host and folder. Once a conversation starts, its actual working folder is used, including its worktree if one was created.
+
+- **Terminal:** real shells (PowerShell 7 on Windows, `$SHELL` elsewhere) run on the host in the selected folder and survive closing the app; reconnecting replays their recent output.
 - **Files:** a lazily loaded tree with search, a CodeMirror editor (Ctrl+S to save, tabs, unsaved-change and changed-on-disk handling), and a file watcher. Paths can never leave the session folder, also through links.
 - **Browser:** a small tabbed browser for previewing dev servers. In the desktop app pages open in an isolated `<webview>`; in a plain browser they open in a sandboxed iframe (some sites refuse to be embedded).
+
+Each pane can add context to the current composer's next message, including a new-session draft. New-session attachments stay separate by host and selected folder. In **Files**, click the paperclip beside a file, in search results, or above the open editor to attach its saved contents, including images. In **Terminal**, select text and click the paperclip in the header to attach it with its terminal and project or session details. In **Browser**, click the pointer button, then an element to attach its HTML, selector and page details; the desktop app also includes a cropped screenshot. Press Escape or click the pointer button again to cancel. Picking elements in cross-origin previews requires the desktop app.
+
+Attachments appear as removable chips in the composer and stay with their host and session when you switch chats. Files are copied on the host and limited to 20 MB each. Save editor changes before attaching them. Wait for attachments to finish before sending; remove a failed attachment to continue.
 
 ### Workspace preferences
 

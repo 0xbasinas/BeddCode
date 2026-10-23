@@ -13,6 +13,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { FileConflictError, FileError, FileService, MAX_EDIT_BYTES } from './files.ts'
 import { FileWatchers } from './watcher.ts'
+import { MAX_ATTACHMENT_BYTES } from '../attachments/store.ts'
 
 const dirs: string[] = []
 afterEach(() =>
@@ -26,6 +27,35 @@ const tmp = () => {
   return d
 }
 const files = new FileService()
+
+describe('FileService.readAttachment', () => {
+  it('reads binary bytes and files larger than the editor limit without decoding', async () => {
+    const cwd = tmp()
+    const data = Buffer.alloc(MAX_EDIT_BYTES + 5, 0x89)
+    writeFileSync(path.join(cwd, 'image.png'), data)
+    expect(await files.readAttachment(cwd, 'image.png')).toEqual(data)
+    writeFileSync(path.join(cwd, 'empty.txt'), '')
+    expect(await files.readAttachment(cwd, 'empty.txt')).toEqual(Buffer.alloc(0))
+  })
+
+  it('rejects directories, missing files, oversize files and paths outside the workspace', async () => {
+    const cwd = tmp()
+    writeFileSync(path.join(cwd, 'large.bin'), Buffer.alloc(MAX_ATTACHMENT_BYTES + 1))
+    await expect(files.readAttachment(cwd, 'large.bin')).rejects.toThrow('larger than 20 MB')
+    await expect(files.readAttachment(cwd, '')).rejects.toThrow()
+    await expect(files.readAttachment(cwd, 'missing.txt')).rejects.toThrow()
+    await expect(files.readAttachment(cwd, '../outside')).rejects.toThrow('outside the folder')
+    const outside = tmp()
+    writeFileSync(path.join(outside, 'secret'), 'secret')
+    try {
+      symlinkSync(outside, path.join(cwd, 'escape'), 'junction')
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'EPERM') return
+      throw err
+    }
+    await expect(files.readAttachment(cwd, 'escape/secret')).rejects.toThrow('outside the folder')
+  })
+})
 
 /** A small project: src/, test/, node_modules/, .git/ and a few root files. */
 function project() {

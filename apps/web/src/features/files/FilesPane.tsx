@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { File, FilePlus, FolderOpen, FolderPlus, Search, X, ChevronsDownUp } from 'lucide-react'
-import type { SessionView } from '@beddcode/client-runtime'
+import {
+  File,
+  FilePlus,
+  FolderOpen,
+  FolderPlus,
+  Search,
+  X,
+  ChevronsDownUp,
+  Paperclip,
+} from 'lucide-react'
+import type { PaneWorkspace } from '../../stores/composerWorkspace.ts'
 import { hostRequest, onHostFrame, sendHostFrame, useRuntime } from '../../stores/host.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
 import { formatBytes } from '../../ui/format.ts'
@@ -10,11 +19,13 @@ import { FileTree } from './FileTree.tsx'
 import { baseName, languageName } from './fileIcons.ts'
 import { EMPTY_FOLDER, folderId, useFiles } from './filesStore.ts'
 import { useAppPreferences } from '../../stores/appPreferences.ts'
+import { attachWorkspaceFile } from '../composer/attachments.ts'
+import { FileRow } from './FileRow.tsx'
 
-/** Browse and edit the files of the folder a session works in. */
-export function FilesPane({ session }: { session: SessionView }) {
+/** Browse and edit the selected working folder, including before a session starts. */
+export function FilesPane({ workspace }: { workspace: PaneWorkspace }) {
   const hostKey = useHostKey()
-  const realCwd = session.cwd
+  const realCwd = workspace.cwd
   // Open files and listings are kept per folder *and* host: two hosts can have the same path.
   const cwd = folderId(hostKey, realCwd)
   const { epoch, connection } = useRuntime(hostKey)
@@ -63,6 +74,8 @@ export function FilesPane({ session }: { session: SessionView }) {
 
   const active = folder.active ? folder.docs[folder.active] : undefined
   const name = realCwd.split(/[\\/]/).filter(Boolean).at(-1) ?? realCwd
+  const attach = (path: string) =>
+    void attachWorkspaceFile(hostKey, workspace.draftId, realCwd, path)
 
   return (
     <div className="pane-body files">
@@ -118,21 +131,22 @@ export function FilesPane({ session }: { session: SessionView }) {
               <div className="muted tree-note">No files match.</div>
             ) : (
               results.map((path) => (
-                <button
+                <FileRow
                   key={path}
-                  className="tree-row file"
-                  onClick={() => void useFiles.getState().open(cwd, path)}
+                  path={path}
+                  onOpen={() => void useFiles.getState().open(cwd, path)}
+                  onAttach={() => attach(path)}
                 >
                   <File size={16} />
                   <span className="tree-name">{baseName(path)}</span>
                   <span className="muted tree-dir">
                     {path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''}
                   </span>
-                </button>
+                </FileRow>
               ))
             )
           ) : (
-            <FileTree cwd={cwd} />
+            <FileTree cwd={cwd} onAttach={attach} />
           )}
         </div>
         <div className="pane-foot">
@@ -145,7 +159,7 @@ export function FilesPane({ session }: { session: SessionView }) {
         </div>
       </div>
 
-      {folder.tabs.length > 0 && <EditorColumn cwd={cwd} />}
+      {folder.tabs.length > 0 && <EditorColumn cwd={cwd} onAttach={attach} />}
     </div>
   )
 }
@@ -178,7 +192,7 @@ function NewEntry({
   )
 }
 
-function EditorColumn({ cwd }: { cwd: string }) {
+function EditorColumn({ cwd, onAttach }: { cwd: string; onAttach(path: string): void }) {
   const tabSize = useAppPreferences((s) => s.values.editorTabSize)
   const folder = useFiles((s) => s.byCwd[cwd] ?? EMPTY_FOLDER)
   const { activate, close, setDraft, save, reload } = useFiles.getState()
@@ -272,6 +286,14 @@ function EditorColumn({ cwd }: { cwd: string }) {
           </span>
         ))}
         <span className="spacer" />
+        <button
+          className="icon-btn"
+          aria-label={`Attach ${doc.path}`}
+          title="Attach saved file to message"
+          onClick={() => onAttach(doc.path)}
+        >
+          <Paperclip size={15} />
+        </button>
         {!doc.binary && !doc.tooLarge && !doc.error && !doc.media && (
           <button
             className="save-btn"

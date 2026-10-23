@@ -101,7 +101,13 @@ export function CommitsTab({
         <div className="git-actions">
           {n > 0 ? (
             <button className="primary" disabled={busy} onClick={() => void push()}>
-              {busy ? 'Pushing…' : n === 1 ? 'Push 1 commit' : `Push ${n} commits`}
+              {busy
+                ? 'Pushing…'
+                : !hasUpstream
+                  ? 'Publish branch'
+                  : n === 1
+                    ? 'Push 1 commit'
+                    : `Push ${n} commits`}
             </button>
           ) : (
             <button className="primary" disabled>

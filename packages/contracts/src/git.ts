@@ -1,4 +1,9 @@
 import { z } from 'zod'
+export const GitCommitText = z.object({ message: z.string().trim().min(1).max(8000) })
+export const GitPrText = z.object({
+  title: z.string().trim().min(1).max(120),
+  body: z.string().trim().min(1).max(20_000),
+})
 
 /** A folder the user works in on a host. Git details are filled in when it is a repository. */
 export const Project = z.object({
@@ -35,6 +40,7 @@ export const GitFile = z.object({
   path: z.string(),
   status: GitFileStatus,
   staged: z.boolean(),
+  oldPath: z.string().optional(),
   added: z.number().int(),
   removed: z.number().int(),
 })

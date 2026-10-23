@@ -1,15 +1,26 @@
 import { ChevronDown, ChevronRight, Folder, FolderOpen } from 'lucide-react'
 import { EMPTY_FOLDER, useFiles } from './filesStore.ts'
 import { FileIcon } from './FileIcon.tsx'
+import { FileRow } from './FileRow.tsx'
 
 const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name)
 
 /** Lazily loaded folder tree of one session folder. */
-export function FileTree({ cwd }: { cwd: string }) {
-  return <Level cwd={cwd} dir="" depth={0} />
+export function FileTree({ cwd, onAttach }: { cwd: string; onAttach(path: string): void }) {
+  return <Level cwd={cwd} dir="" depth={0} onAttach={onAttach} />
 }
 
-function Level({ cwd, dir, depth }: { cwd: string; dir: string; depth: number }) {
+function Level({
+  cwd,
+  dir,
+  depth,
+  onAttach,
+}: {
+  cwd: string
+  dir: string
+  depth: number
+  onAttach(path: string): void
+}) {
   const folder = useFiles((s) => s.byCwd[cwd] ?? EMPTY_FOLDER)
   const toggleDir = useFiles((s) => s.toggleDir)
   const open = useFiles((s) => s.open)
@@ -37,21 +48,22 @@ function Level({ cwd, dir, depth }: { cwd: string; dir: string; depth: number })
                 {expanded ? <FolderOpen size={16} /> : <Folder size={16} />}
                 <span className="tree-name">{entry.name}</span>
               </button>
-              {expanded && <Level cwd={cwd} dir={path} depth={depth + 1} />}
+              {expanded && <Level cwd={cwd} dir={path} depth={depth + 1} onAttach={onAttach} />}
             </div>
           )
         }
         return (
-          <button
+          <FileRow
             key={path}
-            className={`tree-row file ${folder.active === path ? 'active' : ''}`}
+            path={path}
+            active={folder.active === path}
             style={{ ...pad, paddingLeft: 8 + depth * 16 + 18 }}
-            onClick={() => void open(cwd, path)}
-            title={path}
+            onOpen={() => void open(cwd, path)}
+            onAttach={() => onAttach(path)}
           >
             <FileIcon name={entry.name} />
             <span className="tree-name">{entry.name}</span>
-          </button>
+          </FileRow>
         )
       })}
     </>

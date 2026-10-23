@@ -87,6 +87,19 @@ const completeTurn = (s: ReturnType<typeof fakeServer>, status = 'completed') =>
   s.notify('turn/completed', { threadId: 'th1', turn: { id: 'tu1', status } })
 
 describe('CodexSession', () => {
+  it('isolates metadata generation in an ephemeral read-only thread', async () => {
+    const server = fakeServer()
+    const session = start(server, { textOnly: true })
+    await nextEvent(session, (e) => e.type === 'session.provider-session')
+    expect(server.sent('thread/start')[0]?.params).toMatchObject({
+      ephemeral: true,
+      sandbox: 'read-only',
+      approvalPolicy: 'never',
+      config: { 'features.shell_tool': false, mcp_servers: {} },
+    })
+    expect(server.sent('skills/list')).toHaveLength(0)
+    await session.close()
+  })
   it("starts a thread with the mode's approval policy and sandbox and records the thread id", async () => {
     const server = fakeServer()
     const session = start(server, { permissionMode: 'full', model: 'gpt-x' })

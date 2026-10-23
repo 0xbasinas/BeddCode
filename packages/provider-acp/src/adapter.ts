@@ -1,6 +1,8 @@
 import type { SessionConfigOption, SessionUpdate } from '@agentclientprotocol/sdk'
 import type { ProviderCapabilities, ProviderInstance, SessionEvent } from '@beddcode/contracts'
 import type { ProviderAdapter } from '@beddcode/provider-core'
+import { generateSessionText } from '@beddcode/provider-core'
+import { randomUUID } from 'node:crypto'
 import {
   createLogger,
   resolveExecutable,
@@ -20,6 +22,7 @@ import { listAcpSessions, readAcpSession, withAcpAgent } from './history.ts'
  * (`session.modes`) once the agent has answered.
  */
 export const acpCapabilities: ProviderCapabilities = {
+  textGeneration: true,
   resume: true,
   fork: false,
   steer: false,
@@ -84,8 +87,18 @@ export function createAcpAdapter(options: AcpAdapterOptions): ProviderAdapter {
     return config
   }
 
-  return {
+  const adapter: ProviderAdapter = {
     kind: 'acp',
+    async generateText(input) {
+      const session = await adapter.startSession(input.instanceId, {
+        sessionId: randomUUID(),
+        cwd: input.cwd,
+        model: input.model,
+        textOnly: true,
+        permissionMode: 'ask',
+      })
+      return generateSessionText(session, input.prompt)
+    },
     detect: async () => options.store.list().map(toInstance),
     capabilities: () => acpCapabilities,
     /**
@@ -165,7 +178,10 @@ export function createAcpAdapter(options: AcpAdapterOptions): ProviderAdapter {
         spawnTransport(
           resolveExecutable(config.command) ?? config.command,
           launched,
-          { cwd: input.cwd, env: { ...process.env, ...config.env } },
+          {
+            cwd: input.cwd,
+            env: input.textOnly ? probeEnvironment(config.env) : { ...process.env, ...config.env },
+          },
           log,
         )
       return new AcpSession(input, {
@@ -177,4 +193,5 @@ export function createAcpAdapter(options: AcpAdapterOptions): ProviderAdapter {
       })
     },
   }
+  return adapter
 }

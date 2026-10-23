@@ -1546,6 +1546,26 @@ button.chip-lite:hover {
 .tree-row.dim {
   color: var(--text-faint);
 }
+.tree-file-row {
+  display: flex;
+  align-items: center;
+  border-radius: calc(6px * var(--ui-scale));
+}
+.tree-file-row:hover,
+.tree-file-row:focus-within {
+  background: var(--bg-hover);
+}
+.tree-file-row.active {
+  background: var(--bg-raised);
+}
+.tree-file-row > .tree-row {
+  flex: 1;
+  min-width: 0;
+}
+.tree-file-row > .attach-file {
+  flex: none;
+  margin-right: calc(4px * var(--ui-scale));
+}
 .tree-name {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3821,4 +3841,68 @@ button.tcall-row:hover .tcall-chevron,
 }
 .has-fork {
   margin-bottom: calc(28px * var(--ui-scale));
+}
+.git-generation {
+  container-type: inline-size;
+  margin-bottom: calc(12px * var(--ui-scale));
+}
+.git-generation-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: calc(8px * var(--ui-scale));
+}
+.git-generate-action,
+.git-generation-row .select-trigger {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: calc(36px * var(--ui-scale));
+  padding: 0 calc(10px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-raised);
+  font-size: calc(12px * var(--ui-scale));
+  line-height: 1.2;
+}
+.git-generation-row > .dropdown {
+  min-width: 0;
+}
+.git-generate-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(6px * var(--ui-scale));
+  color: var(--text-secondary);
+}
+.git-generate-action svg {
+  flex: none;
+  color: var(--text-muted);
+}
+.git-generate-action span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.git-generate-action:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.git-generate-action:disabled {
+  opacity: 0.5;
+}
+@container (max-width: 260px) {
+  .git-generation-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.git-field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  color: var(--text-muted);
+}
+.git-success {
+  color: var(--success);
+  margin-bottom: 8px;
 }

@@ -90,7 +90,7 @@ describe('GitService.status and diff', () => {
     sh(dir, 'mv', 'b.txt', 'c.txt')
     const status = await git.status(dir)
     expect(status.files).toEqual([
-      { path: 'c.txt', status: 'R', staged: true, added: 0, removed: 0 },
+      { path: 'c.txt', oldPath: 'b.txt', status: 'R', staged: true, added: 0, removed: 0 },
     ])
   })
 
@@ -155,6 +155,7 @@ describe('GitService.commit, push and log', () => {
       'fix: only a\n\na.txt'.replace('\n\n', '\n'),
     )
     expect((await git.status(dir)).files.map((f) => f.path)).toEqual(['b.txt'])
+    expect(sh(dir, 'diff', '--cached', '--name-only').trim()).toBe('b.txt')
   })
 
   it('commits new and deleted files too', async () => {
@@ -164,6 +165,67 @@ describe('GitService.commit, push and log', () => {
     await git.commit(dir, 'chore: add and remove', ['new.txt', 'b.txt'])
     expect((await git.status(dir)).files).toEqual([])
     expect(existsSync(path.join(dir, 'b.txt'))).toBe(false)
+  })
+
+  it('commits an initial selection while preserving an unrelated staged file', async () => {
+    const dir = tmp()
+    sh(dir, 'init', '-q', '-b', 'main')
+    sh(dir, 'config', 'user.name', 'Test')
+    sh(dir, 'config', 'user.email', 't@example.com')
+    sh(dir, 'config', 'commit.gpgsign', 'false')
+    writeFileSync(path.join(dir, 'a.txt'), 'a')
+    writeFileSync(path.join(dir, 'b.txt'), 'b')
+    sh(dir, 'add', 'b.txt')
+    await git.commit(dir, 'feat: first file', ['a.txt'])
+    expect(sh(dir, 'ls-tree', '--name-only', 'HEAD').trim()).toBe('a.txt')
+    expect(sh(dir, 'diff', '--cached', '--name-only').trim()).toBe('b.txt')
+  })
+
+  it('commits both sides of a selected rename', async () => {
+    const dir = repo()
+    sh(dir, 'mv', 'a.txt', 'renamed.txt')
+    await git.commit(dir, 'refactor: rename file', ['renamed.txt'])
+    expect((await git.status(dir)).files).toEqual([])
+    expect(sh(dir, 'ls-tree', '--name-only', 'HEAD')).not.toContain('a.txt')
+  })
+
+  it('serializes commits sharing an index and treats special filenames literally', async () => {
+    const dir = repo()
+    writeFileSync(path.join(dir, 'a.txt'), 'changed a')
+    writeFileSync(path.join(dir, '[a].txt'), 'literal file')
+    const first = await git.commit(dir, 'feat: literal filename', ['[a].txt'])
+    expect(sh(dir, 'show', '--format=', '--name-only', first.hash).trim()).toBe('[a].txt')
+    writeFileSync(path.join(dir, 'b.txt'), 'changed b')
+    const commits = await Promise.all([
+      git.commit(dir, 'fix: change a', ['a.txt']),
+      git.commit(dir, 'fix: change b', ['b.txt']),
+    ])
+    expect(commits[0]!.hash).not.toBe(commits[1]!.hash)
+    expect((await git.status(dir)).files).toEqual([])
+  })
+
+  it('returns a saved commit when pushing fails so retrying only needs push', async () => {
+    const dir = repo()
+    writeFileSync(path.join(dir, 'a.txt'), 'changed')
+    const result = await git.commit(dir, 'fix: change file', ['a.txt'], true)
+    expect(result).toMatchObject({ pushed: false, pushError: expect.any(String) })
+    expect(sh(dir, 'rev-parse', 'HEAD').trim()).toBe(result.hash)
+    expect((await git.status(dir)).files).toEqual([])
+  })
+
+  it('generates context only for selected files and branch commits', async () => {
+    const dir = repo()
+    sh(dir, 'checkout', '-q', '-b', 'feature')
+    writeFileSync(path.join(dir, 'a.txt'), 'visible change\n')
+    writeFileSync(path.join(dir, 'b.txt'), 'unselected content\n')
+    const draft = await git.generationContext(dir, 'commit', ['a.txt'])
+    expect(draft.text).toContain('visible change')
+    expect(draft.text).not.toContain('unselected content')
+    await git.commit(dir, 'feat: visible', ['a.txt'])
+    const pr = await git.generationContext(dir, 'pr', [], 'main')
+    expect(pr.text).toContain('feat: visible')
+    expect(pr.text).not.toContain('unselected content')
+    await expect(git.generationContext(dir, 'pr', [], '--help')).rejects.toThrow('valid base')
   })
 
   it("reports git's own error when there is nothing to commit", async () => {
