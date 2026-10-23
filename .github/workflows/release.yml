@@ -20,7 +20,7 @@ jobs:
         include:
           - os: windows-latest
             target: dist:win
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             target: dist:linux
     steps:
       - uses: actions/checkout@v7
@@ -32,7 +32,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @beddcode/web build
       # The host's native terminal library is installed for the system building, so each installer
-      # is built on its own system. Set CSC_LINK and CSC_KEY_PASSWORD (repository secrets) to sign
+      # is built on its own system. Linux builds on a fixed Ubuntu release, not "latest", so the glibc the
+      # packages need does not change under us. Set CSC_LINK and CSC_KEY_PASSWORD (repository secrets) to sign
       # the Windows installer; unsigned builds still work but Windows warns on first run.
       - run: pnpm --filter @beddcode/desktop ${{ matrix.target }} --publish always
         env:
