@@ -5,6 +5,8 @@ packages:
 allowBuilds:
   electron: true
   esbuild: true
+  # Squirrel.Windows support pulled in by electron-builder; the NSIS installer does not use it.
+  electron-winstaller: false
 
 minimumReleaseAgeExclude:
   - react-resizable-panels@4.14.8
