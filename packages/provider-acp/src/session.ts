@@ -19,6 +19,7 @@ import {
 import { AcpEventMapper, toConfigOptions } from './mapper.ts'
 import { allowOption, approvalSetup, type ModeSource } from './permissions.ts'
 import type { AgentProfile } from './profiles.ts'
+import { promptUsage, usageEvents } from './usage.ts'
 import { TerminalManager } from './terminals.ts'
 
 type Draft<E = SessionEvent> = E extends unknown ? Omit<E, 'sessionId' | 'at' | 'turnId'> : never
@@ -299,6 +300,8 @@ export class AcpSession implements ProviderSession {
           ...(await this.imageBlocks(input.attachments)),
         ],
       })
+      // What the turn used, when the agent says; counted even if the turn was cut short.
+      for (const event of usageEvents(promptUsage(res))) this.emit(event, turnId)
       if (this.inflightTurn !== turnId) return
       this.inflightTurn = null
       switch (res.stopReason) {

@@ -1,0 +1,76 @@
+# Installers for BeddCode. Build on the operating system you are building for (the host's native
+# terminal library is installed per platform by scripts/build-host.mjs):
+#   pnpm --filter @beddcode/web build && pnpm --filter @beddcode/desktop dist:win
+#   pnpm --filter @beddcode/web build && pnpm --filter @beddcode/desktop dist:linux
+appId: dev.beddcode.app
+productName: BeddCode
+copyright: Copyright © BeddCode
+directories:
+  output: release
+  buildResources: build
+
+# The window's code is bundled into dist/ already, so no node_modules ship in the app archive.
+files:
+  - dist/**
+  - package.json
+  - '!**/*.map'
+
+# The host (a bundled script and its few native packages) and the web app it serves, outside the
+# archive so the app's own runtime can run them as plain files.
+extraResources:
+  - from: build/host/server
+    to: server
+  - from: build/host/web
+    to: web
+
+# Puts the host's node_modules in place (see the script for why).
+afterPack: scripts/after-pack.cjs
+
+asar: true
+compression: normal
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+  # Sign by setting CSC_LINK and CSC_KEY_PASSWORD (a code-signing certificate) when building.
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  shortcutName: BeddCode
+  artifactName: BeddCode-Setup-${version}.${ext}
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+  icon: build/icons
+  executableName: beddcode
+  category: Development
+  synopsis: Supervise coding agents across your machines
+  description: A workspace for running and supervising coding agents (Claude Code, Codex and ACP agents) on this computer and on other machines on your tailnet.
+  maintainer: BeddCode <geobasinas@gmail.com>
+  artifactName: BeddCode-${version}-${arch}.${ext}
+deb:
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
+
+# Updates come from GitHub releases (AppImage and the Windows installer update themselves).
+publish:
+  provider: github
+  owner: 0xbasinas
+  repo: BeddCode
+  releaseType: release

@@ -11,12 +11,15 @@ import type {
   RpcResult,
   SessionEvent,
   SlashCommand,
+  UsageLimits,
+  UsageSummary,
 } from '@beddcode/contracts'
 import type { ProviderAdapter, ProviderSession } from '@beddcode/provider-core'
 import type { Logger } from '@beddcode/shared'
 import { PreviewSeeds, type PreviewCache } from '../agents/previews.ts'
 import type { AttachmentStore } from '../attachments/store.ts'
 import type { EventStore } from '../store/eventStore.ts'
+import { summarizeUsage } from '../usage/summary.ts'
 import type { GitService } from '../workspace/git.ts'
 
 export interface SessionManagerDeps {
@@ -68,6 +71,46 @@ export class SessionManager {
   } | null = null
 
   constructor(private readonly deps: SessionManagerDeps) {}
+
+  /** What the agents used over the last `days` days, from the usage they reported. */
+  usageSummary(days: number): UsageSummary {
+    const labels = new Map(
+      (this.detected?.instances ?? []).map((d) => [d.instance.id, d.instance.label]),
+    )
+    return summarizeUsage(this.deps.store, days, Date.now(), (id) => labels.get(id) ?? id)
+  }
+
+  /** The plan limits each agent reports. Agents that cannot say, or fail to, come with a note. */
+  async usageLimits(): Promise<UsageLimits[]> {
+    const found = await this.detect()
+    const rows = await Promise.all(
+      found
+        .filter((d) => d.instance.status === 'ready' && d.instance.kind !== 'fake')
+        .map(async ({ adapter, instance }): Promise<UsageLimits> => {
+          // Agents with no plan to report (most ACP agents) still show up, with a note.
+          if (!adapter.limits) {
+            return {
+              instanceId: instance.id,
+              label: instance.label,
+              windows: [],
+              note: `${instance.label} does not report plan limits. Its token use is counted below.`,
+            }
+          }
+          try {
+            const limits = await adapter.limits(instance.id)
+            return { instanceId: instance.id, label: instance.label, ...limits }
+          } catch (err) {
+            return {
+              instanceId: instance.id,
+              label: instance.label,
+              windows: [],
+              note: err instanceof Error ? err.message : String(err),
+            }
+          }
+        }),
+    )
+    return rows
+  }
 
   /** Forget cached detection, e.g. after an ACP agent was added or removed. */
   invalidateDetection() {

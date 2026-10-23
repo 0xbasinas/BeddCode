@@ -15,6 +15,31 @@ pnpm lint
 pnpm fmt:check
 ```
 
+### Run the desktop app without a terminal for the host
+
+```bash
+pnpm build
+pnpm --filter @beddcode/desktop start
+```
+
+The app starts its own local host, restarts it if it stops, and stops it when you quit; if a host is already running on the port (for example from `pnpm dev`) it uses that one. The host serves the built web app, so the window loads it from `http://127.0.0.1:3773` and a browser on this machine (or the tailnet, with a paired device) can open the same address. The host's log is in the app's data folder under `logs/host.log`. `BEDDCODE_NO_DAEMON=1` turns the supervision off.
+
+### Build installers
+
+Build on the operating system you are building for; the host's native terminal library is installed per platform.
+
+```bash
+pnpm dist:win     # Windows: apps/desktop/release/BeddCode-Setup-<version>.exe
+pnpm dist:linux   # Linux: apps/desktop/release/BeddCode-<version>-x64.AppImage and .deb
+```
+
+This builds the web app, bundles the host (`apps/desktop/scripts/build-host.mjs`: one script plus the native terminal library and the Claude SDK, about 70 MB) and wraps everything with electron-builder (`apps/desktop/electron-builder.yml`). The installed app runs the host with its own runtime, so Node does not need to be installed. Agent CLIs (`claude`, `codex`, `grok`) still have to be installed and signed in on the machine.
+
+- The Windows installer and Linux AppImage update themselves from GitHub releases (a .deb is updated by the package manager). `BEDDCODE_NO_UPDATE=1` turns it off.
+- To sign the Windows installer, set `CSC_LINK` and `CSC_KEY_PASSWORD` when building. Unsigned builds work, but Windows warns on first run.
+- Pushing a tag such as `v0.2.0` runs `.github/workflows/release.yml`, which builds both installers and attaches them to a draft release. `.github/workflows/ci.yml` checks every push and pull request on Windows and Linux.
+- `node scripts/make-icons.mjs` renders every icon from `assets/logo/mark.svg`.
+
 The server uses Node's file watcher with the `tsx` TypeScript loader. Electron waits for both the host's `/health` endpoint and the web UI port before opening, with a 30-second startup timeout. If startup fails, inspect the server output in that terminal. To start the host separately, run `pnpm --filter @beddcode/server start`; the UI reconnects automatically when it becomes available.
 
 ### Server environment
@@ -99,6 +124,8 @@ Any agent that speaks the [Agent Client Protocol](https://agentclientprotocol.co
 ## Layout
 
 - `apps/server` – headless host daemon (HTTP `/health`, WebSocket `/ws`)
+- `apps/desktop` – Electron shell; starts and supervises the local host, so the app does not need a terminal
+- `assets/logo` – the logo; `node scripts/make-icons.mjs` renders every icon from it
 - `apps/web` – React UI
 - `apps/desktop` – Electron shell
 - `packages/contracts` – wire and event schemas

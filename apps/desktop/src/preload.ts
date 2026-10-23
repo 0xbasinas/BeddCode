@@ -7,6 +7,19 @@ contextBridge.exposeInMainWorld('beddcodeDesktop', {
   /** Opens the system's folder picker; resolves to the chosen folder, or null when cancelled. */
   pickFolder: (options?: { defaultPath?: string }): Promise<string | null> =>
     ipcRenderer.invoke('beddcode:pick-folder', options ?? {}),
+  /** The local host the app keeps running (see daemon.ts). */
+  daemon: {
+    status: (): Promise<unknown> => ipcRenderer.invoke('beddcode:daemon', 'status'),
+    restart: (): Promise<boolean> => ipcRenderer.invoke('beddcode:daemon', 'restart'),
+    log: (): Promise<string> => ipcRenderer.invoke('beddcode:daemon', 'log'),
+    revealLog: (): Promise<boolean> => ipcRenderer.invoke('beddcode:daemon', 'reveal-log'),
+    /** Calls back whenever the host's state changes; returns an unsubscribe. */
+    onStatus(callback: (state: unknown) => void): () => void {
+      const listener = (_event: unknown, state: unknown) => callback(state)
+      ipcRenderer.on('beddcode:daemon-status', listener)
+      return () => ipcRenderer.removeListener('beddcode:daemon-status', listener)
+    },
+  },
   /** The app's own window buttons (Linux and Windows; macOS keeps its traffic lights). */
   window: {
     minimize: (): Promise<boolean> => ipcRenderer.invoke('beddcode:window', 'minimize'),

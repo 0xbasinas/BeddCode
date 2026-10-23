@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from 'react-resizable-panels'
 import { startHosts } from '../../stores/host.ts'
+import { startNotifications } from '../notifications/notifier.ts'
 import { RightRail } from './RightRail.tsx'
+import { HostStatusBanner } from './HostStatusBanner.tsx'
 import { WindowBar } from './WindowBar.tsx'
 import { RAIL_WIDTH, openPaneWidth, rememberPaneWidth } from './paneWidth.ts'
 import { Sidebar } from './Sidebar.tsx'
@@ -25,6 +27,7 @@ export function AppShell() {
     [rightPanel],
   )
   useEffect(() => startHosts(), [])
+  useEffect(() => startNotifications(), [])
   // With no pane open the right panel is just its icon rail, so the thread gets the room.
   const activePane = useUiStore((s) => s.activePane)
   // Collapsing or expanding slides quickly (CSS, off under reduced motion); dragging never does.
@@ -97,6 +100,7 @@ export function AppShell() {
       <FolderBrowserLayer />
       <FolderPickerHint />
       <WindowBar />
+      <HostStatusBanner />
     </>
   )
   if (settings)

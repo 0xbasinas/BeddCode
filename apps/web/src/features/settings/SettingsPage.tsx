@@ -3,6 +3,8 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels'
 import {
   ArrowLeft,
+  Bell,
+  ChartPie,
   Code2,
   GitBranch,
   Info,
@@ -24,12 +26,16 @@ import { AgentsSettings } from './AgentsSettings.tsx'
 import { PreferencesSettings } from './PreferencesSettings.tsx'
 import { PermissionsSettings } from './PermissionsSettings.tsx'
 import { ToolsSettings } from './ToolsSettings.tsx'
+import { NotificationsSettings } from './NotificationsSettings.tsx'
+import { UsageSettings } from './UsageSettings.tsx'
 import './settings.css'
 import { Select } from '../../ui/Select.tsx'
+import { Logo } from '../../ui/Logo.tsx'
 
 export type SettingsSection =
   | 'general'
   | 'appearance'
+  | 'notifications'
   | 'shortcuts'
   | 'agents'
   | 'permissions'
@@ -37,10 +43,12 @@ export type SettingsSection =
   | 'hosts'
   | 'git'
   | 'editor'
+  | 'usage'
   | 'about'
 const SECTIONS = [
   { id: 'general', label: 'General', group: 'App', icon: SlidersHorizontal },
   { id: 'appearance', label: 'Appearance', group: 'App', icon: Palette },
+  { id: 'notifications', label: 'Notifications', group: 'App', icon: Bell },
   { id: 'shortcuts', label: 'Shortcuts', group: 'App', icon: Keyboard },
   { id: 'agents', label: 'Agents', group: 'Agents', icon: Sparkles },
   { id: 'permissions', label: 'Permissions', group: 'Agents', icon: Shield },
@@ -48,6 +56,7 @@ const SECTIONS = [
   { id: 'hosts', label: 'Hosts', group: 'Workspace', icon: Server },
   { id: 'git', label: 'Git', group: 'Workspace', icon: GitBranch },
   { id: 'editor', label: 'Editor', group: 'Workspace', icon: Code2 },
+  { id: 'usage', label: 'Usage', group: 'Account', icon: ChartPie },
   { id: 'about', label: 'About', group: 'Account', icon: Info },
 ] as const
 
@@ -138,7 +147,7 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
             {sections.length === 0 && <p className="muted">No matching settings.</p>}
           </nav>
           <div className="settings-nav-foot">
-            <span className="avatar">B</span>
+            <Logo size={28} />
             <div>
               BeddCode<small>Development build</small>
             </div>
@@ -152,7 +161,10 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
             {(['general', 'appearance', 'shortcuts', 'git', 'editor'] as const).map((page) =>
               section === page ? <PreferencesSettings key={page} section={page} /> : null,
             )}
-            {(section === 'agents' || section === 'permissions' || section === 'tools') && (
+            {(section === 'agents' ||
+              section === 'permissions' ||
+              section === 'tools' ||
+              section === 'usage') && (
               <>
                 <header className="settings-heading">
                   <h2>
@@ -160,20 +172,24 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
                       ? 'Permissions'
                       : section === 'tools'
                         ? 'Tools & MCP'
-                        : 'Agents'}
+                        : section === 'usage'
+                          ? 'Usage'
+                          : 'Agents'}
                   </h2>
                   <p>
                     {section === 'permissions'
                       ? 'Choose what each agent may do without asking.'
                       : section === 'tools'
                         ? 'MCP servers your agents can use, as each agent keeps them.'
-                        : 'Which coding agents BeddCode can run, and how they behave in new sessions.'}
+                        : section === 'usage'
+                          ? 'What your plans have used, and where it went.'
+                          : 'Which coding agents BeddCode can run, and how they behave in new sessions.'}
                   </p>
                 </header>
                 {entries.length > 1 && (
                   <label className="settings-host">
                     <Monitor size={16} />
-                    <span>Agents on</span>
+                    <span>{section === 'usage' ? 'Usage on' : 'Agents on'}</span>
                     <Select
                       aria-label="Settings host"
                       value={selectedHost}
@@ -193,11 +209,14 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
                   <AgentsSettings key={selectedHost} hostKey={selectedHost} />
                 ) : section === 'tools' ? (
                   <ToolsSettings key={selectedHost} hostKey={selectedHost} />
+                ) : section === 'usage' ? (
+                  <UsageSettings key={selectedHost} hostKey={selectedHost} />
                 ) : (
                   <PermissionsSettings key={selectedHost} hostKey={selectedHost} />
                 )}
               </>
             )}
+            {section === 'notifications' && <NotificationsSettings />}
             {section === 'hosts' && (
               <HostsOverview
                 onAdd={() => setHostsOpen('add')}
@@ -208,6 +227,7 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
             {section === 'about' && (
               <>
                 <header className="settings-heading">
+                  <Logo size={48} className="about-logo" />
                   <h2>About BeddCode</h2>
                   <p>A workspace for your coding agents, projects, and machines.</p>
                 </header>

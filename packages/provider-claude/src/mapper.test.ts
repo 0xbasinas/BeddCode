@@ -168,3 +168,72 @@ describe('tool helpers', () => {
     expect(diffForTool('Bash', { command: 'ls' })).toBeNull()
   })
 })
+
+describe('ClaudeEventMapper usage', () => {
+  const result = (modelUsage: Record<string, unknown>) => ({
+    type: 'result',
+    subtype: 'success',
+    is_error: false,
+    result: 'ok',
+    modelUsage,
+  })
+  const used = (input: number, output: number, cost: number, cacheRead = 0) => ({
+    inputTokens: input,
+    outputTokens: output,
+    cacheReadInputTokens: cacheRead,
+    cacheCreationInputTokens: 0,
+    costUSD: cost,
+  })
+  const usageOf = (events: { type: string }[]) => events.filter((e) => e.type === 'session.usage')
+
+  it('reports what each turn added, from the running totals the SDK keeps', () => {
+    const mapper = new ClaudeEventMapper('s1', { now: () => 1 })
+    const first = mapper.map(msg(result({ 'claude-sonnet-5-5': used(1000, 200, 0.05, 400) })))
+    expect(usageOf(first)).toMatchObject([
+      {
+        model: 'claude-sonnet-5-5',
+        inputTokens: 1000,
+        outputTokens: 200,
+        cacheReadTokens: 400,
+        costUsd: 0.05,
+      },
+    ])
+    const second = mapper.map(
+      msg(
+        result({
+          'claude-sonnet-5-5': used(1800, 350, 0.09, 900),
+          'claude-haiku-5-5': used(50, 10, 0.001),
+        }),
+      ),
+    )
+    expect(usageOf(second)).toMatchObject([
+      { model: 'claude-sonnet-5-5', inputTokens: 800, outputTokens: 150, cacheReadTokens: 500 },
+      { model: 'claude-haiku-5-5', inputTokens: 50, outputTokens: 10 },
+    ])
+    // A turn that used nothing says nothing.
+    expect(
+      usageOf(mapper.map(msg(result({ 'claude-sonnet-5-5': used(1800, 350, 0.09, 900) })))),
+    ).toEqual([])
+  })
+
+  it('counts everything again when the totals start over', () => {
+    const mapper = new ClaudeEventMapper('s1', { now: () => 1 })
+    mapper.map(msg(result({ m: used(5000, 900, 0.3) })))
+    const after = mapper.map(msg(result({ m: used(100, 20, 0.01) })))
+    expect(usageOf(after)).toMatchObject([{ model: 'm', inputTokens: 100, outputTokens: 20 }])
+  })
+
+  it("does not count a resumed conversation's earlier turns a second time", () => {
+    const mapper = new ClaudeEventMapper('s1', { now: () => 1, resumed: true })
+    expect(usageOf(mapper.map(msg(result({ m: used(5000, 900, 0.3) }))))).toEqual([])
+    expect(usageOf(mapper.map(msg(result({ m: used(5600, 1000, 0.34) }))))).toMatchObject([
+      { inputTokens: 600, outputTokens: 100 },
+    ])
+  })
+
+  it('says nothing when the result carries no usage', () => {
+    expect(
+      usageOf(mapAll([{ type: 'result', subtype: 'success', is_error: false, result: 'ok' }])),
+    ).toEqual([])
+  })
+})

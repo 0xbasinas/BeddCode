@@ -77,7 +77,10 @@ export class ClaudeSession implements ProviderSession {
     private readonly deps: ClaudeSessionDeps,
   ) {
     this.sessionId = input.sessionId
-    this.mapper = new ClaudeEventMapper(input.sessionId, { cwd: input.cwd })
+    this.mapper = new ClaudeEventMapper(input.sessionId, {
+      cwd: input.cwd,
+      resumed: input.resumeId !== undefined,
+    })
 
     this.query = deps.queryFn({
       prompt: this.prompts,

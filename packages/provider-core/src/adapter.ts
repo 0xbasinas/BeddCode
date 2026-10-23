@@ -6,6 +6,7 @@ import type {
   ProviderInstance,
   SessionEvent,
   SlashCommand,
+  UsageLimits,
 } from '@beddcode/contracts'
 
 export interface StartSessionInput {
@@ -95,6 +96,8 @@ export interface ProviderAdapter {
   ): Promise<string>
   /** What a new session would offer (modes, settings, commands), for agents that only say so by starting one. */
   preview?(instanceId: string, cwd?: string): Promise<AgentPreview>
+  /** The plan limits the agent reports (5-hour and weekly windows), for those that can say. */
+  limits?(instanceId: string): Promise<Pick<UsageLimits, 'plan' | 'windows' | 'note'>>
   /** Slash commands and skills available in a folder, without starting a session. */
   listCommands?(instanceId: string, cwd?: string): Promise<SlashCommand[]>
   readonly mcp?: ProviderMcp

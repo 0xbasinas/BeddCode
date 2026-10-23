@@ -10,4 +10,8 @@ export const migrations: string[] = [
   );
   CREATE INDEX events_session ON events (session_id, seq);
   `,
+  // Usage and similar reports read one kind of event over a period.
+  `
+  CREATE INDEX events_type_at ON events (type, at);
+  `,
 ]

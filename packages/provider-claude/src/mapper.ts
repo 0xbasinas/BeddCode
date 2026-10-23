@@ -1,4 +1,4 @@
-import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { ModelUsage, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { SessionEvent } from '@beddcode/contracts'
 import { displayPath } from '@beddcode/shared'
 
@@ -7,6 +7,15 @@ type Block = { type: string; [key: string]: unknown }
 
 /** Distributive Omit so each event variant keeps its own fields. */
 type Draft<E = SessionEvent> = E extends unknown ? Omit<E, 'sessionId' | 'at' | 'turnId'> : never
+
+interface UsageTotals {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+  cost: number
+}
+const ZERO: UsageTotals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 }
 
 const MAX_OUTPUT = 4_000
 const MAX_PATCH_LINES = 400
@@ -107,10 +116,18 @@ export class ClaudeEventMapper {
   private readonly tools = new Map<string, { name: string; input: Record<string, unknown> }>()
   /** Tool calls shown another way (the to-do list is the plan, not a tool row). */
   private readonly hidden = new Set<string>()
+  /** The running totals last seen per model; each result carries them cumulatively. */
+  private readonly usageSeen = new Map<string, UsageTotals>()
+  private firstResult = true
 
   constructor(
     private readonly sessionId: string,
-    private readonly options: { cwd?: string; now?: () => number } = {},
+    private readonly options: {
+      cwd?: string
+      now?: () => number
+      /** Continues an earlier conversation, so the first totals include turns counted before. */
+      resumed?: boolean
+    } = {},
   ) {}
 
   setTurn(turnId: string | undefined) {
@@ -119,6 +136,49 @@ export class ClaudeEventMapper {
 
   markInterrupted() {
     this.interrupted = true
+  }
+
+  /**
+   * What this turn added: the SDK reports running totals per model for the whole conversation, so
+   * the turn's share is the difference from the last result. A resumed conversation's first totals
+   * already hold its earlier turns (counted when they ran), so they only set the starting point.
+   */
+  private usageSince(modelUsage: Record<string, ModelUsage> | undefined): Draft[] {
+    const out: Draft[] = []
+    for (const [model, now] of Object.entries(modelUsage ?? {})) {
+      const current: UsageTotals = {
+        input: now.inputTokens,
+        output: now.outputTokens,
+        cacheRead: now.cacheReadInputTokens,
+        cacheWrite: now.cacheCreationInputTokens,
+        cost: now.costUSD,
+      }
+      const before = this.usageSeen.get(model)
+      this.usageSeen.set(model, current)
+      if (this.firstResult && this.options.resumed) continue
+      // Totals that went down mean the count started over (a /clear): all of it is new.
+      const reset = before !== undefined && current.input < before.input
+      const base: UsageTotals = !before || reset ? ZERO : before
+      const delta = {
+        input: current.input - base.input,
+        output: current.output - base.output,
+        cacheRead: current.cacheRead - base.cacheRead,
+        cacheWrite: current.cacheWrite - base.cacheWrite,
+        cost: Math.max(0, current.cost - base.cost),
+      }
+      if (delta.input + delta.output + delta.cacheRead + delta.cacheWrite <= 0) continue
+      out.push({
+        type: 'session.usage',
+        model,
+        inputTokens: Math.max(0, delta.input),
+        outputTokens: Math.max(0, delta.output),
+        cacheReadTokens: Math.max(0, delta.cacheRead),
+        cacheWriteTokens: Math.max(0, delta.cacheWrite),
+        costUsd: delta.cost > 0 ? delta.cost : undefined,
+      })
+    }
+    this.firstResult = false
+    return out
   }
 
   /** The provider session id, if this message announces it. */
@@ -224,6 +284,7 @@ export class ClaudeEventMapper {
         } else {
           out.push({ type: 'turn.completed', reason: 'done' })
         }
+        out.push(...this.usageSince(msg.modelUsage))
         this.interrupted = false
         this.streamedMessages.clear()
         break

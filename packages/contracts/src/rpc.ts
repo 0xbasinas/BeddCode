@@ -4,6 +4,7 @@ import { Device, PairingCode, TailnetStatus } from './hosts.ts'
 import { ConfigOption, SlashCommand } from './events.ts'
 import { PermissionModeOption, ProviderInstance } from './providers.ts'
 import { FileContent, FileEntry, FileMedia, FolderListing, TerminalInfo } from './workspace.ts'
+import { UsageLimits, UsageSummary } from './usage.ts'
 
 /** An ACP agent configured on a host (a command that speaks ACP over stdio). */
 export const AcpAgentSummary = z.object({
@@ -122,6 +123,16 @@ export const RpcMethods = {
       env: z.record(z.string(), z.string()),
     }),
     result: AcpAgentSummary,
+  },
+  /** Tokens (and cost) the agents used over the last `days`, by model, session and day. */
+  'usage.summary': {
+    params: z.object({ days: z.number().int().min(1).max(90).default(7) }),
+    result: UsageSummary,
+  },
+  /** Plan limits each agent reports (5-hour and weekly windows), for those that report them. */
+  'usage.limits': {
+    params: z.object({}),
+    result: z.array(UsageLimits),
   },
   'agents.remove': {
     params: z.object({ id: z.string() }),

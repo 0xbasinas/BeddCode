@@ -74,6 +74,8 @@ export function createRpcRouter(
     'agents.list': async () => agents.list(),
     'agents.add': (p) => agents.add(p),
     'agents.update': (p) => agents.update(p),
+    'usage.summary': async (p) => sessions.usageSummary(p.days),
+    'usage.limits': () => sessions.usageLimits(),
     'agents.remove': (p) => agents.remove(p.id),
     'agents.registry': (p) => agents.searchRegistry(p.query),
     'projects.list': () => projects.list(),

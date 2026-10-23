@@ -76,6 +76,53 @@ export class EventStore {
     return rows.map((r) => ({ seq: r.seq, event: SessionEvent.parse(JSON.parse(r.payload)) }))
   }
 
+  /** Every usage report made at or after `since`, oldest first. */
+  usageSince(since: number): Extract<SessionEvent, { type: 'session.usage' }>[] {
+    const rows = this.db
+      .prepare("SELECT payload FROM events WHERE type = 'session.usage' AND at >= ? ORDER BY seq")
+      .all(since) as { payload: string }[]
+    return rows.map(
+      (r) =>
+        SessionEvent.parse(JSON.parse(r.payload)) as Extract<
+          SessionEvent,
+          { type: 'session.usage' }
+        >,
+    )
+  }
+
+  /** What the log says about sessions: their name, branch, agent and the model they were started with. */
+  sessionMeta(
+    sessionIds: string[],
+  ): Map<string, { title: string; branch?: string; instanceId: string; model?: string }> {
+    const out = new Map<
+      string,
+      { title: string; branch?: string; instanceId: string; model?: string }
+    >()
+    const created = this.db.prepare(
+      "SELECT payload FROM events WHERE session_id = ? AND type IN ('session.created', 'session.renamed', 'session.model') ORDER BY seq",
+    )
+    for (const id of sessionIds) {
+      for (const row of created.all(id) as { payload: string }[]) {
+        const e = SessionEvent.parse(JSON.parse(row.payload))
+        if (e.type === 'session.created') {
+          out.set(id, {
+            title: e.title,
+            branch: e.branch,
+            instanceId: e.instanceId,
+            model: e.model,
+          })
+        } else if (e.type === 'session.renamed') {
+          const current = out.get(id)
+          if (current) current.title = e.title
+        } else if (e.type === 'session.model') {
+          const current = out.get(id)
+          if (current && e.model) current.model = e.model
+        }
+      }
+    }
+    return out
+  }
+
   lastSeq(): number {
     return (this.lastSeqStmt.get() as { seq: number }).seq
   }

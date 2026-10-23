@@ -13,6 +13,7 @@ import { CodexSession } from './session.ts'
 import { discoverCodexModels } from './models.ts'
 import { createCodexHistory, createWithAppServer, listCodexSkills } from './history.ts'
 import { createCodexMcp } from './mcp.ts'
+import { readCodexLimits } from './limits.ts'
 
 export const CODEX_INSTANCE_ID = 'codex'
 
@@ -116,6 +117,7 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): ProviderA
     readHistory: (_instanceId, id, cwd) => history.read(id, cwd),
     forkHistory: (_instanceId, from) =>
       history.fork(from.providerSessionId, from.cwd, from.throughTurn),
+    limits: () => readCodexLimits(appServer),
     listCommands: (_instanceId, cwd) => listCodexSkills(appServer, cwd ?? process.cwd()),
     mcp: createCodexMcp(executable, env),
   }

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="BeddCode">
+  <defs>
+    <linearGradient id="tile" x1="30" y1="0" x2="226" y2="256" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8c46a" />
+      <stop offset="1" stop-color="#e08a1a" />
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="60" fill="url(#tile)" />
+  <!-- B: two stacked windows on one stem; a cursor in the first, a prompt in the second -->
+  <g transform="translate(128 128) scale(1.08) translate(-128 -128)">
+  <path
+    fill="#171717"
+    d="M82 52 H134 A22 22 0 0 1 156 74 V94 A22 22 0 0 1 134 116 H108 V124 H160 A26 26 0 0 1 186 150 V178 A26 26 0 0 1 160 204 H82 A12 12 0 0 1 70 192 V64 A12 12 0 0 1 82 52 Z"
+  />
+  <rect x="108" y="77" width="30" height="14" rx="7" fill="#f2ab3c" />
+  <path
+    d="M114.5 150 L131.5 164 L114.5 178"
+    fill="none"
+    stroke="#f2ab3c"
+    stroke-width="13"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  </g>
+</svg>

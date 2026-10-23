@@ -25,6 +25,7 @@ import { HostsDialog } from '../hosts/HostsDialog.tsx'
 import { folderName, timeAgo } from '../../ui/format.ts'
 import { useUiStore } from '../../stores/ui.ts'
 import { AddFolderMenu } from '../folders/AddFolderMenu.tsx'
+import { Logo } from '../../ui/Logo.tsx'
 import { isFresh, useFolderFlow } from '../folders/folderFlow.ts'
 import { foldersWithoutSessions, samePath } from '../folders/folderLogic.ts'
 
@@ -164,7 +165,10 @@ ${s.projectPath}`
   return (
     <aside className="panel sidebar">
       <div className="sidebar-top">
-        <span className="brand">BeddCode</span>
+        <span className="brand">
+          <Logo size={20} />
+          BeddCode
+        </span>
         <Dropdown
           placement="bottom"
           align="end"

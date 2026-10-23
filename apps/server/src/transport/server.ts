@@ -27,6 +27,7 @@ import type { AttachmentStore } from '../attachments/store.ts'
 import type { SessionManager } from '../sessions/sessionManager.ts'
 import type { FileWatchers } from '../files/watcher.ts'
 import { serveMedia } from '../files/media.ts'
+import { serveWebApp } from '../web/static.ts'
 import { createRpcRouter, type RpcContext, type WorkspaceServices } from './rpc.ts'
 
 function parsePairRequest(body: unknown): { code: string; deviceName: string } | null {
@@ -73,6 +74,8 @@ export interface StartServerOptions {
   hostId: string
   hostName?: string
   defaultCwd?: string
+  /** Folder holding the built web app, to serve at `/`; the host serves only its API without one. */
+  webRoot?: string
   store: EventStore
   sessions: SessionManager
   agents: AgentCatalog
@@ -181,6 +184,8 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       reply(res, 200, options.pairing.create())
       return
     }
+    // The web app itself, for the desktop app and for a browser on this machine or the tailnet.
+    if (options.webRoot && url !== undefined && serveWebApp(options.webRoot, req, res, url)) return
     res.writeHead(404).end()
   })
 

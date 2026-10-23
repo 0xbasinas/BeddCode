@@ -13,9 +13,13 @@
     "test": "turbo run test",
     "lint": "oxlint .",
     "fmt": "prettier --write .",
-    "fmt:check": "prettier --check ."
+    "fmt:check": "prettier --check .",
+    "dist": "pnpm --filter @beddcode/web build && pnpm --filter @beddcode/desktop dist",
+    "dist:win": "pnpm --filter @beddcode/web build && pnpm --filter @beddcode/desktop dist:win",
+    "dist:linux": "pnpm --filter @beddcode/web build && pnpm --filter @beddcode/desktop dist:linux"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "oxlint": "^1.0.0",
     "prettier": "^3.6.0",
     "turbo": "^2.5.0",

@@ -1,24 +1,37 @@
 {
   "name": "@beddcode/desktop",
-  "version": "0.0.0",
+  "productName": "BeddCode",
+  "version": "0.1.0",
+  "description": "A workspace for supervising coding agents across your machines",
+  "author": {
+    "name": "BeddCode",
+    "email": "geobasinas@gmail.com"
+  },
+  "homepage": "https://github.com/0xbasinas/BeddCode",
+  "license": "UNLICENSED",
   "private": true,
   "type": "module",
   "main": "dist/main.cjs",
   "scripts": {
     "bundle": "esbuild src/main.ts src/preload.ts --bundle --platform=node --format=cjs --external:electron --outdir=dist --out-extension:.js=.cjs",
+    "host": "node scripts/build-host.mjs",
     "dev": "wait-on --timeout 30000 http-get://127.0.0.1:3773/health tcp:5173 && pnpm bundle && cross-env BEDDCODE_WEB_URL=http://localhost:5173 electron .",
     "start": "pnpm bundle && electron .",
     "build": "pnpm bundle",
+    "pack": "pnpm bundle && pnpm host && electron-builder --dir",
+    "dist": "pnpm bundle && pnpm host && electron-builder",
+    "dist:win": "pnpm bundle && pnpm host && electron-builder --win",
+    "dist:linux": "pnpm bundle && pnpm host && electron-builder --linux",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
   },
-  "dependencies": {
-    "@beddcode/contracts": "workspace:*"
-  },
   "devDependencies": {
+    "@beddcode/contracts": "workspace:*",
     "@types/node": "^22.0.0",
     "cross-env": "^7.0.3",
     "electron": "^38.0.0",
+    "electron-builder": "^26.15.3",
+    "electron-updater": "^6.8.9",
     "esbuild": "^0.25.0",
     "wait-on": "^8.0.0"
   }

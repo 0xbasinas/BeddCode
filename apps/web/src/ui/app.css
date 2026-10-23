@@ -141,8 +141,16 @@ kbd {
   container-type: inline-size;
 }
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
   font-size: calc(14px * var(--ui-scale));
   font-weight: 600;
+}
+.brand svg {
+  flex: none;
+  width: calc(20px * var(--ui-scale));
+  height: calc(20px * var(--ui-scale));
 }
 .side-actions {
   display: flex;
@@ -3693,4 +3701,67 @@ button.tcall-row:hover .tcall-chevron,
 }
 .editor-tab > button:last-child {
   flex: none;
+}
+
+/* The logo where it stands on its own. */
+.welcome-logo,
+.about-logo {
+  display: block;
+  margin: 0 auto calc(16px * var(--ui-scale));
+}
+.about-logo {
+  margin-left: 0;
+}
+.settings-nav-foot svg {
+  flex: none;
+}
+
+/* The local host is starting, restarting, or will not stay up. */
+.host-banner {
+  position: fixed;
+  z-index: 30;
+  left: 50%;
+  bottom: calc(18px * var(--ui-scale));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: calc(16px * var(--ui-scale));
+  max-width: min(calc(560px * var(--ui-scale)), calc(100vw - 32px));
+  padding: calc(10px * var(--ui-scale)) calc(14px * var(--ui-scale));
+  border: 1px solid var(--border-strong);
+  border-radius: calc(10px * var(--ui-scale));
+  background: var(--bg-raised);
+  color: var(--text-secondary);
+  font-size: calc(12.5px * var(--ui-scale));
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.4);
+}
+.host-banner.error {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border-strong));
+}
+.host-banner strong {
+  font-weight: 500;
+  color: var(--text);
+}
+.host-banner pre {
+  margin: calc(6px * var(--ui-scale)) 0 0;
+  max-height: calc(80px * var(--ui-scale));
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--text-muted);
+  font: calc(11px * var(--ui-scale)) / 1.5 var(--font-mono);
+}
+.host-banner-actions {
+  display: flex;
+  gap: calc(8px * var(--ui-scale));
+  flex: none;
+}
+.host-banner-actions button {
+  padding: calc(5px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border: 1px solid var(--border-strong);
+  border-radius: calc(7px * var(--ui-scale));
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.host-banner-actions button:disabled {
+  opacity: 0.6;
 }

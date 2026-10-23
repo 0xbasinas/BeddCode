@@ -11,6 +11,7 @@ import { PairingManager } from './auth/pairing.ts'
 import { TokenStore } from './auth/tokens.ts'
 import { isLoopbackHost, type ServerConfig } from './config.ts'
 import { dataHome, loadHostId } from './hostIdentity.ts'
+import { findWebRoot } from './web/static.ts'
 import { TailscaleService } from './network/tailscale.ts'
 import { SessionManager } from './sessions/sessionManager.ts'
 import { recoverInterruptedTurns } from './sessions/recovery.ts'
@@ -76,6 +77,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     guard: config.guard,
     hostId: loadHostId(home),
     defaultCwd: process.cwd(),
+    webRoot: findWebRoot(),
     store,
     sessions,
     agents,

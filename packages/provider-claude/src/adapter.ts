@@ -12,6 +12,7 @@ import { discoverClaudeModels } from './models.ts'
 import { scanClaudeCommands } from './commands.ts'
 import { createClaudeHistory, type ClaudeHistorySdk } from './history.ts'
 import { createClaudeMcp } from './mcp.ts'
+import { readClaudeLimits } from './limits.ts'
 
 export const CLAUDE_INSTANCE_ID = 'claude'
 
@@ -128,6 +129,11 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
     kind: 'claude',
     detect: async () => [await detectInstance()],
     capabilities: () => capabilities,
+    async limits() {
+      const exe = executable()
+      if (!exe) throw new Error('Claude Code is not installed on this host')
+      return readClaudeLimits(queryFn, { executablePath: exe, env })
+    },
     async startSession(_instanceId, input) {
       const exe = executable()
       if (!exe) throw new Error('Claude Code is not installed on this host')

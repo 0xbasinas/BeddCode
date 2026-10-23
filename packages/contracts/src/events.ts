@@ -207,6 +207,19 @@ export const SessionEvent = z.discriminatedUnion('type', [
     /** Explains an interrupted turn, such as a host restart. */
     message: z.string().optional(),
   }),
+  /**
+   * What a turn used, as the agent reports it: the tokens (and cost, when it says) added by that
+   * turn, per model. Summed over time for the Usage page.
+   */
+  Base.extend({
+    type: z.literal('session.usage'),
+    model: z.string().optional(),
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    cacheReadTokens: z.number().int().nonnegative().optional(),
+    cacheWriteTokens: z.number().int().nonnegative().optional(),
+    costUsd: z.number().nonnegative().optional(),
+  }),
   Base.extend({ type: z.literal('error'), message: z.string() }),
 ])
 export type SessionEvent = z.infer<typeof SessionEvent>

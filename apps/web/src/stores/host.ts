@@ -26,8 +26,13 @@ import {
   upsertHost,
   type HostEntry,
 } from './hostCatalog.ts'
+import { localHostUrl } from './localHostUrl.ts'
 
-const LOCAL_URL = import.meta.env.VITE_BEDDCODE_HOST_WS ?? 'ws://127.0.0.1:3773/ws'
+const LOCAL_URL = localHostUrl({
+  override: import.meta.env.VITE_BEDDCODE_HOST_WS,
+  dev: import.meta.env.DEV,
+  location: typeof window === 'undefined' ? undefined : window.location,
+})
 
 export interface UploadedFile {
   id: string

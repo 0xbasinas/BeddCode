@@ -69,7 +69,8 @@ export function defaultShell(
 ): ShellSpec {
   if (platform === 'win32') {
     const ps = find('pwsh') ?? find('powershell')
-    if (ps) return { file: ps, args: ['-NoLogo'], name: path.basename(ps).replace(/\.exe$/i, '') }
+    if (ps)
+      return { file: ps, args: ['-NoLogo'], name: path.win32.basename(ps).replace(/\.exe$/i, '') }
     return { file: env.COMSPEC ?? 'cmd.exe', args: [], name: 'cmd' }
   }
   const file = env.SHELL && env.SHELL.length > 0 ? env.SHELL : (find('bash') ?? '/bin/sh')

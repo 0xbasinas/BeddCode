@@ -168,3 +168,52 @@ describe('CodexEventMapper', () => {
     ])
   })
 })
+
+describe('CodexEventMapper usage', () => {
+  const tokens = (input: number, cached: number, output: number) => ({
+    inputTokens: input,
+    cachedInputTokens: cached,
+    outputTokens: output,
+    reasoningOutputTokens: 0,
+    totalTokens: input + output,
+  })
+  const report = (total: unknown, last: unknown): [string, unknown] => [
+    'thread/tokenUsage/updated',
+    { threadId: 't', turnId: 'x', tokenUsage: { total, last } },
+  ]
+  const done: [string, unknown] = ['turn/completed', { turn: { status: 'completed' } }]
+  const usage = (events: { type: string }[]) => events.filter((e) => e.type === 'session.usage')
+
+  it('reports what the turn added, with cached input counted apart', () => {
+    const events = mapAll([
+      report(tokens(1000, 600, 100), tokens(1000, 600, 100)),
+      report(tokens(2500, 1800, 260), tokens(1500, 1200, 160)),
+      done,
+    ])
+    expect(usage(events)).toMatchObject([
+      { inputTokens: 700, cacheReadTokens: 1800, outputTokens: 260 },
+    ])
+    // The usage comes before the turn ends.
+    expect(events.map((e) => e.type)).toEqual(['session.usage', 'turn.completed'])
+  })
+
+  it('counts only the next turn on the next completion', () => {
+    const mapper = new CodexEventMapper('s1', '/w', () => 1)
+    mapper.map('thread/tokenUsage/updated', report(tokens(1000, 0, 100), tokens(1000, 0, 100))[1])
+    mapper.map('turn/completed', done[1])
+    mapper.map('thread/tokenUsage/updated', report(tokens(1700, 0, 180), tokens(700, 0, 80))[1])
+    expect(usage(mapper.map('turn/completed', done[1]))).toMatchObject([
+      { inputTokens: 700, outputTokens: 80 },
+    ])
+  })
+
+  it("leaves a resumed thread's earlier history out of the count", () => {
+    // The first report already holds 9,000 tokens from before; this request added 500 and 50.
+    const events = mapAll([report(tokens(9500, 0, 950), tokens(500, 0, 50)), done])
+    expect(usage(events)).toMatchObject([{ inputTokens: 500, outputTokens: 50 }])
+  })
+
+  it('says nothing for a turn with no report', () => {
+    expect(usage(mapAll([done]))).toEqual([])
+  })
+})

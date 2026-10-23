@@ -1,0 +1,41 @@
+name: Release
+
+# Pushing a tag such as v0.2.0 builds the installers on each operating system and attaches them to a
+# draft GitHub release, which the apps' updaters read once it is published.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  installers:
+    name: Installers (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: dist:win
+          - os: ubuntu-latest
+            target: dist:linux
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @beddcode/web build
+      # The host's native terminal library is installed for the system building, so each installer
+      # is built on its own system. Set CSC_LINK and CSC_KEY_PASSWORD (repository secrets) to sign
+      # the Windows installer; unsigned builds still work but Windows warns on first run.
+      - run: pnpm --filter @beddcode/desktop ${{ matrix.target }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}

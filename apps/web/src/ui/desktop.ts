@@ -8,6 +8,23 @@ export interface DesktopWindow {
   onMaximizedChange(callback: (maximized: boolean) => void): () => void
 }
 
+/** The local host as the desktop app supervises it (apps/desktop/src/daemon.ts). */
+export interface DesktopDaemonState {
+  status: 'starting' | 'running' | 'attached' | 'restarting' | 'failed' | 'stopped'
+  detail?: string
+  restarts: number
+  logFile?: string
+}
+
+export interface DesktopDaemon {
+  status(): Promise<DesktopDaemonState | null>
+  /** Replaces the host the app started, or starts a new one after a failure. False: not ours to restart. */
+  restart(): Promise<boolean>
+  log(): Promise<string>
+  revealLog(): Promise<boolean>
+  onStatus(callback: (state: DesktopDaemonState) => void): () => void
+}
+
 declare global {
   interface Window {
     /** Present only inside the desktop app (see apps/desktop/src/preload.ts). */
@@ -17,6 +34,8 @@ declare global {
       pickFolder?(options?: { defaultPath?: string }): Promise<string | null>
       /** The app's own window buttons; absent on macOS builds that keep the traffic lights. */
       window?: DesktopWindow
+      /** Supervision of the local host; absent in the browser. */
+      daemon?: DesktopDaemon
     }
   }
 }

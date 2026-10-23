@@ -64,8 +64,32 @@ export function diffForChange(change: FileChange, cwd?: string) {
  * Converts Codex app-server notifications into the shared event vocabulary. Agent text arrives as
  * deltas plus a final item; only the final item of a message that was never streamed is emitted.
  */
+/** Token counts of a Codex thread, as `thread/tokenUsage/updated` reports them. */
+interface Tokens {
+  input: number
+  cached: number
+  cacheWrite: number
+  output: number
+}
+const NO_TOKENS: Tokens = { input: 0, cached: 0, cacheWrite: 0, output: 0 }
+
+function tokensOf(value: unknown): Tokens | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const t = value as Obj
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+  return {
+    input: n(t.inputTokens),
+    cached: n(t.cachedInputTokens),
+    cacheWrite: n(t.cacheWriteInputTokens),
+    output: n(t.outputTokens),
+  }
+}
+
 export class CodexEventMapper {
   private turnId: string | undefined
+  /** The thread's running totals: what was counted before the first report, and the latest. */
+  private usageBase: Tokens | undefined
+  private usageTotal: Tokens | undefined
   private readonly streamed = new Set<string>()
   private readonly items = new Map<string, CodexItem>()
 
@@ -126,7 +150,25 @@ export class CodexEventMapper {
         out.push({ type: 'error', message: str(err.message) ?? 'Codex reported an error' })
         break
       }
+      case 'thread/tokenUsage/updated': {
+        const usage = (p.tokenUsage ?? {}) as Obj
+        const total = tokensOf(usage.total)
+        const last = tokensOf(usage.last)
+        if (!total) break
+        // What the thread held before this report (history, when resumed), so only new work counts.
+        this.usageBase ??= last
+          ? {
+              input: Math.max(0, total.input - last.input),
+              cached: Math.max(0, total.cached - last.cached),
+              cacheWrite: Math.max(0, total.cacheWrite - last.cacheWrite),
+              output: Math.max(0, total.output - last.output),
+            }
+          : total
+        this.usageTotal = total
+        break
+      }
       case 'turn/completed': {
+        out.push(...this.usageOfTurn())
         const turn = (p.turn ?? {}) as Obj
         const status = turn.status
         if (status === 'interrupted') out.push({ type: 'turn.completed', reason: 'cancelled' })
@@ -144,6 +186,28 @@ export class CodexEventMapper {
       (e) =>
         ({ ...e, sessionId: this.sessionId, turnId: this.turnId, at: this.now() }) as SessionEvent,
     )
+  }
+
+  /** What the turn added to the thread's totals; Codex counts input with the cached part included. */
+  private usageOfTurn(): Draft[] {
+    const base = this.usageBase ?? NO_TOKENS
+    const total = this.usageTotal
+    if (!total) return []
+    const input = Math.max(0, total.input - base.input - (total.cached - base.cached))
+    const cacheRead = Math.max(0, total.cached - base.cached)
+    const cacheWrite = Math.max(0, total.cacheWrite - base.cacheWrite)
+    const output = Math.max(0, total.output - base.output)
+    this.usageBase = total
+    if (input + cacheRead + cacheWrite + output === 0) return []
+    return [
+      {
+        type: 'session.usage',
+        inputTokens: input,
+        outputTokens: output,
+        cacheReadTokens: cacheRead,
+        cacheWriteTokens: cacheWrite,
+      },
+    ]
   }
 
   private onItemStarted(item: CodexItem | undefined, out: Draft[]) {
