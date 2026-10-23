@@ -130,4 +130,28 @@ describe('sessionAlerts', () => {
     expect(sessionAlerts('needs-you', session({ status: 'needs-you' }), now)).toEqual([])
     expect(sessionAlerts('running', session({ lastTurnReason: 'done' }), now + 60_000)).toEqual([])
   })
+
+  it('names scheduled runs, and leaves child sessions to the session that started them', () => {
+    expect(
+      sessionAlerts(
+        'running',
+        session({ lastTurnReason: 'done', schedule: { id: 's', name: 'Nightly' } }),
+        now,
+      ),
+    ).toMatchObject([{ kind: 'turn-done', body: 'Scheduled run of “Nightly” finished' }])
+    expect(
+      sessionAlerts(
+        'running',
+        session({ lastTurnReason: 'done', parent: { sessionId: 'p', depth: 1 } }),
+        now,
+      ),
+    ).toEqual([])
+    expect(
+      sessionAlerts(
+        'running',
+        session({ status: 'needs-you', parent: { sessionId: 'p', depth: 1 } }),
+        now,
+      ),
+    ).toMatchObject([{ kind: 'needs-you' }])
+  })
 })

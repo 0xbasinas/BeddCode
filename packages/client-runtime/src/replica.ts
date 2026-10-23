@@ -130,6 +130,12 @@ export interface SessionView {
   plan?: { steps: PlanStep[]; explanation?: string }
   /** Slash commands and skills the agent offers right now. */
   commands: SlashCommand[]
+  /** Started by another session through its agent tools. */
+  parent?: { sessionId: string; depth: number }
+  /** Started by a schedule. */
+  schedule?: { id: string; name: string }
+  /** Can start and manage other sessions. */
+  agentTools?: boolean
   /** The agent's own per-session settings (model, thinking level, ...). */
   config: ConfigOption[]
   /** The session this one continues, when it was forked. */
@@ -192,6 +198,9 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       config: [],
       forkedFrom: e.forkedFrom,
       imported: e.imported,
+      parent: e.parent,
+      schedule: e.schedule,
+      agentTools: e.agentTools,
     }
     return {
       lastSeq: stored.seq,
