@@ -505,7 +505,7 @@ legacy: https://example.com/sse (SSE) - ✔ Connected
       ['mcp', 'add', '--scope', 'user', 'a', '--', 'npx'],
       ['mcp', 'remove', '--scope', 'user', 'nope'],
     ])
-    expect(() => createClaudeMcp(() => null, undefined, run).list('claude')).rejects.toThrow(
+    await expect(createClaudeMcp(() => null, undefined, run).list('claude')).rejects.toThrow(
       'not installed',
     )
   })
