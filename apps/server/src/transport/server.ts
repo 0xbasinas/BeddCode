@@ -88,6 +88,11 @@ export interface StartServerOptions {
   /** Who may connect; defaults to this machine plus the tailnet, tokens for everyone else. */
   guard?: GuardOptions
   log: Logger
+  /**
+   * A connection silent for this long is closed. Clients ping every 15 s; past half of this one
+   * that has said nothing is pinged at the socket level, which any client answers.
+   */
+  idleTimeoutMs?: number
 }
 
 export interface RunningServer {
@@ -98,6 +103,7 @@ export interface RunningServer {
 
 const VERSION = '0.0.0'
 const REPLAY_BATCH = 1000
+const IDLE_TIMEOUT_MS = 45_000
 
 export async function startServer(options: StartServerOptions): Promise<RunningServer> {
   const { store, log } = options
@@ -205,6 +211,28 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     handleConnection(ws, classifyRequest(req.socket.remoteAddress, req.headers)),
   )
 
+  // A laptop that slept or a phone that lost its network leaves a socket that never closes on its
+  // own; its subscriptions, terminals and watchers would stay attached. Close the silent ones.
+  const idleMs = options.idleTimeoutMs ?? IDLE_TIMEOUT_MS
+  const lastSeen = new Map<WebSocket, number>()
+  const sweep = setInterval(
+    () => {
+      const now = Date.now()
+      for (const [ws, seen] of lastSeen) {
+        const quiet = now - seen
+        if (quiet >= idleMs) {
+          log.debug('closing a connection that went silent')
+          lastSeen.delete(ws)
+          ws.terminate()
+        } else if (quiet >= idleMs / 2 && ws.readyState === ws.OPEN) {
+          ws.ping()
+        }
+      }
+    },
+    Math.max(10, Math.floor(idleMs / 4)),
+  )
+  sweep.unref()
+
   function handleConnection(ws: WebSocket, peer: PeerClass) {
     // Trusted peers (this machine) are in at once; everyone else proves a token in `hello`.
     let authed = !needsToken(peer, guard)
@@ -220,6 +248,11 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       ws.close(1008, 'device revoked')
     })
     let unsubscribe: (() => void) | null = null
+    lastSeen.set(ws, Date.now())
+    const alive = () => {
+      if (lastSeen.has(ws)) lastSeen.set(ws, Date.now())
+    }
+    ws.on('pong', alive)
     // What this connection is attached to, released when it goes away.
     const terminalDetach = new Map<string, () => void>()
     const watching = new Map<string, () => void>()
@@ -228,6 +261,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       backlog: () => ws.bufferedAmount,
     }
     ws.on('close', () => {
+      lastSeen.delete(ws)
       stopOnRevoke()
       unsubscribe?.()
       terminalDetach.forEach((detach) => detach())
@@ -235,6 +269,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     })
 
     ws.on('message', (raw) => {
+      alive()
       let frame: ClientFrame
       try {
         frame = ClientFrame.parse(JSON.parse(String(raw)))
@@ -350,6 +385,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     hostInfo,
     close: () =>
       new Promise<void>((resolve) => {
+        clearInterval(sweep)
         for (const client of wss.clients) client.terminate()
         wss.close(() => http.close(() => resolve()))
       }),

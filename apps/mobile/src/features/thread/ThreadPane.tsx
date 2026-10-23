@@ -1,4 +1,4 @@
-import { doneMenuAction, effortLabel, folderName } from '@beddcode/client-runtime'
+import { doneMenuAction, effortLabel, endedByDecline, folderName } from '@beddcode/client-runtime'
 import { Checks, DotsThree, Stop as StopIcon, ArrowUUpLeft } from 'phosphor-react-native'
 import { useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
@@ -172,7 +172,11 @@ export function ThreadPane({
         )}
         <View style={styles.composer}>
           <Composer
-            placeholder={`Reply to ${agent?.label ?? 'the agent'}…`}
+            placeholder={
+              endedByDecline(session)
+                ? `You declined. Tell ${agent?.label ?? 'the agent'} what to do instead…`
+                : `Reply to ${agent?.label ?? 'the agent'}…`
+            }
             running={running}
             onStop={() => void interrupt(session.id)}
             onSend={async (text, ids) => {

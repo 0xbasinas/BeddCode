@@ -8,6 +8,8 @@ export const TerminalInfo = z.object({
   shell: z.string(),
   /** What the terminal was opened to run (a project script), for its tab. */
   title: z.string().optional(),
+  /** The project script it runs; running that script again in the folder replaces this terminal. */
+  scriptId: z.string().optional(),
   cols: z.number().int(),
   rows: z.number().int(),
   /** Exit code once the shell has ended (null when killed by a signal); absent while running. */

@@ -41,7 +41,7 @@ import {
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { folderName } from '../../ui/format.ts'
 import { Transcript } from './Transcript.tsx'
-import { handoffPrompt, sessionChanges } from '@beddcode/client-runtime'
+import { endedByDecline, handoffPrompt, sessionChanges } from '@beddcode/client-runtime'
 import { setHandoff } from '../../stores/handoff.ts'
 import { useFollowEnd } from './useFollowEnd.ts'
 import { folderId, useFiles } from '../files/filesStore.ts'
@@ -308,8 +308,11 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
               ? canSteer
                 ? 'Steer the agent, or queue a message…'
                 : 'Queue a message for when this turn ends…'
-              : `Reply to ${provider?.label ?? 'the agent'}…`
+              : endedByDecline(session)
+                ? `You declined. Tell ${provider?.label ?? 'the agent'} what to do instead…`
+                : `Reply to ${provider?.label ?? 'the agent'}…`
         }
+        focusSignal={endedByDecline(session) ? session.completedTurns : undefined}
         commands={session.commands}
         above={
           <>

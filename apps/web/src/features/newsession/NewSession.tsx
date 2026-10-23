@@ -74,7 +74,7 @@ export function NewSession({
       ? (initialHost ?? defaultHostKey)
       : LOCAL_HOST_KEY,
   )
-  const { providers, connection, host, replica, projects, synced } = useRuntime(hostKey)
+  const { providers, connection, host, replica, projects, synced, loadError } = useRuntime(hostKey)
   // The welcome checklist stays up until the first session, so adding a folder never jumps
   // straight into a composer; its last step starts the session.
   const hasSessions = useHostStore((s) =>
@@ -277,7 +277,9 @@ export function NewSession({
             ? 'Connecting to your host…'
             : agent
               ? 'Describe a task, paste an issue link, or ask a question.'
-              : 'No agent is ready on this host yet. Install and sign in to Claude Code or Codex, or add an ACP agent.'}
+              : loadError && providers.length === 0
+                ? `${loadError}. Trying again…`
+                : 'No agent is ready on this host yet. Install and sign in to Claude Code or Codex, or add an ACP agent.'}
         </p>
         <Composer
           text={text}
@@ -289,7 +291,9 @@ export function NewSession({
             connection !== 'connected'
               ? 'the host is connected'
               : !agent
-                ? 'an agent is ready'
+                ? loadError && providers.length === 0
+                  ? 'the host lists its agents'
+                  : 'an agent is ready'
                 : 'the folder is read'
           }
           autoFocus

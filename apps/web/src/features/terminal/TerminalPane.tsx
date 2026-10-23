@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { placeTerminal } from './terminalTabs.ts'
 import { Paperclip, Plus, SquareTerminal, Trash2, X } from 'lucide-react'
 import type { PaneWorkspace } from '../../stores/composerWorkspace.ts'
 import type { ProjectScript, TerminalInfo } from '@beddcode/contracts'
@@ -46,9 +47,11 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
         const info = await hostRequest(
           hostKey,
           'terminals.create',
-          script ? { cwd, command: script.command, title: script.name } : { cwd },
+          script
+            ? { cwd, command: script.command, title: script.name, scriptId: script.id }
+            : { cwd },
         )
-        setTerminals((list) => [...(list ?? []), info])
+        setTerminals((list) => placeTerminal(list ?? [], info))
         setActive(info.id)
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))

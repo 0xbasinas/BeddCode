@@ -255,6 +255,8 @@ export const RpcMethods = {
       /** A command to type into the new shell (a project script), and the tab's name for it. */
       command: z.string().trim().min(1).max(2000).optional(),
       title: z.string().trim().min(1).max(40).optional(),
+      /** The project script: an earlier terminal of it in this folder is closed and replaced. */
+      scriptId: z.string().min(1).max(64).optional(),
     }),
     result: TerminalInfo,
   },

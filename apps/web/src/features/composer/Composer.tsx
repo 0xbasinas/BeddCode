@@ -29,6 +29,8 @@ interface ComposerProps {
   /** Why sending is not possible yet (connecting, loading the agent); shown when the user tries. */
   disabledReason?: string
   autoFocus?: boolean
+  /** The box takes focus whenever this changes to a new, set value (e.g. the agent awaits a reply). */
+  focusSignal?: string | number
   /** The host files are uploaded to; attachments must live where the agent runs. */
   hostKey: string
   /** Session id, or a separate draft for the new-session composer. */
@@ -66,6 +68,10 @@ export function Composer(props: ComposerProps) {
   const sendingRef = useRef(false)
   const [dragging, setDragging] = useState(false)
   const input = useRef<HTMLInputElement>(null)
+  const box = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    if (props.focusSignal !== undefined) box.current?.focus()
+  }, [props.focusSignal])
 
   const addFiles = (list: FileList | File[]) => {
     for (const file of Array.from(list)) {
@@ -201,6 +207,7 @@ export function Composer(props: ComposerProps) {
           </div>
         )}
         <textarea
+          ref={box}
           value={props.text}
           placeholder={props.placeholder}
           rows={2}

@@ -70,6 +70,8 @@ interface TurnState {
 const CHECKPOINT_WAIT_MS = 4_000
 /** Folders with more untracked (and not ignored) files than this get no turn snapshots. */
 const CHECKPOINT_MAX_UNTRACKED = 5_000
+/** Turns per session whose snapshots are kept (for their diffs); older ones are dropped. */
+const CHECKPOINTS_KEPT = 20
 
 /** A remembered agent preview older than this is probed again before it is shown. */
 const PREVIEW_REFRESH_MS = 60 * 60_000
@@ -507,6 +509,10 @@ export class SessionManager {
         files,
         truncated: truncated || undefined,
       })
+      // Only the latest turn can be undone; older ones keep their diffs for a while, then go.
+      await this.deps.git
+        .pruneSnapshots(cwd, `refs/beddcode/checkpoints/${sessionId}/`, CHECKPOINTS_KEPT)
+        .catch((err: unknown) => this.deps.log.debug(`could not prune checkpoints: ${String(err)}`))
     } catch (err) {
       this.deps.log.warn(`could not record the changes of a turn in ${sessionId}`, err)
     }
@@ -536,7 +542,15 @@ export class SessionManager {
     }
     const created = this.createdEvent(sessionId)
     if (!created) throw new Error(`Unknown session: ${sessionId}`)
-    return this.deps.git.snapshotDiff(created.cwd, changes.before, changes.after, file)
+    return this.deps.git
+      .snapshotDiff(created.cwd, changes.before, changes.after, file)
+      .catch((err: unknown) => {
+        if (/bad object|unknown revision|invalid object|not a valid object/i.test(String(err)))
+          throw new Error(
+            `This turn is too old: only the last ${CHECKPOINTS_KEPT} turns with changes keep their diffs`,
+          )
+        throw err
+      })
   }
 
   /** Puts the files the latest turn changed back; see `sessions.undoTurn`. */

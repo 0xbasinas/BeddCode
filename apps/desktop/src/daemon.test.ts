@@ -4,8 +4,10 @@ import { Daemon, backoff, type DaemonState, type HostProcess, type LaunchSpec } 
 const launch: LaunchSpec = { command: 'node', args: ['host.js'] }
 
 /** A host that is up while `up` is true; processes it "starts" are recorded and controlled here. */
-function setup() {
+function setup(options: { ignoresKill?: boolean } = {}) {
   const clock = { t: 0 }
+  /** Ends the long wait after giving up, as the minute passing would. */
+  const parked: (() => void)[] = []
   const world = {
     up: false,
     /** When set, a started process answers as soon as it exists. */
@@ -14,12 +16,18 @@ function setup() {
       log: (line: string) => void
       end(code: number | null): void
       killed: boolean
+      forced: boolean
     }[],
   }
   const daemon = new Daemon({
     launch,
     probe: async () => world.up,
-    sleep: async (ms) => void (clock.t += ms),
+    stopGraceMs: 10,
+    sleep: (ms) => {
+      if (ms >= 60_000) return new Promise<void>((resolve) => parked.push(resolve))
+      clock.t += ms
+      return Promise.resolve()
+    },
     now: () => clock.t,
     spawnHost(_spec, log): HostProcess {
       let end!: (code: number | null) => void
@@ -27,6 +35,7 @@ function setup() {
       const proc = {
         log,
         killed: false,
+        forced: false,
         end(code: number | null) {
           world.up = false
           end(code)
@@ -38,6 +47,10 @@ function setup() {
         exited,
         kill: () => {
           proc.killed = true
+          if (!options.ignoresKill) proc.end(null)
+        },
+        forceKill: () => {
+          proc.forced = true
           proc.end(null)
         },
       }
@@ -56,7 +69,7 @@ function setup() {
         }
       })
     })
-  return { daemon, world, seen, clock, until }
+  return { daemon, world, seen, clock, until, parked }
 }
 
 describe('backoff', () => {
@@ -117,8 +130,51 @@ describe('Daemon', () => {
     daemon.start()
     const failed = await until((s) => s.status === 'failed')
     expect(failed.detail).toContain('port 3773 is already in use')
-    // First try plus five more, then it stops trying.
+    // First try plus five more, then it waits.
     expect(world.started).toHaveLength(6)
+    await daemon.stop()
+    expect(daemon.current.status).toBe('stopped')
+  })
+
+  it('keeps trying once a minute after giving up, one start each time', async () => {
+    const { daemon, world, until, parked } = setup()
+    world.answers = false
+    const original = world.started.push.bind(world.started)
+    let failing = true
+    world.started.push = (...items) => {
+      const n = original(...items)
+      for (const item of items) {
+        if (failing) queueMicrotask(() => item.end(1))
+        else world.up = true
+      }
+      return n
+    }
+    daemon.start()
+    await until((s) => s.status === 'failed')
+    expect(world.started).toHaveLength(6)
+    // A minute on, still failing: one more try, then waiting again.
+    await new Promise((r) => setTimeout(r, 0))
+    parked.shift()!()
+    await until((s) => s.status === 'restarting')
+    await until((s) => s.status === 'failed')
+    expect(world.started).toHaveLength(7)
+    // Then whatever was in the way is gone.
+    failing = false
+    await new Promise((r) => setTimeout(r, 0))
+    parked.shift()!()
+    await until((s) => s.status === 'running')
+    expect(world.started).toHaveLength(8)
+    await daemon.stop()
+  })
+
+  it('kills a host outright when it does not stop when asked', async () => {
+    const { daemon, world, until } = setup({ ignoresKill: true })
+    daemon.start()
+    await until((s) => s.status === 'running')
+    await daemon.stop()
+    expect(world.started[0]?.killed).toBe(true)
+    expect(world.started[0]?.forced).toBe(true)
+    expect(daemon.current.status).toBe('stopped')
   })
 
   it('forgets earlier crashes once the host has stayed up for a while', async () => {

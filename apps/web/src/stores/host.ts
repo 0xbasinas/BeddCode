@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import {
   HostClient,
   applyEvent,
+  retryWhileCurrent,
   emptyReplica,
   type ConnectionState,
   type ReplicaState,
@@ -27,6 +28,7 @@ import {
   type HostEntry,
 } from './hostCatalog.ts'
 import { localHostUrl } from './localHostUrl.ts'
+import { onDeviceWake } from './wake.ts'
 
 const LOCAL_URL = localHostUrl({
   override: import.meta.env.VITE_BEDDCODE_HOST_WS,
@@ -51,6 +53,8 @@ export interface HostRuntime {
   epoch: number
   /** True once the first replay finished, so the UI can tell "empty" from "still loading". */
   synced: boolean
+  /** Why the agents or projects could not be read; cleared once they are (it keeps retrying). */
+  loadError?: string
 }
 
 const emptyRuntime = (): HostRuntime => ({
@@ -136,6 +140,34 @@ export async function refreshProviders(hostKey: string) {
   if (clients.get(hostKey) === client) patchRuntime(hostKey, () => ({ providers }))
 }
 
+/** Reads the host's agents and projects after connecting, retrying until both are in. */
+function loadHostLists(hostKey: string, client: HostClient) {
+  const epoch = useHostStore.getState().runtimes[hostKey]?.epoch
+  const isCurrent = () =>
+    clients.get(hostKey) === client &&
+    client.connectionState === 'connected' &&
+    useHostStore.getState().runtimes[hostKey]?.epoch === epoch
+  const failed = (what: string) => (error: Error) =>
+    patchRuntime(hostKey, () => ({ loadError: `Could not read the ${what}: ${error.message}` }))
+  const providers = retryWhileCurrent(() => client.request('providers.list', {}), {
+    isCurrent,
+    onError: failed('agents on this host'),
+  }).then((list) => {
+    if (list && isCurrent()) patchRuntime(hostKey, () => ({ providers: list }))
+    return list
+  })
+  const projects = retryWhileCurrent(() => client.request('projects.list', {}), {
+    isCurrent,
+    onError: failed('projects on this host'),
+  }).then((list) => {
+    if (list && isCurrent()) patchRuntime(hostKey, () => ({ projects: list }))
+    return list
+  })
+  void Promise.all([providers, projects]).then(([a, b]) => {
+    if (a && b && isCurrent()) patchRuntime(hostKey, () => ({ loadError: undefined }))
+  })
+}
+
 function startHost(entry: HostEntry) {
   clients.get(entry.key)?.stop()
   patchRuntime(entry.key, () => emptyRuntime())
@@ -176,13 +208,7 @@ function startHost(entry: HostEntry) {
         host: host ?? r.host,
         epoch: connection === 'connected' ? r.epoch + 1 : r.epoch,
       }))
-      if (connection === 'connected') {
-        client
-          .request('providers.list', {})
-          .then((providers) => patchRuntime(entry.key, () => ({ providers })))
-          .catch(() => {})
-        refreshProjects(entry.key).catch(() => {})
-      }
+      if (connection === 'connected') loadHostLists(entry.key, client)
     },
   })
   clients.set(entry.key, client)
@@ -191,11 +217,20 @@ function startHost(entry: HostEntry) {
 
 let started = false
 
+/**
+ * After sleep, a network change or a long time in the background, check every connection now
+ * instead of waiting out a heartbeat or a reconnect back-off.
+ */
+export function reconnectHostsNow() {
+  for (const client of clients.values()) client.reconnectNow()
+}
+
 /** Connects to this computer's host and every paired remote host. Safe to call twice (React StrictMode). */
 export function startHosts() {
   if (started) return
   started = true
   useHostStore.getState().entries.forEach(startHost)
+  if (typeof window !== 'undefined') onDeviceWake(reconnectHostsNow)
 }
 
 /** Remembers a remote host (replacing an earlier pairing of the same one) and connects to it. */

@@ -139,7 +139,13 @@ export function createRpcRouter(
         // The project's setup commands (installing dependencies...) run in the new worktree.
         const info = sessions.sessionInfo(created.sessionId)
         for (const script of projects.scriptsFor(p.cwd).filter((s) => s.runOnWorktreeCreate)) {
-          if (info) terminals.create({ cwd: info.cwd, command: script.command, title: script.name })
+          if (info)
+            terminals.create({
+              cwd: info.cwd,
+              command: script.command,
+              title: script.name,
+              scriptId: script.id,
+            })
         }
       }
       return created

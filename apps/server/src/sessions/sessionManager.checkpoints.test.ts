@@ -196,3 +196,30 @@ describe('SessionManager: turn changes and undo', () => {
     expect(() => manager.setPinned('nope', true)).toThrow(/Unknown session/)
   })
 })
+
+describe('GitService.pruneSnapshots', () => {
+  it('keeps the newest turns of one session and leaves other sessions alone', async () => {
+    const dir = repo()
+    const git = new GitService()
+    const folder = 'refs/beddcode/checkpoints/s1/'
+    const turns = ['lz0000a1', 'lz0000a2', 'lz0000b0', 'lz0000c3']
+    for (const t of turns) {
+      await git.snapshot(dir, `${folder}${t}-before`)
+      await git.snapshot(dir, `${folder}${t}-after`)
+    }
+    await git.snapshot(dir, 'refs/beddcode/checkpoints/s2/lz0000a0-before')
+    expect(await git.pruneSnapshots(dir, folder, 2)).toBe(2)
+    const left = sh(dir, 'for-each-ref', '--format=%(refname)', 'refs/beddcode/').trim().split('\n')
+    expect(left.sort()).toEqual(
+      [
+        `${folder}lz0000b0-after`,
+        `${folder}lz0000b0-before`,
+        `${folder}lz0000c3-after`,
+        `${folder}lz0000c3-before`,
+        'refs/beddcode/checkpoints/s2/lz0000a0-before',
+      ].sort(),
+    )
+    expect(await git.pruneSnapshots(dir, folder, 2)).toBe(0)
+    await expect(git.pruneSnapshots(dir, 'refs/beddcode/checkpoints/s1', 2)).rejects.toThrow()
+  })
+})

@@ -113,6 +113,11 @@ export interface SessionView {
   pinned?: boolean
   status: SessionStatus
   lastTurnReason?: 'done' | 'cancelled' | 'error'
+  /**
+   * The user turned down a request in the turn that is running (or just ended). Some agents (Grok)
+   * end the turn right after a "no", which then reads as cancelled although nobody pressed Stop.
+   */
+  declined?: boolean
   items: TranscriptItem[]
   added: number
   removed: number
@@ -200,6 +205,14 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
 
   let next: SessionView = { ...current, updatedAt: e.at }
   const id = `${stored.seq}`
+  // The agent carried on after a "no", so if the turn stops now it is the user's doing.
+  if (
+    current.declined &&
+    (e.type === 'tool.started' ||
+      e.type === 'approval.requested' ||
+      (e.type === 'message.delta' && e.role === 'assistant'))
+  )
+    next.declined = undefined
 
   switch (e.type) {
     case 'session.renamed':
@@ -255,6 +268,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.turns = current.turns + 1
       next.status = 'running'
       next.lastTurnReason = undefined
+      next.declined = undefined
       break
     case 'message.delta': {
       if (
@@ -419,6 +433,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
             ? { ...item, approval: { ...item.approval, resolvedAt: e.at, outcome } }
             : item,
       )
+      if (outcome === 'deny') next.declined = true
       next.status = waiting(next.items)
         ? 'needs-you'
         : current.status === 'needs-you'

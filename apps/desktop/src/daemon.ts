@@ -16,7 +16,7 @@ import path from 'node:path'
  * - `running`: it answers, and the app started it (so the app also stops it),
  * - `attached`: one was already running (a terminal, a service); the app uses it and leaves it alone,
  * - `restarting`: it stopped on its own and is being started again,
- * - `failed`: it keeps stopping; the app gave up until asked to retry,
+ * - `failed`: it keeps stopping; the app tries once a minute from then on, or when asked,
  * - `stopped`: the app is closing it, or was never asked to start.
  */
 export type DaemonStatus = 'starting' | 'running' | 'attached' | 'restarting' | 'failed' | 'stopped'
@@ -41,7 +41,10 @@ export interface HostProcess {
   pid?: number
   /** Resolves once the process has ended, with its exit code (null when killed by a signal). */
   exited: Promise<number | null>
+  /** Asks it to stop. */
   kill(): void
+  /** Makes it stop, for one that did not after being asked. */
+  forceKill?(): void
 }
 
 export interface DaemonOptions {
@@ -53,6 +56,10 @@ export interface DaemonOptions {
   logFile?: string
   sleep?(ms: number): Promise<void>
   now?(): number
+  /** How long a stopping host gets before it is killed outright. */
+  stopGraceMs?: number
+  /** How long to wait between tries once it has failed. */
+  failedRetryMs?: number
 }
 
 const POLL_MS = 250
@@ -62,6 +69,9 @@ const ATTACHED_MISSES = 3
 /** A host that stays up this long has settled; its earlier crashes no longer count. */
 const STABLE_MS = 20_000
 const MAX_FAILURES = 5
+/** After giving up, try again this often: a machine waking up or a port coming free fixes many. */
+const FAILED_RETRY_MS = 60_000
+const STOP_GRACE_MS = 5_000
 const MAX_LOG_BYTES = 1_000_000
 
 /** 1 s, 2 s, 4 s, 8 s, then 15 s between attempts. */
@@ -82,24 +92,30 @@ export class Daemon {
   private wake: (() => void) | null = null
   /** The user asked for a restart: the next start is not a failure and needs no back-off. */
   private requested = false
+  /** The user asked to retry while it had failed. */
+  private retryNow = false
   private readonly tail: string[] = []
   private readonly sleep: (ms: number) => Promise<void>
   private readonly now: () => number
 
   constructor(private readonly options: DaemonOptions) {
     this.now = options.now ?? Date.now
-    this.sleep =
+    const sleep =
       options.sleep ??
-      ((ms) =>
+      ((ms: number) =>
         new Promise<void>((resolve) => {
-          const finish = () => {
-            clearTimeout(timer)
-            if (this.wake === finish) this.wake = null
-            resolve()
-          }
-          const timer = setTimeout(finish, ms)
-          this.wake = finish
+          setTimeout(resolve, ms).unref?.()
         }))
+    // Any wait can be cut short by `wake`.
+    this.sleep = (ms) =>
+      new Promise<void>((resolve) => {
+        const finish = () => {
+          if (this.wake === finish) this.wake = null
+          resolve()
+        }
+        this.wake = finish
+        void sleep(ms).then(finish)
+      })
     this.state.logFile = options.logFile
   }
 
@@ -125,9 +141,22 @@ export class Daemon {
   async stop() {
     this.wanted = false
     this.wake?.()
-    this.child?.kill()
+    if (this.child) this.terminate(this.child)
     await this.loop
     this.set({ status: 'stopped' })
+  }
+
+  /** Asks a child to stop, and kills it outright if it is still there after the grace period. */
+  private terminate(child: HostProcess) {
+    child.kill()
+    if (!child.forceKill) return
+    let done = false
+    void child.exited.then(() => (done = true))
+    const timer = setTimeout(() => {
+      if (!done) child.forceKill?.()
+    }, this.options.stopGraceMs ?? STOP_GRACE_MS)
+    timer.unref?.()
+    void child.exited.then(() => clearTimeout(timer))
   }
 
   /**
@@ -138,7 +167,12 @@ export class Daemon {
     if (this.state.status === 'attached') return false
     if (this.wanted && this.child) {
       this.requested = true
-      this.child.kill()
+      this.terminate(this.child)
+      return true
+    }
+    if (this.wanted && this.state.status === 'failed') {
+      this.retryNow = true
+      this.wake?.()
       return true
     }
     await this.loop
@@ -188,7 +222,7 @@ export class Daemon {
           break
         }
         if (this.now() > deadline) {
-          child.kill()
+          this.terminate(child)
           break
         }
       }
@@ -206,9 +240,19 @@ export class Daemon {
       failures = this.now() - startedAt > STABLE_MS ? 1 : failures + 1
       const detail = this.tail.filter(Boolean).slice(-3).join('\n') || `exited with code ${code}`
       if (failures > MAX_FAILURES) {
+        // Not for good: a host that fails on a cold boot or a busy port often starts later.
         this.set({ status: 'failed', detail, restarts: this.state.restarts })
-        this.wanted = false
-        return
+        this.retryNow = false
+        await this.sleep(this.options.failedRetryMs ?? FAILED_RETRY_MS)
+        if (this.retryNow) {
+          this.retryNow = false
+          failures = 0
+          this.state = { ...this.state, restarts: 0 }
+        } else {
+          // One try per wait from here, until it stays up.
+          failures = MAX_FAILURES
+        }
+        continue
       }
       this.set({ status: 'restarting', detail, restarts: this.state.restarts + 1 })
       await this.sleep(backoff(failures))
@@ -272,11 +316,12 @@ export function spawnHost(
     pid: child.pid,
     exited,
     kill: () => killTree(child),
+    forceKill: () => killTree(child, 'SIGKILL'),
   }
 }
 
 /** Stops a child and anything it started. */
-export function killTree(child: ChildProcess) {
+export function killTree(child: ChildProcess, signal: 'SIGTERM' | 'SIGKILL' = 'SIGTERM') {
   if (child.pid === undefined || child.exitCode !== null) return
   if (process.platform === 'win32') {
     nodeSpawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
@@ -285,9 +330,9 @@ export function killTree(child: ChildProcess) {
     }).on('error', () => child.kill())
   } else {
     try {
-      process.kill(-child.pid, 'SIGTERM')
+      process.kill(-child.pid, signal)
     } catch {
-      child.kill('SIGTERM')
+      child.kill(signal)
     }
   }
 }

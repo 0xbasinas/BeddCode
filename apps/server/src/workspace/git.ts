@@ -442,6 +442,29 @@ export class GitService {
   }
 
   /**
+   * Keeps the newest `keep` snapshot pairs under `folder` (a ref folder ending in a slash, whose
+   * refs are named `<time>-before` / `<time>-after`) and drops the older ones. Returns how many
+   * snapshots (pairs) went.
+   */
+  async pruneSnapshots(cwd: string, folder: string, keep: number): Promise<number> {
+    if (!folder.endsWith('/')) throw new GitError('Snapshot folder must end in a slash')
+    const root = await this.root(cwd)
+    const refs = (await this.git(root, ['for-each-ref', '--format=%(refname)', folder]))
+      .split('\n')
+      .filter(Boolean)
+    const turnOf = (ref: string) => ref.slice(folder.length).replace(/-(before|after)$/, '')
+    // Names are base-36 times of equal length, so they sort in time order.
+    const turns = [...new Set(refs.map(turnOf))].sort((a, b) =>
+      a.length === b.length ? a.localeCompare(b) : a.length - b.length,
+    )
+    const old = new Set(turns.slice(0, Math.max(0, turns.length - keep)))
+    for (const ref of refs) {
+      if (old.has(turnOf(ref))) await this.gitRaw(root, ['update-ref', '-d', ref])
+    }
+    return old.size
+  }
+
+  /**
    * Commits exactly `paths`, including both sides of selected renames. Unrelated staged
    * files retain their staging state and remain outside this commit.
    */

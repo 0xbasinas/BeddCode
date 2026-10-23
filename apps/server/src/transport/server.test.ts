@@ -50,7 +50,12 @@ const registryJson = {
   ],
 }
 
-async function boot(store = new EventStore(':memory:'), guard?: GuardOptions, hostId = 'host-1') {
+async function boot(
+  store = new EventStore(':memory:'),
+  guard?: GuardOptions,
+  hostId = 'host-1',
+  extra: { idleTimeoutMs?: number } = {},
+) {
   cleanup.push(() => store.close())
   const log = createLogger('test', 'error')
   const dir = mkdtempSync(path.join(os.tmpdir(), 'beddcode-test-'))
@@ -86,6 +91,7 @@ async function boot(store = new EventStore(':memory:'), guard?: GuardOptions, ho
   const tokens = new TokenStore(path.join(dir, 'auth.json'))
   const pairing = new PairingManager()
   const server: RunningServer = await startServer({
+    ...extra,
     guard,
     tokens,
     pairing,
@@ -519,6 +525,33 @@ describe('server', () => {
     const replayed = second.events()
     expect(replayed.map((e) => e.seq)).toEqual([lastSeen + 1])
     expect(replayed[0]?.event.type).toBe('error')
+  })
+})
+
+describe('silent connections', () => {
+  it('closes a connection that stops answering, and keeps one that pings', async () => {
+    const { server } = await boot(undefined, undefined, 'host-1', { idleTimeoutMs: 200 })
+    const url = `ws://127.0.0.1:${server.port}/ws`
+    const open = (autoPong: boolean) =>
+      new Promise<WebSocket>((resolve, reject) => {
+        const ws = new WebSocket(url, { autoPong })
+        ws.once('open', () => resolve(ws))
+        ws.once('error', reject)
+      })
+    // Gone to sleep: sends nothing and does not answer socket pings.
+    const asleep = await open(false)
+    // An app in use: pings like the client runtime does.
+    const awake = await open(true)
+    const timer = setInterval(() => awake.send(JSON.stringify({ t: 'ping' })), 50)
+    cleanup.push(() => clearInterval(timer))
+    // An idle but healthy socket: never sends, but its socket answers pings.
+    const idle = await open(true)
+    const closed = new Promise<number>((resolve) => asleep.once('close', (code) => resolve(code)))
+    expect(await closed).toBe(1006)
+    await new Promise((r) => setTimeout(r, 300))
+    expect(awake.readyState).toBe(WebSocket.OPEN)
+    expect(idle.readyState).toBe(WebSocket.OPEN)
+    for (const ws of [awake, idle]) ws.close()
   })
 })
 

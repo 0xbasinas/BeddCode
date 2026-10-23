@@ -43,7 +43,7 @@ const initials = (label: string) =>
  */
 export function Welcome({ hostKey, onSkip }: { hostKey: string; onSkip(): void }) {
   const navigate = useNavigate()
-  const { connection, providers, host, projects } = useRuntime(hostKey)
+  const { connection, providers, host, projects, loadError } = useRuntime(hostKey)
   const [step, setStep] = useState(1)
   const [hostsOpen, setHostsOpen] = useState(false)
   const [scanning, setScanning] = useState(false)
@@ -139,7 +139,11 @@ export function Welcome({ hostKey, onSkip }: { hostKey: string; onSkip(): void }
             <div className="wizard-card">
               {providers.length === 0 && (
                 <p className="wizard-empty">
-                  {connected ? 'No agents were found yet.' : 'Waiting for the host…'}
+                  {!connected
+                    ? 'Waiting for the host…'
+                    : loadError
+                      ? `${loadError}. Trying again…`
+                      : 'No agents were found yet.'}
                 </p>
               )}
               {providers.map((p) => (

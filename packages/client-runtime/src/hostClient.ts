@@ -21,6 +21,8 @@ export interface HostClientOptions {
   connectTimeoutMs?: number
   requestTimeoutMs?: number
   heartbeatMs?: number
+  /** After `reconnectNow`, how long a connection that looks open has to answer a ping. */
+  probeTimeoutMs?: number
   /** Resume point, e.g. restored from a persisted replica. */
   initialSeq?: number
   onEvent(stored: StoredEvent): void
@@ -54,6 +56,9 @@ export class HostClient {
   private connectTimer: ReturnType<typeof setTimeout> | null = null
   private heartbeat: ReturnType<typeof setInterval> | null = null
   private awaitingPong = false
+  private probeTimer: ReturnType<typeof setTimeout> | null = null
+  /** Drops the current socket and moves on, as when it times out. */
+  private abandonSocket: (() => void) | null = null
   private readonly pending = new Map<string, Pending>()
 
   constructor(private readonly options: HostClientOptions) {
@@ -94,6 +99,35 @@ export class HostClient {
     this.failPending(new Error('client stopped'))
   }
 
+  /**
+   * The device just woke, came back online or to the foreground: a connection that looks open may
+   * be dead, and a reconnect may be sitting out a long back-off. Check the first at once, and skip
+   * the wait for the second.
+   */
+  reconnectNow() {
+    if (this.state === 'stopped' || this.state === 'denied') return
+    if (this.state === 'connected' && this.ws) {
+      if (this.probeTimer) return
+      this.awaitingPong = true
+      this.ws.send(JSON.stringify({ t: 'ping' }))
+      this.probeTimer = setTimeout(() => {
+        this.probeTimer = null
+        if (this.awaitingPong) this.abandonSocket?.()
+      }, this.options.probeTimeoutMs ?? 3_000)
+      return
+    }
+    if (this.timer) {
+      clearTimeout(this.timer)
+      this.timer = null
+      this.attempt = 0
+      this.open()
+    } else if (!this.ws) {
+      this.attempt = 0
+      this.open()
+    }
+    // Otherwise a connection attempt is already under way.
+  }
+
   request<M extends RpcMethodName>(method: M, params: RpcParams<M>): Promise<RpcResult<M>> {
     const ws = this.ws
     if (!ws || ws.readyState !== 1 || this.state !== 'connected') {
@@ -131,6 +165,7 @@ export class HostClient {
       if (this.ws !== ws) return
       this.clearSocketTimers()
       this.ws = null
+      this.abandonSocket = null
       this.failPending(new Error('connection lost'))
       if (!welcomed) this.route = (this.route + 1) % this.routes.length
       if (this.state !== 'stopped' && this.state !== 'denied') this.scheduleReconnect()
@@ -141,6 +176,7 @@ export class HostClient {
       disconnected()
       ws.close()
     }
+    this.abandonSocket = abandon
     this.connectTimer = setTimeout(abandon, this.options.connectTimeoutMs ?? 5_000)
 
     ws.onopen = () => {
@@ -198,6 +234,8 @@ export class HostClient {
         break
       case 'pong':
         this.awaitingPong = false
+        if (this.probeTimer) clearTimeout(this.probeTimer)
+        this.probeTimer = null
         break
       case 'event':
         if (frame.stored.seq > this.lastSeq) {
@@ -250,8 +288,10 @@ export class HostClient {
   private clearSocketTimers() {
     if (this.connectTimer) clearTimeout(this.connectTimer)
     if (this.heartbeat) clearInterval(this.heartbeat)
+    if (this.probeTimer) clearTimeout(this.probeTimer)
     this.connectTimer = null
     this.heartbeat = null
+    this.probeTimer = null
   }
 
   private setState(state: ConnectionState, host?: HostInfo) {
