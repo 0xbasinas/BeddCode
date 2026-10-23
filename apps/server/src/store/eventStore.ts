@@ -154,6 +154,16 @@ export class EventStore {
     return out
   }
 
+  /** Sessions another session's agent started, oldest first. */
+  childrenOf(parentSessionId: string): string[] {
+    const rows = this.db
+      .prepare(
+        "SELECT session_id AS id FROM events WHERE type = 'session.created' AND json_extract(payload, '$.parent.sessionId') = ? ORDER BY seq",
+      )
+      .all(parentSessionId) as { id: string }[]
+    return rows.map((r) => r.id)
+  }
+
   lastSeq(): number {
     return (this.lastSeqStmt.get() as { seq: number }).seq
   }

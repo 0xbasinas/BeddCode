@@ -1,5 +1,10 @@
 import type { QuestionSpec, SessionEvent } from '@beddcode/contracts'
-import type { ProviderSession, PromptInput, StartSessionInput } from '@beddcode/provider-core'
+import type {
+  ProviderSession,
+  PromptInput,
+  SessionMcpServer,
+  StartSessionInput,
+} from '@beddcode/provider-core'
 import {
   JsonRpcClient,
   JsonRpcError,
@@ -109,6 +114,9 @@ export class CodexSession implements ProviderSession {
         approvalPolicy: mode.approvalPolicy,
         sandbox: mode.sandbox,
         ...(this.model ? { model: this.model } : {}),
+        ...(this.input.mcpServers?.length && !this.input.textOnly
+          ? { config: mcpConfig(this.input.mcpServers) }
+          : {}),
         ...(this.input.textOnly
           ? {
               ephemeral: true,
@@ -482,4 +490,18 @@ function decisionFor(optionId: string): 'accept' | 'acceptForSession' | 'decline
   if (optionId === ALLOW) return 'accept'
   if (optionId === ALLOW_SESSION) return 'acceptForSession'
   return 'decline'
+}
+
+/**
+ * The host's MCP servers as Codex config overrides. Dotted keys add to the user's own
+ * `mcp_servers` instead of replacing them.
+ */
+export function mcpConfig(servers: SessionMcpServer[]): Record<string, unknown> {
+  return Object.fromEntries(
+    servers.map((m) => [
+      `mcp_servers.${m.name}`,
+      // Waiting on another session can take a while; Codex gives up on a tool after 60 s by default.
+      { command: m.command, args: m.args, env: m.env, tool_timeout_sec: 600 },
+    ]),
+  )
 }

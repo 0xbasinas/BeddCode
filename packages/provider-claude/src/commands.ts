@@ -28,10 +28,19 @@ export function argumentHint(markdown: string): string | undefined {
  * starts; a running session replaces the list with the one Claude reports.
  */
 export const CLAUDE_BUILTINS: SlashCommand[] = [
-  { name: 'compact', hint: '[instructions]', description: 'Summarize the conversation to free up context', kind: 'command' },
+  {
+    name: 'compact',
+    hint: '[instructions]',
+    description: 'Summarize the conversation to free up context',
+    kind: 'command',
+  },
   { name: 'init', description: 'Write a CLAUDE.md that describes this codebase', kind: 'command' },
   { name: 'review', description: 'Review a pull request', kind: 'command' },
-  { name: 'security-review', description: 'Review the pending changes for security issues', kind: 'command' },
+  {
+    name: 'security-review',
+    description: 'Review the pending changes for security issues',
+    kind: 'command',
+  },
 ]
 
 function entries(dir: string): string[] {

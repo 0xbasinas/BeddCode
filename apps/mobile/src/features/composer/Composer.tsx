@@ -94,7 +94,10 @@ export function Composer({
                 accessibilityRole="menuitem"
                 accessibilityLabel={`/${c.name}`}
                 onPress={() => setText(insertCommand(c))}
-                style={({ pressed }) => [styles.item, pressed && { backgroundColor: colors.active }]}
+                style={({ pressed }) => [
+                  styles.item,
+                  pressed && { backgroundColor: colors.active },
+                ]}
               >
                 <View style={styles.itemHead}>
                   <Text size={13.5} style={{ fontFamily: fonts.mono }}>

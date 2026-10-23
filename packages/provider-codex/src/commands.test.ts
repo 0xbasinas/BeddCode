@@ -2,7 +2,13 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { codexPromptsDir, expandPrompt, parseSlash, scanCodexPrompts, splitArgs } from './commands.ts'
+import {
+  codexPromptsDir,
+  expandPrompt,
+  parseSlash,
+  scanCodexPrompts,
+  splitArgs,
+} from './commands.ts'
 
 describe('Codex custom prompts', () => {
   it('fills positional, named and all-argument placeholders', () => {
@@ -26,7 +32,10 @@ describe('Codex custom prompts', () => {
   it('lists prompt files with their description and argument hint', () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'codex-prompts-'))
     writeFileSync(path.join(dir, 'b.md'), '# Second one\nbody')
-    writeFileSync(path.join(dir, 'a.md'), '---\ndescription: "First"\nargument-hint: <x>\n---\nbody')
+    writeFileSync(
+      path.join(dir, 'a.md'),
+      '---\ndescription: "First"\nargument-hint: <x>\n---\nbody',
+    )
     writeFileSync(path.join(dir, 'notes.txt'), 'ignored')
     expect(scanCodexPrompts(dir)).toEqual([
       { name: 'prompts:a', description: 'First', hint: '<x>', kind: 'command' },

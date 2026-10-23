@@ -600,7 +600,11 @@ describe('Codex commands', () => {
     )
     const listed = await nextEvent(session, (e) => e.type === 'session.commands')
     expect(listed).toMatchObject({
-      commands: [{}, {}, { name: 'prompts:fix', description: 'Fix an issue', hint: '<issue> [PRIORITY=x]' }],
+      commands: [
+        {},
+        {},
+        { name: 'prompts:fix', description: 'Fix an issue', hint: '<issue> [PRIORITY=x]' },
+      ],
     })
     const turn = session.prompt({ text: '/prompts:fix 42 PRIORITY=high' })
     await server.waitFor((m) => m.method === 'turn/start')
@@ -613,4 +617,3 @@ describe('Codex commands', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 })
-

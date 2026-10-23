@@ -97,7 +97,9 @@ export function expandPrompt(markdown: string, args: string): string {
     return named.get(name as string) ?? all
   })
   // A prompt without placeholders still gets what was typed after it.
-  return (usesPlaceholders || !args.trim() ? filled : `${filled.trimEnd()}\n\n${args.trim()}`).trim()
+  return (
+    usesPlaceholders || !args.trim() ? filled : `${filled.trimEnd()}\n\n${args.trim()}`
+  ).trim()
 }
 
 /** `/name rest` → its parts, or null when the text is not a command. */
