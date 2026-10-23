@@ -1,0 +1,55 @@
+import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native'
+
+import { colors, radius } from '@/theme/tokens'
+import { Text } from './Text'
+
+/** Primary is the desktop's light button; secondary is the dark one beside it. */
+export function Button({
+  label,
+  onPress,
+  kind = 'secondary',
+  disabled,
+  style,
+}: {
+  label: string
+  onPress?: () => void
+  kind?: 'primary' | 'secondary'
+  disabled?: boolean
+  style?: StyleProp<ViewStyle>
+}) {
+  const primary = kind === 'primary'
+  return (
+    <Pressable
+      accessibilityRole="button"
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.base,
+        {
+          backgroundColor: primary ? colors.primary : colors.hover,
+          opacity: disabled ? 0.45 : pressed ? 0.8 : 1,
+        },
+        style,
+      ]}
+    >
+      <Text
+        size={13.5}
+        weight={primary ? 'semibold' : 'regular'}
+        color={primary ? colors.onPrimary : colors.text}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  )
+}
+
+const styles = StyleSheet.create({
+  base: {
+    minHeight: 44,
+    borderRadius: radius.control,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+})

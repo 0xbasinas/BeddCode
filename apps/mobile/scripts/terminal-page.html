@@ -1,0 +1,110 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
+    <style>
+      /*XTERM_CSS*/
+      html,
+      body,
+      #t {
+        margin: 0;
+        height: 100%;
+        background: #0f0f0f;
+        overflow: hidden;
+      }
+      #t {
+        padding: 6px 4px 0 8px;
+        box-sizing: border-box;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="t"></div>
+    <script>
+      /*XTERM_JS*/
+    </script>
+    <script>
+      /*FIT_JS*/
+    </script>
+    <script>
+      ;(function () {
+        // One page, one shell view. The app talks to it with JSON messages in both directions.
+        var post = function (message) {
+          var text = JSON.stringify(message)
+          if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(text)
+          else window.parent.postMessage(text, '*')
+        }
+        var term = new Terminal({
+          fontFamily: "'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace",
+          fontSize: 12,
+          lineHeight: 1.5,
+          cursorBlink: true,
+          scrollback: 5000,
+          theme: {
+            background: '#0f0f0f',
+            foreground: '#ececec',
+            cursor: '#d4d4d4',
+            cursorAccent: '#0f0f0f',
+            selectionBackground: 'rgba(143, 178, 245, 0.3)',
+          },
+        })
+        var fit = new FitAddon.FitAddon()
+        term.loadAddon(fit)
+        term.open(document.getElementById('t'))
+
+        function size() {
+          try {
+            fit.fit()
+          } catch (e) {
+            return
+          }
+          post({ type: 'resize', cols: term.cols, rows: term.rows })
+        }
+        term.onData(function (data) {
+          post({ type: 'data', data: data })
+        })
+        term.onSelectionChange(function () {
+          post({ type: 'selection', text: term.getSelection() })
+        })
+
+        function onMessage(event) {
+          var message
+          try {
+            message = JSON.parse(typeof event.data === 'string' ? event.data : '')
+          } catch (e) {
+            return
+          }
+          if (message.type === 'write') {
+            // History replaces whatever is on screen so a re-attach never shows things twice.
+            if (message.reset) term.reset()
+            term.write(message.data)
+          } else if (message.type === 'exit') {
+            term.write(
+              '\r\n\x1b[90m[process exited' +
+                (message.code === null ? '' : ' with code ' + message.code) +
+                ']\x1b[0m\r\n',
+            )
+          } else if (message.type === 'focus') {
+            term.focus()
+          } else if (message.type === 'clearSelection') {
+            term.clearSelection()
+          }
+        }
+        window.addEventListener('message', onMessage)
+        document.addEventListener('message', onMessage)
+
+        var timer
+        new ResizeObserver(function () {
+          clearTimeout(timer)
+          timer = setTimeout(size, 60)
+        }).observe(document.body)
+        size()
+        post({ type: 'ready' })
+      })()
+    </script>
+  </body>
+</html>

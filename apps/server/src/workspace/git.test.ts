@@ -168,6 +168,16 @@ describe('GitService.commit, push and log', () => {
     expect(existsSync(path.join(dir, 'b.txt'))).toBe(false)
   })
 
+  it('commits files whose deletion is already staged (git rm)', async () => {
+    const dir = repo()
+    sh(dir, 'rm', '-q', 'b.txt')
+    writeFileSync(path.join(dir, 'a.txt'), 'changed\n')
+    const { hash } = await git.commit(dir, 'chore: remove b, edit a', ['b.txt', 'a.txt'])
+    expect(hash).toMatch(/^[0-9a-f]{40}$/)
+    expect((await git.status(dir)).files).toEqual([])
+    expect(existsSync(path.join(dir, 'b.txt'))).toBe(false)
+  })
+
   it('commits an initial selection while preserving an unrelated staged file', async () => {
     const dir = tmp()
     sh(dir, 'init', '-q', '-b', 'main')

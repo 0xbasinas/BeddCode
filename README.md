@@ -140,7 +140,7 @@ Any agent that speaks the [Agent Client Protocol](https://agentclientprotocol.co
 - `apps/desktop` – Electron shell; starts and supervises the local host, so the app does not need a terminal
 - `assets/logo` – the logo; `node scripts/make-icons.mjs` renders every icon from it
 - `apps/web` – React UI
-- `apps/mobile` – Expo (React Native) app, scaffolded from the SDK 58 template. It uses `packages/contracts` and `packages/client-runtime` directly. `pnpm --filter @beddcode/mobile start` runs the dev server (open it in Expo Go or a dev build; the phone must be on the tailnet to reach a host). Only the shared-package wiring exists so far, not the screens.
+- `apps/mobile` – Expo (React Native, SDK 58) app for a phone on your tailnet. It pairs with a host (address and six-digit code), lists sessions across hosts, and has the desktop's thread, terminal, files, git and browser panes along the bottom, in the same dark design. It shares the wire protocol, event replica and host catalog with the web app through `packages/client-runtime`. `pnpm --filter @beddcode/mobile start` runs the dev server (Expo Go or a development build; the phone needs Tailscale). The terminal page is generated from xterm.js: run `pnpm --filter @beddcode/mobile build:terminal` after changing `scripts/terminal-page.html` or the xterm version. Attaching context works from the Files pane (lines of a file), the Terminal pane (selected text), the Browser pane (a tapped element, sent with a comment) and the composer's + menu (photos).
 - `packages/contracts` – wire and event schemas
 - `packages/shared` – logging and async helpers
 - `packages/provider-core` – provider adapter interface

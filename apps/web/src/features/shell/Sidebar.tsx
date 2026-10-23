@@ -20,12 +20,19 @@ import {
   Undo2,
   X,
 } from 'lucide-react'
-import type { SessionView } from '@beddcode/client-runtime'
+import {
+  activityLine,
+  doneMenuAction,
+  doneOpen,
+  isFiledAway,
+  sessionNote,
+  splitDone,
+  type SessionView,
+} from '@beddcode/client-runtime'
 import type { Project } from '@beddcode/contracts'
 import { ContextMenu, type ContextMenuItem } from '../../ui/ContextMenu.tsx'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import { setSessionDone, useAllSessions, useHostStore } from '../../stores/host.ts'
-import { doneMenuAction, doneOpen, isFiledAway, splitDone } from './doneSessions.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { HostsDialog } from '../hosts/HostsDialog.tsx'
 import { folderName, timeAgo } from '../../ui/format.ts'
@@ -42,42 +49,6 @@ const PRIORITY: Record<SessionView['status'], number> = {
   failed: 1,
   running: 2,
   idle: 3,
-}
-
-/** One line saying what the session is doing right now, like the rows in the designs. */
-export function activityLine(s: SessionView): string {
-  const last = s.items.findLast(
-    (i) => i.kind === 'tool' || i.kind === 'approval' || i.kind === 'error',
-  )
-  switch (s.status) {
-    case 'needs-you':
-      return last?.kind === 'approval'
-        ? `Wants: ${last.title.replace(/\?$/, '')}`
-        : 'Needs your answer'
-    case 'running':
-      return last?.kind === 'tool' ? last.title : 'Working…'
-    case 'failed':
-      return last?.kind === 'error' ? last.message : 'Failed'
-    case 'idle':
-      if (s.lastTurnReason === 'cancelled') return 'Stopped · ready to continue'
-      return s.items.length === 0
-        ? 'No messages yet'
-        : s.added + s.removed > 0
-          ? 'Done · changes ready'
-          : 'Done'
-  }
-}
-
-/**
- * What to say next to the branch and agent: only what is worth a word. A finished session says
- * nothing (its check mark and change counts already do), a busy one says what it is doing.
- */
-export function sessionNote(s: SessionView): string {
-  if (s.status === 'idle') {
-    if (s.lastTurnReason === 'cancelled') return 'Stopped'
-    return s.items.length === 0 ? 'New' : ''
-  }
-  return activityLine(s)
 }
 
 const OPEN_DONE_KEY = 'beddcode.done-open'

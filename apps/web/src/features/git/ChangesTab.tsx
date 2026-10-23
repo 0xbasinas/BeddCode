@@ -4,7 +4,12 @@ import type { GitFile, GitStatus } from '@beddcode/contracts'
 import { PatchView } from '../../ui/PatchView.tsx'
 import { hostRequest } from '../../stores/host.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
-import { commitLabel, diffRefreshKey, groupByDirectory, selectedPaths } from './changes.ts'
+import {
+  commitLabel,
+  diffRefreshKey,
+  groupByDirectory,
+  selectedPaths,
+} from '@beddcode/client-runtime'
 import { usePolled } from './usePolled.ts'
 import { GenerateGitText } from './GenerateGitText.tsx'
 import { commitFiles, gitOperationKey, useGitOperations } from './operations.ts'

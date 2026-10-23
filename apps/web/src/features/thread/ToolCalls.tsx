@@ -25,7 +25,7 @@ import {
   wasDenied,
   type Tool,
   type ToolPhase,
-} from './toolSummary.ts'
+} from '@beddcode/client-runtime'
 
 const ICONS = {
   command: SquareTerminal,

@@ -37,7 +37,7 @@ import {
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { folderName } from '../../ui/format.ts'
 import { Transcript } from './Transcript.tsx'
-import { buildBlocks, totalChanges } from './blocks.ts'
+import { buildBlocks, totalChanges } from '@beddcode/client-runtime'
 import { useFollowEnd } from './useFollowEnd.ts'
 import { folderId, useFiles } from '../files/filesStore.ts'
 import { useUiStore } from '../../stores/ui.ts'

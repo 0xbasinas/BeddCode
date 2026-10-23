@@ -134,7 +134,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       return
     }
     // Answers to pages we allow; other origins get no CORS headers and so cannot read anything.
-    if (origin && originAllowed(origin, guard)) {
+    if (origin && originAllowed(origin, guard, req.headers.host)) {
       res.setHeader('access-control-allow-origin', origin)
       res.setHeader('access-control-allow-headers', 'content-type')
       res.setHeader('vary', 'origin')
@@ -157,7 +157,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     }
 
     if (url === '/pair' && req.method === 'POST') {
-      if (!originAllowed(origin, guard)) return void res.writeHead(403).end()
+      if (!originAllowed(origin, guard, req.headers.host)) return void res.writeHead(403).end()
       void readJson(req)
         .then((body) => {
           const parsed = parsePairRequest(body)
@@ -196,7 +196,8 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     verifyClient: ({ req }, done) => {
       const peer = classifyPeer(req.socket.remoteAddress)
       if (!peerAllowed(peer, guard)) return done(false, 403, 'network')
-      if (!originAllowed(req.headers.origin, guard)) return done(false, 403, 'origin')
+      if (!originAllowed(req.headers.origin, guard, req.headers.host))
+        return done(false, 403, 'origin')
       done(true)
     },
   })

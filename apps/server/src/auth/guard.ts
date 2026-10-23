@@ -69,7 +69,29 @@ const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i
  * otherwise drive agents and shells. Browser requests must come from a page served by this
  * machine (or an origin the user listed). Requests without an Origin are not from a browser page.
  */
-export function originAllowed(origin: string | undefined, guard: GuardOptions): boolean {
+export function originAllowed(
+  origin: string | undefined,
+  guard: GuardOptions,
+  host?: string,
+): boolean {
   if (origin === undefined) return true
-  return LOCAL_ORIGIN.test(origin) || guard.allowedOrigins.includes(origin)
+  return (
+    LOCAL_ORIGIN.test(origin) ||
+    guard.allowedOrigins.includes(origin) ||
+    (host !== undefined && sameOriginAtAddress(origin, host))
+  )
+}
+
+/**
+ * Phone and desktop apps are not web pages, but their WebSocket stacks still send an Origin made
+ * from the address they connected to (React Native does). A request whose Origin is the host it
+ * addressed is allowed when that host is an IP address or a tailnet name. A web page cannot be
+ * served from either (DNS rebinding needs a name the attacker controls), so this does not let a
+ * page on the internet in.
+ */
+function sameOriginAtAddress(origin: string, hostHeader: string): boolean {
+  const match = /^https?:\/\/([^/]+)$/i.exec(origin)
+  if (!match || match[1]!.toLowerCase() !== hostHeader.toLowerCase()) return false
+  const name = hostHeader.replace(/:\d+$/, '').replace(/^\[|\]$/g, '')
+  return net.isIP(name) !== 0 || name.toLowerCase().endsWith('.ts.net')
 }

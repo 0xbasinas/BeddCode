@@ -2,3 +2,7 @@ node_modules
 dist
 ui-docs
 pnpm-lock.yaml
+apps/mobile/src/features/terminal/terminalHtml.ts
+apps/mobile/.expo
+apps/mobile/dist
+apps/mobile/expo-env.d.ts

@@ -23,11 +23,8 @@ import { GithubService } from '../workspace/github.ts'
 import { ProjectStore } from '../workspace/projects.ts'
 import { EventStore } from '../store/eventStore.ts'
 import { startServer, type RunningServer } from './server.ts'
-import {
-  HostClient,
-  applyEvent,
-  emptyReplica,
-} from '../../../../packages/client-runtime/src/index.ts'
+import { HostClient } from '../../../../packages/client-runtime/src/hostClient.ts'
+import { applyEvent, emptyReplica } from '../../../../packages/client-runtime/src/replica.ts'
 
 const cleanup: (() => void | Promise<void>)[] = []
 afterEach(async () => {

@@ -271,8 +271,11 @@ export class GitService {
     const commitPaths = [
       ...new Set(chosen.flatMap((f) => (f.oldPath ? [f.path, f.oldPath] : [f.path]))),
     ]
-    // A staged rename has already removed oldPath from the index; adding it again fails.
-    await this.git(root, ['add', '-A', '--', ...chosen.map((f) => f.path)])
+    // A staged rename has already removed oldPath from the index; adding it again fails. So does
+    // adding a file whose deletion is staged (`git rm`): it is in neither the index nor the folder.
+    // Those need no `add`; `commit --only` below still finds them through HEAD.
+    const toAdd = chosen.filter((f) => !(f.status === 'D' && f.staged))
+    if (toAdd.length > 0) await this.git(root, ['add', '-A', '--', ...toAdd.map((f) => f.path)])
     // --only excludes unrelated staged files and preserves their staging state.
     await this.git(root, ['commit', '--only', '-m', message.trim(), '--', ...commitPaths])
     const hash = (await this.git(root, ['rev-parse', 'HEAD'])).trim()

@@ -1,41 +1,582 @@
-import { emptyReplica } from '@beddcode/client-runtime'
-import { PROTOCOL_VERSION } from '@beddcode/contracts'
-import { StyleSheet } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import {
+  activityLine,
+  doneMenuAction,
+  doneOpen,
+  folderName,
+  isFiledAway,
+  sessionNote,
+  splitDone,
+  timeAgo,
+  type SessionView,
+} from '@beddcode/client-runtime'
+import { router } from 'expo-router'
+import {
+  CaretDown,
+  CaretRight,
+  Checks,
+  FolderSimple,
+  FolderSimplePlus,
+  Gear,
+  GitBranch,
+  MagnifyingGlass,
+  Monitor,
+  NotePencil,
+  Plus,
+  SortDescending,
+  ArrowUUpLeft,
+  X,
+} from 'phosphor-react-native'
+import { useMemo, useState } from 'react'
+import { FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native'
 
-import { ThemedText } from '@/components/themed-text'
-import { ThemedView } from '@/components/themed-view'
-import { Spacing } from '@/constants/theme'
+import { setSessionDone, useAllSessions, useHostStore } from '@/host/store'
+import { usePrefs } from '@/host/prefs'
+import { colors, fonts, radius } from '@/theme/tokens'
+import { Diffstat } from '@/ui/Diffstat'
+import { Icon } from '@/ui/Icon'
+import { MenuSheet, type MenuItem } from '@/ui/MenuSheet'
+import { Screen } from '@/ui/Screen'
+import { StatusDot } from '@/ui/StatusDot'
+import { Faint, Muted, Text } from '@/ui/Text'
+import { Button } from '@/ui/Button'
 
-export default function HomeScreen() {
-  const sessions = emptyReplica().order.length
+type Filter = 'all' | 'needs-you' | 'done'
+
+const PRIORITY: Record<SessionView['status'], number> = {
+  'needs-you': 0,
+  failed: 1,
+  running: 2,
+  idle: 3,
+}
+
+type Row =
+  | {
+      kind: 'folder'
+      key: string
+      name: string
+      host: string
+      collapsed: boolean
+      hostKey: string
+      /** The project folder on its host; empty for sessions without a project. */
+      path: string
+    }
+  | { kind: 'session'; key: string; session: SessionView; hostKey: string }
+  | { kind: 'done'; key: string; count: number; open: boolean; groupKey: string }
+
+/** The sessions of every paired host: the desktop sidebar, as a full screen. */
+export default function SessionsScreen() {
+  const entries = useHostStore((s) => s.entries)
+  const runtimes = useHostStore((s) => s.runtimes)
+  const ready = useHostStore((s) => s.ready)
+  const hosted = useAllSessions()
+  const { openDone, collapsed, toggleDone, toggleCollapsed } = usePrefs()
+
+  const [filter, setFilter] = useState<Filter>('all')
+  const [sort, setSort] = useState<'attention' | 'recent'>('attention')
+  const [hostFilter, setHostFilter] = useState('all')
+  const [searching, setSearching] = useState(false)
+  const [query, setQuery] = useState('')
+  const [menu, setMenu] = useState<{ session: SessionView } | null>(null)
+  const [hostMenu, setHostMenu] = useState(false)
+  const [sortMenu, setSortMenu] = useState(false)
+
+  const selectedHost = entries.some((e) => e.key === hostFilter) ? hostFilter : 'all'
+  const hostName = (key: string) =>
+    runtimes[key]?.host?.name ?? entries.find((e) => e.key === key)?.name ?? 'Host'
+  const online = entries.filter((e) => runtimes[e.key]?.connection === 'connected').length
+
+  const all = hosted.filter((h) => selectedHost === 'all' || h.hostKey === selectedHost)
+  const hostOf = useMemo(() => new Map(hosted.map((h) => [h.session.id, h.hostKey])), [hosted])
+  const needsYou = all.filter((h) => h.session.status === 'needs-you').length
+
+  const rows = useMemo<Row[]>(() => {
+    const q = query.trim().toLowerCase()
+    const visible = all
+      .map((h) => h.session)
+      .filter(
+        (s) =>
+          !searching ||
+          !q ||
+          `${s.title} ${s.projectless ? 'No project' : s.projectPath} ${s.branch ?? ''} ${activityLine(s)}`
+            .toLowerCase()
+            .includes(q),
+      )
+      .filter((s) =>
+        filter === 'all'
+          ? true
+          : filter === 'needs-you'
+            ? s.status === 'needs-you'
+            : isFiledAway(s),
+      )
+      .sort(
+        (a, b) =>
+          (sort === 'attention' ? PRIORITY[a.status] - PRIORITY[b.status] : 0) ||
+          b.updatedAt - a.updatedAt,
+      )
+
+    // Sessions of one repository sit together; the same path on two hosts is two repositories.
+    const groups = new Map<string, SessionView[]>()
+    const keyOf = (s: SessionView) =>
+      `${hostOf.get(s.id)}\n${s.projectless ? 'no-project' : s.projectPath}`
+    for (const s of visible) groups.set(keyOf(s), [...(groups.get(keyOf(s)) ?? []), s])
+
+    const out: Row[] = []
+    for (const [key, list] of groups) {
+      const first = list[0]!
+      const hostKey = hostOf.get(first.id) ?? ''
+      const isCollapsed = collapsed.includes(key)
+      out.push({
+        kind: 'folder',
+        key: `f:${key}`,
+        name: first.projectless ? 'No project' : folderName(first.projectPath),
+        host: hostName(hostKey),
+        collapsed: isCollapsed,
+        hostKey,
+        path: first.projectless ? '' : first.projectPath,
+      })
+      if (isCollapsed) continue
+      if (filter === 'done') {
+        list.forEach((session) => out.push({ kind: 'session', key: session.id, session, hostKey }))
+        continue
+      }
+      const { active, done } = splitDone(list)
+      active.forEach((session) => out.push({ kind: 'session', key: session.id, session, hostKey }))
+      if (done.length > 0) {
+        const open = doneOpen({
+          chosen: openDone.includes(key),
+          searching: searching && q !== '',
+          done,
+        })
+        out.push({ kind: 'done', key: `d:${key}`, count: done.length, open, groupKey: key })
+        if (open)
+          done.forEach((session) =>
+            out.push({ kind: 'session', key: session.id, session, hostKey }),
+          )
+      }
+    }
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, hostOf, query, searching, filter, sort, collapsed, openDone, runtimes])
+
+  const tab = (id: Filter, label: string, badge?: number) => (
+    <Pressable
+      key={id}
+      onPress={() => setFilter(id)}
+      style={[styles.tab, filter === id && { backgroundColor: colors.active }]}
+    >
+      <Text
+        size={13}
+        weight={filter === id ? 'medium' : 'regular'}
+        color={filter === id ? colors.text : colors.muted}
+      >
+        {label}
+      </Text>
+      {badge ? (
+        <View style={styles.badge}>
+          <Text size={11} color={colors.accent}>
+            {badge}
+          </Text>
+        </View>
+      ) : null}
+    </Pressable>
+  )
+
+  const menuItems = (session: SessionView): MenuItem[] => {
+    const action = doneMenuAction(session)
+    return [
+      {
+        id: 'done',
+        label: action.label,
+        hint: action.hint,
+        icon: action.kind === 'restore' ? ArrowUUpLeft : Checks,
+        disabled: action.kind === 'busy',
+        onSelect: () => void setSessionDone(session.id, action.kind === 'file'),
+      },
+    ]
+  }
+
+  const header = (
+    <View>
+      <View style={styles.top}>
+        <Text size={15} weight="semibold">
+          BeddCode
+        </Text>
+        <Pressable style={styles.hostPill} onPress={() => setHostMenu(true)}>
+          <Icon icon={Monitor} size={15} />
+          <Muted size={12.5} numberOfLines={1}>
+            {selectedHost === 'all' ? 'All hosts' : hostName(selectedHost)}
+          </Muted>
+          <Icon icon={CaretDown} size={12} />
+        </Pressable>
+      </View>
+      <View style={styles.actions}>
+        <Pressable style={styles.newRow} onPress={() => router.push('/new')}>
+          <Icon icon={NotePencil} size={19} color={colors.textSecondary} />
+          <Text size={14}>New session</Text>
+        </Pressable>
+        <View style={{ flexDirection: 'row', gap: 18 }}>
+          <Pressable
+            hitSlop={8}
+            onPress={() => setSearching((v) => !v)}
+            accessibilityLabel="Search"
+          >
+            <Icon icon={searching ? X : MagnifyingGlass} size={20} />
+          </Pressable>
+          <Pressable
+            hitSlop={8}
+            onPress={() =>
+              router.push({
+                pathname: '/folders/add',
+                params: selectedHost === 'all' ? {} : { host: selectedHost },
+              })
+            }
+            accessibilityLabel="Add a folder"
+          >
+            <Icon icon={FolderSimplePlus} size={20} />
+          </Pressable>
+        </View>
+      </View>
+      {searching && (
+        <View style={styles.search}>
+          <Icon icon={MagnifyingGlass} size={16} color={colors.faint} />
+          <TextInput
+            autoFocus
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search sessions"
+            placeholderTextColor={colors.faint}
+            style={styles.searchInput}
+          />
+        </View>
+      )}
+      <View style={styles.tabs}>
+        {tab('all', `All ${all.filter((h) => !isFiledAway(h.session)).length}`)}
+        {tab('needs-you', 'Needs you', needsYou)}
+        {tab('done', 'Done')}
+        <View style={{ flex: 1 }} />
+        <Pressable style={styles.sort} onPress={() => setSortMenu(true)}>
+          <Icon icon={SortDescending} size={15} />
+          <Muted size={12.5}>{sort === 'attention' ? 'Attention first' : 'Recent first'}</Muted>
+        </Pressable>
+      </View>
+    </View>
+  )
+
+  const empty = !ready ? null : entries.length === 0 ? (
+    <View style={styles.empty}>
+      <Text size={17} weight="semibold">
+        Add your first host
+      </Text>
+      <Muted size={13.5} style={{ textAlign: 'center', lineHeight: 20 }}>
+        BeddCode runs agents on your computers. Pair this phone with one on your tailnet to see and
+        drive its sessions.
+      </Muted>
+      <Button
+        label="Add a host"
+        kind="primary"
+        onPress={() => router.push('/hosts/add')}
+        style={{ alignSelf: 'stretch' }}
+      />
+    </View>
+  ) : (
+    <View style={styles.empty}>
+      <Muted size={13.5} style={{ textAlign: 'center' }}>
+        {filter === 'needs-you'
+          ? 'No sessions need your attention right now.'
+          : filter === 'done'
+            ? 'Nothing is filed under Done yet.'
+            : online === 0
+              ? 'Connecting to your hosts…'
+              : 'No sessions yet. Start one with New session.'}
+      </Muted>
+    </View>
+  )
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="title" style={styles.title}>
-          BeddCode
-        </ThemedText>
-        <ThemedText type="small">
-          Protocol {PROTOCOL_VERSION} · {sessions} sessions
-        </ThemedText>
-      </SafeAreaView>
-    </ThemedView>
+    <Screen>
+      <FlatList
+        data={rows}
+        keyExtractor={(r) => r.key}
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty ?? undefined}
+        contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 8 }}
+        keyboardShouldPersistTaps="handled"
+        renderItem={({ item }) => {
+          if (item.kind === 'folder') {
+            return (
+              <Pressable style={styles.folder} onPress={() => toggleCollapsed(item.key.slice(2))}>
+                <Icon
+                  icon={item.collapsed ? CaretRight : CaretDown}
+                  size={12}
+                  color={colors.faint}
+                />
+                <Icon icon={FolderSimple} size={17} />
+                <Text size={13.5} weight="medium">
+                  {item.name}
+                </Text>
+                <Faint size={13} numberOfLines={1} style={{ flex: 1 }}>
+                  {item.host}
+                </Faint>
+                <Pressable
+                  hitSlop={10}
+                  accessibilityLabel={`New session in ${item.name}`}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/new',
+                      params: { host: item.hostKey, folder: item.path || 'none' },
+                    })
+                  }
+                >
+                  <Icon icon={Plus} size={17} color={colors.faint} />
+                </Pressable>
+              </Pressable>
+            )
+          }
+          if (item.kind === 'done') {
+            return (
+              <Pressable style={styles.doneToggle} onPress={() => toggleDone(item.groupKey)}>
+                <Icon icon={item.open ? CaretDown : CaretRight} size={12} color={colors.faint} />
+                <Faint size={12.5}>Done</Faint>
+                <Faint size={12.5}>{item.count}</Faint>
+              </Pressable>
+            )
+          }
+          return (
+            <SessionRow
+              session={item.session}
+              agent={
+                runtimes[item.hostKey]?.providers.find((p) => p.id === item.session.instanceId)
+                  ?.label ?? item.session.instanceId
+              }
+              onPress={() =>
+                router.push({ pathname: '/session/[id]', params: { id: item.session.id } })
+              }
+              onLongPress={() => setMenu({ session: item.session })}
+            />
+          )
+        }}
+      />
+      <View style={styles.footer}>
+        <Pressable style={styles.settings} onPress={() => router.push('/settings')}>
+          <Icon icon={Gear} size={18} color={colors.textSecondary} />
+          <Text size={14} color={colors.textSecondary}>
+            Settings
+          </Text>
+        </Pressable>
+        <Muted size={13}>
+          {entries.length === 0
+            ? 'No hosts'
+            : `${online} of ${entries.length} host${entries.length === 1 ? '' : 's'} online`}
+        </Muted>
+      </View>
+
+      <MenuSheet
+        visible={menu !== null}
+        title={menu?.session.title}
+        items={menu ? menuItems(menu.session) : []}
+        onClose={() => setMenu(null)}
+      />
+      <MenuSheet
+        visible={hostMenu}
+        title="Show sessions from"
+        onClose={() => setHostMenu(false)}
+        items={[
+          {
+            id: 'all',
+            label: 'All hosts',
+            selected: selectedHost === 'all',
+            onSelect: () => setHostFilter('all'),
+          },
+          ...entries.map((e) => ({
+            id: e.key,
+            label: hostName(e.key),
+            hint: runtimes[e.key]?.connection === 'connected' ? 'Online' : 'Offline',
+            selected: selectedHost === e.key,
+            onSelect: () => setHostFilter(e.key),
+          })),
+          {
+            id: 'add-host',
+            label: 'Add a host…',
+            icon: Plus,
+            onSelect: () => router.push('/hosts/add'),
+          },
+        ]}
+      />
+      <MenuSheet
+        visible={sortMenu}
+        title="Sort by"
+        onClose={() => setSortMenu(false)}
+        items={[
+          {
+            id: 'attention',
+            label: 'Attention first',
+            selected: sort === 'attention',
+            onSelect: () => setSort('attention'),
+          },
+          {
+            id: 'recent',
+            label: 'Recent first',
+            selected: sort === 'recent',
+            onSelect: () => setSort('recent'),
+          },
+        ]}
+      />
+    </Screen>
+  )
+}
+
+function SessionRow({
+  session,
+  agent,
+  onPress,
+  onLongPress,
+}: {
+  session: SessionView
+  agent: string
+  onPress(): void
+  onLongPress(): void
+}) {
+  const note = sessionNote(session)
+  return (
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      style={({ pressed }) => [styles.session, pressed && { backgroundColor: colors.hover }]}
+    >
+      <View style={styles.lead}>
+        <StatusDot session={session} />
+      </View>
+      <View style={{ flex: 1, gap: 3 }}>
+        <View style={styles.line}>
+          <Text size={14.5} numberOfLines={1} style={{ flex: 1 }}>
+            {session.title}
+          </Text>
+          <Muted size={12}>{timeAgo(session.updatedAt)}</Muted>
+        </View>
+        {note ? (
+          <Text
+            size={13}
+            color={session.status === 'needs-you' ? colors.accent : colors.muted}
+            numberOfLines={1}
+          >
+            {note}
+          </Text>
+        ) : null}
+        <View style={styles.line}>
+          <View style={styles.where}>
+            {session.branch ? <Icon icon={GitBranch} size={12} color={colors.faint} /> : null}
+            <Text size={12} mono color={colors.faint} numberOfLines={1} style={{ flexShrink: 1 }}>
+              {[session.branch, agent].filter(Boolean).join(' · ')}
+            </Text>
+          </View>
+          <Diffstat added={session.added} removed={session.removed} />
+        </View>
+      </View>
+    </Pressable>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
+  top: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.four,
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 8,
   },
-  title: {
-    textAlign: 'center',
+  hostPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.raised,
+    borderRadius: radius.control,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  newRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  search: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 12,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.control,
+    paddingHorizontal: 11,
+  },
+  searchInput: {
+    flex: 1,
+    color: colors.text,
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    paddingVertical: 9,
+  },
+  tabs: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  tab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: radius.control,
+  },
+  badge: {
+    backgroundColor: colors.accentSoft,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    minWidth: 16,
+    alignItems: 'center',
+  },
+  sort: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6 },
+  folder: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 8,
+    paddingTop: 14,
+    paddingBottom: 6,
+  },
+  doneToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  session: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: radius.panel,
+  },
+  lead: { width: 14, paddingTop: 7, alignItems: 'center' },
+  line: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  where: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+  },
+  settings: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  empty: { alignItems: 'center', gap: 12, paddingHorizontal: 28, paddingTop: 80 },
 })

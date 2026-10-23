@@ -1,0 +1,396 @@
+import {
+  pairWithHost,
+  parseAddress,
+  wsUrl,
+  type Address,
+  type HostEntry,
+} from '@beddcode/client-runtime'
+import * as Clipboard from 'expo-clipboard'
+import * as Device from 'expo-device'
+import { router } from 'expo-router'
+import { ArrowLeft, Check, Copy, HardDrives, X } from 'phosphor-react-native'
+import { useEffect, useRef, useState, type ElementRef } from 'react'
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
+
+import { addRemoteHost, useHostStore } from '@/host/store'
+import { colors, fonts, radius } from '@/theme/tokens'
+import { Button } from '@/ui/Button'
+import { Icon } from '@/ui/Icon'
+import { Screen } from '@/ui/Screen'
+import { Faint, Muted, Text } from '@/ui/Text'
+
+const PAIR_COMMAND = 'pnpm --filter @beddcode/server start pair'
+
+type Step = 'address' | 'pair' | 'done'
+
+/** Adding a computer: its tailnet address, then the six-digit code it shows, then a connection check. */
+export default function AddHostScreen() {
+  const [step, setStep] = useState<Step>('address')
+  const [text, setText] = useState('')
+  const [address, setAddress] = useState<Address>()
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string>()
+  const [paired, setPaired] = useState<HostEntry>()
+  const inFlight = useRef(false)
+  const alive = useRef(true)
+  const codeInput = useRef<ElementRef<typeof TextInput>>(null)
+  const runtime = useHostStore((s) => (paired ? s.runtimes[paired.key] : undefined))
+  const connected = runtime?.connection === 'connected'
+
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (step === 'pair') codeInput.current?.focus()
+  }, [step])
+
+  const next = () => {
+    const parsed = parseAddress(text)
+    if (!parsed) {
+      setError('Enter a machine name or IP address, with an optional port.')
+      return
+    }
+    setError(undefined)
+    setAddress(parsed)
+    setStep('pair')
+  }
+
+  const pair = async () => {
+    if (inFlight.current || !address || !/^\d{6}$/.test(code)) return
+    inFlight.current = true
+    setBusy(true)
+    setError(undefined)
+    try {
+      const result = await pairWithHost(address, code, Device.deviceName ?? 'Phone')
+      if (!alive.current) return
+      const entry: HostEntry = {
+        key: result.host.hostId,
+        name: result.host.name,
+        routes: [wsUrl(address)],
+        token: result.token,
+      }
+      addRemoteHost(entry)
+      setPaired(entry)
+      setStep('done')
+    } catch (err) {
+      if (alive.current) setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      inFlight.current = false
+      if (alive.current) setBusy(false)
+    }
+  }
+
+  const digits = code.padEnd(6, ' ').split('')
+
+  return (
+    <Screen>
+      <View style={{ flex: 1 }}>
+        <View style={styles.top}>
+          <Text size={13} color={colors.textSecondary}>
+            Add host
+          </Text>
+          <Pressable
+            hitSlop={12}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+          >
+            <Icon icon={X} size={20} />
+          </Pressable>
+        </View>
+        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+          <View style={styles.crumbs}>
+            <Crumb label="Choose a host" active={step === 'address'} />
+            <Faint size={12}>›</Faint>
+            <Crumb label="Pair" active={step === 'pair'} />
+            <Faint size={12}>›</Faint>
+            <Crumb label="Connect" active={step === 'done'} />
+          </View>
+
+          {step === 'address' && (
+            <>
+              <View style={{ gap: 6 }}>
+                <Text size={21} weight="semibold">
+                  Add another computer
+                </Text>
+                <Muted size={13}>
+                  Enter the name or Tailscale IP of a computer running BeddCode. Your phone needs
+                  the Tailscale app, signed in to the same tailnet.
+                </Muted>
+              </View>
+              <TextInput
+                value={text}
+                onChangeText={(v) => {
+                  setText(v)
+                  setError(undefined)
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                placeholder="build-server or 100.64.0.12"
+                placeholderTextColor={colors.faint}
+                onSubmitEditing={next}
+                style={styles.input}
+              />
+              <Faint size={12}>
+                The port defaults to 3773. Add it after a colon to use another.
+              </Faint>
+            </>
+          )}
+
+          {step === 'pair' && address && (
+            <>
+              <View style={{ gap: 6 }}>
+                <Text size={21} weight="semibold">
+                  Pair with {address.host}
+                </Text>
+                <Muted size={13}>Enter the code shown on the other computer.</Muted>
+              </View>
+              <View style={styles.hostCard}>
+                <Icon icon={HardDrives} size={22} />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text size={13.5}>{address.host}</Text>
+                  <Text size={11.5} mono color={colors.muted}>
+                    {address.host}:{address.port}
+                  </Text>
+                </View>
+              </View>
+              <Text size={13} color={colors.textSecondary}>
+                Pairing code
+              </Text>
+              {/* The real input lies over the boxes, so a tap lands on it and the keyboard opens. */}
+              <View>
+                <View style={styles.codeRow} pointerEvents="none">
+                  {digits.map((d, i) => (
+                    <View
+                      key={i}
+                      style={[
+                        styles.digit,
+                        i === Math.min(code.length, 5) && { borderColor: colors.info },
+                      ]}
+                    >
+                      <Text size={22}>{d.trim()}</Text>
+                    </View>
+                  ))}
+                </View>
+                <TextInput
+                  ref={codeInput}
+                  value={code}
+                  onChangeText={(v) => {
+                    // A pasted code may carry spaces or dashes.
+                    setCode(v.replace(/\D/g, '').slice(0, 6))
+                    setError(undefined)
+                  }}
+                  keyboardType="number-pad"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  textContentType="oneTimeCode"
+                  caretHidden
+                  selectionColor="transparent"
+                  contextMenuHidden={false}
+                  accessibilityLabel="Pairing code"
+                  style={styles.codeInput}
+                />
+              </View>
+              <Faint size={12}>Six digits. You can paste the entire code, including spaces.</Faint>
+              <View style={{ gap: 8, paddingTop: 4 }}>
+                <Text size={13} color={colors.textSecondary}>
+                  Need a pairing code?
+                </Text>
+                <Muted size={12}>On {address.host}, open your BeddCode checkout and run:</Muted>
+                <View style={styles.command}>
+                  <Muted size={11.5}>Create a one-time code</Muted>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text size={11.5} mono style={{ flex: 1 }}>
+                      {PAIR_COMMAND}
+                    </Text>
+                    <Pressable
+                      hitSlop={10}
+                      onPress={() => void Clipboard.setStringAsync(PAIR_COMMAND)}
+                    >
+                      <Icon icon={Copy} size={17} />
+                    </Pressable>
+                  </View>
+                </View>
+                <Faint size={12}>The code works once and expires after 10 minutes.</Faint>
+              </View>
+            </>
+          )}
+
+          {step === 'done' && paired && (
+            <View style={{ alignItems: 'center', gap: 14, paddingTop: 24 }}>
+              <View
+                style={[
+                  styles.badgeCircle,
+                  { backgroundColor: connected ? '#1c3322' : colors.raised },
+                ]}
+              >
+                <Icon icon={Check} size={26} color={connected ? colors.success : colors.muted} />
+              </View>
+              <Text size={19} weight="semibold" style={{ textAlign: 'center' }}>
+                {connected ? `${paired.name} is connected` : `Connecting to ${paired.name}…`}
+              </Text>
+              <Muted size={13} style={{ textAlign: 'center' }}>
+                {connected
+                  ? 'You can now run agents and open projects on this host.'
+                  : runtime?.connection === 'denied'
+                    ? 'The host refused this pairing. Create a fresh code on the other computer.'
+                    : runtime?.connection === 'reconnecting'
+                      ? 'Paired, but the live connection keeps failing. Restart the host on that computer so it runs the latest code, then try again.'
+                      : 'Your pairing was saved. Waiting for the host to answer.'}
+              </Muted>
+            </View>
+          )}
+
+          {error ? (
+            <View style={styles.error}>
+              <Text size={12.5} color={colors.danger}>
+                {error}
+              </Text>
+              {error.startsWith('Could not reach') ? (
+                <View style={{ gap: 4, paddingTop: 6 }}>
+                  <Muted size={12}>
+                    The host only listens on its own computer unless you start it for other devices.
+                    On that computer, run:
+                  </Muted>
+                  <Text size={11.5} mono selectable>
+                    pnpm --filter @beddcode/server start serve --host 0.0.0.0
+                  </Text>
+                  <Muted size={12}>
+                    Then check http://{address?.host}:{address?.port}/health opens in this phone's
+                    browser. If it does not, allow the port in that computer's firewall.
+                  </Muted>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+        </ScrollView>
+
+        <View style={styles.footer}>
+          {step === 'pair' ? (
+            <Pressable style={styles.back} onPress={() => setStep('address')}>
+              <Icon icon={ArrowLeft} size={15} />
+              <Muted size={13}>Back</Muted>
+            </Pressable>
+          ) : (
+            <View />
+          )}
+          {step === 'address' && (
+            <Button label="Continue" kind="primary" onPress={next} disabled={!text.trim()} />
+          )}
+          {step === 'pair' && (
+            <Button
+              label={busy ? 'Pairing…' : 'Pair and connect'}
+              kind="primary"
+              onPress={() => void pair()}
+              disabled={busy || code.length !== 6}
+            />
+          )}
+          {step === 'done' && (
+            <Button label="Done" kind="primary" onPress={() => router.replace('/')} />
+          )}
+        </View>
+      </View>
+    </Screen>
+  )
+}
+
+function Crumb({ label, active }: { label: string; active: boolean }) {
+  return (
+    <Text size={12} color={active ? colors.text : colors.faint}>
+      {label}
+    </Text>
+  )
+}
+
+const styles = StyleSheet.create({
+  top: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  body: { paddingHorizontal: 18, paddingBottom: 24, gap: 16 },
+  crumbs: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    borderRadius: radius.panel,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    color: colors.text,
+    fontFamily: fonts.regular,
+    fontSize: 15,
+  },
+  hostCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    borderRadius: radius.panel,
+    padding: 12,
+  },
+  codeRow: { flexDirection: 'row', gap: 8 },
+  digit: {
+    flex: 1,
+    height: 56,
+    borderRadius: radius.panel,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  codeInput: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    // Invisible but still a real, tappable input. Its own text must never show: the boxes draw it.
+    color: 'transparent',
+    backgroundColor: 'transparent',
+    fontSize: 1,
+    opacity: 0.02,
+  },
+  command: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#121212',
+    borderRadius: radius.panel,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 5,
+  },
+  badgeCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  error: {
+    borderWidth: 1,
+    borderColor: '#4a2523',
+    backgroundColor: colors.dangerSoft,
+    borderRadius: radius.control,
+    padding: 10,
+  },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderSubtle,
+  },
+  back: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+})

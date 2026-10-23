@@ -75,6 +75,23 @@ describe('guard rules', () => {
       originAllowed('https://app.example', { ...guard, allowedOrigins: ['https://app.example'] }),
     ).toBe(true)
   })
+
+  it('lets an app connect to the address it was given, but never a page on another site', () => {
+    const guard = defaultGuard()
+    // React Native sends an Origin made from the URL it connected to.
+    expect(originAllowed('http://100.64.0.12:3773', guard, '100.64.0.12:3773')).toBe(true)
+    expect(originAllowed('http://pc.tail1234.ts.net:3773', guard, 'pc.tail1234.ts.net:3773')).toBe(
+      true,
+    )
+    expect(
+      originAllowed('http://[fd7a:115c:a1e0::1]:3773', guard, '[fd7a:115c:a1e0::1]:3773'),
+    ).toBe(true)
+    // A name an attacker controls can be made to point here (DNS rebinding): still refused.
+    expect(originAllowed('http://evil.example:3773', guard, 'evil.example:3773')).toBe(false)
+    // Origin and Host must agree.
+    expect(originAllowed('http://evil.example', guard, '100.64.0.12:3773')).toBe(false)
+    expect(originAllowed('http://100.64.0.12:3773', guard)).toBe(false)
+  })
 })
 
 describe('TokenStore', () => {

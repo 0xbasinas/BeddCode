@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, Globe, Plus, RotateCw, X, MousePointer2 } from 'lucide-react'
 import { useBrowser, type BrowserTab } from './browserStore.ts'
-import { normalizeUrl } from './url.ts'
 import '../../ui/desktop.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
 import { attachUpload, stageAttachment } from '../composer/attachments.ts'
@@ -9,10 +8,11 @@ import { hostRequest } from '../../stores/host.ts'
 import {
   CANCEL_PICK_SCRIPT,
   elementContext,
+  normalizeUrl,
   pickElement,
   PICK_ELEMENT_SCRIPT,
   type PickedElement,
-} from './elementPicker.ts'
+} from '@beddcode/client-runtime'
 
 /** The subset of Electron's <webview> element this pane uses. */
 interface WebviewElement extends HTMLElement {

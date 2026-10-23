@@ -11,7 +11,7 @@ import {
 import type { TranscriptItem } from '@beddcode/client-runtime'
 import { Markdown } from '../../ui/Markdown.tsx'
 import { PatchView } from '../../ui/PatchView.tsx'
-import { buildBlocks, totalChanges, type EditedFile } from './blocks.ts'
+import { buildBlocks, totalChanges, type EditedFile } from '@beddcode/client-runtime'
 import { folderName } from '../../ui/format.ts'
 import { FileIcon } from '../files/FileIcon.tsx'
 import { ApprovalCard } from './ApprovalCard.tsx'

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { tabLabel } from './url.ts'
+import { tabLabel } from '@beddcode/client-runtime'
 
 export interface BrowserTab {
   id: number
