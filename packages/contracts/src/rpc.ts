@@ -280,8 +280,10 @@ export const RpcMethods = {
   'sessions.create': {
     params: z.object({
       instanceId: z.string(),
-      /** Defaults to the server's working directory until projects exist (phase 6). */
+      /** Defaults to the server's working directory for older clients. */
       cwd: z.string().optional(),
+      /** Use a persistent session folder managed by the host, without joining a project. */
+      projectless: z.boolean().optional(),
       title: z.string().optional(),
       permissionMode: z.string().optional(),
       model: z.string().optional(),

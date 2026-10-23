@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { Check, ChevronDown, Folder, FolderPlus, GitBranch, Monitor, Server } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  Folder,
+  FolderPlus,
+  GitBranch,
+  MessageSquare,
+  Monitor,
+  Server,
+} from 'lucide-react'
 import type {
   AgentPreview,
   GitBranch as Branch,
@@ -107,7 +116,7 @@ export function NewSession({
   const setModeId = (next: string) => setSelection({ key: selectionKey, modeId: next, choice })
   const setChoice = (next: ModelChoice) => setSelection({ key: selectionKey, modeId, choice: next })
 
-  const folder = chosenFolder || projects[0]?.path || host?.defaultCwd || ''
+  const folder = chosenFolder
   const welcome = showWelcome({ initialProject, compose, synced, hasSessions, setupSkipped })
   const draftId = projectDraftId(folder)
 
@@ -124,6 +133,8 @@ export function NewSession({
   // Look at the folder's repository whenever it changes: branches for the picker, and whether
   // worktrees are possible at all.
   useEffect(() => {
+    setRepo(null)
+    setWorkspace({ mode: 'local' })
     if (!folder || connection !== 'connected') return
     let cancelled = false
     setRepo('loading')
@@ -157,9 +168,9 @@ export function NewSession({
   // The agent's slash commands and skills for this folder, so `/` works before the session exists.
   useEffect(() => {
     setCommands([])
-    if (!agent?.capabilities.commands || !folder || connection !== 'connected') return
+    if (!agent?.capabilities.commands || connection !== 'connected') return
     let cancelled = false
-    hostRequest(hostKey, 'commands.list', { instanceId: agent.id, cwd: folder }).then(
+    hostRequest(hostKey, 'commands.list', { instanceId: agent.id, cwd: folder || undefined }).then(
       (list) => !cancelled && setCommands(list),
       () => {},
     )
@@ -172,10 +183,10 @@ export function NewSession({
   // starts, so the host probes once and remembers it. Without this their composer would be bare.
   const previewKey = `${hostKey}:${agent?.id ?? ''}`
   useEffect(() => {
-    if (!agent || agent.kind !== 'acp' || !folder || connection !== 'connected') return
+    if (!agent || agent.kind !== 'acp' || connection !== 'connected') return
     let cancelled = false
     setPreview({ key: previewKey })
-    hostRequest(hostKey, 'agents.preview', { instanceId: agent.id, cwd: folder }).then(
+    hostRequest(hostKey, 'agents.preview', { instanceId: agent.id, cwd: folder || undefined }).then(
       (data) => !cancelled && setPreview({ key: previewKey, data }),
       () => !cancelled && setPreview({ key: previewKey, failed: true }),
     )
@@ -206,7 +217,10 @@ export function NewSession({
       [
         ...new Set([
           ...projects.map((p) => p.path),
-          ...replica.order.map((id) => replica.sessions[id]!.projectPath),
+          ...replica.order.flatMap((id) => {
+            const session = replica.sessions[id]!
+            return session.projectless ? [] : [session.projectPath]
+          }),
         ]),
       ].slice(0, 8),
     [replica, projects],
@@ -214,10 +228,11 @@ export function NewSession({
 
   const send = async (value: string, attachments: string[]) => {
     if (!agent) throw new Error('No agent is ready on this host')
-    const useWorktree = repo && repo !== 'loading' && workspace.mode === 'worktree'
+    const useWorktree = folder && repo && repo !== 'loading' && workspace.mode === 'worktree'
     const sessionId = await createSession(hostKey, {
       instanceId: agent.id,
       cwd: folder || undefined,
+      projectless: !folder || undefined,
       permissionMode: validModeId,
       model: choice.model,
       effort: choice.effort,
@@ -460,9 +475,14 @@ function FolderChip({
   return (
     <Dropdown
       trigger={({ toggle }) => (
-        <button className="chip-lite" onClick={toggle} aria-label="Folder" title={value}>
-          <Folder size={14} />{' '}
-          <span className="chip-text">{value ? folderName(value) : 'Choose a folder'}</span>{' '}
+        <button
+          className="chip-lite"
+          onClick={toggle}
+          aria-label="Folder"
+          title={value || 'Start without a project folder'}
+        >
+          {value ? <Folder size={14} /> : <MessageSquare size={14} />}{' '}
+          <span className="chip-text">{value ? folderName(value) : 'No project'}</span>{' '}
           <ChevronDown size={13} />
         </button>
       )}
@@ -470,6 +490,22 @@ function FolderChip({
     >
       {(close) => (
         <>
+          <button
+            className="menu-row"
+            aria-checked={!value}
+            onClick={() => {
+              onChange('')
+              close()
+            }}
+          >
+            <MessageSquare size={15} />
+            <span className="menu-text">
+              <span className="menu-title">No project</span>
+              <span className="menu-desc">Start a session without a project folder</span>
+            </span>
+            {!value && <Check size={16} />}
+          </button>
+          <div className="menu-sep" />
           {recent.length > 0 && <div className="menu-heading">Projects</div>}
           {recent.map((p) => (
             <button

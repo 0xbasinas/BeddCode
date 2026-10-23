@@ -8,9 +8,43 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/x-icon" sizes="any" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
+    <!-- Paint without waiting for Vite's module graph or the app's CSS on a cold start. -->
+    <style>
+      html,
+      body,
+      #root {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        background: #101010;
+      }
+      #startup {
+        height: 100%;
+        display: grid;
+        place-content: center;
+        justify-items: center;
+        gap: 16px;
+        color: #8a8a8a;
+        font:
+          13px system-ui,
+          sans-serif;
+        -webkit-app-region: drag;
+      }
+      #startup img {
+        width: 44px;
+        height: 44px;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- React replaces this fallback when it commits the first app screen. -->
+    <div id="root">
+      <div id="startup" role="status" aria-label="Starting BeddCode">
+        <img src="/favicon.svg" alt="" />
+        <span>Starting BeddCode…</span>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

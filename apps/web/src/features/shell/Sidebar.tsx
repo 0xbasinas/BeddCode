@@ -16,6 +16,7 @@ import {
   Server,
   Settings,
   Layers,
+  MessageSquare,
   Undo2,
   X,
 } from 'lucide-react'
@@ -153,7 +154,7 @@ export function Sidebar() {
     .filter(
       (s) =>
         !searchOpen ||
-        `${s.title} ${s.projectPath} ${s.branch ?? ''} ${activityLine(s)}`
+        `${s.title} ${s.projectless ? 'No project' : s.projectPath} ${s.branch ?? ''} ${activityLine(s)}`
           .toLowerCase()
           .includes(query.toLowerCase()),
     )
@@ -170,14 +171,15 @@ export function Sidebar() {
   // The same path on two hosts is two different repositories.
   const groups = new Map<string, SessionView[]>()
   const groupKey = (s: SessionView) => `${hostOf.get(s.id)}
-${s.projectPath}`
+${s.projectless ? 'no-project' : s.projectPath}`
   for (const s of visible) groups.set(groupKey(s), [...(groups.get(groupKey(s)) ?? []), s])
 
   // Added folders show up straight away, before any session runs in them.
   const sessionGroups = [...groups].map(([key, list]) => ({
     key,
     hostKey: hostOf.get(list[0]!.id) ?? LOCAL_HOST_KEY,
-    projectPath: list[0]!.projectPath,
+    projectPath: list[0]!.projectless ? '' : list[0]!.projectPath,
+    projectless: list[0]!.projectless,
     list,
   }))
   const projectsOf = (hostKey: string): Project[] => runtimes[hostKey]?.projects ?? []
@@ -502,16 +504,17 @@ ${s.projectPath}`
                   : all.length === 0
                     ? hasFolders
                       ? 'Sessions you start will appear here, grouped by folder.'
-                      : 'Add a folder and it shows up here. Sessions you start are grouped under it.'
+                      : 'Start a session without a project, or add a folder to work in.'
                     : 'No sessions need your attention right now.'}
             </p>
           </div>
         )}
-        {sessionGroups.map(({ key, hostKey, projectPath, list }) => (
+        {sessionGroups.map(({ key, hostKey, projectPath, projectless, list }) => (
           <FolderGroup
             key={key}
             hostKey={hostKey}
             path={projectPath}
+            projectless={projectless}
             project={projectsOf(hostKey).find((p) => samePath(p.path, projectPath))}
             hostName={hostLabel(hostKey)}
             collapsed={collapsedProjects.has(key)}
@@ -574,6 +577,7 @@ ${s.projectPath}`
 function FolderGroup({
   hostKey,
   path,
+  projectless,
   project,
   hostName,
   collapsed,
@@ -583,6 +587,7 @@ function FolderGroup({
 }: {
   hostKey: string
   path: string
+  projectless?: boolean
   project?: Project
   hostName?: string
   collapsed: boolean
@@ -605,24 +610,34 @@ function FolderGroup({
     }, 2400)
     return () => clearTimeout(timer)
   }, [flashing, highlight])
-  const name = project?.name ?? folderName(path)
+  const name = projectless ? 'No project' : (project?.name ?? folderName(path))
   const empty = !children
-  const startHere = () => void navigate({ to: '/', search: { project: path, host: hostKey } })
+  const startHere = () =>
+    void navigate({
+      to: '/',
+      search: projectless ? { host: hostKey, compose: true } : { project: path, host: hostKey },
+    })
   return (
     <section
       ref={ref}
       className={`folder-group ${flashing ? 'flash' : fresh && empty ? 'fresh' : ''}`}
     >
-      <div className="group-title" title={path}>
+      <div className="group-title" title={projectless ? 'Sessions without a project folder' : path}>
         <button
           className="folder-toggle"
-          aria-label={`${collapsed ? 'Expand' : 'Collapse'} project ${name}`}
+          aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${projectless ? 'sessions without a project' : `project ${name}`}`}
           aria-expanded={!collapsed}
           aria-controls={contentId}
           onClick={onToggle}
         >
           <ChevronRight size={12} className={`folder-chevron ${collapsed ? '' : 'open'}`} />
-          {project && !project.isRepo ? <Folder size={14} /> : <FolderGit2 size={14} />}
+          {projectless ? (
+            <MessageSquare size={14} />
+          ) : project && !project.isRepo ? (
+            <Folder size={14} />
+          ) : (
+            <FolderGit2 size={14} />
+          )}
           <span className="group-name">{name}</span>
           {collapsed && Boolean(sessionCount) && (
             <span className="folder-session-count">{sessionCount}</span>
@@ -638,7 +653,7 @@ function FolderGroup({
         )}
         <button
           className="icon-btn small"
-          aria-label={`New session in ${name}`}
+          aria-label={projectless ? 'New session without a project' : `New session in ${name}`}
           onClick={startHere}
         >
           <Plus size={15} />

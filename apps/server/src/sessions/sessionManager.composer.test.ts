@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -96,6 +96,62 @@ const events = (store: EventStore, sessionId: string) =>
   store.readSession(sessionId).map((e) => e.event)
 
 describe('SessionManager: composer features', () => {
+  it('resumes a session without a project in its original persistent folder', async () => {
+    const { manager, make, store, starts, prompts, attachments } = setup()
+    let resumed: SessionManager | undefined
+    try {
+      const { sessionId } = await manager.create({
+        instanceId: 'rec',
+        projectless: true,
+        model: 'opus',
+        effort: 'low',
+      })
+      const folder = starts[0]!.cwd
+      writeFileSync(path.join(folder, 'notes.txt'), 'Keep these notes')
+      await vi.waitFor(() =>
+        expect(events(store, sessionId).some((e) => e.type === 'session.provider-session')).toBe(
+          true,
+        ),
+      )
+      await manager.close()
+      resumed = make()
+      const file = attachments.save('question.txt', Buffer.from('A question'))
+      await resumed.prompt(sessionId, 'Continue our discussion', [file.id])
+      expect(starts[1]).toMatchObject({
+        cwd: folder,
+        resumeId: 'native-1',
+        model: 'opus',
+        effort: 'low',
+      })
+      expect(readFileSync(path.join(folder, 'notes.txt'), 'utf8')).toBe('Keep these notes')
+      expect(prompts.at(-1)).toContain(file.path)
+      expect(events(store, sessionId)[0]).toMatchObject({ projectless: true })
+    } finally {
+      await manager.close()
+      await resumed?.close()
+      store.close()
+    }
+  })
+
+  it('reads commands and ACP settings without using the host working directory', async () => {
+    const { manager, adapter, store, attachments } = setup()
+    const commands = vi.fn(async () => [])
+    const preview = vi.fn(async () => ({ modes: [], config: [], commands: [] }))
+    adapter.listCommands = commands
+    adapter.preview = preview
+    try {
+      await manager.listCommands('rec')
+      await manager.previewAgent('rec')
+      const folder = path.resolve(attachments.root, '../sessions/_preview')
+      expect(commands).toHaveBeenCalledWith('rec', folder)
+      expect(preview).toHaveBeenCalledWith('rec', folder)
+      expect(existsSync(folder)).toBe(true)
+    } finally {
+      await manager.close()
+      store.close()
+    }
+  })
+
   it('reuses known agents and requests a supported lower effort without changing the model', async () => {
     const { manager, adapter, instance, store } = setup(0)
     instance.capabilities = {

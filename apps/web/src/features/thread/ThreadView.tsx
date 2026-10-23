@@ -129,7 +129,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
           <h1 title={session.title}>{session.title}</h1>
           <div className="thread-meta" title={session.cwd}>
             {hostKey === LOCAL_HOST_KEY ? 'This PC' : (host?.name ?? hostKey)} ·{' '}
-            {folderName(session.projectPath)}
+            {session.projectless ? 'No project' : folderName(session.projectPath)}
             {session.branch ? ` · ${session.branch}` : ''}
             {session.context && session.context.size > 0 && (
               <span
@@ -188,12 +188,16 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                     close()
                     void navigate({
                       to: '/',
-                      search: { host: hostKey, project: session.projectPath },
+                      search: session.projectless
+                        ? { host: hostKey, compose: true }
+                        : { host: hostKey, project: session.projectPath },
                     })
                   }}
                 >
                   <Plus size={15} />
-                  New session in this folder
+                  {session.projectless
+                    ? 'New session without a project'
+                    : 'New session in this folder'}
                 </button>
                 {canFork && (
                   <button
@@ -215,7 +219,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                   }}
                 >
                   <Copy size={15} />
-                  Copy folder path
+                  {session.projectless ? 'Copy session files path' : 'Copy folder path'}
                 </button>
                 <button
                   className="menu-row"
@@ -374,7 +378,8 @@ function SessionFooter({
         <WorktreeChip session={session} hostKey={hostKey} />
       ) : (
         <span className="chip-lite" title={session.cwd}>
-          <Folder size={14} /> {folderName(session.projectPath)}
+          <Folder size={14} />{' '}
+          {session.projectless ? 'No project' : folderName(session.projectPath)}
         </span>
       )}
       <span className="spacer" />

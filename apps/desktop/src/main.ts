@@ -45,12 +45,12 @@ function startDaemon() {
 
 function createWindow() {
   const win = new BrowserWindow({
-    show: process.env.BEDDCODE_WINDOW_HIDDEN !== '1',
+    show: false,
     width: 1400,
     height: 900,
     minWidth: 900,
     minHeight: 600,
-    backgroundColor: '#111111',
+    backgroundColor: '#101010',
     // macOS keeps its traffic lights, inset and centred on the header line. Elsewhere the window is
     // frameless and the app draws its own minimize / maximize / close (see WindowBar.tsx).
     ...(process.platform === 'darwin'
@@ -68,6 +68,11 @@ function createWindow() {
       // The browser pane shows pages in <webview>; see will-attach-webview below.
       webviewTag: true,
     },
+  })
+
+  // Avoid showing the native window's empty background before the renderer's first paint.
+  win.once('ready-to-show', () => {
+    if (process.env.BEDDCODE_WINDOW_HIDDEN !== '1') win.show()
   })
 
   // Pages shown in the browser pane never get node access or a preload script of their own.

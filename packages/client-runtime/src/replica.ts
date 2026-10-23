@@ -86,6 +86,8 @@ export interface SessionView {
   effort?: string
   /** Repository (or folder) this session belongs to; equals `cwd` unless it runs in a worktree. */
   projectPath: string
+  /** The working directory is managed by the host, without a selected project. */
+  projectless?: boolean
   branch?: string
   /** Present when the session runs in a worktree made for it. */
   worktree?: { baseBranch: string }
@@ -153,6 +155,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       model: e.model,
       effort: e.effort,
       projectPath: e.projectPath ?? e.cwd,
+      projectless: e.projectless,
       branch: e.branch,
       worktree: e.worktree,
       createdAt: e.at,
@@ -214,7 +217,9 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       if (
         e.role === 'user' &&
         current.title ===
-          `Session in ${current.projectPath.replace(/\\/g, '/').split('/').filter(Boolean).at(-1) ?? current.projectPath}` &&
+          (current.projectless
+            ? 'New session'
+            : `Session in ${current.projectPath.replace(/\\/g, '/').split('/').filter(Boolean).at(-1) ?? current.projectPath}`) &&
         !current.items.some((item) => item.kind === 'message' && item.role === 'user')
       ) {
         const title = e.text.trim().replace(/\s+/g, ' ')

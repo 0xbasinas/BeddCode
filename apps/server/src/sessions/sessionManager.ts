@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import path from 'node:path'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, rmdir } from 'node:fs/promises'
 import os from 'node:os'
 import { gitTextPrompt, parseGitText } from '../workspace/gitText.ts'
 import type {
@@ -33,6 +33,8 @@ export interface SessionManagerDeps {
   log: Logger
   /** Used when a client does not pick a folder. */
   defaultCwd: string
+  /** Persistent working folders for sessions without a project. */
+  sessionRoot?: string
   /** How long detection results are reused when starting sessions. */
   detectTtlMs?: number
   /** Remembers what agents offer for new sessions (see `previewAgent`). */
@@ -198,13 +200,17 @@ export class SessionManager {
   }
 
   async create(params: RpcParams<'sessions.create'>): Promise<{ sessionId: string }> {
+    if (params.projectless && (params.cwd !== undefined || params.workspace?.mode === 'worktree'))
+      throw new Error('A session without a project cannot use a project folder or a worktree')
     const { adapter, instance } = await this.findInstance(params.instanceId)
     const sessionId = randomUUID()
-    const folder = params.cwd ?? this.deps.defaultCwd
+    const folder = params.projectless
+      ? await this.scratchFolder(sessionId)
+      : (params.cwd ?? this.deps.defaultCwd)
     if (!isDirectory(folder)) throw new Error(`Folder does not exist: ${folder}`)
 
     // Where the agent actually works: the folder itself, or a fresh worktree of its repository.
-    const info = await this.deps.git.info(folder).catch(() => null)
+    const info = params.projectless ? null : await this.deps.git.info(folder).catch(() => null)
     let cwd = folder
     let branch = info?.isRepo ? info.branch : undefined
     let worktree: { baseBranch: string } | undefined
@@ -233,6 +239,8 @@ export class SessionManager {
     } catch (err) {
       // Do not leave an unused worktree behind when the agent could not start.
       if (worktree) await this.deps.git.removeWorktree(cwd).catch(() => false)
+      // Remove only an empty folder; preserve any files the agent wrote before failing.
+      if (params.projectless) await rmdir(folder).catch(() => {})
       throw err
     }
     this.live.set(sessionId, { session, adapter })
@@ -242,9 +250,10 @@ export class SessionManager {
       type: 'session.created',
       sessionId,
       at: Date.now(),
-      title: params.title ?? defaultTitle(projectPath),
+      title: params.title ?? (params.projectless ? 'New session' : defaultTitle(projectPath)),
       cwd,
       projectPath,
+      projectless: params.projectless || undefined,
       branch,
       worktree,
       instanceId: instance.id,
@@ -255,6 +264,13 @@ export class SessionManager {
     this.announceModes(sessionId, adapter, instance.id, params.permissionMode)
     void this.pump(sessionId, session)
     return { sessionId }
+  }
+
+  private async scratchFolder(name: string): Promise<string> {
+    const root = this.deps.sessionRoot ?? path.resolve(this.deps.attachments.root, '../sessions')
+    const folder = path.join(root, name)
+    await mkdir(folder, { recursive: true })
+    return folder
   }
 
   async prompt(
@@ -755,10 +771,17 @@ export class SessionManager {
       return {
         modes: instance.capabilities.permissionModes,
         config: [],
-        commands: (await adapter.listCommands?.(instance.id, cwd ?? this.deps.defaultCwd)) ?? [],
+        commands:
+          (await adapter.listCommands?.(
+            instance.id,
+            cwd ?? (await this.scratchFolder('_preview')),
+          )) ?? [],
       }
     }
-    const preview = await adapter.preview(instance.id, cwd ?? this.deps.defaultCwd)
+    const preview = await adapter.preview(
+      instance.id,
+      cwd ?? (await this.scratchFolder('_preview')),
+    )
     this.deps.previews?.set(instance.id, preview)
     return preview
   }
@@ -769,7 +792,9 @@ export class SessionManager {
     const running = this.refreshing.get(instanceId)
     if (running) return running
     const probe = this.findInstance(instanceId)
-      .then(({ adapter }) => adapter.preview?.(instanceId, cwd ?? this.deps.defaultCwd))
+      .then(async ({ adapter }) =>
+        adapter.preview?.(instanceId, cwd ?? (await this.scratchFolder('_preview'))),
+      )
       .then(
         (preview) => {
           if (preview) this.deps.previews?.set(instanceId, preview)
@@ -809,7 +834,10 @@ export class SessionManager {
 
   async listCommands(instanceId: string, cwd?: string): Promise<SlashCommand[]> {
     const { adapter } = await this.findInstance(instanceId)
-    return (await adapter.listCommands?.(instanceId, cwd ?? this.deps.defaultCwd)) ?? []
+    return (
+      (await adapter.listCommands?.(instanceId, cwd ?? (await this.scratchFolder('_preview')))) ??
+      []
+    )
   }
 
   async mcp(instanceId: string) {

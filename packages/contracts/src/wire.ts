@@ -36,7 +36,7 @@ export const HostInfo = z.object({
   name: z.string(),
   platform: z.enum(['win32', 'linux', 'darwin']),
   version: z.string(),
-  /** Folder new sessions use when none is chosen. */
+  /** Legacy default folder for clients that omit cwd without requesting a projectless session. */
   defaultCwd: z.string().optional(),
 })
 export type HostInfo = z.infer<typeof HostInfo>

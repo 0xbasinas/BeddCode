@@ -59,7 +59,10 @@ function AddFolderPanel({ hostKey, close }: { hostKey: string; close(): void }) 
     () =>
       recentFolders({
         history: history ?? [],
-        sessionPaths: replica.order.map((id) => replica.sessions[id]!.projectPath),
+        sessionPaths: replica.order.flatMap((id) => {
+          const session = replica.sessions[id]!
+          return session.projectless ? [] : [session.projectPath]
+        }),
         projects,
       }),
     [history, replica, projects],

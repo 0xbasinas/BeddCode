@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ProviderCapabilities, ProviderInstance, SessionEvent } from '@beddcode/contracts'
 import type { ProviderAdapter, ProviderSession, StartSessionInput } from '@beddcode/provider-core'
 import { createAsyncQueue, createLogger } from '@beddcode/shared'
@@ -94,6 +94,47 @@ const created = (store: EventStore, sessionId: string) =>
   >
 
 describe('SessionManager: workspaces', () => {
+  it('gives sessions without a project separate persistent folders and skips repository discovery', async () => {
+    const { manager, store, git, starts } = setup()
+    const info = vi.spyOn(git, 'info')
+    try {
+      const first = await manager.create({ instanceId: 'rec', projectless: true })
+      const second = await manager.create({ instanceId: 'rec', projectless: true })
+      const event = created(store, first.sessionId)
+      expect(event).toMatchObject({ projectless: true, title: 'New session' })
+      expect(event.branch).toBeUndefined()
+      expect(event.worktree).toBeUndefined()
+      expect(path.basename(event.cwd)).toBe(first.sessionId)
+      expect(path.basename(path.dirname(event.cwd))).toBe('sessions')
+      expect(starts[0]?.cwd).toBe(event.cwd)
+      expect(starts[1]?.cwd).not.toBe(event.cwd)
+      expect(path.basename(starts[1]!.cwd)).toBe(second.sessionId)
+      writeFileSync(path.join(event.cwd, 'notes.txt'), 'Keep this')
+      await manager.close()
+      expect(existsSync(path.join(event.cwd, 'notes.txt'))).toBe(true)
+      expect(info).not.toHaveBeenCalled()
+    } finally {
+      await manager.close()
+      store.close()
+    }
+  })
+
+  it('rejects mixing no project with a project folder or a worktree', async () => {
+    const { manager, store, starts } = setup()
+    try {
+      await expect(
+        manager.create({ instanceId: 'rec', projectless: true, cwd: tmp() }),
+      ).rejects.toThrow('without a project')
+      await expect(
+        manager.create({ instanceId: 'rec', projectless: true, workspace: { mode: 'worktree' } }),
+      ).rejects.toThrow('without a project')
+      expect(starts).toHaveLength(0)
+    } finally {
+      await manager.close()
+      store.close()
+    }
+  })
+
   it('runs a session in the repository itself by default', async () => {
     const { manager, store, starts } = setup()
     const dir = repo()

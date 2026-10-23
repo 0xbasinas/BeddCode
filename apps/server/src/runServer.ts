@@ -60,6 +60,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     adapters,
     log,
     defaultCwd: process.cwd(),
+    sessionRoot: path.join(home, 'sessions'),
     previews: new PreviewCache(path.join(home, 'agent-previews.json')),
   })
   const agents = new AgentCatalog(

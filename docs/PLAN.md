@@ -158,6 +158,8 @@ Milestone 1 (usable alpha) = phases 0–5 on the local host.
 
 Current follow-up work:
 
+- Sessions without a project: the general composer starts with **No project**, and its folder picker can switch between that choice and a project. The host assigns each projectless session a persistent working folder in its data directory, shared by the agent, files and terminal panes. These sessions group under **No project** per host, keep their files and resume after restarts, and never populate the recent-project list. Project **+** actions still preselect their folder. Native and ACP agents use the same session lifecycle.
+
 - Git draft latency: avoid per-file repository rediscovery, reuse the selected provider's existing detection, batch tracked-file lookup, collect up to four diffs concurrently in selection order, and request lower reasoning for internal draft jobs when supported. Claude draft jobs disable extended thinking. A local 20-file benchmark reduced commit context preparation from 20.0 s / 224 Git processes to 1.6 s / 34 processes with identical text; PR context preparation was 1.8 s before and 1.1 s after. These measure local context preparation, excluding the model response. Live generation passed through Claude, Codex and Grok ACP.
 
 - Git operation status is shared across tabs and pane switches, scoped by host and folder. A failed push retains Git's error and offers a push-only retry; pending operations prevent duplicate submissions. Completing an operation refreshes status and commit counts, and the Commits tab waits for that refresh before offering another push.

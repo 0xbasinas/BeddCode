@@ -22,6 +22,25 @@ const created = {
 }
 
 describe('replica', () => {
+  it('keeps no-project grouping on replay and names it from the first message', () => {
+    const s = fold([
+      { ...created, title: 'New session', projectless: true, cwd: '/data/sessions/s1' },
+      { type: 'message.delta', role: 'user', text: 'Help me plan a trip' },
+      { type: 'message.delta', role: 'user', text: 'A later message' },
+    ])
+    expect(s.sessions.s1).toMatchObject({
+      projectless: true,
+      title: 'Help me plan a trip',
+      cwd: '/data/sessions/s1',
+    })
+    const custom = fold([
+      { ...created, title: 'My notes', projectless: true },
+      { type: 'message.delta', role: 'user', text: 'Keep my title' },
+    ])
+    expect(custom.sessions.s1!.title).toBe('My notes')
+    expect(fold([created]).sessions.s1!.projectless).toBeUndefined()
+  })
+
   it('files a session as done without counting it as activity, and a new turn takes it back out', () => {
     const filed = fold([
       { ...created },

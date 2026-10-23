@@ -262,14 +262,18 @@ export function EnvironmentButton({
               <SquareTerminal size={16} />
               <span className="menu-text menu-title">Terminal</span>
             </button>
-            <div className="session-panel-heading">Repository</div>
+            <div className="session-panel-heading">
+              {session.projectless ? 'Session files' : 'Repository'}
+            </div>
             <button
               className="menu-row"
               title={session.cwd}
               onClick={() => useUiStore.getState().openPane('files')}
             >
               <FolderOpen size={16} />
-              <span className="menu-text menu-title">{folderName(session.projectPath)}</span>
+              <span className="menu-text menu-title">
+                {session.projectless ? 'Session files' : folderName(session.projectPath)}
+              </span>
             </button>
             <button
               className="menu-row"
@@ -282,7 +286,11 @@ export function EnvironmentButton({
             >
               <Copy size={16} />
               <span className="menu-text menu-title">
-                {copied ? 'Copied folder path' : 'Copy folder path'}
+                {copied
+                  ? 'Copied folder path'
+                  : session.projectless
+                    ? 'Copy session files path'
+                    : 'Copy folder path'}
               </span>
             </button>
             <div className="session-panel-heading">Notes</div>
