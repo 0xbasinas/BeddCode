@@ -6,12 +6,13 @@ import { DarkTheme, Stack, ThemeProvider } from 'expo-router'
 import { useFonts } from 'expo-font'
 import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
-import { useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
-import { startHosts } from '@/host/store'
+import { startHosts, useHostStore } from '@/host/store'
 import { colors } from '@/theme/tokens'
+import { LoadingScreen } from '@/ui/LoadingScreen'
 
 SplashScreen.preventAutoHideAsync()
 
@@ -43,6 +44,35 @@ export default function RootLayout() {
     if (fontsLoaded) SplashScreen.hide()
   }, [fontsLoaded])
 
+  // The loading screen stays until the saved hosts are read and one answers (or a few seconds pass),
+  // and never flashes by faster than its animation can be seen.
+  const [minimumShown, setMinimumShown] = useState(false)
+  const [gaveUp, setGaveUp] = useState(false)
+  const [gone, setGone] = useState(false)
+  const ready = useHostStore((s) => s.ready)
+  const entries = useHostStore((s) => s.entries)
+  const runtimes = useHostStore((s) => s.runtimes)
+  const anyConnected = entries.some((e) => runtimes[e.key]?.connection === 'connected')
+  useEffect(() => {
+    if (!fontsLoaded) return
+    const short = setTimeout(() => setMinimumShown(true), 900)
+    const long = setTimeout(() => setGaveUp(true), 5000)
+    return () => {
+      clearTimeout(short)
+      clearTimeout(long)
+    }
+  }, [fontsLoaded])
+  const done = minimumShown && ready && (entries.length === 0 || anyConnected || gaveUp)
+  const onGone = useCallback(() => setGone(true), [])
+  const waitingFor = entries.find((e) => runtimes[e.key]?.connection !== 'connected')
+  const status = !ready
+    ? 'Opening…'
+    : waitingFor
+      ? `Connecting to ${runtimes[waitingFor.key]?.host?.name ?? waitingFor.name}…`
+      : entries.length > 0
+        ? 'Ready'
+        : 'Getting things ready…'
+
   if (!fontsLoaded) return null
 
   return (
@@ -57,6 +87,7 @@ export default function RootLayout() {
               animation: 'slide_from_right',
             }}
           />
+          {gone ? null : <LoadingScreen status={status} done={done} onGone={onGone} />}
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

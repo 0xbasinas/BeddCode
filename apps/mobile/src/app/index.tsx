@@ -34,6 +34,7 @@ import { usePrefs } from '@/host/prefs'
 import { colors, fonts, radius } from '@/theme/tokens'
 import { Diffstat } from '@/ui/Diffstat'
 import { Icon } from '@/ui/Icon'
+import { Logo } from '@/ui/Logo'
 import { MenuSheet, type MenuItem } from '@/ui/MenuSheet'
 import { Screen } from '@/ui/Screen'
 import { StatusDot } from '@/ui/StatusDot'
@@ -198,9 +199,12 @@ export default function SessionsScreen() {
   const header = (
     <View>
       <View style={styles.top}>
-        <Text size={15} weight="semibold">
-          BeddCode
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+          <Logo size={22} />
+          <Text size={15} weight="semibold">
+            BeddCode
+          </Text>
+        </View>
         <Pressable style={styles.hostPill} onPress={() => setHostMenu(true)}>
           <Icon icon={Monitor} size={15} />
           <Muted size={12.5} numberOfLines={1}>

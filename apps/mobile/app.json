@@ -8,7 +8,6 @@
     "scheme": "beddcode",
     "userInterfaceStyle": "dark",
     "ios": {
-      "icon": "./assets/expo.icon",
       "bundleIdentifier": "design.beddcode.mobile",
       "infoPlist": {
         "NSAppTransportSecurity": {
@@ -38,7 +37,7 @@
         {
           "backgroundColor": "#101010",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 132
         }
       ],
       "expo-font",
