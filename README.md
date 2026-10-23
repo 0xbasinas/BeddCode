@@ -140,7 +140,7 @@ Any agent that speaks the [Agent Client Protocol](https://agentclientprotocol.co
 - `apps/desktop` – Electron shell; starts and supervises the local host, so the app does not need a terminal
 - `assets/logo` – the logo; `node scripts/make-icons.mjs` renders every icon from it
 - `apps/web` – React UI
-- `apps/desktop` – Electron shell
+- `apps/mobile` – Expo (React Native) app, scaffolded from the SDK 58 template. It uses `packages/contracts` and `packages/client-runtime` directly. `pnpm --filter @beddcode/mobile start` runs the dev server (open it in Expo Go or a dev build; the phone must be on the tailnet to reach a host). Only the shared-package wiring exists so far, not the screens.
 - `packages/contracts` – wire and event schemas
 - `packages/shared` – logging and async helpers
 - `packages/provider-core` – provider adapter interface
