@@ -3906,3 +3906,50 @@ button.tcall-row:hover .tcall-chevron,
   color: var(--success);
   margin-bottom: 8px;
 }
+.git-operation {
+  display: flex;
+  align-items: flex-start;
+  flex: none;
+  gap: calc(8px * var(--ui-scale));
+  margin: calc(10px * var(--ui-scale)) var(--pane-pad-x);
+  padding: calc(10px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-raised);
+  font-size: calc(12px * var(--ui-scale));
+  line-height: 1.45;
+}
+.git-operation > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-muted);
+}
+.git-operation.failed > svg {
+  color: var(--danger);
+}
+.git-operation-content {
+  min-width: 0;
+  flex: 1;
+}
+.git-operation-message {
+  max-height: calc(160px * var(--ui-scale));
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.git-operation .link-btn {
+  margin-top: calc(6px * var(--ui-scale));
+}
+.git-operation-spinner {
+  animation: git-operation-spin 1s linear infinite;
+}
+@keyframes git-operation-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .git-operation-spinner {
+    animation: none;
+  }
+}

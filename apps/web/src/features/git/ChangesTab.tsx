@@ -7,6 +7,7 @@ import { useHostKey } from '../../stores/HostScope.tsx'
 import { commitLabel, diffRefreshKey, groupByDirectory, selectedPaths } from './changes.ts'
 import { usePolled } from './usePolled.ts'
 import { GenerateGitText } from './GenerateGitText.tsx'
+import { commitFiles, gitOperationKey, useGitOperations } from './operations.ts'
 
 const STATUS_COLOR: Record<GitFile['status'], string> = {
   M: 'var(--accent)',
@@ -41,10 +42,9 @@ export function ChangesTab({
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [message, setMessage] = useState('')
-  const [busy, setBusy] = useState<'commit' | 'push' | null>(null)
-  const [error, setError] = useState<string>()
+  const operation = useGitOperations((s) => s.entries[gitOperationKey(hostKey, cwd)]?.operation)
+  const busy = operation?.pending ? (operation.kind === 'commit' ? 'commit' : 'push') : null
   const [generating, setGenerating] = useState(false)
-  const [success, setSuccess] = useState<string>()
 
   const groups = useMemo(() => groupByDirectory(status.files), [status.files])
   const selected = useMemo(() => selectedPaths(status.files, overrides), [status.files, overrides])
@@ -57,11 +57,8 @@ export function ChangesTab({
   }
 
   const commit = async (push: boolean) => {
-    setBusy(push ? 'push' : 'commit')
-    setError(undefined)
-    setSuccess(undefined)
     try {
-      const result = await hostRequest(hostKey, 'git.commit', {
+      await commitFiles(hostKey, {
         cwd,
         message: message.trim(),
         paths: selected,
@@ -69,13 +66,9 @@ export function ChangesTab({
       })
       setMessage('')
       setOverrides({})
-      setSuccess(`Committed ${result.hash.slice(0, 7)}${result.pushed ? ' and pushed' : ''}.`)
-      if (result.pushError) setError(`Commit saved. Push failed: ${result.pushError}`)
       onChanged()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(null)
+    } catch {
+      /* The shared Git status keeps the result visible across tabs. */
     }
   }
 
@@ -85,12 +78,6 @@ export function ChangesTab({
         <Check size={22} />
         <div>Nothing to commit</div>
         <div className="muted">Your working tree is clean.</div>
-        {success && <div role="status">{success}</div>}
-        {error && (
-          <div className="composer-error" role="alert">
-            {error}
-          </div>
-        )}
         <button className="secondary" onClick={onOpenCommits}>
           View commits & push
         </button>
@@ -210,21 +197,6 @@ export function ChangesTab({
           />
           <span className="count">{message.length}</span>
         </div>
-        {success && (
-          <div className="git-success" role="status">
-            {success}
-          </div>
-        )}
-        {error && (
-          <div className="composer-error" role="alert">
-            {error}
-          </div>
-        )}
-        {error?.startsWith('Commit saved.') && (
-          <button className="link-btn" onClick={onOpenCommits}>
-            Open commits to retry push
-          </button>
-        )}
         <div className="git-actions">
           <button className="secondary" disabled={!canCommit} onClick={() => void commit(false)}>
             {busy === 'commit' ? 'Committing…' : commitLabel(selected.length)}

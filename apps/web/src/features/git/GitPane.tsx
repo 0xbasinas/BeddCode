@@ -8,6 +8,8 @@ import { ChangesTab } from './ChangesTab.tsx'
 import { CommitsTab } from './CommitsTab.tsx'
 import { PullRequestTab } from './PullRequestTab.tsx'
 import { usePolled } from './usePolled.ts'
+import { EMPTY_OPERATION, gitOperationKey, useGitOperations } from './operations.ts'
+import { GitOperationStatus } from './GitOperationStatus.tsx'
 
 /**
  * Changes, commits and pull request of the folder a session works in. Git is read live (the
@@ -19,12 +21,23 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
   const [version, setVersion] = useState(0)
   const cwd = workspace.cwd
   const hostKey = useHostKey()
+  const operationKey = gitOperationKey(hostKey, cwd)
+  const { operation, revision } = useGitOperations(
+    (s) => s.entries[operationKey] ?? EMPTY_OPERATION,
+  )
   // A finished turn usually means files changed.
-  const key = `${hostKey}:${cwd}:${workspace.status}:${version}`
+  const key = `${hostKey}:${cwd}:${workspace.status}:${version}:${revision}`
 
   const info = usePolled(() => hostRequest(hostKey, 'git.info', { cwd }), key)
   const status = usePolled(() => hostRequest(hostKey, 'git.status', { cwd }), key)
-  const log = usePolled(() => hostRequest(hostKey, 'git.log', { cwd }), key, 8000)
+  const log = usePolled(
+    async () => ({
+      ...(await hostRequest(hostKey, 'git.log', { cwd })),
+      operationRevision: revision,
+    }),
+    key,
+    8000,
+  )
 
   const changed = () => {
     setVersion((v) => v + 1)
@@ -87,6 +100,8 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
         )}
       </div>
 
+      {operation && <GitOperationStatus operation={operation} hostKey={hostKey} cwd={cwd} />}
+
       {tab === 'changes' &&
         (status.data ? (
           <ChangesTab
@@ -108,6 +123,8 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
             cwd={cwd}
             log={log.data}
             hasUpstream={Boolean(info.data.upstream)}
+            refreshing={log.data.operationRevision !== revision}
+            refreshError={log.error}
             onChanged={changed}
             onOpenPr={() => setTab('pr')}
           />

@@ -158,6 +158,8 @@ Milestone 1 (usable alpha) = phases 0–5 on the local host.
 
 Current follow-up work:
 
+- Git operation status is shared across tabs and pane switches, scoped by host and folder. A failed push retains Git's error and offers a push-only retry; pending operations prevent duplicate submissions. Completing an operation refreshes status and commit counts, and the Commits tab waits for that refresh before offering another push.
+
 - The tool panes follow the folder and host selected in the new-session composer without requiring a conversation. Git generation accepts a working folder directly; terminal and file operations use that folder. Pane attachments target the new-session draft and stay separate by host and project. After a conversation starts, its actual working folder, including a new worktree, takes over.
 
 - Git action improvements: editable commit-message and PR-description generation through the installed native Claude/Codex account or a configured ACP agent, selected-file commit context and committed branch-diff PR context, explicit base branch, independent generation sessions, and stale-diff detection. The generation controls use the app's themed agent picker with matching heights and narrow-pane layout. ACP generation uses a temporary working folder, advertises no client tools, declines client tool requests, validates JSON output and closes the process. Commits preserve unselected staged files, include both sides of selected renames, serialize writes sharing an index, and report a successful commit separately from a failed push. The UI offers push-only retry and branch publication. Generation and Git mutations have unit/integration coverage; the Electron flow and both native generators were exercised against scratch repositories.

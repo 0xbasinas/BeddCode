@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { hostRequest } from '../../stores/host.ts'
+import { gitOperationKey, pushBranch, useGitOperations } from './operations.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
 import type { GitCommit, GitLog } from '@beddcode/contracts'
 import { agoLabel } from '../../ui/format.ts'
@@ -45,34 +45,34 @@ export function CommitsTab({
   cwd,
   log,
   hasUpstream,
+  refreshing,
+  refreshError,
   onChanged,
   onOpenPr,
 }: {
   cwd: string
   log: GitLog
   hasUpstream: boolean
+  refreshing: boolean
+  refreshError?: string
   onChanged(): void
   onOpenPr(): void
 }) {
   const hostKey = useHostKey()
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string>()
+  const operation = useGitOperations((s) => s.entries[gitOperationKey(hostKey, cwd)]?.operation)
+  const busy = Boolean(operation?.pending || refreshing)
 
   const push = async () => {
-    setBusy(true)
-    setError(undefined)
     try {
-      await hostRequest(hostKey, 'git.push', { cwd })
+      await pushBranch(hostKey, cwd)
       onChanged()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
+    } catch {
+      /* The shared Git status keeps the result visible across tabs. */
     }
   }
 
   const n = log.unpushed.length
-  if (n === 0 && log.pushed.length === 0) {
+  if (n === 0 && log.pushed.length === 0 && !busy) {
     return <div className="git-empty">No commits on this branch yet.</div>
   }
 
@@ -97,24 +97,30 @@ export function CommitsTab({
         )}
       </div>
       <div className="git-footer">
-        {error && <div className="composer-error">{error}</div>}
+        {refreshError && (
+          <div className="composer-error" role="alert">
+            Could not refresh commits: {refreshError}
+          </div>
+        )}
         <div className="git-actions">
-          {n > 0 ? (
-            <button className="primary" disabled={busy} onClick={() => void push()}>
-              {busy
-                ? 'Pushing…'
-                : !hasUpstream
-                  ? 'Publish branch'
-                  : n === 1
-                    ? 'Push 1 commit'
-                    : `Push ${n} commits`}
+          {busy ? (
+            <button className="primary" disabled>
+              {operation?.pending
+                ? operation.kind === 'commit'
+                  ? 'Committing…'
+                  : 'Pushing…'
+                : 'Refreshing…'}
+            </button>
+          ) : n > 0 ? (
+            <button className="primary" onClick={() => void push()}>
+              {!hasUpstream ? 'Publish branch' : n === 1 ? 'Push 1 commit' : `Push ${n} commits`}
             </button>
           ) : (
             <button className="primary" disabled>
               Everything is pushed
             </button>
           )}
-          <button className="secondary" onClick={onOpenPr}>
+          <button className="secondary" disabled={busy} onClick={onOpenPr}>
             Open PR
           </button>
         </div>
