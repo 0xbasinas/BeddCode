@@ -1945,6 +1945,8 @@ button.chip-lite:hover {
 
 /* Native page (desktop): the frame is a placeholder the app's native view is laid over. */
 .native-frame {
+  /* The page paints over this; it only shows at the rounded corners and rim. */
+  background: var(--bg-code);
   position: relative;
   display: grid;
   place-items: center;
@@ -2111,44 +2113,103 @@ button.chip-lite:hover {
   flex-shrink: 0;
   margin: 0 calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border: 1px solid var(--border);
-  border-radius: calc(10px * var(--ui-scale));
-  background: var(--bg-input);
+  border-radius: calc(12px * var(--ui-scale));
+  background: var(--bg-code);
   overflow: hidden;
 }
 .console-head {
   display: flex;
   align-items: center;
-  gap: calc(8px * var(--ui-scale));
-  padding: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale))
-    calc(10px * var(--ui-scale));
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
   font-size: calc(12px * var(--ui-scale));
 }
 .console-head .icon-btn {
   padding: calc(5px * var(--ui-scale));
 }
+.console-filters {
+  display: flex;
+  gap: calc(2px * var(--ui-scale));
+}
+.console-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(5px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(9px * var(--ui-scale));
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: calc(12px * var(--ui-scale));
+}
+.console-filter:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.console-filter.on {
+  color: var(--text);
+  background: var(--bg-active);
+}
+.console-count {
+  min-width: calc(16px * var(--ui-scale));
+  padding: 0 calc(5px * var(--ui-scale));
+  border-radius: 999px;
+  background: var(--bg-hover);
+  font-size: calc(10px * var(--ui-scale));
+  line-height: calc(16px * var(--ui-scale));
+  text-align: center;
+}
+.console-filter.error .console-count {
+  background: color-mix(in srgb, var(--danger) 22%, transparent);
+  color: var(--danger);
+}
+.console-filter.warning .console-count {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+}
 .console-list {
   flex: 1;
   overflow: auto;
-  font: calc(11px * var(--ui-scale)) / 1.45 var(--font-mono);
+  font: calc(11.5px * var(--ui-scale)) / 1.5 var(--font-mono);
 }
 .console-empty {
-  padding: calc(10px * var(--ui-scale));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(8px * var(--ui-scale));
+  height: 100%;
+  min-height: calc(60px * var(--ui-scale));
+  color: var(--text-faint);
+  font-size: calc(12px * var(--ui-scale));
 }
 .console-row {
   display: flex;
+  align-items: flex-start;
   gap: calc(8px * var(--ui-scale));
-  padding: calc(3px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
-  color: var(--text-muted);
+  padding: calc(4px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+.console-row:hover {
+  background: color-mix(in srgb, var(--bg-hover) 50%, transparent);
 }
 .console-row.error {
   background: color-mix(in srgb, var(--danger) 8%, transparent);
   color: var(--danger);
 }
 .console-row.warning {
-  background: rgba(240, 164, 60, 0.08);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
   color: var(--accent);
+}
+.console-row.debug,
+.console-row.info {
+  color: var(--text-muted);
+}
+.console-level {
+  flex-shrink: 0;
+  display: inline-flex;
+  padding-top: calc(3px * var(--ui-scale));
+  opacity: 0.85;
 }
 .console-msg {
   flex: 1;
@@ -2156,13 +2217,23 @@ button.chip-lite:hover {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.console-src {
+.console-meta {
   flex-shrink: 0;
-  max-width: 40%;
+  display: flex;
+  gap: calc(10px * var(--ui-scale));
+  max-width: 45%;
+  color: var(--text-faint);
+  font-size: calc(10.5px * var(--ui-scale));
+  line-height: calc(17px * var(--ui-scale));
+}
+.console-src {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-faint);
+}
+.console-time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 .downloads {
   display: flex;

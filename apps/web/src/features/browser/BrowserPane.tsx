@@ -8,12 +8,16 @@ import {
   Play,
   Square,
   Camera,
+  Check,
   ChevronDown,
   ChevronUp,
+  CircleAlert,
+  Copy,
   Download,
   ExternalLink,
   FileText,
   Globe,
+  Info,
   MoreHorizontal,
   MousePointer2,
   Plus,
@@ -21,6 +25,7 @@ import {
   Search,
   Terminal,
   Trash2,
+  TriangleAlert,
   X,
   ZoomIn,
   ZoomOut,
@@ -853,6 +858,21 @@ function PromptBanner({ prompt }: { prompt: BrowserPrompt }) {
   )
 }
 
+type ConsoleFilter = 'all' | 'error' | 'warning' | 'info'
+
+const FILTERS: { id: ConsoleFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'error', label: 'Errors' },
+  { id: 'warning', label: 'Warnings' },
+  { id: 'info', label: 'Info' },
+]
+
+const matches = (filter: ConsoleFilter, level: BrowserConsoleEntry['level']) =>
+  filter === 'all' || (filter === 'info' ? level === 'info' || level === 'debug' : level === filter)
+
+const clock = (time: number) =>
+  new Date(time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+
 function ConsoleDrawer({
   tabId,
   errors,
@@ -867,6 +887,8 @@ function ConsoleDrawer({
   onClose(): void
 }) {
   const [entries, setEntries] = useState<BrowserConsoleEntry[]>([])
+  const [filter, setFilter] = useState<ConsoleFilter>('all')
+  const [copied, setCopied] = useState(false)
   const list = useRef<HTMLDivElement>(null)
   useEffect(() => {
     let alive = true
@@ -881,31 +903,51 @@ function ConsoleDrawer({
       clearInterval(timer)
     }
   }, [tabId, errors, url])
+  const shown = entries.filter((e) => matches(filter, e.level))
   useEffect(() => {
     list.current?.scrollTo({ top: list.current.scrollHeight })
-  }, [entries.length])
+  }, [shown.length])
+  const count = (f: ConsoleFilter) => entries.filter((e) => matches(f, e.level)).length
   const asText = () =>
     [`Console of ${url}`, '']
       .concat(
-        entries.map(
+        shown.map(
           (e) =>
             `[${e.level}] ${e.message}${e.source ? ` (${e.source}${e.line ? `:${e.line}` : ''})` : ''}`,
         ),
       )
       .join('\n')
+  const copy = () => {
+    void navigator.clipboard?.writeText(asText()).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1200)
+    })
+  }
   return (
     <div className="console-drawer" aria-label="Console">
       <div className="console-head">
-        <Terminal size={14} />
-        <span>Console</span>
-        <span className="muted small">
-          {entries.length} messages, {entries.filter((e) => e.level === 'error').length} errors
-        </span>
+        <div className="console-filters" role="tablist" aria-label="Show">
+          {FILTERS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              role="tab"
+              aria-selected={filter === f.id}
+              className={`console-filter ${filter === f.id ? 'on' : ''} ${f.id}`}
+              onClick={() => setFilter(f.id)}
+            >
+              {f.label}
+              {f.id !== 'all' && count(f.id) > 0 && (
+                <span className="console-count">{count(f.id)}</span>
+              )}
+            </button>
+          ))}
+        </div>
         <span className="spacer" />
         {onAttach && (
           <button
             className="ghost-btn small"
-            disabled={!entries.length}
+            disabled={!shown.length}
             onClick={() => onAttach(asText())}
           >
             Attach to message
@@ -913,7 +955,17 @@ function ConsoleDrawer({
         )}
         <button
           className="icon-btn"
+          aria-label="Copy"
+          title="Copy"
+          disabled={!shown.length}
+          onClick={copy}
+        >
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+        </button>
+        <button
+          className="icon-btn"
           aria-label="Clear console"
+          title="Clear"
           onClick={() => {
             void browserCommand({ op: 'clear-console', tabId })
             setEntries([])
@@ -921,23 +973,38 @@ function ConsoleDrawer({
         >
           <Trash2 size={14} />
         </button>
-        <button className="icon-btn" aria-label="Close console" onClick={onClose}>
+        <button className="icon-btn" aria-label="Close console" title="Close" onClick={onClose}>
           <X size={14} />
         </button>
       </div>
       <div className="console-list" ref={list}>
-        {entries.length === 0 && (
-          <div className="muted small console-empty">Nothing logged yet</div>
+        {shown.length === 0 && (
+          <div className="console-empty">
+            <Terminal size={16} />
+            {entries.length === 0 ? 'Nothing logged yet' : 'Nothing matches this filter'}
+          </div>
         )}
-        {entries.map((e, i) => (
+        {shown.map((e, i) => (
           <div key={i} className={`console-row ${e.level}`}>
+            <span className="console-level" aria-label={e.level}>
+              {e.level === 'error' ? (
+                <CircleAlert size={13} />
+              ) : e.level === 'warning' ? (
+                <TriangleAlert size={13} />
+              ) : (
+                <Info size={13} />
+              )}
+            </span>
             <span className="console-msg">{e.message}</span>
-            {e.source && (
-              <span className="console-src" title={e.source}>
-                {e.source.split('/').pop()}
-                {e.line ? `:${e.line}` : ''}
-              </span>
-            )}
+            <span className="console-meta">
+              {e.source && (
+                <span className="console-src" title={e.source}>
+                  {e.source.split('/').pop()}
+                  {e.line ? `:${e.line}` : ''}
+                </span>
+              )}
+              <span className="console-time">{clock(e.time)}</span>
+            </span>
           </div>
         ))}
       </div>
