@@ -2,7 +2,7 @@ name: Winget
 
 # Opens a pull request against microsoft/winget-pkgs for each published release, so `winget upgrade`
 # sees it. The first version has to be submitted by hand (see packaging/winget/README.md); after
-# that this keeps the package current.
+# that this keeps the package current. It uses Microsoft's own wingetcreate, no third-party action.
 on:
   release:
     types: [released]
@@ -14,24 +14,28 @@ on:
 
 jobs:
   winget:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     # Needs the WINGET_TOKEN secret: a classic personal access token with public_repo, from an
     # account that has forked microsoft/winget-pkgs.
     if: ${{ github.repository_owner == '0xbasinas' && !github.event.release.prerelease }}
     steps:
       # Winget pins each version to one installer URL and hash, so "latest" is resolved to a tag here.
-      - id: tag
+      - name: Find the release
+        id: release
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag || github.event.release.tag_name }}
         run: |
-          if [ -z "$TAG" ]; then
-            TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
-          fi
-          echo "name=$TAG" >> "$GITHUB_OUTPUT"
-      - uses: vedantmgoyal9/winget-releaser@v2
-        with:
-          identifier: BeddCode.BeddCode
-          installers-regex: 'BeddCode-Setup-.*\.exe$'
-          release-tag: ${{ steps.tag.outputs.name }}
-          token: ${{ secrets.WINGET_TOKEN }}
+          if (-not $env:TAG) { $env:TAG = gh release view --repo $env:GITHUB_REPOSITORY --json tagName --jq .tagName }
+          $url = gh release view $env:TAG --repo $env:GITHUB_REPOSITORY --json assets --jq '.assets[] | select(.name | test("^BeddCode-Setup-.*\.exe$")) | .url'
+          if (-not $url) { throw "No BeddCode-Setup installer on release $env:TAG" }
+          "version=$($env:TAG.TrimStart('v'))" >> $env:GITHUB_OUTPUT
+          "url=$url" >> $env:GITHUB_OUTPUT
+      - name: Submit to winget-pkgs
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          ./wingetcreate.exe update BeddCode.BeddCode --version ${{ steps.release.outputs.version }} --urls ${{ steps.release.outputs.url }} --submit --token $env:WINGET_TOKEN

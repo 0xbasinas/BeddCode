@@ -12,7 +12,8 @@
 
 ## Every release after that
 
-`.github/workflows/winget.yml` opens the pull request when a release is published. One-time setup:
+`.github/workflows/winget.yml` opens the pull request when a release is published, with Microsoft's
+`wingetcreate` (downloaded from aka.ms on the runner). One-time setup:
 fork `microsoft/winget-pkgs` and add a `WINGET_TOKEN` repository secret (a classic personal access token
 with `public_repo`). Until the first submission is merged the action has nothing to update.
 
