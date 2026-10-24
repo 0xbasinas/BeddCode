@@ -20,6 +20,16 @@ contextBridge.exposeInMainWorld('beddcodeDesktop', {
       return () => ipcRenderer.removeListener('beddcode:daemon-status', listener)
     },
   },
+  /** Pages in the browser pane asking for a new window; each address should open in a new tab. */
+  browser: {
+    onOpen(callback: (url: string) => void): () => void {
+      const listener = (_event: unknown, url: unknown) => {
+        if (typeof url === 'string') callback(url)
+      }
+      ipcRenderer.on('beddcode:browser-open', listener)
+      return () => ipcRenderer.removeListener('beddcode:browser-open', listener)
+    },
+  },
   /** The app's own window buttons (Linux and Windows; macOS keeps its traffic lights). */
   window: {
     minimize: (): Promise<boolean> => ipcRenderer.invoke('beddcode:window', 'minimize'),

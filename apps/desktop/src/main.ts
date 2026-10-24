@@ -1,5 +1,6 @@
 import path from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron'
+import { BROWSER_PARTITION, guardBrowserSession, popupTarget } from './browserGuard.ts'
 import { Daemon, probeHealth, readLogTail, type DaemonState } from './daemon.ts'
 import { autoUpdater } from 'electron-updater'
 import { hostPort, serverLaunch } from './serverLaunch.ts'
@@ -12,6 +13,7 @@ const webUrl = process.env.BEDDCODE_WEB_URL
 // Sent to the page whenever the window is maximized or restored (see preload.ts).
 const WINDOW_MAXIMIZED = 'beddcode:window-maximized'
 const DAEMON_STATUS = 'beddcode:daemon-status'
+const BROWSER_OPEN = 'beddcode:browser-open'
 
 // Windows names a notification's sender by the app's user model id. Installed builds use the id the
 // installer gave their Start menu shortcut (appId in electron-builder.yml), which shows the shortcut's
@@ -193,6 +195,7 @@ app.on('before-quit', (event) => {
 })
 
 app.whenReady().then(() => {
+  guardBrowserSession(session.fromPartition(BROWSER_PARTITION))
   startDaemon()
   createWindow()
   if (
@@ -202,6 +205,16 @@ app.whenReady().then(() => {
   }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+})
+
+// A page in the browser pane that opens a new window (target=_blank, window.open) gets a new tab.
+app.on('web-contents-created', (_event, contents) => {
+  if (contents.getType() !== 'webview') return
+  contents.setWindowOpenHandler(({ url }) => {
+    const target = popupTarget(url)
+    if (target) contents.hostWebContents?.send(BROWSER_OPEN, target)
+    return { action: 'deny' }
   })
 })
 

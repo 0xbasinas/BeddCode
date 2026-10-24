@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Globe, Plus, RotateCw, X, MousePointer2 } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowLeft, ArrowRight, Bug, Globe, Plus, RotateCw, X, MousePointer2 } from 'lucide-react'
 import { useBrowser, type BrowserTab } from './browserStore.ts'
 import '../../ui/desktop.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
@@ -20,12 +20,22 @@ interface WebviewElement extends HTMLElement {
   goBack(): void
   goForward(): void
   reload(): void
+  stop(): void
+  openDevTools(): void
   canGoBack(): boolean
   canGoForward(): boolean
   getURL(): string
   executeJavaScript<T>(code: string): Promise<T>
   capturePage(rect: PickedElement['rect']): Promise<{ toDataURL(): string }>
 }
+
+/** What a page's view reports about itself. */
+interface PageState {
+  back: boolean
+  forward: boolean
+  loading: boolean
+}
+const IDLE: PageState = { back: false, forward: false, loading: false }
 
 const isDesktop = () => typeof window !== 'undefined' && Boolean(window.beddcodeDesktop)
 
@@ -36,8 +46,20 @@ export function BrowserPane({ draftId }: { draftId?: string }) {
   const current = tabs.find((t) => t.id === active)
   const [address, setAddress] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
-  const [nav, setNav] = useState({ back: false, forward: false })
-  const view = useRef<WebviewElement | null>(null)
+  const [pages, setPages] = useState<Record<number, PageState>>({})
+  const nav = (current && pages[current.id]) || IDLE
+  // Every tab keeps its own view alive, so switching tabs does not reload the page.
+  const views = useRef(new Map<number, WebviewElement>())
+  const activeView = () => (current ? (views.current.get(current.id) ?? null) : null)
+  const register = useCallback((id: number, el: WebviewElement | null) => {
+    if (el) views.current.set(id, el)
+    else views.current.delete(id)
+  }, [])
+  const onPage = useCallback(
+    (id: number, patch: Partial<PageState>) =>
+      setPages((p) => ({ ...p, [id]: { ...(p[id] ?? IDLE), ...patch } })),
+    [],
+  )
   const frame = useRef<HTMLIFrameElement>(null)
   const [picking, setPicking] = useState(false)
   const [pickError, setPickError] = useState<string>()
@@ -76,7 +98,7 @@ export function BrowserPane({ draftId }: { draftId?: string }) {
     }
     if (!draftId) return
     setPickError(undefined)
-    const webview = view.current
+    const webview = activeView()
     let cancelled = false
     let page: Document | undefined
     const request = {
@@ -130,6 +152,12 @@ export function BrowserPane({ draftId }: { draftId?: string }) {
     }
   }
 
+  // A page that opens a new window (target=_blank) gets a tab of its own.
+  useEffect(
+    () => window.beddcodeDesktop?.browser?.onOpen((url) => open(url, { newTab: true })),
+    [open],
+  )
+
   // The address bar follows the active tab.
   useEffect(() => setAddress(current?.url ?? ''), [current?.id, current?.url])
 
@@ -139,7 +167,8 @@ export function BrowserPane({ draftId }: { draftId?: string }) {
   }
 
   const reload = () => {
-    if (view.current) view.current.reload()
+    const webview = activeView()
+    if (webview) webview[nav.loading ? 'stop' : 'reload']()
     else setReloadKey((k) => k + 1)
   }
 
@@ -162,7 +191,12 @@ export function BrowserPane({ draftId }: { draftId?: string }) {
           {tabs.map((t) => (
             <div key={t.id} className="term-tab" role="tab" aria-selected={t.id === active}>
               <button onClick={() => activate(t.id)} title={t.url}>
-                <Globe size={14} /> {t.title || t.url}
+                {t.favicon ? (
+                  <img className="tab-favicon" src={t.favicon} alt="" width={14} height={14} />
+                ) : (
+                  <Globe size={14} />
+                )}{' '}
+                {t.title || t.url}
               </button>
               <button aria-label={`Close ${t.title}`} onClick={() => close(t.id)}>
                 <X size={13} />
@@ -199,7 +233,7 @@ export function BrowserPane({ draftId }: { draftId?: string }) {
           className="icon-btn"
           aria-label="Back"
           disabled={!nav.back}
-          onClick={() => view.current?.goBack()}
+          onClick={() => activeView()?.goBack()}
         >
           <ArrowLeft size={17} />
         </button>
@@ -208,19 +242,31 @@ export function BrowserPane({ draftId }: { draftId?: string }) {
           className="icon-btn"
           aria-label="Forward"
           disabled={!nav.forward}
-          onClick={() => view.current?.goForward()}
+          onClick={() => activeView()?.goForward()}
         >
           <ArrowRight size={17} />
         </button>
         <button
           type="button"
           className="icon-btn"
-          aria-label="Reload"
+          aria-label={nav.loading ? 'Stop loading' : 'Reload'}
           disabled={!current}
           onClick={reload}
         >
-          <RotateCw size={16} />
+          {nav.loading ? <X size={16} /> : <RotateCw size={16} />}
         </button>
+        {isDesktop() && (
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Open developer tools"
+            title="Developer tools"
+            disabled={!current || current.url === 'about:blank'}
+            onClick={() => activeView()?.openDevTools()}
+          >
+            <Bug size={16} />
+          </button>
+        )}
         <div className="url-field">
           <Globe size={15} />
           <input
@@ -244,10 +290,20 @@ export function BrowserPane({ draftId }: { draftId?: string }) {
         </div>
       )}
 
+      {isDesktop() &&
+        tabs
+          .filter((t) => t.url !== 'about:blank')
+          .map((t) => (
+            <DesktopPage
+              key={t.id}
+              tab={t}
+              active={t.id === active}
+              register={register}
+              onPage={onPage}
+            />
+          ))}
       {current && current.url !== 'about:blank' ? (
-        isDesktop() ? (
-          <DesktopPage key={current.id} tab={current} viewRef={view} onNav={setNav} />
-        ) : (
+        isDesktop() ? null : (
           <iframe
             ref={frame}
             key={`${current.id}:${current.url}:${reloadKey}`}
@@ -290,15 +346,18 @@ export function BrowserPane({ draftId }: { draftId?: string }) {
 /** Electron's <webview>: an isolated page with real back/forward and a title. */
 function DesktopPage({
   tab,
-  viewRef,
-  onNav,
+  active,
+  register,
+  onPage,
 }: {
   tab: BrowserTab
-  viewRef: { current: WebviewElement | null }
-  onNav(state: { back: boolean; forward: boolean }): void
+  active: boolean
+  register(id: number, el: WebviewElement | null): void
+  onPage(id: number, patch: Partial<PageState>): void
 }) {
   const host = useRef<HTMLDivElement>(null)
-  const { navigated, titled } = useBrowser.getState()
+  const view = useRef<WebviewElement | null>(null)
+  const { navigated, titled, faviconed } = useBrowser.getState()
   const initialUrl = useRef(tab.url)
   const latestUrl = useRef(tab.url)
   latestUrl.current = tab.url
@@ -309,10 +368,13 @@ function DesktopPage({
     if (!el) return
     // Created by hand: React has no typing for the element, and the source must be set once.
     const webview = createElementIn(el, initialUrl.current)
-    viewRef.current = webview
+    view.current = webview
+    register(tab.id, webview)
     ready.current = false
     const sync = () => {
-      if (ready.current) onNav({ back: webview.canGoBack(), forward: webview.canGoForward() })
+      if (ready.current) {
+        onPage(tab.id, { back: webview.canGoBack(), forward: webview.canGoForward() })
+      }
     }
     const onReady = () => {
       ready.current = true
@@ -326,25 +388,41 @@ function DesktopPage({
       if (url) navigated(tab.id, url)
       sync()
     }
+    const onTitle = (e: Event) => titled(tab.id, (e as Event & { title?: string }).title ?? '')
+    const onFavicon = (e: Event) => {
+      const icon = (e as Event & { favicons?: string[] }).favicons?.[0]
+      if (icon) faviconed(tab.id, icon)
+    }
+    const onStart = () => onPage(tab.id, { loading: true })
+    const onStop = () => {
+      onPage(tab.id, { loading: false })
+      sync()
+    }
     webview.addEventListener('did-navigate', onNavigate)
     webview.addEventListener('did-navigate-in-page', onNavigate)
     webview.addEventListener('dom-ready', onReady)
-    const onTitle = (e: Event) => titled(tab.id, (e as Event & { title?: string }).title ?? '')
     webview.addEventListener('page-title-updated', onTitle)
+    webview.addEventListener('page-favicon-updated', onFavicon)
+    webview.addEventListener('did-start-loading', onStart)
+    webview.addEventListener('did-stop-loading', onStop)
     return () => {
       ready.current = false
-      viewRef.current = null
+      view.current = null
+      register(tab.id, null)
       webview.removeEventListener('did-navigate', onNavigate)
       webview.removeEventListener('did-navigate-in-page', onNavigate)
       webview.removeEventListener('dom-ready', onReady)
       webview.removeEventListener('page-title-updated', onTitle)
+      webview.removeEventListener('page-favicon-updated', onFavicon)
+      webview.removeEventListener('did-start-loading', onStart)
+      webview.removeEventListener('did-stop-loading', onStop)
       webview.remove()
     }
-  }, [tab.id, viewRef, onNav, navigated, titled])
+  }, [tab.id, register, onPage, navigated, titled, faviconed])
 
   // Typing a new address in the bar points the same webview at it.
   useEffect(() => {
-    const webview = viewRef.current
+    const webview = view.current
     if (
       webview &&
       ready.current &&
@@ -354,9 +432,9 @@ function DesktopPage({
     ) {
       webview.src = tab.url
     }
-  }, [tab.url, viewRef])
+  }, [tab.url])
 
-  return <div className="page-frame" ref={host} />
+  return <div className="page-frame" ref={host} hidden={!active} />
 }
 
 function createElementIn(parent: HTMLElement, url: string): WebviewElement {

@@ -1929,6 +1929,9 @@ button.chip-lite:hover {
   background: var(--bg-input);
   color: var(--text-muted);
 }
+.page-frame[hidden] {
+  display: none;
+}
 .page-frame {
   flex: 1;
   min-height: 0;

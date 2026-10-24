@@ -34,6 +34,8 @@ declare global {
       pickFolder?(options?: { defaultPath?: string }): Promise<string | null>
       /** The app's own window buttons; absent on macOS builds that keep the traffic lights. */
       window?: DesktopWindow
+      /** Pages in the browser pane asking for a new window; returns an unsubscribe. */
+      browser?: { onOpen(callback: (url: string) => void): () => void }
       /** Supervision of the local host; absent in the browser. */
       daemon?: DesktopDaemon
     }

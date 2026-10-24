@@ -5,6 +5,7 @@ export interface BrowserTab {
   id: number
   url: string
   title: string
+  favicon?: string
 }
 
 interface BrowserState {
@@ -16,6 +17,7 @@ interface BrowserState {
   /** The page navigated on its own (a link, a redirect): keep the address bar in step. */
   navigated(id: number, url: string): void
   titled(id: number, title: string): void
+  faviconed(id: number, favicon: string): void
 }
 
 let nextId = 1
@@ -58,5 +60,9 @@ export const useBrowser = create<BrowserState>((set, get) => ({
 
   titled(id, title) {
     set((s) => ({ tabs: s.tabs.map((t) => (t.id === id && title ? { ...t, title } : t)) }))
+  },
+
+  faviconed(id, favicon) {
+    set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, favicon } : t)) }))
   },
 }))
