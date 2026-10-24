@@ -4627,3 +4627,429 @@ button.agent-tools-chip.on:hover {
   font-family: var(--font-mono);
   font-size: 11px;
 }
+
+/* Git pane: pull requests (list, detail, create) through the host's gh */
+.pr-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.pr-toolbar,
+.pr-detail-bar {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: calc(12px * var(--ui-scale));
+}
+.pr-filters {
+  display: flex;
+  gap: calc(2px * var(--ui-scale));
+  flex-wrap: wrap;
+}
+.pr-filters button {
+  padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-radius: calc(999px * var(--ui-scale));
+  color: var(--text-muted);
+  font-size: calc(11.5px * var(--ui-scale));
+}
+.pr-filters button[aria-selected='true'] {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.pr-new {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(9px * var(--ui-scale));
+  border-radius: calc(7px * var(--ui-scale));
+  background: var(--text);
+  color: var(--bg-app);
+  font-size: calc(11.5px * var(--ui-scale));
+  font-weight: 500;
+}
+.pr-new:disabled {
+  opacity: 0.4;
+}
+.pr-list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2px * var(--ui-scale));
+}
+.pr-group-label {
+  padding: calc(10px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale));
+  color: var(--text-muted);
+  font-size: calc(11px * var(--ui-scale));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.pr-loading {
+  padding: calc(8px * var(--ui-scale));
+}
+.pr-row {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(10px * var(--ui-scale));
+  width: 100%;
+  padding: calc(9px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-radius: calc(9px * var(--ui-scale));
+  text-align: left;
+  border: 1px solid transparent;
+}
+.pr-row:hover {
+  background: var(--bg-hover);
+}
+.pr-row.current {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.pr-row > .pr-icon {
+  margin-top: calc(2px * var(--ui-scale));
+  flex: none;
+}
+.pr-icon.open {
+  color: var(--success);
+}
+.pr-icon.draft {
+  color: var(--text-muted);
+}
+.pr-icon.merged {
+  color: #b39cf0;
+}
+.pr-icon.closed {
+  color: var(--danger);
+}
+.pr-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: calc(3px * var(--ui-scale));
+  min-width: 0;
+  flex: 1;
+}
+.pr-row-title {
+  font-size: calc(13px * var(--ui-scale));
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.pr-row-meta {
+  color: var(--text-muted);
+  font-size: calc(11.5px * var(--ui-scale));
+}
+.pr-row-branch {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  color: var(--text-faint);
+  font-size: calc(11px * var(--ui-scale));
+  min-width: 0;
+}
+.pr-row-branch code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 45%;
+}
+.pr-row-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: calc(4px * var(--ui-scale));
+  flex: none;
+  font-size: calc(11px * var(--ui-scale));
+}
+.pr-checks {
+  display: inline-flex;
+}
+.pr-checks .ok,
+.pr-detail .ok {
+  color: var(--success);
+}
+.pr-checks .bad {
+  color: var(--danger);
+}
+.pr-checks .wait {
+  color: var(--accent);
+}
+.pr-review {
+  padding: 0 calc(7px * var(--ui-scale));
+  border-radius: calc(999px * var(--ui-scale));
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font-size: calc(11px * var(--ui-scale));
+  white-space: nowrap;
+}
+.pr-review.approved {
+  background: rgba(111, 207, 151, 0.16);
+  color: var(--success);
+}
+.pr-review.changes_requested {
+  background: rgba(229, 100, 92, 0.16);
+  color: var(--danger);
+}
+.pr-fork {
+  padding: 0 calc(6px * var(--ui-scale));
+  border-radius: calc(999px * var(--ui-scale));
+  border: 1px solid var(--border);
+  font-size: calc(10.5px * var(--ui-scale));
+  color: var(--text-muted);
+}
+.pr-cta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: calc(8px * var(--ui-scale));
+  margin: calc(6px * var(--ui-scale)) 0;
+  padding: calc(10px * var(--ui-scale));
+  border-radius: calc(10px * var(--ui-scale));
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+}
+.pr-cta span {
+  flex: 1;
+  min-width: 0;
+}
+.pr-cta .secondary,
+.gh-problem-actions .secondary,
+.pr-comment .secondary {
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border-radius: calc(8px * var(--ui-scale));
+  background: var(--bg-raised);
+  font-size: calc(12px * var(--ui-scale));
+  display: inline-flex;
+  align-items: center;
+  gap: calc(5px * var(--ui-scale));
+  color: var(--text);
+}
+.pr-foot {
+  padding: calc(8px * var(--ui-scale)) calc(14px * var(--ui-scale));
+  border-top: 1px solid var(--border-subtle);
+  font-size: calc(11.5px * var(--ui-scale));
+}
+.pr-foot a {
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: calc(3px * var(--ui-scale));
+}
+.gh-problem {
+  gap: calc(10px * var(--ui-scale));
+}
+.gh-problem-title {
+  color: var(--text);
+  font-weight: 500;
+}
+.gh-command {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(6px * var(--ui-scale)) calc(6px * var(--ui-scale))
+    calc(12px * var(--ui-scale));
+  border-radius: calc(8px * var(--ui-scale));
+  background: var(--bg-raised);
+  color: var(--text);
+}
+.gh-problem-actions {
+  display: flex;
+  gap: calc(8px * var(--ui-scale));
+}
+.git-scroll.pr .state {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(5px * var(--ui-scale));
+}
+.git-scroll.pr .state .pr-icon {
+  color: inherit;
+}
+.state.draft {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+.pr-meta {
+  font-size: calc(12px * var(--ui-scale));
+  margin-top: calc(-6px * var(--ui-scale));
+}
+.pr-meta strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.pr-body {
+  padding: calc(10px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-radius: calc(10px * var(--ui-scale));
+  background: var(--bg-card);
+  max-height: calc(320px * var(--ui-scale));
+  overflow-y: auto;
+  font-size: calc(12.5px * var(--ui-scale));
+}
+.check-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.check-row a {
+  color: var(--text-muted);
+  display: inline-flex;
+}
+.pr-event {
+  padding: calc(8px * var(--ui-scale)) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.pr-event-head {
+  display: flex;
+  align-items: center;
+  gap: calc(7px * var(--ui-scale));
+  font-size: calc(12px * var(--ui-scale));
+}
+.pr-event.review.approved .pr-event-head .muted {
+  color: var(--success);
+}
+.pr-event.review.changes_requested .pr-event-head .muted {
+  color: var(--danger);
+}
+.pr-avatar {
+  width: calc(18px * var(--ui-scale));
+  height: calc(18px * var(--ui-scale));
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  background: var(--bg-hover);
+  font-size: calc(10px * var(--ui-scale));
+  font-weight: 600;
+}
+.pr-event-body {
+  padding: calc(4px * var(--ui-scale)) 0 0 calc(25px * var(--ui-scale));
+  font-size: calc(12.5px * var(--ui-scale));
+}
+.pr-comment {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: calc(6px * var(--ui-scale));
+  padding-top: calc(10px * var(--ui-scale));
+}
+.pr-comment textarea {
+  width: 100%;
+}
+.pr-file {
+  color: inherit;
+  text-decoration: none;
+  border-radius: calc(6px * var(--ui-scale));
+  padding-inline: calc(4px * var(--ui-scale));
+}
+.pr-file:hover {
+  background: var(--bg-hover);
+}
+.pr-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: calc(6px * var(--ui-scale));
+  color: var(--success);
+  font-size: calc(12px * var(--ui-scale));
+}
+.pr-warn {
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--accent);
+}
+.pr-warn.bad {
+  color: var(--danger);
+}
+.pr-actions {
+  flex-wrap: wrap;
+}
+.pr-actions .primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(6px * var(--ui-scale));
+}
+.danger-text {
+  color: var(--danger);
+}
+.pr-checkout {
+  position: relative;
+  display: flex;
+}
+.pr-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: calc(220px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale));
+  border-radius: calc(10px * var(--ui-scale));
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.pr-menu button {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  width: 100%;
+  padding: calc(7px * var(--ui-scale)) calc(9px * var(--ui-scale));
+  border-radius: calc(7px * var(--ui-scale));
+  font-size: calc(12px * var(--ui-scale));
+  text-align: left;
+}
+.pr-menu button {
+  color: var(--text);
+}
+.pr-menu button:hover {
+  background: var(--bg-hover);
+}
+.pr-merge {
+  display: flex;
+  flex-direction: column;
+  gap: calc(8px * var(--ui-scale));
+}
+.pr-merge-title {
+  font-weight: 500;
+}
+.pr-methods {
+  display: flex;
+  flex-direction: column;
+  gap: calc(3px * var(--ui-scale));
+}
+.pr-methods button {
+  text-align: left;
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border-radius: calc(8px * var(--ui-scale));
+  border: 1px solid var(--border-subtle);
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text-muted);
+}
+.pr-methods button[aria-checked='true'] {
+  border-color: color-mix(in srgb, #b39cf0 60%, transparent);
+  background: rgba(150, 120, 230, 0.12);
+  color: var(--text);
+}
+.git-actions .primary.danger-ok {
+  background: #8f6fe0;
+  color: #fff;
+}
+.git-scroll.pr > * {
+  flex: none;
+}
+.git-scroll.pr .branches {
+  flex-wrap: wrap;
+  gap: calc(6px * var(--ui-scale));
+}
+.git-scroll.pr .branches code {
+  overflow-wrap: anywhere;
+  font-size: calc(11.5px * var(--ui-scale));
+}
+.pr-event-body.clamped {
+  max-height: calc(150px * var(--ui-scale));
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 70%, transparent);
+}
+.pr-more {
+  margin: calc(4px * var(--ui-scale)) 0 0 calc(25px * var(--ui-scale));
+  color: var(--text-muted);
+  font-size: calc(11.5px * var(--ui-scale));
+}
+.pr-more:hover {
+  color: var(--text);
+}

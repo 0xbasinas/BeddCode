@@ -13,6 +13,7 @@ import {
   Pin,
   PinOff,
   ArrowRightLeft,
+  GitPullRequest,
 } from 'lucide-react'
 import type { SessionView } from '@beddcode/client-runtime'
 import { Composer } from '../composer/Composer.tsx'
@@ -291,7 +292,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             onAnswer={(requestId, answers) => answerQuestion(sessionId, requestId, answers)}
             onFork={canFork ? (turnNo) => fork(turnNo) : undefined}
             completedTurns={session.completedTurns}
-            changes={{ hostKey, sessionId, idle: !busy }}
+            changes={{ hostKey, sessionId, idle: !busy, worktree: Boolean(session?.worktree) }}
           />
         </div>
       </div>
@@ -478,6 +479,18 @@ function WorktreeChip({ session, hostKey }: { session: SessionView; hostKey: str
             <Copy size={16} />
             <span className="menu-text">
               <span className="menu-title">{copied ? 'Copied' : 'Copy path'}</span>
+            </span>
+          </button>
+          <button
+            className="menu-row"
+            onClick={() => {
+              useUiStore.getState().showCreatePr()
+              close()
+            }}
+          >
+            <GitPullRequest size={16} />
+            <span className="menu-text">
+              <span className="menu-title">Create pull request</span>
             </span>
           </button>
           <div className="menu-sep" />

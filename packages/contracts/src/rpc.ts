@@ -8,6 +8,11 @@ import {
   Project,
   ProjectScript,
   PullRequest,
+  PullRequestDetail,
+  PullRequestSummary,
+  GithubStatus,
+  PrFilter,
+  PrAction,
 } from './git.ts'
 import { Device, PairingCode, TailnetStatus } from './hosts.ts'
 import { ConfigOption, SlashCommand } from './events.ts'
@@ -227,6 +232,35 @@ export const RpcMethods = {
   'git.push': { params: z.object({ cwd: z.string() }), result: z.object({}) },
   /** The pull request for the current branch, or null when there is none. */
   'git.pr.get': { params: z.object({ cwd: z.string() }), result: PullRequest.nullable() },
+  /** Whether the host's GitHub CLI is installed and signed in, and the folder's GitHub repo. */
+  'git.gh.status': { params: z.object({ cwd: z.string() }), result: GithubStatus },
+  /** The repo's pull requests: open, the user's own, those awaiting their review, or closed. */
+  'git.pr.list': {
+    params: z.object({
+      cwd: z.string(),
+      filter: PrFilter,
+      limit: z.number().int().min(1).max(100).optional(),
+    }),
+    result: z.object({ items: z.array(PullRequestSummary) }),
+  },
+  'git.pr.view': {
+    params: z.object({ cwd: z.string(), number: z.number().int().positive() }),
+    result: PullRequestDetail,
+  },
+  /** Mark ready, back to draft, close, reopen, comment on or merge a pull request. */
+  'git.pr.act': {
+    params: z.object({ cwd: z.string(), number: z.number().int().positive(), do: PrAction }),
+    result: z.object({ message: z.string().optional() }),
+  },
+  /** Checks a pull request out: here (switching this folder's branch) or into a new worktree. */
+  'git.pr.checkout': {
+    params: z.object({
+      cwd: z.string(),
+      number: z.number().int().positive(),
+      worktree: z.boolean().optional(),
+    }),
+    result: z.object({ branch: z.string(), path: z.string() }),
+  },
   /** Pushes the branch, then opens a pull request with the GitHub CLI. */
   'git.pr.create': {
     params: z.object({

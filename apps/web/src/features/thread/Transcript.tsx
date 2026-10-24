@@ -41,7 +41,7 @@ export function Transcript({
   sessionId?: string
   hostKey?: string
   /** Where turn changes are read and undone; without it their cards are not shown. */
-  changes?: { hostKey: string; sessionId: string; idle: boolean }
+  changes?: { hostKey: string; sessionId: string; idle: boolean; worktree?: boolean }
   onApprove(requestId: string, optionId: string): void | Promise<void>
   onAnswer?(requestId: string, answers?: Record<string, string[]>): void | Promise<void>
   onOpenFile?(path: string): void
@@ -79,6 +79,7 @@ export function Transcript({
               hostKey={changes.hostKey}
               sessionId={changes.sessionId}
               canUndo={changes.idle && block.item.id === latestChanges}
+              offerPr={changes.worktree && changes.idle && block.item.id === latestChanges}
               onOpenFile={onOpenFile}
             />
           ) : null

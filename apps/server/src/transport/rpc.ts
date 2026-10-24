@@ -134,6 +134,11 @@ export function createRpcRouter(
       return {}
     },
     'git.pr.get': (p) => github.pullRequest(p.cwd),
+    'git.gh.status': (p) => github.status(p.cwd),
+    'git.pr.list': async (p) => ({ items: await github.list(p.cwd, p.filter, p.limit) }),
+    'git.pr.view': (p) => github.view(p.cwd, p.number),
+    'git.pr.act': (p) => github.act(p.cwd, p.number, p.do),
+    'git.pr.checkout': (p) => github.checkout(p.cwd, p.number, git, { worktree: p.worktree }),
     'git.pr.create': async (p) => {
       const info = await git.info(p.cwd)
       if (!info.branch || info.detached)
