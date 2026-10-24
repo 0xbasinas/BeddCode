@@ -286,10 +286,6 @@ function ResultCard({ view, tool, labels, now }: CardProps) {
       : (child?.phase ?? 'done')
   const body = view.name === 'wait_for' ? view.reply : view.transcript
   const [open, setOpen] = useState(Boolean(view.pending || view.error))
-  // The start call's card already shows this reply; a second copy would only repeat it.
-  if (view.name === 'wait_for' && !view.pending && !view.error && body && body === child?.reply) {
-    return <AgentToolRow view={view} tool={tool} labels={labels} now={now} />
-  }
   return (
     <div className={`agent-card compact ${view.error ? 'error' : ''}`}>
       <div className="agent-card-head">
