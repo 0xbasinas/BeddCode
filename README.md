@@ -10,6 +10,22 @@ On Windows, the package is also being added to [winget](https://learn.microsoft.
 
 Agent CLIs (`claude`, `codex`, `grok`, …) are not bundled; install them and sign in on each machine that runs sessions.
 
+### The `beddcode` command
+
+The installed app also gives you a `beddcode` command, so a terminal is enough to look after a host. It runs on the app's own runtime; nothing else has to be installed.
+
+```bash
+beddcode status              # is the host on this machine running, and which version
+beddcode doctor              # check git, agent CLIs, GitHub, Tailscale and the host; says how to fix each
+beddcode pair                # a one-time code to pair a phone or another computer
+beddcode logs -f             # the host's log (-n <lines>, -f to follow)
+beddcode open                # start the desktop app
+beddcode serve               # run the host in this terminal
+beddcode install-service     # run the host in the background at login (uninstall-service removes it)
+```
+
+`--port <n>` selects another port. On Windows the installer adds the command to your user PATH (open a new terminal after installing); on Linux the `.deb` already puts `beddcode` on PATH, and the AppImage takes the same arguments (`./BeddCode.AppImage status`). With no arguments `beddcode` opens the app on Linux and shows its help on Windows. From a checkout, the same commands run as `pnpm --filter @beddcode/server start <command>`.
+
 ## Develop
 
 Requires Node 22+ and pnpm.

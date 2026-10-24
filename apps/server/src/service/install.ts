@@ -25,6 +25,17 @@ export interface ServicePlanInput {
   command: string[]
   /** Arguments after `serve`. */
   serveArgs: string[]
+  /** Variables the host needs, such as ELECTRON_RUN_AS_NODE when the app's own runtime runs it. */
+  env?: Record<string, string>
+}
+
+/** The variables a service must be started with, when this process was started with them. */
+export function serviceEnv(source: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const name of ['ELECTRON_RUN_AS_NODE', 'BEDDCODE_WEB_ROOT']) {
+    if (source[name]) env[name] = source[name]!
+  }
+  return env
 }
 
 const systemdQuote = (arg: string) =>
@@ -38,6 +49,7 @@ const windowsQuote = (arg: string) =>
  */
 export function planService(input: ServicePlanInput): ServicePlan {
   const args = [...input.command, 'serve', ...input.serveArgs]
+  const env = Object.entries(input.env ?? {})
 
   if (input.platform === 'linux') {
     const unitPath = path.posix.join(
@@ -54,6 +66,7 @@ export function planService(input: ServicePlanInput): ServicePlan {
       'Wants=network-online.target',
       '',
       '[Service]',
+      ...env.map(([k, v]) => `Environment=${systemdQuote(`${k}=${v}`)}`),
       `ExecStart=${args.map(systemdQuote).join(' ')}`,
       'Restart=on-failure',
       'RestartSec=3',
@@ -90,7 +103,10 @@ export function planService(input: ServicePlanInput): ServicePlan {
           '/TN',
           WINDOWS_TASK,
           '/TR',
-          args.map(windowsQuote).join(' '),
+          // A scheduled task has no environment of its own, so cmd sets it first.
+          env.length > 0
+            ? `cmd /d /c "${env.map(([k, v]) => `set "${k}=${v}"`).join(' && ')} && ${args.map(windowsQuote).join(' ')}"`
+            : args.map(windowsQuote).join(' '),
           '/SC',
           'ONLOGON',
           '/RL',
@@ -145,6 +161,7 @@ export async function installService(options: ServiceCommandOptions): Promise<vo
     home: os.homedir(),
     command: currentCommand(),
     serveArgs: options.serveArgs,
+    env: serviceEnv(),
   })
   for (const file of plan.files) {
     out(`${options.dryRun ? 'Would write' : 'Writing'} ${file.path}:\n${file.content}`)
