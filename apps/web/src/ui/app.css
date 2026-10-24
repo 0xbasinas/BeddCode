@@ -1943,6 +1943,257 @@ button.chip-lite:hover {
   overflow: hidden;
 }
 
+/* Native page (desktop): the frame is a placeholder the app's native view is laid over. */
+.native-frame {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.page-snapshot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+}
+.page-problem {
+  display: grid;
+  justify-items: center;
+  gap: calc(6px * var(--ui-scale));
+  max-width: calc(360px * var(--ui-scale));
+  padding: calc(16px * var(--ui-scale));
+  text-align: center;
+  color: #444;
+}
+.page-problem h3 {
+  margin: 0;
+  font-size: calc(15px * var(--ui-scale));
+  color: #111;
+}
+.page-problem p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.page-problem .primary-btn {
+  background: #111;
+  color: #fff;
+}
+.browser .icon-btn.active {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.browser .ghost-btn {
+  padding: calc(5px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border-radius: var(--radius-control);
+  color: var(--text-muted);
+}
+.browser .ghost-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.browser .ghost-btn.small {
+  padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  font-size: calc(12px * var(--ui-scale));
+}
+.browser .banner .primary-btn {
+  margin: 0;
+  padding: calc(5px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-radius: var(--radius-control);
+  text-decoration: none;
+}
+.browser .banner .ghost-btn {
+  text-decoration: none;
+}
+.banner.prompt {
+  flex-wrap: wrap;
+  gap: calc(8px * var(--ui-scale));
+  background: var(--bg-raised);
+  color: var(--text);
+}
+.banner.prompt .prompt-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.banner.login input {
+  flex: 1 1 calc(100px * var(--ui-scale));
+  min-width: 0;
+  padding: calc(5px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+}
+.tab-favicon {
+  flex-shrink: 0;
+  border-radius: 2px;
+  object-fit: contain;
+}
+.tab-spinner {
+  flex-shrink: 0;
+  width: calc(12px * var(--ui-scale));
+  height: calc(12px * var(--ui-scale));
+  border: 1.5px solid var(--text-faint);
+  border-top-color: var(--text);
+  border-radius: 50%;
+  animation: tool-spin 0.8s linear infinite;
+}
+.url-via,
+.url-zoom {
+  flex-shrink: 0;
+  padding: calc(1px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  border-radius: calc(5px * var(--ui-scale));
+  background: var(--bg-hover);
+  font-size: calc(11px * var(--ui-scale));
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.console-btn {
+  position: relative;
+}
+.console-btn .badge-dot {
+  position: absolute;
+  top: calc(1px * var(--ui-scale));
+  right: calc(1px * var(--ui-scale));
+  min-width: calc(14px * var(--ui-scale));
+  padding: 0 calc(3px * var(--ui-scale));
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: calc(9px * var(--ui-scale));
+  line-height: calc(14px * var(--ui-scale));
+}
+.menu-zoom {
+  display: flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale)) calc(2px * var(--ui-scale))
+    calc(10px * var(--ui-scale));
+}
+.menu-zoom .zoom-value {
+  min-width: calc(44px * var(--ui-scale));
+  font-size: calc(12px * var(--ui-scale));
+  color: var(--text-muted);
+}
+.find-bar {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  margin: 0 calc(8px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale))
+    calc(10px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: calc(8px * var(--ui-scale));
+  background: var(--bg-input);
+  color: var(--text-muted);
+}
+.find-bar input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: calc(12px * var(--ui-scale));
+}
+.find-bar .icon-btn {
+  padding: calc(5px * var(--ui-scale));
+}
+.find-count {
+  font-variant-numeric: tabular-nums;
+}
+.console-drawer {
+  display: flex;
+  flex-direction: column;
+  height: min(40%, calc(260px * var(--ui-scale)));
+  flex-shrink: 0;
+  margin: 0 calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: calc(10px * var(--ui-scale));
+  background: var(--bg-input);
+  overflow: hidden;
+}
+.console-head {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale))
+    calc(10px * var(--ui-scale));
+  border-bottom: 1px solid var(--border);
+  font-size: calc(12px * var(--ui-scale));
+}
+.console-head .icon-btn {
+  padding: calc(5px * var(--ui-scale));
+}
+.console-list {
+  flex: 1;
+  overflow: auto;
+  font: calc(11px * var(--ui-scale)) / 1.45 var(--font-mono);
+}
+.console-empty {
+  padding: calc(10px * var(--ui-scale));
+}
+.console-row {
+  display: flex;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  color: var(--text-muted);
+}
+.console-row.error {
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  color: var(--danger);
+}
+.console-row.warning {
+  background: rgba(240, 164, 60, 0.08);
+  color: var(--accent);
+}
+.console-msg {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.console-src {
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+}
+.downloads {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2px * var(--ui-scale));
+  margin: 0 calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale));
+}
+.download {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale))
+    calc(10px * var(--ui-scale));
+  border-radius: calc(8px * var(--ui-scale));
+  background: var(--bg-raised);
+  font-size: calc(12px * var(--ui-scale));
+}
+.download.interrupted {
+  color: var(--danger);
+}
+.download-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.download .icon-btn {
+  padding: calc(5px * var(--ui-scale));
+}
+
 /* Hosts dialog */
 .modal-backdrop {
   position: fixed;

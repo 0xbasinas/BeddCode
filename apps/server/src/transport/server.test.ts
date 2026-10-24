@@ -622,6 +622,41 @@ describe('access control', () => {
     expect((await good.rpc('providers.list', {})).ok).toBe(true)
   })
 
+  it('routes /tunnel to port forwarding behind the same token, and refuses other paths', async () => {
+    const { server, tokens } = await boot(undefined, { ...defaultGuard(), requireToken: true })
+    const { createServer } = await import('node:net')
+    const target = createServer((s) => s.on('data', (d) => s.write(String(d).toUpperCase())))
+    await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve))
+    cleanup.push(() => new Promise<void>((resolve) => target.close(() => resolve())))
+    const targetPort = (target.address() as { port: number }).port
+    const tunnel = (token?: string) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${server.port}/tunnel`)
+      cleanup.push(() => ws.terminate())
+      ws.once('open', () => ws.send(JSON.stringify({ t: 'open', port: targetPort, token })))
+      return ws
+    }
+    const anon = tunnel()
+    expect(await new Promise((resolve) => anon.once('close', resolve))).toBe(1008)
+
+    const { token } = tokens.issue('laptop')
+    const ws = tunnel(token)
+    const echoed = new Promise<string>((resolve) =>
+      ws.on('message', (data, binary) => {
+        if (!binary) ws.send(Buffer.from('ping'), { binary: true })
+        else resolve(String(data))
+      }),
+    )
+    expect(await echoed).toBe('PING')
+
+    const other = new WebSocket(`ws://127.0.0.1:${server.port}/elsewhere`)
+    await expect(
+      new Promise((resolve, reject) => {
+        other.once('open', resolve)
+        other.once('error', reject)
+      }),
+    ).rejects.toThrow(/404/)
+  })
+
   it('ignores requests sent before a hello that proves the token', async () => {
     const { server } = await boot(undefined, { ...defaultGuard(), requireToken: true })
     const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`)
