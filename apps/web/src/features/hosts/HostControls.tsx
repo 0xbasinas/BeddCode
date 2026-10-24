@@ -82,21 +82,6 @@ export function CopyHostText({
   )
 }
 
-export const INSTALL_HOST_COMMAND = 'pnpm --filter @beddcode/server start install-service'
-export const PAIR_HOST_COMMAND = 'pnpm --filter @beddcode/server start pair'
-
-export function HostCommand({ label, command }: { label: string; command: string }) {
-  return (
-    <div className="hosts-command">
-      <div>
-        <span>{label}</span>
-        <CopyHostText text={command} label={`Copy ${label.toLowerCase()}`} iconOnly />
-      </div>
-      <code>{command}</code>
-    </div>
-  )
-}
-
 export function HostTarget({
   name,
   address,

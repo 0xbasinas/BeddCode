@@ -237,10 +237,6 @@ export function UsageSettings({ hostKey }: { hostKey: string }) {
           ))
         )}
       </div>
-      <p className="settings-footnote">
-        Token counts come from what each agent reports after a turn, on this host. Agents that do
-        not report usage (some ACP agents) do not appear.
-      </p>
     </>
   )
 }

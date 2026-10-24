@@ -4,10 +4,10 @@ import { useNavigate } from '@tanstack/react-router'
 import { X } from 'lucide-react'
 import { AddHostFlow } from './AddHostFlow.tsx'
 import { HostsOverview } from './HostsOverview.tsx'
-import { PairedDevices, ShareThisComputer } from './HostAccess.tsx'
+import { ShareThisComputer } from './HostAccess.tsx'
 import './hosts.css'
 
-export type HostDialogView = 'overview' | 'add' | 'share' | 'devices'
+export type HostDialogView = 'overview' | 'add' | 'share'
 
 export function HostsDialog({
   onClose,
@@ -32,15 +32,7 @@ export function HostsDialog({
     <dialog
       ref={dialog}
       className="hosts-dialog"
-      aria-label={
-        view === 'add'
-          ? 'Add host'
-          : view === 'share'
-            ? 'Share this computer'
-            : view === 'devices'
-              ? 'Devices with access'
-              : 'Hosts'
-      }
+      aria-label={view === 'add' ? 'Add host' : view === 'share' ? 'Share this computer' : 'Hosts'}
       onCancel={(event) => {
         event.preventDefault()
         onClose()
@@ -70,9 +62,7 @@ export function HostsDialog({
     >
       <div className="hosts-dialog-surface">
         <header className="hosts-dialog-header">
-          <span>
-            {view === 'add' ? 'Add host' : view === 'share' ? 'Hosts / This PC' : 'Hosts'}
-          </span>
+          <span>{view === 'add' ? 'Add host' : view === 'share' ? 'This PC' : 'Hosts'}</span>
           <button className="hosts-icon-button" aria-label="Close hosts" onClick={onClose}>
             <X size={20} />
           </button>
@@ -87,8 +77,6 @@ export function HostsDialog({
           />
         ) : view === 'share' ? (
           <ShareThisComputer onClose={onClose} />
-        ) : view === 'devices' ? (
-          <PairedDevices onClose={onClose} />
         ) : (
           <>
             <div className="hosts-dialog-body">
@@ -96,7 +84,6 @@ export function HostsDialog({
                 showPreferences={false}
                 onAdd={() => setView('add')}
                 onShare={() => setView('share')}
-                onDevices={() => setView('devices')}
               />
             </div>
             <footer className="hosts-dialog-footer">

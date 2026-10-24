@@ -1,16 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Clock, Monitor, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
+import { Clock, Monitor, RefreshCw, Trash2 } from 'lucide-react'
 import type { Device, PairingCode, TailnetStatus } from '@beddcode/contracts'
 import { hostRequest, useHostStore } from '../../stores/host.ts'
 import { DEFAULT_PORT, LOCAL_HOST_KEY, parseAddress } from '../../stores/hostCatalog.ts'
-import {
-  CopyHostText,
-  HostCommand,
-  HostNote,
-  HostSpinner,
-  INSTALL_HOST_COMMAND,
-  useHostMounted,
-} from './HostControls.tsx'
+import { CopyHostText, HostNote, HostSpinner, useHostMounted } from './HostControls.tsx'
 
 export function ShareThisComputer({ onClose }: { onClose(): void }) {
   const local = useHostStore((s) => s.runtimes[LOCAL_HOST_KEY])
@@ -70,17 +63,15 @@ export function ShareThisComputer({ onClose }: { onClose(): void }) {
     <>
       <div className="hosts-dialog-body">
         <div className="hosts-flow-heading">
-          <h2>Connect to this computer</h2>
-          <p>On your other computer, open Hosts → Add host and enter this address and code.</p>
+          <h2>Let another computer connect</h2>
+          <p>On the other computer, choose Add host and enter this address and code.</p>
         </div>
-        <div className="hosts-help boxed">
-          <h3>This computer&apos;s address</h3>
+        {address && (
           <div className="hosts-address-copy">
-            <code>{address ?? 'Use this computer’s network address'}</code>
-            {address && <CopyHostText text={address} label="Copy host address" iconOnly />}
+            <code>{address}</code>
+            <CopyHostText text={address} label="Copy host address" iconOnly />
           </div>
-          {!tailnet?.self && <p>Use a network address reachable from the other computer.</p>}
-        </div>
+        )}
         {!connected ? (
           <HostNote tone="warning">
             Connect to this computer&apos;s host to create a pairing code.
@@ -89,13 +80,6 @@ export function ShareThisComputer({ onClose }: { onClose(): void }) {
           <HostNote icon={<HostSpinner />}>Creating a pairing code…</HostNote>
         ) : code && left > 0 ? (
           <div className="hosts-field">
-            <div className="hosts-section-title">
-              <h3>One-time pairing code</h3>
-              <span className="hosts-timer">
-                <Clock size={13} />
-                {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')} remaining
-              </span>
-            </div>
             <output aria-label="One-time pairing code">
               <span className="sr-only">{code.code}</span>
               <span className="hosts-code-cells" aria-hidden="true">
@@ -106,25 +90,21 @@ export function ShareThisComputer({ onClose }: { onClose(): void }) {
             </output>
             <div className="hosts-code-caption">
               <CopyHostText text={code.code} label="Copy code" />
-              <p>Works once · expires in 10 minutes</p>
+              <span className="hosts-timer">
+                <Clock size={13} />
+                {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')} · works once
+              </span>
             </div>
           </div>
         ) : (
           !error && (
             <HostNote tone="warning" icon={<Clock size={16} />}>
-              This pairing code has expired. Create a new code to continue.
+              This code has expired. Create a new one.
             </HostNote>
           )
         )}
         {error && <HostNote tone="error">{error}</HostNote>}
-        <HostNote icon={<ShieldCheck size={16} />}>
-          Use this code to pair another device with this host.
-        </HostNote>
-        <div className="hosts-help separated">
-          <h3>The host must accept remote connections.</h3>
-          <HostCommand label="Run the host in the background" command={INSTALL_HOST_COMMAND} />
-          <p>Use Devices with access to revoke a paired device later.</p>
-        </div>
+        <PairedDevices />
       </div>
       <footer className="hosts-dialog-footer">
         <button
@@ -133,7 +113,7 @@ export function ShareThisComputer({ onClose }: { onClose(): void }) {
           onClick={() => void generate()}
         >
           {busy && <HostSpinner />}
-          {code && left > 0 ? 'New code' : 'Create new code'}
+          New code
         </button>
         <button className="hosts-button primary" onClick={onClose}>
           Done
@@ -143,7 +123,7 @@ export function ShareThisComputer({ onClose }: { onClose(): void }) {
   )
 }
 
-export function PairedDevices({ onClose }: { onClose(): void }) {
+function PairedDevices() {
   const local = useHostStore((s) => s.runtimes[LOCAL_HOST_KEY])
   const [devices, setDevices] = useState<Device[]>()
   const [error, setError] = useState<string>()
@@ -199,75 +179,51 @@ export function PairedDevices({ onClose }: { onClose(): void }) {
       if (alive.current) setRevoking(undefined)
     }
   }
+  if (!connected) return null
   return (
-    <>
-      <div className="hosts-dialog-body">
-        <div className="hosts-flow-heading">
-          <h2>Devices with access</h2>
-          <p>
-            Devices allowed to connect to this PC. Revoking access closes their active connections
-            immediately.
-          </p>
-        </div>
-        <div className="hosts-section-title">
-          <h3>Paired devices</h3>
-          <button
-            className="hosts-link"
-            disabled={!connected || busy || !!revoking}
-            onClick={() => void refresh()}
-          >
-            <RefreshCw size={14} />
-            Refresh
-          </button>
-        </div>
-        {!connected ? (
-          <HostNote tone="warning">
-            Connect to this computer&apos;s host to manage devices.
-          </HostNote>
-        ) : busy && !devices ? (
-          <HostNote icon={<HostSpinner />}>Loading paired devices…</HostNote>
-        ) : devices?.length ? (
-          <div className="hosts-list">
-            {devices.map((device) => (
-              <div className="hosts-saved-row" key={device.id}>
-                <Monitor size={22} />
-                <span className="hosts-machine">
-                  <strong>{device.name}</strong>
-                  <span>
-                    {device.lastUsedAt
-                      ? `Last connected ${new Date(device.lastUsedAt).toLocaleString()}`
-                      : `Paired ${new Date(device.createdAt).toLocaleString()}`}
-                  </span>
-                </span>
-                <button
-                  className="hosts-button destructive"
-                  disabled={!!revoking || busy}
-                  onClick={() => void revoke(device)}
-                  aria-label={`Revoke ${device.name}`}
-                >
-                  {revoking === device.id ? <HostSpinner /> : <Trash2 size={14} />}Revoke
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          !busy &&
-          !error && (
-            <div className="hosts-empty">
-              <ShieldCheck size={24} />
-              <strong>No paired devices</strong>
-              <p>When another computer pairs with this host, it appears here.</p>
-            </div>
-          )
-        )}
-        {error && <HostNote tone="error">{error}</HostNote>}
-      </div>
-      <footer className="hosts-dialog-footer">
-        <span className="hosts-escape">Esc to close</span>
-        <button className="hosts-button primary" onClick={onClose}>
-          Done
+    <div className="hosts-field">
+      <div className="hosts-section-title">
+        <h3>Devices with access</h3>
+        <button
+          type="button"
+          className="hosts-link"
+          disabled={busy || !!revoking}
+          onClick={() => void refresh()}
+        >
+          <RefreshCw size={14} />
+          Refresh
         </button>
-      </footer>
-    </>
+      </div>
+      {busy && !devices ? (
+        <HostNote icon={<HostSpinner />}>Loading paired devices…</HostNote>
+      ) : devices?.length ? (
+        <div className="hosts-list">
+          {devices.map((device) => (
+            <div className="hosts-saved-row" key={device.id}>
+              <Monitor size={22} />
+              <span className="hosts-machine">
+                <strong>{device.name}</strong>
+                <span>
+                  {device.lastUsedAt
+                    ? `Last connected ${new Date(device.lastUsedAt).toLocaleString()}`
+                    : `Paired ${new Date(device.createdAt).toLocaleString()}`}
+                </span>
+              </span>
+              <button
+                className="hosts-button destructive"
+                disabled={!!revoking || busy}
+                onClick={() => void revoke(device)}
+                aria-label={`Revoke ${device.name}`}
+              >
+                {revoking === device.id ? <HostSpinner /> : <Trash2 size={14} />}Revoke
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        !busy && !error && <p className="hosts-secondary-copy">No devices are paired yet.</p>
+      )}
+      {error && <HostNote tone="error">{error}</HostNote>}
+    </div>
   )
 }

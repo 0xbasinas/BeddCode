@@ -270,10 +270,6 @@ export function AddAgentDialog({
                 </span>
                 <ChevronRight size={16} />
               </button>
-              <p className="settings-footnote">
-                Registry agents use a pinned version and launch on this host when you start a
-                session.
-              </p>
             </>
           ) : (
             <fieldset disabled={busy} className="custom-agent-fields">
@@ -347,10 +343,6 @@ export function AddAgentDialog({
                   </button>
                 </div>
               ))}
-              <p className="settings-footnote">
-                Environment values are saved in this host's agent configuration file. Use the CLI's
-                own login for account credentials.
-              </p>
             </fieldset>
           )}
           {error && (

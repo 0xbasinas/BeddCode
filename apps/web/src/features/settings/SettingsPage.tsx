@@ -176,15 +176,6 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
                           ? 'Usage'
                           : 'Agents'}
                   </h2>
-                  <p>
-                    {section === 'permissions'
-                      ? 'Choose what each agent may do without asking.'
-                      : section === 'tools'
-                        ? 'MCP servers your agents can use, as each agent keeps them.'
-                        : section === 'usage'
-                          ? 'What your plans have used, and where it went.'
-                          : 'Which coding agents BeddCode can run, and how they behave in new sessions.'}
-                  </p>
                 </header>
                 {entries.length > 1 && (
                   <label className="settings-host">
@@ -221,7 +212,6 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
               <HostsOverview
                 onAdd={() => setHostsOpen('add')}
                 onShare={() => setHostsOpen('share')}
-                onDevices={() => setHostsOpen('devices')}
               />
             )}
             {section === 'about' && (
@@ -229,31 +219,12 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
                 <header className="settings-heading">
                   <Logo size={48} className="about-logo" />
                   <h2>About BeddCode</h2>
-                  <p>A workspace for your coding agents, projects, and machines.</p>
                 </header>
                 <div className="settings-card">
                   <div className="setting-row">
                     <div className="setting-label">
                       <span>Build</span>
-                      <small>Development build · Windows and Linux</small>
-                    </div>
-                  </div>
-                  <div className="setting-row">
-                    <div className="setting-label">
-                      <span>Your data stays on each host</span>
-                      <small>
-                        Agent logins, project files, and session history belong to the machine
-                        running the session.
-                      </small>
-                    </div>
-                  </div>
-                  <div className="setting-row">
-                    <div className="setting-label">
-                      <span>Agent settings</span>
-                      <small>
-                        Saved defaults apply to new sessions in this app. Agent CLIs keep their own
-                        login and configuration.
-                      </small>
+                      <small>Development build</small>
                     </div>
                   </div>
                 </div>

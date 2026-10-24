@@ -26,9 +26,7 @@ export function PermissionsSettings({ hostKey }: { hostKey: string }) {
                 <Shield size={18} />
                 <label className="setting-label" htmlFor={`permission-${provider.id}`}>
                   <span>{provider.label}</span>
-                  <small>
-                    {mode?.description ?? 'Used when you start a new session on this host.'}
-                  </small>
+                  {mode?.description && <small>{mode.description}</small>}
                 </label>
                 <Select
                   id={`permission-${provider.id}`}
@@ -55,10 +53,6 @@ export function PermissionsSettings({ hostKey }: { hostKey: string }) {
             </div>
           )
         })}
-      <p className="settings-footnote">
-        Each agent owns its permission modes and approval prompts. ACP agents may report their modes
-        only after a session starts. Existing sessions keep their current mode.
-      </p>
     </>
   )
 }

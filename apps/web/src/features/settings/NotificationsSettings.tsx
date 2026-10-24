@@ -26,7 +26,6 @@ export function NotificationsSettings() {
     <>
       <header className="settings-heading">
         <h2>Notifications</h2>
-        <p>Choose which agent events interrupt you. Everything else stays in the sidebar.</p>
       </header>
 
       {permission !== 'granted' && (
@@ -50,19 +49,16 @@ export function NotificationsSettings() {
       <div className="settings-card">
         <Toggle
           label="An agent needs you"
-          description="A permission, a question, or a plan waiting for your answer"
           checked={values.needsYou}
           onChange={(needsYou) => update({ needsYou })}
         />
         <Toggle
           label="A turn finishes"
-          description="When an agent stops and waits for your next message"
           checked={values.turnDone}
           onChange={(turnDone) => update({ turnDone })}
         />
         <Toggle
           label="A host disconnects"
-          description="When a remote machine stops responding"
           checked={values.hostDisconnect}
           onChange={(hostDisconnect) => update({ hostDisconnect })}
         />
@@ -75,7 +71,6 @@ export function NotificationsSettings() {
         <div className="setting-row">
           <label className="setting-label" htmlFor="notify-sound">
             <span>Sound</span>
-            <small>Played with each notification</small>
           </label>
           <Select
             id="notify-sound"
@@ -95,14 +90,12 @@ export function NotificationsSettings() {
         </div>
         <Toggle
           label="Only when BeddCode is in the background"
-          description="Skip alerts for the session you are looking at"
           checked={values.onlyInBackground}
           onChange={(onlyInBackground) => update({ onlyInBackground })}
         />
         <div className="setting-row">
           <div className="setting-label">
             <span>Quiet hours</span>
-            <small>Mute everything except an agent that needs you</small>
           </div>
           <div className="quiet-hours">
             <input
@@ -134,7 +127,6 @@ export function NotificationsSettings() {
         <div className="setting-row">
           <div className="setting-label">
             <span>Try it</span>
-            <small>Shows a notification the way an agent’s would appear</small>
           </div>
           <button
             className="settings-button"

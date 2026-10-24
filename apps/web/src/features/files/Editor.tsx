@@ -25,42 +25,56 @@ const theme = EditorView.theme(
   {
     '&': { height: '100%', backgroundColor: 'transparent', color: 'var(--text-secondary)' },
     '.cm-scroller': { fontFamily: 'var(--font-mono)' },
-    '.cm-content': { caretColor: '#f0a43c' },
-    '.cm-cursor': { borderLeftColor: '#f0a43c' },
-    '.cm-gutters': { backgroundColor: 'transparent', color: '#5c5c5c', border: 'none' },
-    '.cm-activeLine': { backgroundColor: 'rgba(255, 255, 255, 0.04)' },
+    '.cm-content': { caretColor: 'var(--accent)' },
+    '.cm-cursor': { borderLeftColor: 'var(--accent)' },
+    '.cm-gutters': { backgroundColor: 'transparent', color: 'var(--text-faint)', border: 'none' },
+    '.cm-activeLine': { backgroundColor: 'var(--bg-hover)' },
     '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--text-muted)' },
     '&.cm-focused': { outline: 'none' },
     '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
-      backgroundColor: 'rgba(240, 164, 60, 0.25)',
+      backgroundColor: 'color-mix(in srgb, var(--accent) 25%, transparent)',
     },
-    '.cm-matchingBracket': { backgroundColor: 'rgba(240, 164, 60, 0.25)', outline: 'none' },
+    '.cm-matchingBracket': {
+      backgroundColor: 'color-mix(in srgb, var(--accent) 25%, transparent)',
+      outline: 'none',
+    },
     '.cm-panels': { backgroundColor: 'var(--bg-raised)', color: 'var(--text)' },
-    '.cm-searchMatch': { backgroundColor: 'rgba(240, 164, 60, 0.3)' },
+    '.cm-searchMatch': { backgroundColor: 'color-mix(in srgb, var(--accent) 30%, transparent)' },
   },
   { dark: true },
 )
 
+// Syntax colours are mostly the app's grays; only strings keep a faint green tint.
 const highlight = syntaxHighlighting(
   HighlightStyle.define([
-    { tag: [t.keyword, t.controlKeyword, t.modifier, t.operatorKeyword], color: '#c792ea' },
-    { tag: [t.string, t.special(t.string), t.regexp], color: '#a5d6a7' },
-    { tag: [t.number, t.bool, t.null, t.atom], color: '#ffab70' },
-    { tag: [t.comment, t.lineComment, t.blockComment], color: '#6b6b6b', fontStyle: 'italic' },
-    { tag: [t.typeName, t.className, t.namespace], color: '#82aaff' },
+    { tag: [t.keyword, t.controlKeyword, t.modifier, t.operatorKeyword], color: 'var(--text)' },
+    {
+      tag: [t.string, t.special(t.string), t.regexp],
+      color: 'color-mix(in srgb, var(--success) 45%, var(--text-muted))',
+    },
+    {
+      tag: [t.number, t.bool, t.null, t.atom],
+      color: 'var(--text-secondary)',
+    },
+    {
+      tag: [t.comment, t.lineComment, t.blockComment],
+      color: 'var(--text-faint)',
+      fontStyle: 'italic',
+    },
+    { tag: [t.typeName, t.className, t.namespace], color: 'var(--text-secondary)' },
     {
       tag: [
         t.function(t.variableName),
         t.function(t.propertyName),
         t.definition(t.function(t.variableName)),
       ],
-      color: '#82b1ff',
+      color: 'var(--text-secondary)',
     },
-    { tag: [t.propertyName, t.attributeName], color: '#e0e0e0' },
-    { tag: [t.tagName, t.heading], color: '#f07178', fontWeight: 'bold' },
-    { tag: [t.operator, t.punctuation, t.bracket], color: '#9a9a9a' },
-    { tag: [t.link, t.url], color: '#82aaff', textDecoration: 'underline' },
-    { tag: t.invalid, color: '#e5645c' },
+    { tag: [t.propertyName, t.attributeName], color: 'var(--text-muted)' },
+    { tag: [t.tagName, t.heading], color: 'var(--text)', fontWeight: 'bold' },
+    { tag: [t.operator, t.punctuation, t.bracket], color: 'var(--text-faint)' },
+    { tag: [t.link, t.url], color: 'var(--text-secondary)', textDecoration: 'underline' },
+    { tag: t.invalid, color: 'var(--danger)' },
   ]),
 )
 

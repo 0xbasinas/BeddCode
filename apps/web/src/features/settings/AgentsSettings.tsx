@@ -35,7 +35,6 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [removeId, setRemoveId] = useState<string>()
-  const [help, setHelp] = useState<string>()
   const online = connection === 'connected'
   // ACP agents only say what they offer (including how much they ask) when a session starts, so
   // the host starts one briefly to find out; the answer is remembered there.
@@ -172,7 +171,6 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                 aria-pressed={current?.id === provider.id}
                 onClick={() => {
                   setSelected(provider.id)
-                  setHelp(undefined)
                 }}
               >
                 <span className="agent-avatar">{initials(provider.label)}</span>
@@ -386,13 +384,6 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                 commands without asking.
               </p>
             )}
-            {current.kind === 'acp' && permissionModes.length > 0 && (
-              <p className="settings-empty">
-                {agentOffer?.data?.modes.some((m) => m.id === 'approve-all')
-                  ? "This agent does not report approval modes over ACP. BeddCode switches it with the agent's own command where that is known (Grok), and otherwise answers its permission prompts with Allow. Your choice applies when a session starts and can be changed in the session."
-                  : "These are the modes the agent itself reports. Each prompt it raises offers the agent's own choices, such as allow once or always."}
-              </p>
-            )}
             {!current.capabilities.models?.length &&
               !current.capabilities.efforts?.length &&
               permissionModes.length === 0 && (
@@ -403,70 +394,8 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                 </p>
               )}
           </div>
-          <div className="settings-section-head">
-            <h3>Setup</h3>
-          </div>
-          <div className="settings-card">
-            <div className="setting-row">
-              <div className="setting-label">
-                <span>
-                  {current.kind === 'fake'
-                    ? 'Scripted test agent'
-                    : 'Login and configuration stay with the agent'}
-                </span>
-                <small>
-                  {current.kind === 'fake'
-                    ? 'Try messages and approvals without a CLI login. Responses and file changes are simulated.'
-                    : current.kind === 'claude' || current.kind === 'codex'
-                      ? 'Run the login command in a terminal on this host, then refresh the agent list.'
-                      : 'Install and sign in using the agent CLI on this host, then refresh the agent list.'}
-                </small>
-              </div>
-            </div>
-            {(current.kind === 'claude' || current.kind === 'codex') && (
-              <div className="setting-row">
-                <code>{current.kind === 'claude' ? 'claude auth login' : 'codex login'}</code>
-                <button
-                  className="settings-button"
-                  onClick={() => {
-                    void navigator.clipboard
-                      .writeText(current.kind === 'claude' ? 'claude auth login' : 'codex login')
-                      .then(
-                        () => setHelp('Login command copied.'),
-                        () => setHelp('Clipboard unavailable. Copy the command shown here.'),
-                      )
-                  }}
-                >
-                  Copy command
-                </button>
-              </div>
-            )}
-            {agents.find((a) => current.id === `acp:${a.id}`) && (
-              <div className="setting-row">
-                <div className="setting-label">
-                  <span>Launch command</span>
-                  <code className="agent-command">
-                    {JSON.stringify(agents.find((a) => current.id === `acp:${a.id}`)?.command)}{' '}
-                    {agents
-                      .find((a) => current.id === `acp:${a.id}`)
-                      ?.args.map((arg) => JSON.stringify(arg))
-                      .join(' ')}
-                  </code>
-                </div>
-              </div>
-            )}
-          </div>
-          {help && (
-            <p className="muted" role="status">
-              {help}
-            </p>
-          )}
         </>
       )}
-      <p className="settings-footnote">
-        Defaults are saved in this app for each host and apply to new sessions. Existing sessions
-        keep their current choices.
-      </p>
       {(adding || editId) && (
         <AddAgentDialog
           hostKey={hostKey}
