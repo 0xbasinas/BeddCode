@@ -4546,38 +4546,50 @@ button.agent-tools-chip.on:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 10px 0 4px;
-  padding: 7px 10px;
+  min-width: 0;
+  margin: 8px 0 4px;
+  padding: 5px 6px 5px 10px;
   border: 1px solid var(--border);
-  border-left: 2px solid var(--accent);
-  border-radius: 8px;
+  border-radius: 999px;
   background: var(--bg-card);
   color: var(--text-muted);
   font-size: 12px;
 }
 .started-by-icon {
   flex: none;
-  color: var(--accent);
+  color: var(--text-faint);
 }
 .started-by-text {
   flex: 1;
   min-width: 0;
-  line-height: 1.5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 .started-by-text .agent-avatar {
-  vertical-align: -4px;
+  flex: none;
+}
+.started-by-text strong {
+  flex: none;
 }
 .started-by-link {
-  color: var(--text);
-  text-decoration: underline;
-  text-decoration-color: var(--border-strong);
-  text-underline-offset: 2px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+  text-decoration: none;
 }
 .started-by-link:hover {
-  text-decoration-color: var(--accent);
+  color: var(--text);
 }
-.started-by-hint {
-  color: var(--text-faint);
+.started-by .agent-open {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+.started-by .agent-open:hover {
+  color: var(--text);
+  background: var(--bg-active);
 }
 /* Children of this session, above the composer */
 .child-bar {

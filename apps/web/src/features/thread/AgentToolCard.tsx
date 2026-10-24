@@ -392,13 +392,17 @@ export function StartedByBanner({ session, hostKey }: { session: SessionView; ho
   const parent = sessions[session.parent.sessionId]
   const label = agentDisplayName(parent?.instanceId, labels)
   return (
-    <div className="started-by" role="note">
-      <CornerLeftUp size={14} className="started-by-icon" />
+    <div
+      className="started-by"
+      role="note"
+      title="Its agent can read this conversation and send it messages; you answer its approvals here."
+    >
+      <CornerLeftUp size={13} className="started-by-icon" />
       <span className="started-by-text">
-        Started by{' '}
+        Started by
         {parent ? (
           <>
-            <AgentAvatar agent={parent.instanceId} label={label} /> <strong>{label}</strong> in{' '}
+            <AgentAvatar agent={parent.instanceId} label={label} /> <strong>{label}</strong> in
             <Link
               to="/session/$sessionId"
               params={{ sessionId: parent.id }}
@@ -408,13 +412,8 @@ export function StartedByBanner({ session, hostKey }: { session: SessionView; ho
             </Link>
           </>
         ) : (
-          'another session'
+          ' another session'
         )}
-        <span className="started-by-hint">
-          {' '}
-          · its agent can read this conversation and send it messages; you answer its approvals
-          here.
-        </span>
       </span>
       {parent && <OpenSession id={parent.id} label="Open parent" />}
     </div>
