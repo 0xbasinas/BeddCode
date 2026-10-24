@@ -411,7 +411,7 @@ export class AgentTools {
     const allowed = [parentCwd, parentProject, ...(await this.host.projectPaths())].filter(
       (p): p is string => Boolean(p),
     )
-    const inside = allowed.some((root) => wanted === root || wanted.startsWith(root + path.sep))
+    const inside = allowed.some((root) => isInsideFolder(root, wanted))
     if (!inside)
       throw new Error(`${wanted} is not this session's folder or one of BeddCode's projects`)
     return wanted
@@ -466,4 +466,13 @@ export class AgentTools {
       reply: current.lastReply.slice(-8_000),
     }
   }
+}
+
+/**
+ * Whether `target` is `root` or somewhere under it. Both are resolved first, so on Windows a
+ * drive-less `/projects` and `D:\\projects` compare equal, and case and separators do not matter.
+ */
+export function isInsideFolder(root: string, target: string, p: path.PlatformPath = path): boolean {
+  const rel = p.relative(p.resolve(root), p.resolve(target))
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${p.sep}`) && !p.isAbsolute(rel))
 }

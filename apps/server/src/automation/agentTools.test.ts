@@ -1,6 +1,13 @@
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ProviderInstance, SessionEvent, StoredEvent } from '@beddcode/contracts'
-import { AgentTools, MAX_TOTAL_CHILDREN, modeLevel, type AgentToolsHost } from './agentTools.ts'
+import {
+  AgentTools,
+  MAX_TOTAL_CHILDREN,
+  isInsideFolder,
+  modeLevel,
+  type AgentToolsHost,
+} from './agentTools.ts'
 
 describe('modeLevel', () => {
   it('ranks modes across agents', () => {
@@ -171,7 +178,7 @@ describe('AgentTools', () => {
         prompt: 'x',
         folder: '/projects/other/sub',
       }),
-    ).toMatchObject({ folder: '/projects/other/sub' })
+    ).toMatchObject({ folder: path.resolve('/projects/other/sub') })
   })
 
   it('only lets a session drive its own children, and limits depth', async () => {
@@ -246,5 +253,21 @@ describe('AgentTools', () => {
     expect(await call(t, 'parent', 'list_children', {})).toEqual([
       expect.objectContaining({ session_id: 'child-1', status: 'idle' }),
     ])
+  })
+})
+
+describe('isInsideFolder', () => {
+  it('matches the folder and what is under it, on POSIX and Windows paths', () => {
+    expect(isInsideFolder('/p', '/p', path.posix)).toBe(true)
+    expect(isInsideFolder('/p', '/p/a/b', path.posix)).toBe(true)
+    expect(isInsideFolder('/p', '/pa', path.posix)).toBe(false)
+    expect(isInsideFolder('/p', '/p/..foo', path.posix)).toBe(true)
+    expect(isInsideFolder('/p', '/p/../etc', path.posix)).toBe(false)
+    expect(isInsideFolder('/', '/etc', path.posix)).toBe(true)
+    expect(isInsideFolder('D:\\Projects', 'd:\\projects\\other', path.win32)).toBe(true)
+    expect(isInsideFolder('D:\\projects', 'D:/projects/x', path.win32)).toBe(true)
+    expect(isInsideFolder('C:\\', 'C:\\Users', path.win32)).toBe(true)
+    expect(isInsideFolder('D:\\projects', 'E:\\projects', path.win32)).toBe(false)
+    expect(isInsideFolder('D:\\projects', 'D:\\projects2', path.win32)).toBe(false)
   })
 })
