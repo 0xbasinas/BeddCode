@@ -9,19 +9,29 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to submit, such as v0.2.0
-        required: true
+        description: Release tag to submit, such as v0.2.0 (empty: the latest stable release)
+        required: false
 
 jobs:
   winget:
     runs-on: ubuntu-latest
     # Needs the WINGET_TOKEN secret: a classic personal access token with public_repo, from an
     # account that has forked microsoft/winget-pkgs.
-    if: ${{ github.repository_owner == '0xbasinas' }}
+    if: ${{ github.repository_owner == '0xbasinas' && !github.event.release.prerelease }}
     steps:
+      # Winget pins each version to one installer URL and hash, so "latest" is resolved to a tag here.
+      - id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        run: |
+          if [ -z "$TAG" ]; then
+            TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          fi
+          echo "name=$TAG" >> "$GITHUB_OUTPUT"
       - uses: vedantmgoyal9/winget-releaser@v2
         with:
           identifier: BeddCode.BeddCode
           installers-regex: 'BeddCode-Setup-.*\.exe$'
-          release-tag: ${{ inputs.tag || github.event.release.tag_name }}
+          release-tag: ${{ steps.tag.outputs.name }}
           token: ${{ secrets.WINGET_TOKEN }}
