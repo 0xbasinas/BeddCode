@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./hostClient": "./src/hostClient.ts",
+    "./replica": "./src/replica.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

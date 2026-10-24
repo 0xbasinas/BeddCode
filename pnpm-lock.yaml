@@ -344,6 +344,9 @@ importers:
 
   apps/server:
     dependencies:
+      '@beddcode/client-runtime':
+        specifier: workspace:*
+        version: link:../../packages/client-runtime
       '@beddcode/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

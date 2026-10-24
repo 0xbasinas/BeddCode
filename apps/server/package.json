@@ -10,6 +10,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@beddcode/client-runtime": "workspace:*",
     "@beddcode/contracts": "workspace:*",
     "@beddcode/provider-acp": "workspace:*",
     "@beddcode/provider-claude": "workspace:*",
