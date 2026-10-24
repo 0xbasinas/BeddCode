@@ -19,8 +19,6 @@ export function LeftRail() {
         >
           <CalendarClock size={18} />
         </button>
-      </div>
-      <div className="left-rail-group">
         <button
           type="button"
           className="rail-item"
