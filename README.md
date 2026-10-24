@@ -51,6 +51,17 @@ A session is named by its id, the start of its id, part of its title, or `last`.
 
 `--port <n>` selects another port. On Windows the installer adds the command to your user PATH (open a new terminal after installing); on Linux the `.deb` already puts `beddcode` on PATH, and the AppImage takes the same arguments (`./BeddCode.AppImage status`). With no arguments `beddcode` opens the app on Linux and shows its help on Windows. From a checkout, the same commands run as `pnpm --filter @beddcode/server start <command>`.
 
+#### A host with no desktop
+
+On a Linux server or a spare machine, one line installs just the host and keeps it running in the background (Node.js 22+ and curl required):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/0xbasinas/BeddCode/main/scripts/install-host.sh | sh
+beddcode pair        # then pair your phone or another computer with the code it prints
+```
+
+It downloads `beddcode-host-linux-x64.tar.gz` from the latest release, unpacks it to `~/.local/share/beddcode-host`, puts `beddcode` in `~/.local/bin` and runs `beddcode host install`. Pass `--version <tag>` or `--no-service` after `sh -s --`. Run `sudo loginctl enable-linger "$USER"` so it keeps running after you log out, and install and sign in to an agent CLI (Claude Code, Codex) on that machine; `beddcode doctor` checks.
+
 ## Develop
 
 Requires Node 22+ and pnpm.
