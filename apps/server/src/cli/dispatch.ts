@@ -7,7 +7,7 @@ import { fetchHealth } from './health.ts'
 import { hostsCmd } from './hostsCmd.ts'
 import { realIo, type Io } from './io.ts'
 import { hostLogPath, logs } from './logs.ts'
-import { openApp } from './open.ts'
+import { alertCmd, devicesCmd, openCmd, projectsCmd, scheduleCmd } from './manageCmds.ts'
 import { pair } from './pair.ts'
 import { parseArgs, num } from './args.ts'
 import {
@@ -53,7 +53,12 @@ async function doctorCmd(_args: string[], ctx: Ctx): Promise<number> {
 export const HANDLERS: Record<string, Handler> = {
   status: (_a, ctx) => status(ctx.port),
   pair: (_a, ctx) => pair(ctx.port),
-  open: () => Promise.resolve(openApp()),
+  open: openCmd,
+  schedule: scheduleCmd,
+  projects: projectsCmd,
+  alert: alertCmd,
+  devices: (a, ctx) => devicesCmd(a, ctx),
+  revoke: (a, ctx) => devicesCmd(a, ctx, true),
   logs: (a) => logsCmd(a),
   doctor: doctorCmd,
   ls: lsCmd,

@@ -15,9 +15,16 @@ Sessions
   undo <session>      Put back what the latest turn changed (--yes)
   A session is its id, the start of its id, part of its title, or "last".
 
+Automation
+  schedule            Prompts the host runs on a timer (ls, runs, add "<when>" "<prompt>", run, pause, resume, rm, preview)
+                        <when> is "every 30m" or a cron such as "0 9 * * 1-5"
+  alert               Phone alerts (test, ls, ntfy <url|off>)
+  projects            Folders added to BeddCode (ls, add [folder], rm <folder>)
+
 This machine
   status              Is the host on this machine running?
-  open                Start the BeddCode desktop app
+  open [folder]       Start the desktop app; with a folder, add it as a project first
+  devices             Devices paired with this host; revoke <device> removes one
   pair                Print a one-time code to pair another device with this host
   hosts               Machines this command can talk to (hosts add <address> <code>, hosts rm <name>)
   logs                Show the host's log (-n <lines>, -f to follow)
