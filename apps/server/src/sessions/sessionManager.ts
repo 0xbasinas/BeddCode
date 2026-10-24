@@ -6,6 +6,7 @@ import os from 'node:os'
 import { gitTextPrompt, parseGitText } from '../workspace/gitText.ts'
 import type {
   AgentPreview,
+  GitDiff,
   HistoryEntry,
   McpServer,
   McpServerInput,
@@ -59,7 +60,18 @@ interface TurnState {
   queue: QueuedPrompt[]
   /** Send this queued message as soon as the interrupted turn ends. */
   sendAfterInterrupt?: string
+  /** The snapshot taken as the running turn started (see `turn.changes`). */
+  before?: { hash: string; refBase: string }
+  /** Recording the last turn's changes; the next turn waits so the snapshots do not overlap. */
+  settling?: Promise<void>
 }
+
+/** How long a turn waits for its starting snapshot before going ahead without one. */
+const CHECKPOINT_WAIT_MS = 4_000
+/** Folders with more untracked (and not ignored) files than this get no turn snapshots. */
+const CHECKPOINT_MAX_UNTRACKED = 5_000
+/** Turns per session whose snapshots are kept (for their diffs); older ones are dropped. */
+const CHECKPOINTS_KEPT = 20
 
 /** A remembered agent preview older than this is probed again before it is shown. */
 const PREVIEW_REFRESH_MS = 60 * 60_000
@@ -290,7 +302,7 @@ export class SessionManager {
     const live = await this.ensureLive(sessionId)
     const turn = this.turnState(sessionId)
     if (!turn.busy) {
-      this.startTurn(sessionId, live, text, attachments)
+      await this.startTurn(sessionId, live, text, attachments)
       return { state: 'started' }
     }
 
@@ -341,7 +353,7 @@ export class SessionManager {
     const live = await this.ensureLive(sessionId)
     if (!turn.busy) {
       this.dequeued(sessionId, queueId, 'sent')
-      this.startTurn(sessionId, live, item.text, item.attachments)
+      await this.startTurn(sessionId, live, item.text, item.attachments)
     } else if (live.session.steer) {
       this.dequeued(sessionId, queueId, 'steered')
       this.appendUserMessage(sessionId, item.text, item.attachments)
@@ -401,19 +413,23 @@ export class SessionManager {
     this.deps.store.append({ type: 'prompt.dequeued', sessionId, at: Date.now(), queueId, reason })
   }
 
-  /** Begins a turn: records the user's message and hands the prompt to the agent. */
-  private startTurn(
+  /**
+   * Begins a turn: records the user's message, snapshots the folder (so the turn's changes can be
+   * shown and undone), and hands the prompt to the agent. Resolves once the agent has the prompt;
+   * the provider call itself resolves when the turn ends.
+   */
+  private async startTurn(
     sessionId: string,
     { session }: LiveSession,
     text: string,
     attachments: { name: string; path: string }[],
-  ) {
+  ): Promise<void> {
     const turn = this.turnState(sessionId)
     turn.busy = true
     this.appendUserMessage(sessionId, text, attachments)
-    // The provider call resolves when the turn ends; the caller only needs acceptance.
-    session.prompt(promptInput(text, attachments)).catch((err: unknown) => {
+    const failed = (err: unknown) => {
       turn.busy = false
+      turn.before = undefined
       this.deps.log.error(`prompt failed for ${sessionId}`, err)
       this.deps.store.append({
         type: 'error',
@@ -421,7 +437,144 @@ export class SessionManager {
         at: Date.now(),
         message: err instanceof Error ? err.message : String(err),
       })
+    }
+    try {
+      await turn.settling
+      await this.checkpointBefore(sessionId, turn)
+      session.prompt(promptInput(text, attachments)).catch(failed)
+    } catch (err) {
+      failed(err)
+    }
+  }
+
+  /** Where a session's turn snapshots go, or null when its folder is not a git repository. */
+  private readonly checkpointRoots = new Map<string, Promise<string | null>>()
+  private checkpointFolder(sessionId: string): Promise<string | null> {
+    let found = this.checkpointRoots.get(sessionId)
+    if (!found) {
+      const created = this.createdEvent(sessionId)
+      found =
+        !created || created.projectless
+          ? Promise.resolve(null)
+          : this.deps.git
+              .info(created.cwd)
+              .then((info) => (info.isRepo ? created.cwd : null))
+              .catch(() => null)
+      this.checkpointRoots.set(sessionId, found)
+    }
+    return found
+  }
+
+  private async checkpointBefore(sessionId: string, turn: TurnState): Promise<void> {
+    turn.before = undefined
+    const cwd = await this.checkpointFolder(sessionId)
+    if (!cwd) return
+    const refBase = `refs/beddcode/checkpoints/${sessionId}/${Date.now().toString(36)}`
+    const taking = this.deps.git
+      .snapshot(cwd, `${refBase}-before`, { maxUntracked: CHECKPOINT_MAX_UNTRACKED })
+      .then((hash) => ({ hash, refBase }))
+      .catch((err: unknown) => {
+        this.deps.log.debug(`no checkpoint for ${sessionId}: ${String(err)}`)
+        return undefined
+      })
+    let timer: NodeJS.Timeout | undefined
+    const late = new Promise<undefined>((resolve) => {
+      timer = setTimeout(() => resolve(undefined), CHECKPOINT_WAIT_MS)
     })
+    turn.before = await Promise.race([taking, late])
+    clearTimeout(timer)
+  }
+
+  /** After a turn: snapshot again and record what changed, if anything. */
+  private async recordTurnChanges(sessionId: string, turn: TurnState, turnId?: string) {
+    const before = turn.before
+    turn.before = undefined
+    if (!before) return
+    const cwd = await this.checkpointFolder(sessionId)
+    if (!cwd) return
+    try {
+      const after = await this.deps.git.snapshot(cwd, `${before.refBase}-after`)
+      const { files, truncated } = await this.deps.git.snapshotChanges(cwd, before.hash, after)
+      if (files.length === 0) {
+        await this.deps.git.dropSnapshots(cwd, `${before.refBase}-`)
+        return
+      }
+      this.deps.store.append({
+        type: 'turn.changes',
+        sessionId,
+        turnId,
+        at: Date.now(),
+        before: before.hash,
+        after,
+        files,
+        truncated: truncated || undefined,
+      })
+      // Only the latest turn can be undone; older ones keep their diffs for a while, then go.
+      await this.deps.git
+        .pruneSnapshots(cwd, `refs/beddcode/checkpoints/${sessionId}/`, CHECKPOINTS_KEPT)
+        .catch((err: unknown) => this.deps.log.debug(`could not prune checkpoints: ${String(err)}`))
+    } catch (err) {
+      this.deps.log.warn(`could not record the changes of a turn in ${sessionId}`, err)
+    }
+  }
+
+  private turnChanges(sessionId: string, after: string) {
+    let found: Extract<SessionEvent, { type: 'turn.changes' }> | undefined
+    let latest: Extract<SessionEvent, { type: 'turn.changes' }> | undefined
+    let reverted = false
+    for (const { event } of this.deps.store.readSession(sessionId)) {
+      if (event.type === 'turn.changes') {
+        latest = event
+        if (event.after === after) found = event
+      } else if (event.type === 'turn.reverted' && event.after === after) {
+        reverted = true
+      }
+    }
+    if (!found) throw new Error('Those changes are not part of this session')
+    return { changes: found, isLatest: latest === found, reverted }
+  }
+
+  /** One file's diff from a turn's changes. */
+  async turnDiff(sessionId: string, after: string, file: string): Promise<GitDiff> {
+    const { changes } = this.turnChanges(sessionId, after)
+    if (!changes.files.some((f) => f.path === file || f.oldPath === file)) {
+      throw new Error('That file did not change in this turn')
+    }
+    const created = this.createdEvent(sessionId)
+    if (!created) throw new Error(`Unknown session: ${sessionId}`)
+    return this.deps.git
+      .snapshotDiff(created.cwd, changes.before, changes.after, file)
+      .catch((err: unknown) => {
+        if (/bad object|unknown revision|invalid object|not a valid object/i.test(String(err)))
+          throw new Error(
+            `This turn is too old: only the last ${CHECKPOINTS_KEPT} turns with changes keep their diffs`,
+          )
+        throw err
+      })
+  }
+
+  /** Puts the files the latest turn changed back; see `sessions.undoTurn`. */
+  async undoTurn(sessionId: string, after: string): Promise<{ restored: number }> {
+    const created = this.createdEvent(sessionId)
+    if (!created) throw new Error(`Unknown session: ${sessionId}`)
+    const { changes, isLatest, reverted } = this.turnChanges(sessionId, after)
+    if (reverted) throw new Error('Those changes were already undone')
+    if (!isLatest) throw new Error('Only the latest changes can be undone')
+    const turn = this.turnState(sessionId)
+    if (turn.busy) throw new Error('Wait for the agent to finish before undoing')
+    await turn.settling
+    if (!(await this.deps.git.matchesSnapshot(created.cwd, changes.after))) {
+      throw new Error('Files changed after that turn ended, so it cannot be undone safely')
+    }
+    const restored = await this.deps.git.restoreSnapshot(created.cwd, changes.before, changes.after)
+    this.deps.store.append({ type: 'turn.reverted', sessionId, at: Date.now(), after })
+    return { restored }
+  }
+
+  /** Pins a session to the top of the sidebar (or unpins it). */
+  setPinned(sessionId: string, pinned: boolean): void {
+    if (!this.createdEvent(sessionId)) throw new Error(`Unknown session: ${sessionId}`)
+    this.deps.store.append({ type: 'session.pinned', sessionId, at: Date.now(), pinned })
   }
 
   /** A turn ended: send the next waiting message when it is clearly what the user wants. */
@@ -437,7 +590,7 @@ export class SessionManager {
     turn.sendAfterInterrupt = undefined
     turn.queue.shift()
     this.dequeued(sessionId, next.queueId, 'sent')
-    this.startTurn(sessionId, live, next.text, next.attachments)
+    void this.startTurn(sessionId, live, next.text, next.attachments)
   }
 
   /** Waiting messages survive restarts: rebuild them from the log the first time they are needed. */
@@ -487,6 +640,11 @@ export class SessionManager {
       await live.session.close()
       this.live.delete(sessionId)
     }
+    // Its turn snapshots go too (they live in the shared repository).
+    await this.deps.git
+      .dropSnapshots(created.cwd, `refs/beddcode/checkpoints/${sessionId}/`)
+      .catch(() => {})
+    this.checkpointRoots.delete(sessionId)
     return this.deps.git.removeWorktree(created.cwd)
   }
 
@@ -616,6 +774,11 @@ export class SessionManager {
       })),
       currentModeId: modeId ?? modes[0]?.id,
     })
+  }
+
+  /** How a session was created (its folder, branch, agent). */
+  sessionInfo(sessionId: string) {
+    return this.createdEvent(sessionId)
   }
 
   private createdEvent(sessionId: string) {
@@ -895,7 +1058,17 @@ export class SessionManager {
         this.deps.store.append(event)
         this.seedPreview(sessionId, event)
         if (event.type === 'turn.started') this.turnState(sessionId).busy = true
-        if (event.type === 'turn.completed') this.onTurnEnded(sessionId, event.reason)
+        if (event.type === 'turn.completed') {
+          const turn = this.turnState(sessionId)
+          if (turn.before) {
+            const settling = this.recordTurnChanges(sessionId, turn, event.turnId)
+            turn.settling = settling
+            void settling.finally(() => {
+              if (turn.settling === settling) turn.settling = undefined
+            })
+          }
+          this.onTurnEnded(sessionId, event.reason)
+        }
       }
     } catch (err) {
       this.deps.log.error(`event stream failed for ${sessionId}`, err)

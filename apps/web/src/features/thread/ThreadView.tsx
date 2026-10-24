@@ -10,6 +10,9 @@ import {
   Server,
   Trash2,
   Pencil,
+  Pin,
+  PinOff,
+  ArrowRightLeft,
 } from 'lucide-react'
 import type { SessionView } from '@beddcode/client-runtime'
 import { Composer } from '../composer/Composer.tsx'
@@ -24,6 +27,7 @@ import {
   dequeue,
   forkSession,
   setSessionModel,
+  setSessionPinned,
   hostRequest,
   interrupt,
   setConfigOption,
@@ -37,7 +41,8 @@ import {
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { folderName } from '../../ui/format.ts'
 import { Transcript } from './Transcript.tsx'
-import { buildBlocks, totalChanges } from '@beddcode/client-runtime'
+import { endedByDecline, handoffPrompt, sessionChanges } from '@beddcode/client-runtime'
+import { setHandoff } from '../../stores/handoff.ts'
 import { useFollowEnd } from './useFollowEnd.ts'
 import { folderId, useFiles } from '../files/filesStore.ts'
 import { useUiStore } from '../../stores/ui.ts'
@@ -118,9 +123,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
     }
   }
   const report = (err: unknown) => setActionError(err instanceof Error ? err.message : String(err))
-  const stats = totalChanges(
-    buildBlocks(session.items).flatMap((b) => (b.kind === 'edits' ? b.files : [])),
-  )
+  const stats = sessionChanges(session.items)
 
   return (
     <main className="panel thread">
@@ -199,6 +202,33 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                     ? 'New session without a project'
                     : 'New session in this folder'}
                 </button>
+                <button
+                  className="menu-row"
+                  onClick={() => {
+                    close()
+                    void setSessionPinned(sessionId, !session.pinned)
+                  }}
+                >
+                  {session.pinned ? <PinOff size={15} /> : <Pin size={15} />}
+                  {session.pinned ? 'Unpin' : 'Pin to top'}
+                </button>
+                <button
+                  className="menu-row"
+                  title="Start a new session with a summary of this one, so another agent can pick it up"
+                  onClick={() => {
+                    close()
+                    setHandoff(hostKey, handoffPrompt(session, { agentLabel: provider?.label }))
+                    void navigate({
+                      to: '/',
+                      search: session.projectless
+                        ? { host: hostKey, compose: true }
+                        : { host: hostKey, project: session.projectPath },
+                    })
+                  }}
+                >
+                  <ArrowRightLeft size={15} />
+                  Continue with another agent
+                </button>
                 {canFork && (
                   <button
                     className="menu-row"
@@ -257,6 +287,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             onAnswer={(requestId, answers) => answerQuestion(sessionId, requestId, answers)}
             onFork={canFork ? (turnNo) => fork(turnNo) : undefined}
             completedTurns={session.completedTurns}
+            changes={{ hostKey, sessionId, idle: !busy }}
           />
         </div>
       </div>
@@ -277,8 +308,11 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
               ? canSteer
                 ? 'Steer the agent, or queue a message…'
                 : 'Queue a message for when this turn ends…'
-              : `Reply to ${provider?.label ?? 'the agent'}…`
+              : endedByDecline(session)
+                ? `You declined. Tell ${provider?.label ?? 'the agent'} what to do instead…`
+                : `Reply to ${provider?.label ?? 'the agent'}…`
         }
+        focusSignal={endedByDecline(session) ? session.completedTurns : undefined}
         commands={session.commands}
         above={
           <>

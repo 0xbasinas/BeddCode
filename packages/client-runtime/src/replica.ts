@@ -4,7 +4,9 @@ import type {
   QuestionSpec,
   SlashCommand,
   StoredEvent,
+  TurnChangedFile,
 } from '@beddcode/contracts'
+import { sessionChanges } from './blocks.ts'
 
 export type SessionStatus = 'idle' | 'running' | 'needs-you' | 'failed'
 
@@ -73,6 +75,18 @@ export type TranscriptItem =
       /** Closed without an answer (dismissed, or the turn ended). */
       dismissed?: boolean
     }
+  | {
+      /** What a finished turn changed in the folder (from host snapshots), undoable if latest. */
+      kind: 'changes'
+      id: string
+      turnId?: string
+      before: string
+      after: string
+      files: TurnChangedFile[]
+      truncated?: boolean
+      /** The user undid these changes. */
+      reverted?: boolean
+    }
   | { kind: 'notice'; id: string; message: string }
   | { kind: 'error'; id: string; message: string }
 
@@ -95,8 +109,15 @@ export interface SessionView {
   updatedAt: number
   /** In the sidebar's Done section, by the user's choice; a new turn takes it out again. */
   done?: boolean
+  /** Pinned to the top of the sidebar by the user. */
+  pinned?: boolean
   status: SessionStatus
   lastTurnReason?: 'done' | 'cancelled' | 'error'
+  /**
+   * The user turned down a request in the turn that is running (or just ended). Some agents (Grok)
+   * end the turn right after a "no", which then reads as cancelled although nobody pressed Stop.
+   */
+  declined?: boolean
   items: TranscriptItem[]
   added: number
   removed: number
@@ -184,6 +205,14 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
 
   let next: SessionView = { ...current, updatedAt: e.at }
   const id = `${stored.seq}`
+  // The agent carried on after a "no", so if the turn stops now it is the user's doing.
+  if (
+    current.declined &&
+    (e.type === 'tool.started' ||
+      e.type === 'approval.requested' ||
+      (e.type === 'message.delta' && e.role === 'assistant'))
+  )
+    next.declined = undefined
 
   switch (e.type) {
     case 'session.renamed':
@@ -193,6 +222,33 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.done = e.done || undefined
       // Filing a session away is not activity: it keeps its place in time.
       next.updatedAt = current.updatedAt
+      break
+    case 'session.pinned':
+      next.pinned = e.pinned || undefined
+      next.updatedAt = current.updatedAt
+      break
+    case 'turn.changes':
+      next.items = [
+        ...current.items,
+        {
+          kind: 'changes',
+          id,
+          turnId: e.turnId,
+          before: e.before,
+          after: e.after,
+          files: e.files,
+          truncated: e.truncated,
+        },
+      ]
+      next.updatedAt = current.updatedAt
+      // The host's snapshot is the full picture of the turn, commands included.
+      Object.assign(next, sessionChanges(next.items))
+      break
+    case 'turn.reverted':
+      next.items = current.items.map((item) =>
+        item.kind === 'changes' && item.after === e.after ? { ...item, reverted: true } : item,
+      )
+      Object.assign(next, sessionChanges(next.items))
       break
     case 'session.model':
       next.model = e.model
@@ -212,6 +268,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.turns = current.turns + 1
       next.status = 'running'
       next.lastTurnReason = undefined
+      next.declined = undefined
       break
     case 'message.delta': {
       if (
@@ -376,6 +433,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
             ? { ...item, approval: { ...item.approval, resolvedAt: e.at, outcome } }
             : item,
       )
+      if (outcome === 'deny') next.declined = true
       next.status = waiting(next.items)
         ? 'needs-you'
         : current.status === 'needs-you'

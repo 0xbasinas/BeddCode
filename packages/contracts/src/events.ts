@@ -62,6 +62,18 @@ export const ConfigOption = z.object({
 })
 export type ConfigOption = z.infer<typeof ConfigOption>
 
+/** One file a turn changed (see `turn.changes`). */
+export const TurnChangedFile = z.object({
+  path: z.string(),
+  status: z.enum(['A', 'M', 'D', 'R']),
+  oldPath: z.string().optional(),
+  added: z.number().int().nonnegative(),
+  removed: z.number().int().nonnegative(),
+  /** Binary content: no line counts. */
+  binary: z.boolean().optional(),
+})
+export type TurnChangedFile = z.infer<typeof TurnChangedFile>
+
 export const SessionEvent = z.discriminatedUnion('type', [
   Base.extend({
     type: z.literal('session.created'),
@@ -88,6 +100,8 @@ export const SessionEvent = z.discriminatedUnion('type', [
   Base.extend({ type: z.literal('session.renamed'), title: z.string().trim().min(1).max(120) }),
   /** The user moved the session to, or back out of, the sidebar's Done section. */
   Base.extend({ type: z.literal('session.done'), done: z.boolean() }),
+  /** The user pinned the session to the top of the sidebar, or unpinned it. */
+  Base.extend({ type: z.literal('session.pinned'), pinned: z.boolean() }),
   /** The model and reasoning effort in use changed (set by the user during the session). */
   Base.extend({
     type: z.literal('session.model'),
@@ -230,6 +244,21 @@ export const SessionEvent = z.discriminatedUnion('type', [
     used: z.number().int().nonnegative(),
     size: z.number().int().nonnegative(),
   }),
+  /**
+   * What a finished turn changed in the session's folder, from git snapshots the host took when
+   * the turn started and ended (any edit counts: the agent's own edit tools, commands, generated
+   * files). `before` and `after` are snapshot commits kept under hidden refs.
+   */
+  Base.extend({
+    type: z.literal('turn.changes'),
+    before: z.string(),
+    after: z.string(),
+    files: z.array(TurnChangedFile),
+    /** More files changed than are listed. */
+    truncated: z.boolean().optional(),
+  }),
+  /** The user undid a turn's changes; the folder is back at that turn's `before` snapshot. */
+  Base.extend({ type: z.literal('turn.reverted'), after: z.string() }),
   Base.extend({ type: z.literal('error'), message: z.string() }),
 ])
 export type SessionEvent = z.infer<typeof SessionEvent>

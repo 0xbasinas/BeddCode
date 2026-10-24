@@ -243,9 +243,11 @@ export default function NewSessionScreen() {
           </View>
           {!agent ? (
             <Muted size={13} style={{ textAlign: 'center' }}>
-              {runtime.connection === 'connected'
-                ? 'No agent is ready on this host. Install and sign in to one on that computer.'
-                : 'Connecting to the host…'}
+              {runtime.connection !== 'connected'
+                ? 'Connecting to the host…'
+                : runtime.loadError && runtime.providers.length === 0
+                  ? `${runtime.loadError}. Trying again…`
+                  : 'No agent is ready on this host. Install and sign in to one on that computer.'}
             </Muted>
           ) : (
             <Composer

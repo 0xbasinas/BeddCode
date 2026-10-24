@@ -50,7 +50,12 @@ const registryJson = {
   ],
 }
 
-async function boot(store = new EventStore(':memory:'), guard?: GuardOptions, hostId = 'host-1') {
+async function boot(
+  store = new EventStore(':memory:'),
+  guard?: GuardOptions,
+  hostId = 'host-1',
+  extra: { idleTimeoutMs?: number } = {},
+) {
   cleanup.push(() => store.close())
   const log = createLogger('test', 'error')
   const dir = mkdtempSync(path.join(os.tmpdir(), 'beddcode-test-'))
@@ -86,6 +91,7 @@ async function boot(store = new EventStore(':memory:'), guard?: GuardOptions, ho
   const tokens = new TokenStore(path.join(dir, 'auth.json'))
   const pairing = new PairingManager()
   const server: RunningServer = await startServer({
+    ...extra,
     guard,
     tokens,
     pairing,
@@ -126,8 +132,14 @@ class Client {
       this.waiters.splice(0).forEach((w) => w())
     })
   }
-  static async connect(port: number, opts: { token?: string; origin?: string } = {}) {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { origin: opts.origin })
+  static async connect(
+    port: number,
+    opts: { token?: string; origin?: string; headers?: Record<string, string> } = {},
+  ) {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+      origin: opts.origin,
+      headers: opts.headers,
+    })
     await new Promise((resolve, reject) => {
       ws.once('open', resolve)
       ws.once('error', reject)
@@ -274,12 +286,30 @@ describe('server', () => {
       false,
     )
 
+    // Saved commands: one runs in every new worktree, in its own terminal.
+    const scripts = [
+      { id: 'setup', name: 'Setup', command: 'setup deps', runOnWorktreeCreate: true },
+      { id: 'test', name: 'Test', command: 'run tests' },
+    ]
+    const saved = await c.rpc('projects.setScripts', { path: dir, scripts })
+    expect(saved.result).toMatchObject({ path: dir, scripts })
+    expect((await c.rpc('projects.list', {})).result).toMatchObject([{ scripts }])
+    expect(
+      (await c.rpc('projects.setScripts', { path: path.join(dir, 'nope'), scripts: [] })).ok,
+    ).toBe(false)
+
     const created = await c.rpc('sessions.create', {
       instanceId: 'fake',
       cwd: dir,
       workspace: { mode: 'worktree', branch: 'topic' },
     })
     expect(created.ok).toBe(true)
+    const wtTerms = (await c.rpc('terminals.list', { cwd: path.join(dir, '.wt', 'topic') }))
+      .result as { id: string; title?: string }[]
+    expect(wtTerms).toMatchObject([{ title: 'Setup' }])
+    c.send({ t: 'term.attach', id: wtTerms[0]!.id })
+    await c.until((fs) => fs.some((f) => f.t === 'term.out' && f.data.includes('ECHO:SETUP DEPS')))
+    await c.rpc('terminals.close', { id: wtTerms[0]!.id })
     const branches = (await c.rpc('git.branches', { cwd: dir })).result as {
       name: string
       worktree?: string
@@ -498,6 +528,33 @@ describe('server', () => {
   })
 })
 
+describe('silent connections', () => {
+  it('closes a connection that stops answering, and keeps one that pings', async () => {
+    const { server } = await boot(undefined, undefined, 'host-1', { idleTimeoutMs: 200 })
+    const url = `ws://127.0.0.1:${server.port}/ws`
+    const open = (autoPong: boolean) =>
+      new Promise<WebSocket>((resolve, reject) => {
+        const ws = new WebSocket(url, { autoPong })
+        ws.once('open', () => resolve(ws))
+        ws.once('error', reject)
+      })
+    // Gone to sleep: sends nothing and does not answer socket pings.
+    const asleep = await open(false)
+    // An app in use: pings like the client runtime does.
+    const awake = await open(true)
+    const timer = setInterval(() => awake.send(JSON.stringify({ t: 'ping' })), 50)
+    cleanup.push(() => clearInterval(timer))
+    // An idle but healthy socket: never sends, but its socket answers pings.
+    const idle = await open(true)
+    const closed = new Promise<number>((resolve) => asleep.once('close', (code) => resolve(code)))
+    expect(await closed).toBe(1006)
+    await new Promise((r) => setTimeout(r, 300))
+    expect(awake.readyState).toBe(WebSocket.OPEN)
+    expect(idle.readyState).toBe(WebSocket.OPEN)
+    for (const ws of [awake, idle]) ws.close()
+  })
+})
+
 describe('access control', () => {
   const pair = (port: number, body: unknown, headers: Record<string, string> = {}) =>
     fetch(`http://127.0.0.1:${port}/pair`, {
@@ -613,6 +670,35 @@ describe('access control', () => {
     expect((await other.rpc('providers.list', {})).ok).toBe(true)
     const again = await Client.connect(server.port, { token })
     await again.until((frames) => frames.some((f) => f.t === 'denied'))
+  })
+
+  it('makes peers relayed by a local reverse proxy (Tailscale Serve) pair first', async () => {
+    const { server, tokens, pairing } = await boot()
+    const relayed = { 'x-forwarded-for': '100.101.1.2', 'tailscale-user-login': 'me@example.com' }
+    const anon = await Client.connect(server.port, { headers: relayed })
+    await anon.until((fs) => fs.some((f) => f.t === 'denied'))
+
+    // No pairing codes for relayed peers, over HTTP either.
+    const admin = await fetch(`http://127.0.0.1:${server.port}/admin/pair`, {
+      method: 'POST',
+      headers: relayed,
+    })
+    expect(admin.status).toBe(403)
+
+    // Pairing through the proxy works, and the token gets the relayed peer in.
+    const { code } = pairing.create()
+    expect((await pair(server.port, { code, deviceName: 'Laptop' }, relayed)).status).toBe(200)
+    const { token } = tokens.issue('Laptop')
+    const good = await Client.connect(server.port, { token, headers: relayed })
+    await good.until((fs) => fs.some((f) => f.t === 'welcome'))
+    const pairRpc = await good.rpc('host.pair', {})
+    expect(pairRpc.ok).toBe(false)
+
+    // Funnel traffic from the internet is refused outright.
+    const funnel = await fetch(`http://127.0.0.1:${server.port}/health`, {
+      headers: { 'tailscale-funnel-request': '?1', 'x-forwarded-for': '8.8.8.8' },
+    })
+    expect(funnel.status).toBe(403)
   })
 
   it('reports Tailscale as unavailable instead of failing', async () => {

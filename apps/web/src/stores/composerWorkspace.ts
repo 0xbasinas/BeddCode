@@ -10,6 +10,8 @@ export interface PaneWorkspace {
   branch?: string
   status?: string
   worktree?: boolean
+  /** The added folder this workspace belongs to (its checkout, for a worktree). */
+  projectPath?: string
 }
 
 export const projectDraftId = (cwd: string) => JSON.stringify(['new-session', cwd])

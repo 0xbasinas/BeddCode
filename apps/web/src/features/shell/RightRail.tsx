@@ -55,6 +55,7 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
         branch: session.branch,
         status: session.status,
         worktree: Boolean(session.worktree),
+        projectPath: session.projectless ? undefined : session.projectPath,
       }
     : isComposer
       ? composer

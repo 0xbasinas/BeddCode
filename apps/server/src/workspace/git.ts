@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import {
   appendFileSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -23,7 +24,7 @@ import { diffText, runCommand, type RunResult } from '@beddcode/shared'
 export type Runner = (
   file: string,
   args: string[],
-  options: { cwd: string; timeoutMs?: number },
+  options: { cwd: string; timeoutMs?: number; env?: Record<string, string> },
 ) => Promise<RunResult>
 
 /** The hash every repository knows: used as "before" when a branch has no commits yet. */
@@ -31,13 +32,44 @@ const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 const MAX_FILE_BYTES = 1024 * 1024
 const MAX_PATCH_LINES = 600
 
-const defaultRunner: Runner = (file, args, { cwd, timeoutMs }) =>
+const defaultRunner: Runner = (file, args, { cwd, timeoutMs, env }) =>
   runCommand(file, args, {
     cwd,
     timeoutMs: timeoutMs ?? 30_000,
     // Never block on a credential prompt; stable English output for parsing.
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C', GIT_OPTIONAL_LOCKS: '0' },
+    env: {
+      ...process.env,
+      GIT_TERMINAL_PROMPT: '0',
+      LC_ALL: 'C',
+      GIT_OPTIONAL_LOCKS: '0',
+      ...env,
+    },
   })
+
+/** Who snapshot commits are by, so they never depend on (or borrow) the user's identity. */
+const SNAPSHOT_IDENTITY = {
+  GIT_AUTHOR_NAME: 'BeddCode',
+  GIT_AUTHOR_EMAIL: 'checkpoints@beddcode.local',
+  GIT_COMMITTER_NAME: 'BeddCode',
+  GIT_COMMITTER_EMAIL: 'checkpoints@beddcode.local',
+}
+/**
+ * Snapshots keep and put back a file's exact bytes: with Git for Windows' default
+ * `core.autocrlf=true`, adding would turn CRLF into LF and restoring would write CRLF over a file
+ * that had LF, so an undo would not give back what the turn started from.
+ */
+const SNAPSHOT_BYTES = ['-c', 'core.autocrlf=false', '-c', 'core.safecrlf=false']
+const MAX_TURN_FILES = 200
+
+/** One file that differs between two snapshots. */
+export interface SnapshotChange {
+  path: string
+  status: 'A' | 'M' | 'D' | 'R'
+  oldPath?: string
+  added: number
+  removed: number
+  binary?: boolean
+}
 
 export class GitError extends Error {}
 
@@ -67,10 +99,16 @@ export class GitService {
     return res.stdout
   }
 
-  private gitRaw(cwd: string, args: string[], timeoutMs?: number): Promise<RunResult> {
+  private gitRaw(
+    cwd: string,
+    args: string[],
+    timeoutMs?: number,
+    env?: Record<string, string>,
+  ): Promise<RunResult> {
     return this.run('git', ['--literal-pathspecs', '-c', 'core.quotepath=false', ...args], {
       cwd,
       timeoutMs,
+      env,
     }).catch((err: NodeJS.ErrnoException) => {
       if (err.code === 'ENOENT') throw new GitError('Git is not installed on this host')
       throw err
@@ -232,23 +270,210 @@ export class GitService {
       '--',
       file,
     ])
-    if (/^Binary files /m.test(out))
-      return { path: file, patch: '', added: 0, removed: 0, truncated: true }
+    return patchOf(file, out)
+  }
 
-    const lines = out.split('\n')
-    const start = lines.findIndex((l) => l.startsWith('@@'))
-    const body = start === -1 ? [] : lines.slice(start)
-    if (body.at(-1) === '') body.pop()
-    const added = body.filter((l) => l.startsWith('+')).length
-    const removed = body.filter((l) => l.startsWith('-')).length
-    const truncated = body.length > MAX_PATCH_LINES
-    return {
-      path: file,
-      patch: body.slice(0, MAX_PATCH_LINES).join('\n'),
-      added,
-      removed,
-      truncated,
+  /**
+   * Records the folder's current files (tracked and untracked, minus ignored ones) as a commit
+   * under `ref`, without touching the index, HEAD or any branch: git's own index is copied to a
+   * scratch file so staging stays exactly as the user left it. Returns the snapshot commit.
+   */
+  async snapshot(
+    cwd: string,
+    ref?: string,
+    { timeoutMs = 15_000, maxUntracked }: { timeoutMs?: number; maxUntracked?: number } = {},
+  ): Promise<string> {
+    const root = await this.root(cwd)
+    if (maxUntracked !== undefined) {
+      // Thousands of files that are neither tracked nor ignored (an unignored node_modules) would
+      // be copied into the repository's objects on every turn: skip instead.
+      const others = await this.gitRaw(
+        root,
+        ['ls-files', '--others', '--exclude-standard', '-z'],
+        timeoutMs,
+      )
+      if (others.stdout.split('\0').length - 1 > maxUntracked) {
+        throw new GitError('Too many untracked files to snapshot')
+      }
     }
+    const indexPath = (
+      await this.git(root, ['rev-parse', '--path-format=absolute', '--git-path', 'index'])
+    ).trim()
+    const scratch = `${indexPath}.beddcode-${randomBytes(4).toString('hex')}`
+    try {
+      if (existsSync(indexPath)) copyFileSync(indexPath, scratch)
+      const env = { GIT_INDEX_FILE: scratch }
+      const add = await this.gitRaw(
+        root,
+        [...SNAPSHOT_BYTES, 'add', '-A', '--', '.'],
+        timeoutMs,
+        env,
+      )
+      if (add.code !== 0) throw new GitError(add.stderr.trim() || 'Could not snapshot the folder')
+      const tree = (await this.gitRaw(root, ['write-tree'], timeoutMs, env)).stdout.trim()
+      if (!/^[0-9a-f]{40,64}$/.test(tree)) throw new GitError('Could not snapshot the folder')
+      const commit = await this.gitRaw(
+        root,
+        ['commit-tree', '--no-gpg-sign', tree, '-m', 'BeddCode checkpoint'],
+        timeoutMs,
+        SNAPSHOT_IDENTITY,
+      )
+      const hash = commit.stdout.trim()
+      if (commit.code !== 0 || !/^[0-9a-f]{40,64}$/.test(hash)) {
+        throw new GitError(commit.stderr.trim() || 'Could not snapshot the folder')
+      }
+      // A ref keeps the snapshot from being garbage-collected.
+      if (ref) await this.git(root, ['update-ref', ref, hash])
+      return hash
+    } finally {
+      rmSync(scratch, { force: true })
+    }
+  }
+
+  /** Files that differ between two snapshots, with line counts. */
+  async snapshotChanges(
+    cwd: string,
+    from: string,
+    to: string,
+  ): Promise<{ files: SnapshotChange[]; truncated: boolean }> {
+    assertHash(from)
+    assertHash(to)
+    const root = await this.root(cwd)
+    const nameStatus = await this.git(root, ['diff', '--name-status', '-z', '-M', from, to])
+    const numstat = await this.git(root, ['diff', '--numstat', '-z', '-M', from, to])
+    const counts = parseNumstat(numstat)
+    const binary = new Set(
+      numstat
+        .split('\0')
+        .filter((entry) => entry.startsWith('-\t-\t') && entry.length > 4)
+        .map((entry) => toPosix(entry.slice(4))),
+    )
+    const parts = nameStatus.split('\0')
+    const files: SnapshotChange[] = []
+    for (let i = 0; i < parts.length - 1;) {
+      const code = parts[i++]!
+      const kind = code[0]
+      let oldPath: string | undefined
+      let file = parts[i++]!
+      if (kind === 'R' || kind === 'C') {
+        oldPath = file
+        file = parts[i++]!
+      }
+      if (!file) continue
+      const count = counts.get(toPosix(file)) ?? { added: 0, removed: 0 }
+      files.push({
+        path: toPosix(file),
+        status: kind === 'A' || kind === 'C' ? 'A' : kind === 'D' ? 'D' : kind === 'R' ? 'R' : 'M',
+        ...(kind === 'R' && oldPath ? { oldPath } : {}),
+        added: count.added,
+        removed: count.removed,
+        ...(binary.has(toPosix(file)) ? { binary: true } : {}),
+      })
+    }
+    return { files: files.slice(0, MAX_TURN_FILES), truncated: files.length > MAX_TURN_FILES }
+  }
+
+  /** One file's diff between two snapshots. */
+  async snapshotDiff(cwd: string, from: string, to: string, file: string): Promise<GitDiff> {
+    assertHash(from)
+    assertHash(to)
+    assertRelative(file)
+    const root = await this.root(cwd)
+    const out = await this.git(root, [
+      'diff',
+      from,
+      to,
+      '--no-color',
+      '--no-ext-diff',
+      '--no-textconv',
+      '--unified=3',
+      '--',
+      file,
+    ])
+    return patchOf(file, out)
+  }
+
+  /** Whether the folder's files are exactly what snapshot `hash` recorded. */
+  async matchesSnapshot(cwd: string, hash: string): Promise<boolean> {
+    assertHash(hash)
+    const now = await this.snapshot(cwd)
+    const root = await this.root(cwd)
+    const [a, b] = await Promise.all([
+      this.git(root, ['rev-parse', `${now}^{tree}`]),
+      this.git(root, ['rev-parse', `${hash}^{tree}`]),
+    ])
+    return a.trim() === b.trim()
+  }
+
+  /**
+   * Puts every file that differs between `from` and `to` back the way `from` had it: changed and
+   * deleted files are restored, files that only `to` has are removed. Staged changes and commits
+   * are left alone. Returns how many files were touched.
+   */
+  async restoreSnapshot(cwd: string, from: string, to: string): Promise<number> {
+    assertHash(from)
+    assertHash(to)
+    const root = await this.root(cwd)
+    return this.write(root, async () => {
+      const out = await this.git(root, ['diff', '--name-status', '-z', '--no-renames', from, to])
+      const parts = out.split('\0')
+      const restore: string[] = []
+      const remove: string[] = []
+      for (let i = 0; i < parts.length - 1; i += 2) {
+        const kind = parts[i]![0]
+        const file = parts[i + 1]!
+        if (!file) continue
+        assertRelative(file)
+        if (kind === 'A') remove.push(file)
+        else restore.push(file)
+      }
+      for (const file of remove) rmSync(path.join(root, file), { force: true })
+      for (let i = 0; i < restore.length; i += 100) {
+        await this.git(root, [
+          ...SNAPSHOT_BYTES,
+          'restore',
+          `--source=${from}`,
+          '--worktree',
+          '--',
+          ...restore.slice(i, i + 100),
+        ])
+      }
+      return restore.length + remove.length
+    })
+  }
+
+  /** Drops snapshot refs under `prefix` (e.g. when their session's worktree is removed). */
+  async dropSnapshots(cwd: string, prefix: string): Promise<void> {
+    const root = await this.root(cwd)
+    // A prefix ending in a slash matches whole folders of refs; otherwise it is a name prefix.
+    const pattern = prefix.endsWith('/') ? prefix : `${prefix}*`
+    const refs = await this.git(root, ['for-each-ref', '--format=%(refname)', pattern])
+    for (const ref of refs.split('\n').filter(Boolean)) {
+      await this.gitRaw(root, ['update-ref', '-d', ref])
+    }
+  }
+
+  /**
+   * Keeps the newest `keep` snapshot pairs under `folder` (a ref folder ending in a slash, whose
+   * refs are named `<time>-before` / `<time>-after`) and drops the older ones. Returns how many
+   * snapshots (pairs) went.
+   */
+  async pruneSnapshots(cwd: string, folder: string, keep: number): Promise<number> {
+    if (!folder.endsWith('/')) throw new GitError('Snapshot folder must end in a slash')
+    const root = await this.root(cwd)
+    const refs = (await this.git(root, ['for-each-ref', '--format=%(refname)', folder]))
+      .split('\n')
+      .filter(Boolean)
+    const turnOf = (ref: string) => ref.slice(folder.length).replace(/-(before|after)$/, '')
+    // Names are base-36 times of equal length, so they sort in time order.
+    const turns = [...new Set(refs.map(turnOf))].sort((a, b) =>
+      a.length === b.length ? a.localeCompare(b) : a.length - b.length,
+    )
+    const old = new Set(turns.slice(0, Math.max(0, turns.length - keep)))
+    for (const ref of refs) {
+      if (old.has(turnOf(ref))) await this.gitRaw(root, ['update-ref', '-d', ref])
+    }
+    return old.size
   }
 
   /**
@@ -631,4 +856,21 @@ export function parseLog(out: string): GitCommit[] {
         files,
       }
     })
+}
+
+function assertHash(hash: string) {
+  if (!/^[0-9a-f]{40,64}$/.test(hash)) throw new GitError('Not a snapshot')
+}
+
+function patchOf(file: string, out: string): GitDiff {
+  if (/^Binary files /m.test(out))
+    return { path: file, patch: '', added: 0, removed: 0, truncated: true }
+  const lines = out.split('\n')
+  const start = lines.findIndex((l) => l.startsWith('@@'))
+  const body = start === -1 ? [] : lines.slice(start)
+  if (body.at(-1) === '') body.pop()
+  const added = body.filter((l) => l.startsWith('+')).length
+  const removed = body.filter((l) => l.startsWith('-')).length
+  const truncated = body.length > MAX_PATCH_LINES
+  return { path: file, patch: body.slice(0, MAX_PATCH_LINES).join('\n'), added, removed, truncated }
 }

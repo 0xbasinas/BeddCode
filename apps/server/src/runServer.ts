@@ -23,6 +23,7 @@ import { TerminalManager } from './terminals/manager.ts'
 import { GitService } from './workspace/git.ts'
 import { GithubService } from './workspace/github.ts'
 import { ProjectStore } from './workspace/projects.ts'
+import { createShutdown, watchForCrashes } from './shutdown.ts'
 
 /** Starts the host and keeps running until SIGINT/SIGTERM. */
 export async function runServer(config: ServerConfig): Promise<void> {
@@ -98,18 +99,18 @@ export async function runServer(config: ServerConfig): Promise<void> {
     )
   }
 
-  const shutdown = () =>
-    void sessions
-      .close()
-      .then(() => {
-        workspace.terminals.shutdown()
-        return watchers.closeAll()
-      })
-      .then(() => server.close())
-      .then(() => {
-        store.close()
-        process.exit(0)
-      })
-  process.on('SIGINT', shutdown)
-  process.on('SIGTERM', shutdown)
+  const shutdown = createShutdown({
+    log,
+    exit: (code) => process.exit(code),
+    close: async () => {
+      await sessions.close()
+      workspace.terminals.shutdown()
+      await watchers.closeAll()
+      await server.close()
+      store.close()
+    },
+  })
+  process.on('SIGINT', () => shutdown('SIGINT'))
+  process.on('SIGTERM', () => shutdown('SIGTERM'))
+  watchForCrashes(log, shutdown)
 }

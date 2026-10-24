@@ -31,6 +31,7 @@ import {
   useRuntime,
 } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
+import { clearHandoff, peekHandoff } from '../../stores/handoff.ts'
 import { Welcome, setupWasSkipped, skipSetup } from './Welcome.tsx'
 import { showWelcome } from './welcomeLogic.ts'
 import { chooseFolder } from '../folders/folderFlow.ts'
@@ -73,14 +74,16 @@ export function NewSession({
       ? (initialHost ?? defaultHostKey)
       : LOCAL_HOST_KEY,
   )
-  const { providers, connection, host, replica, projects, synced } = useRuntime(hostKey)
+  const { providers, connection, host, replica, projects, synced, loadError } = useRuntime(hostKey)
   // The welcome checklist stays up until the first session, so adding a folder never jumps
   // straight into a composer; its last step starts the session.
   const hasSessions = useHostStore((s) =>
     Object.values(s.runtimes).some((r) => r.replica.order.length > 0),
   )
   const [setupSkipped, setSetupSkipped] = useState(setupWasSkipped)
-  const [text, setText] = useState('')
+  // "Continue with another agent" leaves a summary of the old session to start from.
+  const [text, setText] = useState(() => peekHandoff(hostKey) ?? '')
+  useEffect(() => clearHandoff(), [])
   const [instanceId, setInstanceId] = useState<string>()
   const defaults = usePreferences((s) => hostDefaults(s.hosts, host?.hostId ?? hostKey))
   const [selection, setSelection] = useState<{
@@ -124,7 +127,14 @@ export function NewSession({
     useComposerWorkspace.setState({
       workspace:
         !welcome && folder
-          ? { hostKey, cwd: folder, draftId, title: folderName(folder), instanceId: agent?.id }
+          ? {
+              hostKey,
+              cwd: folder,
+              draftId,
+              title: folderName(folder),
+              instanceId: agent?.id,
+              projectPath: folder,
+            }
           : undefined,
     })
     return () => useComposerWorkspace.setState({ workspace: undefined })
@@ -267,14 +277,25 @@ export function NewSession({
             ? 'Connecting to your host…'
             : agent
               ? 'Describe a task, paste an issue link, or ask a question.'
-              : 'No agent is ready on this host yet. Install and sign in to Claude Code or Codex, or add an ACP agent.'}
+              : loadError && providers.length === 0
+                ? `${loadError}. Trying again…`
+                : 'No agent is ready on this host yet. Install and sign in to Claude Code or Codex, or add an ACP agent.'}
         </p>
         <Composer
           text={text}
           onTextChange={setText}
           placeholder="Describe a task, or paste an issue link…"
           busy={false}
-          disabled={connection !== 'connected' || !agent}
+          disabled={connection !== 'connected' || !agent || (!!folder && repo === 'loading')}
+          disabledReason={
+            connection !== 'connected'
+              ? 'the host is connected'
+              : !agent
+                ? loadError && providers.length === 0
+                  ? 'the host lists its agents'
+                  : 'an agent is ready'
+                : 'the folder is read'
+          }
           autoFocus
           hostKey={hostKey}
           draftId={draftId}

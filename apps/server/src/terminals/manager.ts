@@ -60,6 +60,8 @@ const FLUSH_CHARS = 32_768
 const HIGH_WATER = 1_000_000
 const LOW_WATER = 256_000
 const POLL_MS = 50
+/** Ended terminals kept for their output; past this the oldest ones are forgotten. */
+const MAX_EXITED = 10
 
 /** The shell a user would expect: PowerShell 7, then Windows PowerShell, else cmd; $SHELL elsewhere. */
 export function defaultShell(
@@ -86,6 +88,7 @@ interface Terminal {
   subscribers: Set<TerminalSubscriber>
   paused: boolean
   poll: ReturnType<typeof setInterval> | null
+  exitedAt?: number
 }
 
 /**
@@ -101,10 +104,27 @@ export class TerminalManager {
       pty?: PtyFactory
       shell?: () => ShellSpec
       env?: NodeJS.ProcessEnv
+      maxExited?: number
     } = {},
   ) {}
 
-  create(params: { cwd: string; cols?: number; rows?: number; shell?: ShellSpec }): TerminalInfo {
+  create(params: {
+    cwd: string
+    cols?: number
+    rows?: number
+    shell?: ShellSpec
+    /** Typed into the shell once it starts, as if the user had (a project script). */
+    command?: string
+    title?: string
+    /** Running a project script again replaces its earlier terminal in the same folder. */
+    scriptId?: string
+  }): TerminalInfo {
+    if (params.scriptId) {
+      for (const t of this.terminals.values()) {
+        if (t.info.scriptId === params.scriptId && sameFolder(t.info.cwd, params.cwd))
+          this.close(t.info.id)
+      }
+    }
     const shell = params.shell ?? (this.options.shell ?? defaultShell)()
     const cols = params.cols ?? 80
     const rows = params.rows ?? 24
@@ -122,7 +142,16 @@ export class TerminalManager {
     })
     const id = randomUUID()
     const term: Terminal = {
-      info: { id, cwd: params.cwd, shell: shell.name, cols, rows, createdAt: Date.now() },
+      info: {
+        id,
+        cwd: params.cwd,
+        shell: shell.name,
+        ...(params.title ? { title: params.title } : {}),
+        ...(params.scriptId ? { scriptId: params.scriptId } : {}),
+        cols,
+        rows,
+        createdAt: Date.now(),
+      },
       pty,
       buffer: '',
       pending: '',
@@ -135,6 +164,9 @@ export class TerminalManager {
 
     pty.onData((data) => this.onData(term, data))
     pty.onExit(({ exitCode }) => this.onExit(term, exitCode))
+    // The shell reads it once it is ready, so it shows up in the terminal like typed input and the
+    // shell stays open afterwards for the output and a rerun.
+    if (params.command) pty.write(`${params.command.replace(/\r?\n/g, ' ')}\r`)
     return { ...term.info }
   }
 
@@ -239,7 +271,18 @@ export class TerminalManager {
     this.flush(term)
     this.clearTimers(term)
     term.info.exited = code
+    term.exitedAt = Date.now()
     for (const s of term.subscribers) s.send({ t: 'term.exit', id: term.info.id, code })
+    this.forgetOldExited()
+  }
+
+  /** Ended terminals pile up (every script run, every `exit`); keep only the latest few. */
+  private forgetOldExited() {
+    const max = this.options.maxExited ?? MAX_EXITED
+    const ended = [...this.terminals.values()]
+      .filter((t) => t.info.exited !== undefined)
+      .sort((a, b) => (a.exitedAt ?? 0) - (b.exitedAt ?? 0))
+    for (const t of ended.slice(0, Math.max(0, ended.length - max))) this.close(t.info.id)
   }
 
   private clearTimers(term: Terminal) {

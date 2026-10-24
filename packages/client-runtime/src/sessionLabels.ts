@@ -1,5 +1,12 @@
 import type { SessionView } from './replica.ts'
 
+/**
+ * The last turn ended because the user said no to the agent, not because they stopped it: the
+ * agent is waiting to hear what to do instead.
+ */
+export const endedByDecline = (s: Pick<SessionView, 'status' | 'lastTurnReason' | 'declined'>) =>
+  s.status === 'idle' && s.lastTurnReason === 'cancelled' && s.declined === true
+
 /** One line saying what the session is doing right now, like the rows in the designs. */
 export function activityLine(s: SessionView): string {
   const last = s.items.findLast(
@@ -15,7 +22,10 @@ export function activityLine(s: SessionView): string {
     case 'failed':
       return last?.kind === 'error' ? last.message : 'Failed'
     case 'idle':
-      if (s.lastTurnReason === 'cancelled') return 'Stopped · ready to continue'
+      if (s.lastTurnReason === 'cancelled')
+        return endedByDecline(s)
+          ? 'You declined · tell the agent what to do instead'
+          : 'Stopped · ready to continue'
       return s.items.length === 0
         ? 'No messages yet'
         : s.added + s.removed > 0
@@ -30,7 +40,7 @@ export function activityLine(s: SessionView): string {
  */
 export function sessionNote(s: SessionView): string {
   if (s.status === 'idle') {
-    if (s.lastTurnReason === 'cancelled') return 'Stopped'
+    if (s.lastTurnReason === 'cancelled') return endedByDecline(s) ? 'Declined' : 'Stopped'
     return s.items.length === 0 ? 'New' : ''
   }
   return activityLine(s)

@@ -17,6 +17,7 @@ import { FileIcon } from '../files/FileIcon.tsx'
 import { ApprovalCard } from './ApprovalCard.tsx'
 import { QuestionCard } from './QuestionCard.tsx'
 import { ToolGroup } from './ToolCalls.tsx'
+import { TurnChangesCard } from './TurnChanges.tsx'
 
 type Item = TranscriptItem
 
@@ -28,9 +29,12 @@ export function Transcript({
   onOpenFile,
   onFork,
   completedTurns = 0,
+  changes,
 }: {
   items: Item[]
   cwd: string
+  /** Where turn changes are read and undone; without it their cards are not shown. */
+  changes?: { hostKey: string; sessionId: string; idle: boolean }
   onApprove(requestId: string, optionId: string): void | Promise<void>
   onAnswer?(requestId: string, answers?: Record<string, string[]>): void | Promise<void>
   onOpenFile?(path: string): void
@@ -40,6 +44,7 @@ export function Transcript({
   completedTurns?: number
 }) {
   const blocks = buildBlocks(items)
+  const latestChanges = items.findLast((i) => i.kind === 'changes')?.id
   // The last reply of each turn is where "fork from here" goes.
   const lastReplyOfTurn = new Map<number, number>()
   blocks.forEach((b, i) => {
@@ -59,6 +64,18 @@ export function Transcript({
           return (
             <EditedFilesCard key={block.id} files={block.files} cwd={cwd} onOpenFile={onOpenFile} />
           )
+        if (block.item.kind === 'changes') {
+          return changes ? (
+            <TurnChangesCard
+              key={block.item.id}
+              item={block.item}
+              hostKey={changes.hostKey}
+              sessionId={changes.sessionId}
+              canUndo={changes.idle && block.item.id === latestChanges}
+              onOpenFile={onOpenFile}
+            />
+          ) : null
+        }
         if (block.item.kind === 'tool') {
           const previous = blocks[index - 1]
           if (previous?.kind === 'item' && previous.item.kind === 'tool') return null
@@ -142,6 +159,8 @@ function ItemView({
       )
     case 'diff':
       return null // grouped into the "Edited files" card
+    case 'changes':
+      return null // drawn by Transcript, which knows the host
   }
 }
 
