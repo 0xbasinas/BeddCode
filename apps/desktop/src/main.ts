@@ -1,13 +1,35 @@
 import { spawn } from 'node:child_process'
 import path from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  Notification,
+  shell,
+  Tray,
+} from 'electron'
 import { BrowserShared, BrowserViews } from './browserViews.ts'
 import { parseBrowserCommand } from './browserCommand.ts'
 import { cliLaunch } from './cliLaunch.ts'
 import { Daemon, probeHealth, readLogTail, type DaemonState } from './daemon.ts'
+import {
+  readDesktopSettings,
+  writeDesktopSettings,
+  type DesktopSettings,
+} from './desktopSettings.ts'
 import { autoUpdater } from 'electron-updater'
 import { hostPort, serverLaunch } from './serverLaunch.ts'
 import { shouldAutoUpdate, startAutoUpdate } from './updater.ts'
+import {
+  canStartAtLogin,
+  defaultKeepRunning,
+  shouldHideOnClose,
+  statusLabel,
+  trayMenu,
+} from './trayModel.ts'
 import { runWindowAction } from './windowActions.ts'
 
 // Dev: the Vite server URL. Otherwise the app is loaded from the local host itself, which serves the
@@ -47,6 +69,78 @@ function startDaemon() {
   daemon.start()
 }
 
+// The tray icon keeps the app, and the host it supervises, running after the window is closed.
+const settingsFile = () => path.join(app.getPath('userData'), 'desktop-settings.json')
+let settings: DesktopSettings = {}
+const keepRunning = () => settings.keepRunning ?? defaultKeepRunning(process.platform)
+const saveSettings = (next: DesktopSettings) => {
+  settings = next
+  writeDesktopSettings(settingsFile(), settings)
+}
+let quitting = false
+let tray: Tray | null = null
+// Started by the sign-in item (see the tray menu): stay in the tray until the user opens the app.
+let startHidden = process.argv.includes('--hidden')
+
+function showWindow() {
+  const win = BrowserWindow.getAllWindows()[0]
+  if (!win) return createWindow()
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+}
+
+function updateTray() {
+  if (!tray) return
+  const menu = Menu.buildFromTemplate(
+    trayMenu(
+      {
+        status: daemon?.current ?? null,
+        keepRunning: keepRunning(),
+        startAtLogin: app.getLoginItemSettings().openAtLogin,
+        canStartAtLogin: canStartAtLogin(process.platform, app.isPackaged),
+      },
+      {
+        open: showWindow,
+        toggleKeepRunning: () => {
+          saveSettings({ ...settings, keepRunning: !keepRunning() })
+          updateTray()
+        },
+        toggleStartAtLogin: () => {
+          const openAtLogin = !app.getLoginItemSettings().openAtLogin
+          app.setLoginItemSettings({ openAtLogin, args: openAtLogin ? ['--hidden'] : [] })
+          updateTray()
+        },
+        quit: () => app.quit(),
+      },
+    ),
+  )
+  tray.setContextMenu(menu)
+  tray.setToolTip(`BeddCode: ${statusLabel(daemon?.current ?? null)}`)
+}
+
+function createTray() {
+  const icon = nativeImage
+    .createFromPath(
+      path.join(__dirname, '../build', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
+    )
+    .resize({ width: 16, height: 16 })
+  tray = new Tray(icon)
+  tray.on('click', showWindow)
+  daemon?.onChange(updateTray)
+  updateTray()
+}
+
+/** Tells the user, once, where the app went when its window closed. */
+function hintTray() {
+  if (settings.trayHintShown || !Notification.isSupported()) return
+  saveSettings({ ...settings, trayHintShown: true })
+  new Notification({
+    title: 'BeddCode is still running',
+    body: 'It stays in the tray so your sessions and phone keep working. Right-click the icon to quit.',
+  }).show()
+}
+
 // The browser pane: one set of pages per window, sharing one session (see browserViews.ts).
 const views = new Map<number, BrowserViews>()
 let shared: BrowserShared | null = null
@@ -84,7 +178,26 @@ function createWindow() {
 
   // Avoid showing the native window's empty background before the renderer's first paint.
   win.once('ready-to-show', () => {
-    if (process.env.BEDDCODE_WINDOW_HIDDEN !== '1') win.show()
+    const hidden = startHidden && tray !== null && keepRunning()
+    startHidden = false
+    if (process.env.BEDDCODE_WINDOW_HIDDEN !== '1' && !hidden) win.show()
+  })
+
+  // Signing out or shutting down must not be held up by a window that hides instead of closing.
+  win.on('session-end', () => {
+    quitting = true
+  })
+
+  // Closing the window hides it when the app is meant to keep running; Quit in the tray ends it.
+  win.on('close', (event) => {
+    if (
+      !tray ||
+      !shouldHideOnClose({ keepRunning: keepRunning(), quitting, platform: process.platform })
+    )
+      return
+    event.preventDefault()
+    win.hide()
+    hintTray()
   })
 
   // The app's own window buttons follow the real state, however it changed (button, keyboard, WM).
@@ -188,15 +301,13 @@ function startApp() {
   if (!app.requestSingleInstanceLock()) {
     app.quit()
   } else {
-    app.on('second-instance', () => {
-      const win = BrowserWindow.getAllWindows()[0]
-      if (!win) return
-      if (win.isMinimized()) win.restore()
-      win.focus()
-    })
+    app.on('second-instance', showWindow)
   }
 
   let stopping = false
+  app.on('before-quit', () => {
+    quitting = true
+  })
   app.on('before-quit', (event) => {
     if (stopping || !daemon) return
     // Give the host a moment to shut down before the app goes.
@@ -206,8 +317,10 @@ function startApp() {
   })
 
   app.whenReady().then(() => {
+    settings = readDesktopSettings(settingsFile())
     browserShared()
     startDaemon()
+    if (process.platform !== 'darwin') createTray()
     createWindow()
     if (
       shouldAutoUpdate({ packaged: app.isPackaged, platform: process.platform, env: process.env })
