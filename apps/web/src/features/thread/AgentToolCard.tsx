@@ -119,6 +119,24 @@ function OpenSession({ id, label = 'Open session' }: { id: string; label?: strin
   )
 }
 
+/** The card's title as the button that folds and unfolds it. */
+function CardToggle({
+  open,
+  onToggle,
+  children,
+}: {
+  open: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button type="button" className="agent-card-toggle" aria-expanded={open} onClick={onToggle}>
+      <ChevronRight size={12} className="agent-card-chevron" />
+      {children}
+    </button>
+  )
+}
+
 /** A long text behind a one-line preview, opened on click. */
 function Fold({
   label,
@@ -221,14 +239,18 @@ function StartCard({ view, tool, labels, now }: CardProps) {
       ? Math.max(0, (child.endedAt ?? now) - child.startedAt)
       : toolDuration(tool, now)
   const liveNow = LIVE.includes(phase)
+  // Open while there is something to watch or fix; a finished card folds to one line.
+  const [open, setOpen] = useState(liveNow || Boolean(view.error))
   return (
     <div className={`agent-card ${phase} ${view.error ? 'error' : ''}`}>
       <div className="agent-card-head">
-        <AgentAvatar agent={child?.agent} label={name} />
-        <span className="agent-card-title">
-          <span className="agent-verb">{view.verb}</span> <strong>{name}</strong>
-          {child?.title && <span className="agent-card-name"> · {child.title}</span>}
-        </span>
+        <CardToggle open={open} onToggle={() => setOpen((o) => !o)}>
+          <AgentAvatar agent={child?.agent} label={name} />
+          <span className="agent-card-title">
+            <span className="agent-verb">{view.verb}</span> <strong>{name}</strong>
+            {child?.title && <span className="agent-card-name"> · {child.title}</span>}
+          </span>
+        </CardToggle>
         {view.error ? (
           <span className="agent-phase failed">
             <X size={12} /> Not started
@@ -238,8 +260,8 @@ function StartCard({ view, tool, labels, now }: CardProps) {
         )}
         {child?.id && child.known && <OpenSession id={child.id} label="Open" />}
       </div>
-      {view.prompt && <p className="agent-task">{preview(view.prompt, 200)}</p>}
-      <WhereLine view={view} />
+      {open && view.prompt && <p className="agent-task">{preview(view.prompt, 400)}</p>}
+      {open && <WhereLine view={view} />}
       {liveNow && child?.activity && (
         <div className="agent-activity">
           <span className="agent-activity-dot" aria-hidden />
@@ -247,7 +269,7 @@ function StartCard({ view, tool, labels, now }: CardProps) {
         </div>
       )}
       {view.error && <p className="agent-error">{view.error}</p>}
-      {!liveNow && child?.reply && <Fold label="Result" text={child.reply} />}
+      {open && !liveNow && child?.reply && <Fold label="Result" text={child.reply} />}
     </div>
   )
 }
@@ -263,6 +285,7 @@ function ResultCard({ view, tool, labels, now }: CardProps) {
       ? 'failed'
       : (child?.phase ?? 'done')
   const body = view.name === 'wait_for' ? view.reply : view.transcript
+  const [open, setOpen] = useState(Boolean(view.pending || view.error))
   // The start call's card already shows this reply; a second copy would only repeat it.
   if (view.name === 'wait_for' && !view.pending && !view.error && body && body === child?.reply) {
     return <AgentToolRow view={view} tool={tool} labels={labels} now={now} />
@@ -270,15 +293,17 @@ function ResultCard({ view, tool, labels, now }: CardProps) {
   return (
     <div className={`agent-card compact ${view.error ? 'error' : ''}`}>
       <div className="agent-card-head">
-        {view.name === 'wait_for' && view.pending ? (
-          <Loader2 size={13} className="spin agent-card-icon" />
-        ) : (
-          <AgentAvatar agent={child?.agent} label={name} />
-        )}
-        <span className="agent-card-title">
-          <span className="agent-verb">{view.verb}</span> <strong>{name}</strong>
-          {child?.title && <span className="agent-card-name"> · {child.title}</span>}
-        </span>
+        <CardToggle open={open} onToggle={() => setOpen((o) => !o)}>
+          {view.name === 'wait_for' && view.pending ? (
+            <Loader2 size={13} className="spin agent-card-icon" />
+          ) : (
+            <AgentAvatar agent={child?.agent} label={name} />
+          )}
+          <span className="agent-card-title">
+            <span className="agent-verb">{view.verb}</span> <strong>{name}</strong>
+            {child?.title && <span className="agent-card-name"> · {child.title}</span>}
+          </span>
+        </CardToggle>
         {ms !== undefined && <span className="tcall-time">{formatDuration(ms)}</span>}
         <PhasePill phase={phase} />
         {child?.id && child.known && <OpenSession id={child.id} label="Open" />}
@@ -289,7 +314,7 @@ function ResultCard({ view, tool, labels, now }: CardProps) {
           <span className="mono">{child.activity}</span>
         </div>
       )}
-      {view.stillWorking && (
+      {open && view.stillWorking && (
         <p className="agent-note">
           {phase === 'needs-you'
             ? 'It was waiting for your approval then.'
@@ -297,8 +322,10 @@ function ResultCard({ view, tool, labels, now }: CardProps) {
         </p>
       )}
       {view.error && <p className="agent-error">{view.error}</p>}
-      {body && <Fold label={view.name === 'wait_for' ? 'Reply' : 'Conversation'} text={body} />}
-      {!view.pending && !body && !view.error && <p className="agent-note">No reply yet.</p>}
+      {open && body && (
+        <Fold label={view.name === 'wait_for' ? 'Reply' : 'Conversation'} text={body} />
+      )}
+      {open && !view.pending && !body && !view.error && <p className="agent-note">No reply yet.</p>}
     </div>
   )
 }
