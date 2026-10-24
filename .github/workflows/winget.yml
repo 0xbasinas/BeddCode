@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to submit, such as v0.2.0 (empty: the latest stable release)
+        description: Release tag to submit, such as v0.2.0 (leave empty for the latest stable release)
         required: false
 
 jobs:
