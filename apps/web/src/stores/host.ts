@@ -10,6 +10,8 @@ import {
   type SessionView,
 } from '@beddcode/client-runtime'
 import type {
+  BrowserUseCall,
+  BrowserUseResult,
   ClientFrame,
   HostInfo,
   Project,
@@ -198,6 +200,14 @@ function startHost(entry: HostEntry) {
     onFrame(frame) {
       frameListeners.get(entry.key)?.forEach((l) => l(frame))
     },
+    onBrowserCall(id, call) {
+      const run = browserCallHandler
+      const answer = (result: BrowserUseResult) => client.send({ t: 'browser.result', id, result })
+      if (!run) return answer({ ok: false, error: 'This app cannot run browser tools.' })
+      run(entry.key, call).then(answer, (err: unknown) =>
+        answer({ ok: false, error: err instanceof Error ? err.message : String(err) }),
+      )
+    },
     onCaughtUp() {
       flush()
       patchRuntime(entry.key, () => ({ synced: true }))
@@ -212,7 +222,32 @@ function startHost(entry: HostEntry) {
     },
   })
   clients.set(entry.key, client)
+  client.offerBrowser(browserOffer())
   client.start()
+}
+
+// -- browser use -------------------------------------------------------------
+
+type BrowserCallHandler = (hostKey: string, call: BrowserUseCall) => Promise<BrowserUseResult>
+let browserCallHandler: BrowserCallHandler | null = null
+
+/** Whether this app can run agents' browser tools: only the desktop app has the pages. */
+const browserOffer = (focus?: { sessionId: string; at: number }) => {
+  const available = typeof window !== 'undefined' && !!window.beddcodeDesktop?.browser
+  return available ? { available, focus } : { available, reason: 'web' as const }
+}
+
+/** Sets who runs agents' browser tool calls (features/browser/browserAgent.ts). */
+export function setBrowserCallHandler(handler: BrowserCallHandler) {
+  browserCallHandler = handler
+}
+
+/**
+ * Tells the session's host that this window shows it, so its agent's browser tool calls come
+ * here rather than to another of the user's desktop apps.
+ */
+export function reportShownSession(hostKey: string, sessionId: string) {
+  clients.get(hostKey)?.offerBrowser(browserOffer({ sessionId, at: Date.now() }))
 }
 
 let started = false

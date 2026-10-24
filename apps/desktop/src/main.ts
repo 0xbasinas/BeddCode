@@ -1,6 +1,7 @@
 import path from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron'
-import { BROWSER_PARTITION, guardBrowserSession, popupTarget } from './browserGuard.ts'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { BrowserShared, BrowserViews } from './browserViews.ts'
+import { parseBrowserCommand } from './browserCommand.ts'
 import { Daemon, probeHealth, readLogTail, type DaemonState } from './daemon.ts'
 import { autoUpdater } from 'electron-updater'
 import { hostPort, serverLaunch } from './serverLaunch.ts'
@@ -13,7 +14,6 @@ const webUrl = process.env.BEDDCODE_WEB_URL
 // Sent to the page whenever the window is maximized or restored (see preload.ts).
 const WINDOW_MAXIMIZED = 'beddcode:window-maximized'
 const DAEMON_STATUS = 'beddcode:daemon-status'
-const BROWSER_OPEN = 'beddcode:browser-open'
 
 // Windows names a notification's sender by the app's user model id. Installed builds use the id the
 // installer gave their Start menu shortcut (appId in electron-builder.yml), which shows the shortcut's
@@ -45,6 +45,11 @@ function startDaemon() {
   daemon.start()
 }
 
+// The browser pane: one set of pages per window, sharing one session (see browserViews.ts).
+const views = new Map<number, BrowserViews>()
+let shared: BrowserShared | null = null
+const browserShared = () => (shared ??= new BrowserShared())
+
 function createWindow() {
   const win = new BrowserWindow({
     show: false,
@@ -67,24 +72,17 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      // The browser pane shows pages in <webview>; see will-attach-webview below.
-      webviewTag: true,
+      // The browser pane's pages are native views the main process owns (browserViews.ts).
+      webviewTag: false,
     },
   })
+  views.set(win.webContents.id, new BrowserViews(win, browserShared()))
+  const contentsId = win.webContents.id
+  win.on('closed', () => views.delete(contentsId))
 
   // Avoid showing the native window's empty background before the renderer's first paint.
   win.once('ready-to-show', () => {
     if (process.env.BEDDCODE_WINDOW_HIDDEN !== '1') win.show()
-  })
-
-  // Pages shown in the browser pane never get node access or a preload script of their own.
-  win.webContents.on('will-attach-webview', (_event, webPreferences, params) => {
-    delete webPreferences.preload
-    webPreferences.nodeIntegration = false
-    webPreferences.contextIsolation = true
-    webPreferences.sandbox = true
-    // Only web pages may be shown; anything else (file:, javascript:) is refused.
-    if (!/^https?:\/\//i.test(params.src ?? '')) _event.preventDefault()
   })
 
   // The app's own window buttons follow the real state, however it changed (button, keyboard, WM).
@@ -173,6 +171,15 @@ ipcMain.handle('beddcode:daemon', async (event, action: unknown) => {
   }
 })
 
+// The browser pane's pages: show, navigate, find, capture… Only the app's own page may ask.
+ipcMain.handle('beddcode:browser', (event, raw: unknown) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win || event.sender !== win.webContents) return null
+  const command = parseBrowserCommand(raw)
+  const target = views.get(event.sender.id)
+  return command && target ? target.handle(command) : null
+})
+
 // One app at a time: a second launch brings the first one forward instead of starting its own host.
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -191,11 +198,11 @@ app.on('before-quit', (event) => {
   // Give the host a moment to shut down before the app goes.
   event.preventDefault()
   stopping = true
-  void daemon.stop().finally(() => app.quit())
+  void Promise.all([daemon.stop(), shared?.forwards.closeAll()]).finally(() => app.quit())
 })
 
 app.whenReady().then(() => {
-  guardBrowserSession(session.fromPartition(BROWSER_PARTITION))
+  browserShared()
   startDaemon()
   createWindow()
   if (
@@ -205,16 +212,6 @@ app.whenReady().then(() => {
   }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
-})
-
-// A page in the browser pane that opens a new window (target=_blank, window.open) gets a new tab.
-app.on('web-contents-created', (_event, contents) => {
-  if (contents.getType() !== 'webview') return
-  contents.setWindowOpenHandler(({ url }) => {
-    const target = popupTarget(url)
-    if (target) contents.hostWebContents?.send(BROWSER_OPEN, target)
-    return { action: 'deny' }
   })
 })
 

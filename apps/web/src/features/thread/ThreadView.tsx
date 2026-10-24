@@ -33,6 +33,7 @@ import {
   interrupt,
   setConfigOption,
   prompt,
+  reportShownSession,
   setMode,
   useHostStore,
   useRuntime,
@@ -72,6 +73,14 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
   const [actionError, setActionError] = useState<string>()
   const scroller = useRef<HTMLDivElement>(null)
   useFollowEnd(scroller, session?.items)
+
+  // The agent's browser tool calls go to the window showing its session.
+  useEffect(() => {
+    const report = () => reportShownSession(hostKey, sessionId)
+    report()
+    window.addEventListener('focus', report)
+    return () => window.removeEventListener('focus', report)
+  }, [hostKey, sessionId])
 
   const pending = useMemo(
     () =>

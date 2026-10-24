@@ -86,7 +86,7 @@ Useful options and troubleshooting:
 - For a browser UI served from another origin, add that exact origin with `--allow-origin <origin>` on the host. Local development origins are accepted by default. HTTPS/WSS termination is not configured by the daemon; enter a plain hostname, `http://`, or `ws://` address.
 - Linux users can inspect logs with `journalctl --user -u beddcode-server -f`. To keep the user service running after logout, use `loginctl enable-linger "$USER"`.
 - Keep the checkout and its dependencies in place while the service uses them. Run `pnpm --filter @beddcode/server start uninstall-service` to stop and remove it. `--dry-run` previews either service command without changing the machine.
-- Remote browser previews need a URL reachable from the client, such as the remote host's tailnet address. `localhost` in the browser pane refers to the client machine.
+- `localhost` in a remote host's browser pane means that host. The desktop app forwards the port to this computer through the host's own connection (`/tunnel`, same token and network rules as the app; the host's own port is refused), so a dev server listening only on the host's localhost works, HMR included. A plain browser cannot open ports, so there it swaps in the host's address instead, which needs the dev server to listen beyond localhost (for example `vite --host`).
 
 ### Projects, worktrees and git
 
@@ -108,7 +108,7 @@ Choose a folder and host in the new-session composer, then open Terminal, Files,
 
 - **Terminal:** real shells (PowerShell 7 on Windows, `$SHELL` elsewhere) run on the host in the selected folder and survive closing the app; reconnecting replays their recent output.
 - **Files:** a lazily loaded tree with search, a CodeMirror editor (Ctrl+S to save, tabs, unsaved-change and changed-on-disk handling), and a file watcher. Paths can never leave the session folder, also through links.
-- **Browser:** a small tabbed browser for previewing dev servers. In the desktop app pages open in an isolated `<webview>`; in a plain browser they open in a sandboxed iframe (some sites refuse to be embedded).
+- **Browser:** a small tabbed browser for previewing dev servers. In the desktop app each tab is a native, sandboxed page (an Electron `WebContentsView` in its own persistent session) laid over the pane: back/forward, find (Ctrl+F), zoom, a console with an error count, screenshots and PDFs, devtools, downloads to your Downloads folder, and prompts in the pane for permissions (camera, location, …) and sign-in. Tabs stay alive while the pane is closed; a tab unused for 20 minutes is unloaded and reloads when shown. A crashed or hung page says so and offers Reload. In a plain browser pages open in a sandboxed iframe (some sites refuse to be embedded).
 
 Each pane can add context to the current composer's next message, including a new-session draft. New-session attachments stay separate by host and selected folder. In **Files**, click the paperclip beside a file, in search results, or above the open editor to attach its saved contents, including images. In **Terminal**, select text and click the paperclip in the header to attach it with its terminal and project or session details. In **Browser**, click the pointer button, then an element to attach its HTML, selector and page details; the desktop app also includes a cropped screenshot. Press Escape or click the pointer button again to cancel. Picking elements in cross-origin previews requires the desktop app.
 

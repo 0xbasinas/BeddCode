@@ -98,6 +98,8 @@ export const SessionEvent = z.discriminatedUnion('type', [
     parent: z.object({ sessionId: z.string(), depth: z.number().int() }).optional(),
     /** The agent may start and manage sessions of its own through BeddCode's tools. */
     agentTools: z.boolean().optional(),
+    /** The agent may use the desktop app's browser pane through BeddCode's browser tools. */
+    browserTools: z.boolean().optional(),
     /** Set when a schedule started this session. */
     schedule: z.object({ id: z.string(), name: z.string() }).optional(),
   }),

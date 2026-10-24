@@ -4,9 +4,10 @@ import { createLogger } from '@beddcode/shared'
 import type { SessionManager, SessionOrigin } from '../sessions/sessionManager.ts'
 import type { EventStore } from '../store/eventStore.ts'
 import { runWorktreeSetup, type WorkspaceServices } from '../transport/rpc.ts'
-import { AgentTools } from './agentTools.ts'
+import { AgentTools, modeLevel } from './agentTools.ts'
 import { AlertService } from './alerts.ts'
 import { writeBridge } from './bridge.ts'
+import { BrowserBroker, BrowserTools } from './browserUse.ts'
 import { ScheduleService } from './schedules.ts'
 
 export interface AutomationDeps {
@@ -17,6 +18,8 @@ export interface AutomationDeps {
   workspace: Pick<WorkspaceServices, 'projects' | 'terminals'>
   /** The port the host listens on, for the agent tools' bridge to call back. */
   port: () => number
+  /** Where pictures of the browser pages agents use are kept. */
+  browserImageDir?: string
   fetch?: ConstructorParameters<typeof AlertService>[0]['fetch']
   tickMs?: number
 }
@@ -51,6 +54,27 @@ export function createAutomation(deps: AutomationDeps) {
     onRunEnded: (run, schedule) => alerts.onRunEnded(run, schedule),
     tickMs: deps.tickMs,
   })
+  const broker = new BrowserBroker()
+  const browser = new BrowserTools(
+    broker,
+    {
+      currentMode: (id) => sessions.currentMode(id),
+      modeLevel,
+      askUser: (id, ask) => sessions.askUser(id, ask),
+      async describe(id) {
+        const created = store.readSession(id).find((e) => e.event.type === 'session.created')
+        const event = created?.event.type === 'session.created' ? created.event : undefined
+        const providers = await sessions.listProviders().catch(() => [])
+        const label = providers.find((p) => p.id === event?.instanceId)?.label
+        const agent = (label ?? event?.instanceId ?? 'Agent').replace(/\s*\(.*\)$/, '')
+        let title = event?.title
+        for (const { event: e } of store.readSession(id))
+          if (e.type === 'session.renamed') title = e.title
+        return { agent, title }
+      },
+    },
+    deps.browserImageDir ?? path.join(home, 'browser-images'),
+  )
   const agentTools = new AgentTools(
     {
       create,
@@ -65,12 +89,14 @@ export function createAutomation(deps: AutomationDeps) {
       projectPaths: async () => (await workspace.projects.list()).map((p) => p.path),
     },
     { file: writeBridge(home), url: () => `http://127.0.0.1:${deps.port()}/agent-tools` },
+    browser,
   )
   const stopAlerts = store.subscribe((stored) => alerts.onEvent(stored))
   return {
     schedules,
     alerts,
     agentTools,
+    browser: broker,
     stop() {
       schedules.stop()
       stopAlerts()

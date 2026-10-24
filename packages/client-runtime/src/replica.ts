@@ -136,6 +136,8 @@ export interface SessionView {
   schedule?: { id: string; name: string }
   /** Can start and manage other sessions. */
   agentTools?: boolean
+  /** The agent may use the desktop app's browser pane. */
+  browserTools?: boolean
   /** The agent's own per-session settings (model, thinking level, ...). */
   config: ConfigOption[]
   /** The session this one continues, when it was forked. */
@@ -201,6 +203,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       parent: e.parent,
       schedule: e.schedule,
       agentTools: e.agentTools,
+      browserTools: e.browserTools,
     }
     return {
       lastSeq: stored.seq,

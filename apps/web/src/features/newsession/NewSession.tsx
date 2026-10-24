@@ -7,6 +7,7 @@ import {
   Folder,
   FolderPlus,
   GitBranch,
+  Globe,
   MessageSquare,
   Monitor,
   Server,
@@ -95,6 +96,7 @@ export function NewSession({
   const [chosenFolder, setChosenFolder] = useState(initialProject ?? '')
   const [workspace, setWorkspace] = useState<Workspace>({ mode: 'local' })
   const [agentTools, setAgentTools] = useState(false)
+  const [browserTools, setBrowserTools] = useState(false)
   const [repo, setRepo] = useState<RepoState | null | 'loading'>('loading')
   const [commands, setCommands] = useState<SlashCommand[]>([])
   const [preview, setPreview] = useState<{ key: string; data?: AgentPreview; failed?: boolean }>()
@@ -251,6 +253,7 @@ export function NewSession({
       config: Object.keys(configValues).length > 0 ? configValues : undefined,
       workspace: useWorktree ? { mode: 'worktree', baseBranch: workspace.baseBranch } : undefined,
       agentTools: agentTools || undefined,
+      browserTools: browserTools || undefined,
     })
     await prompt(sessionId, value, attachments)
     void navigate({ to: '/session/$sessionId', params: { sessionId } })
@@ -362,6 +365,18 @@ export function NewSession({
                 onClick={() => setAgentTools((v) => !v)}
               >
                 <Bot size={14} /> <span className="chip-text">Can start agents</span>
+              </button>
+              <button
+                className={`chip-lite agent-tools-chip ${browserTools ? 'on' : ''}`}
+                aria-pressed={browserTools}
+                title={
+                  browserTools
+                    ? 'The agent can open and use pages in the desktop app’s browser pane, in tabs of its own. You can take over at any time.'
+                    : 'Let this session’s agent use the browser pane (desktop app)'
+                }
+                onClick={() => setBrowserTools((v) => !v)}
+              >
+                <Globe size={14} /> <span className="chip-text">Can use browser</span>
               </button>
               {repo && repo !== 'loading' && (
                 <WorkspaceChip repo={repo} workspace={workspace} onChange={setWorkspace} />

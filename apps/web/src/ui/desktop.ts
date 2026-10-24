@@ -1,3 +1,5 @@
+import type { BrowserCommand, BrowserEvent } from '@beddcode/contracts'
+
 /** Window actions over IPC; each resolves to whether the window is now maximized. */
 export interface DesktopWindow {
   minimize(): Promise<boolean>
@@ -25,6 +27,15 @@ export interface DesktopDaemon {
   onStatus(callback: (state: DesktopDaemonState) => void): () => void
 }
 
+/** The browser pane's native pages (apps/desktop/src/browserViews.ts). */
+export interface DesktopBrowser {
+  command(command: BrowserCommand): Promise<unknown>
+  /** Everything the pages report; returns an unsubscribe. */
+  onEvent(callback: (event: BrowserEvent) => void): () => void
+  /** Pages asking for a new window; returns an unsubscribe. */
+  onOpen(callback: (url: string) => void): () => void
+}
+
 declare global {
   interface Window {
     /** Present only inside the desktop app (see apps/desktop/src/preload.ts). */
@@ -34,8 +45,8 @@ declare global {
       pickFolder?(options?: { defaultPath?: string }): Promise<string | null>
       /** The app's own window buttons; absent on macOS builds that keep the traffic lights. */
       window?: DesktopWindow
-      /** Pages in the browser pane asking for a new window; returns an unsubscribe. */
-      browser?: { onOpen(callback: (url: string) => void): () => void }
+      /** The browser pane's pages, native views the desktop app lays over the pane. */
+      browser?: DesktopBrowser
       /** Supervision of the local host; absent in the browser. */
       daemon?: DesktopDaemon
     }

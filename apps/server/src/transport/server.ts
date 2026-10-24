@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import os from 'node:os'
-import { WebSocketServer, type WebSocket } from 'ws'
+import { WebSocketServer, type ServerOptions, type WebSocket } from 'ws'
 import {
   ClientFrame,
   PROTOCOL_VERSION,
@@ -21,6 +21,7 @@ import {
 import type { PairingManager } from '../auth/pairing.ts'
 import type { TokenStore } from '../auth/tokens.ts'
 import type { AgentTools } from '../automation/agentTools.ts'
+import type { BrowserBroker } from '../automation/browserUse.ts'
 import type { TailscaleService } from '../network/tailscale.ts'
 import type { EventStore } from '../store/eventStore.ts'
 import type { AgentCatalog } from '../agents/catalog.ts'
@@ -29,6 +30,7 @@ import type { SessionManager } from '../sessions/sessionManager.ts'
 import type { FileWatchers } from '../files/watcher.ts'
 import { serveMedia } from '../files/media.ts'
 import { serveWebApp } from '../web/static.ts'
+import { handleTunnel } from './tunnel.ts'
 import {
   createRpcRouter,
   type AutomationServices,
@@ -94,6 +96,8 @@ export interface StartServerOptions {
   automation: AutomationServices
   /** Answers BeddCode's agent tools for sessions that may use them (loopback only). */
   agentTools?: AgentTools
+  /** Runs agents' browser tools on connected desktop apps. */
+  browser?: BrowserBroker
   /** Who may connect; defaults to this machine plus the tailnet, tokens for everyone else. */
   guard?: GuardOptions
   log: Logger
@@ -229,20 +233,37 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     res.writeHead(404).end()
   })
 
-  const wss = new WebSocketServer({
-    server: http,
-    path: '/ws',
-    // Refuse before the upgrade completes: wrong network, or a web page that is not ours.
-    verifyClient: ({ req }, done) => {
-      const peer = classifyRequest(req.socket.remoteAddress, req.headers)
-      if (!peerAllowed(peer, guard)) return done(false, 403, 'network')
-      if (!originAllowed(req.headers.origin, guard, req.headers.host))
-        return done(false, 403, 'origin')
-      done(true)
-    },
+  // Refuse before the upgrade completes: wrong network, or a web page that is not ours.
+  const verifyClient: NonNullable<ServerOptions['verifyClient']> = ({ req }, done) => {
+    const peer = classifyRequest(req.socket.remoteAddress, req.headers)
+    if (!peerAllowed(peer, guard)) return done(false, 403, 'network')
+    if (!originAllowed(req.headers.origin, guard, req.headers.host))
+      return done(false, 403, 'origin')
+    done(true)
+  }
+  const wss = new WebSocketServer({ noServer: true, verifyClient })
+  // The desktop app's port forwarding for its browser pane (see tunnel.ts).
+  const tunnels = new WebSocketServer({ noServer: true, verifyClient, perMessageDeflate: false })
+  http.on('upgrade', (req, socket, head) => {
+    const path = (req.url ?? '').split('?')[0]
+    const server = path === '/ws' ? wss : path === '/tunnel' ? tunnels : null
+    if (!server) {
+      socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n')
+      return
+    }
+    server.handleUpgrade(req, socket, head, (ws) => server.emit('connection', ws, req))
   })
   wss.on('connection', (ws, req) =>
     handleConnection(ws, classifyRequest(req.socket.remoteAddress, req.headers)),
+  )
+  tunnels.on('connection', (ws, req) =>
+    handleTunnel(ws, {
+      needsToken: needsToken(classifyRequest(req.socket.remoteAddress, req.headers), guard),
+      verifyToken: (token) => options.tokens.verify(token),
+      onRevoke: (listener) => options.tokens.onRevoke(listener),
+      ownPort: () => listeningPort,
+      log,
+    }),
   )
 
   // A laptop that slept or a phone that lost its network leaves a socket that never closes on its
@@ -282,6 +303,8 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       ws.close(1008, 'device revoked')
     })
     let unsubscribe: (() => void) | null = null
+    // Joins the browser broker once it offers (the desktop app does).
+    const browserClient = options.browser?.connect(send)
     lastSeen.set(ws, Date.now())
     const alive = () => {
       if (lastSeen.has(ws)) lastSeen.set(ws, Date.now())
@@ -300,6 +323,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       unsubscribe?.()
       terminalDetach.forEach((detach) => detach())
       watching.forEach((release) => release())
+      browserClient?.close()
     })
 
     ws.on('message', (raw) => {
@@ -380,6 +404,10 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
             )
           }
           break
+        case 'browser.offer':
+        case 'browser.result':
+          browserClient?.frame(frame)
+          break
         case 'fs.unwatch':
           watching.get(frame.cwd)?.()
           watching.delete(frame.cwd)
@@ -422,6 +450,8 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       new Promise<void>((resolve) => {
         clearInterval(sweep)
         for (const client of wss.clients) client.terminate()
+        for (const client of tunnels.clients) client.terminate()
+        tunnels.close()
         wss.close(() => http.close(() => resolve()))
       }),
   }
