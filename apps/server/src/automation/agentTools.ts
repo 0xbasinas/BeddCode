@@ -325,7 +325,16 @@ export class AgentTools {
     const parentProject =
       created?.event.type === 'session.created' ? created.event.projectPath : undefined
     const worktree = args.worktree === true
-    const folder = await this.childFolder(str(args, 'folder'), parent.cwd, parentProject, worktree)
+    // A session without a project has only a scratch folder; its children stay without a project
+    // too, so they list beside it instead of under a project named after that folder.
+    const projectless =
+      created?.event.type === 'session.created' &&
+      created.event.projectless === true &&
+      !str(args, 'folder') &&
+      !worktree
+    const folder = projectless
+      ? parent.cwd
+      : await this.childFolder(str(args, 'folder'), parent.cwd, parentProject, worktree)
 
     const model = str(args, 'model')
     if (
@@ -338,7 +347,8 @@ export class AgentTools {
     const { sessionId } = await this.host.create(
       {
         instanceId: agent.id,
-        cwd: folder,
+        cwd: projectless ? undefined : folder,
+        projectless: projectless || undefined,
         title: str(args, 'title')?.slice(0, 80),
         permissionMode,
         model,

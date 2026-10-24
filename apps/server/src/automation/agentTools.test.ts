@@ -39,7 +39,7 @@ const CODEX = provider('codex', [
 ])
 
 /** A host with an in-memory log; created sessions get a session.created event. */
-function fakeHost() {
+function fakeHost(parentProjectless = false) {
   const logs = new Map<string, StoredEvent[]>()
   let seq = 0
   const listeners = new Set<(e: StoredEvent) => void>()
@@ -61,6 +61,7 @@ function fakeHost() {
         at: 0,
         title: params.title ?? 'Child',
         cwd: params.cwd ?? '/p',
+        projectless: params.projectless,
         instanceId: params.instanceId,
         permissionMode: params.permissionMode,
         parent: origin.parent,
@@ -100,7 +101,8 @@ function fakeHost() {
     at: 0,
     title: 'Parent',
     cwd: '/p',
-    projectPath: '/p',
+    projectPath: parentProjectless ? undefined : '/p',
+    projectless: parentProjectless || undefined,
     instanceId: 'claude',
     permissionMode: 'acceptEdits',
     agentTools: true,
@@ -143,6 +145,13 @@ describe('AgentTools', () => {
     expect(t.sessionFor('nope')).toBeUndefined()
     const listed = (await t.handle('parent', 'tools/list', {})) as { tools: { name: string }[] }
     expect(listed.tools.map((x) => x.name)).toContain('start_session')
+  })
+
+  it('keeps the child of a session without a project without a project too', async () => {
+    const { host, created } = fakeHost(true)
+    await call(tools(host), 'parent', 'start_session', { agent: 'codex', prompt: 'hi' })
+    expect(created[0]!.params).toMatchObject({ projectless: true })
+    expect(created[0]!.params.cwd).toBeUndefined()
   })
 
   it('starts a child no looser than its parent, nested under it, and sends the prompt', async () => {
