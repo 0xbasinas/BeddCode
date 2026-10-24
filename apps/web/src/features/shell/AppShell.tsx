@@ -5,6 +5,7 @@ import { startHosts } from '../../stores/host.ts'
 // Runs agents' browser tool calls in the desktop app's browser pane.
 import '../browser/browserAgent.ts'
 import { startNotifications } from '../notifications/notifier.ts'
+import { LeftRail } from './LeftRail.tsx'
 import { RightRail } from './RightRail.tsx'
 import { HostStatusBanner } from './HostStatusBanner.tsx'
 import { WindowBar } from './WindowBar.tsx'
@@ -114,46 +115,49 @@ export function AppShell() {
     )
   return (
     <>
-      <Group
-        orientation="horizontal"
-        className={`shell ${sliding ? 'pane-sliding' : ''}`}
-        defaultLayout={layout.defaultLayout}
-        onLayoutChanged={layout.onLayoutChanged}
-      >
-        <Panel
-          id="sidebar"
-          className="shell-panel"
-          defaultSize="24%"
-          minSize="220px"
-          maxSize="520px"
-          groupResizeBehavior="preserve-pixel-size"
+      <div className="shell-frame">
+        <LeftRail />
+        <Group
+          orientation="horizontal"
+          className={`shell ${sliding ? 'pane-sliding' : ''}`}
+          defaultLayout={layout.defaultLayout}
+          onLayoutChanged={layout.onLayoutChanged}
         >
-          <Sidebar />
-        </Panel>
-        <Separator className="shell-sep" />
-        <Panel id="main" className="shell-panel" minSize="320px">
-          <div className="main-stack">
-            <Outlet />
-            <FolderToast />
-          </div>
-        </Panel>
-        <Separator className="shell-sep" disabled={!activePane} />
-        <Panel
-          id="right"
-          className="shell-panel"
-          panelRef={rightPanel}
-          collapsible
-          collapsedSize={RAIL_WIDTH}
-          onResize={onRightResize}
-          defaultSize="30%"
-          // The window buttons' card takes the end of an open pane's header row; the tabs still fit.
-          minSize={appWindowControls() ? '366px' : '280px'}
-          maxSize="75%"
-          groupResizeBehavior="preserve-pixel-size"
-        >
-          <RightRail wantWidth={wantWidth} />
-        </Panel>
-      </Group>
+          <Panel
+            id="sidebar"
+            className="shell-panel"
+            defaultSize="24%"
+            minSize="220px"
+            maxSize="520px"
+            groupResizeBehavior="preserve-pixel-size"
+          >
+            <Sidebar />
+          </Panel>
+          <Separator className="shell-sep" />
+          <Panel id="main" className="shell-panel" minSize="320px">
+            <div className="main-stack">
+              <Outlet />
+              <FolderToast />
+            </div>
+          </Panel>
+          <Separator className="shell-sep" disabled={!activePane} />
+          <Panel
+            id="right"
+            className="shell-panel"
+            panelRef={rightPanel}
+            collapsible
+            collapsedSize={RAIL_WIDTH}
+            onResize={onRightResize}
+            defaultSize="30%"
+            // The window buttons' card takes the end of an open pane's header row; the tabs still fit.
+            minSize={appWindowControls() ? '366px' : '280px'}
+            maxSize="75%"
+            groupResizeBehavior="preserve-pixel-size"
+          >
+            <RightRail wantWidth={wantWidth} />
+          </Panel>
+        </Group>
+      </div>
       {layers}
     </>
   )
