@@ -53,6 +53,12 @@ const SNAPSHOT_IDENTITY = {
   GIT_COMMITTER_NAME: 'BeddCode',
   GIT_COMMITTER_EMAIL: 'checkpoints@beddcode.local',
 }
+/**
+ * Snapshots keep and put back a file's exact bytes: with Git for Windows' default
+ * `core.autocrlf=true`, adding would turn CRLF into LF and restoring would write CRLF over a file
+ * that had LF, so an undo would not give back what the turn started from.
+ */
+const SNAPSHOT_BYTES = ['-c', 'core.autocrlf=false', '-c', 'core.safecrlf=false']
 const MAX_TURN_FILES = 200
 
 /** One file that differs between two snapshots. */
@@ -297,7 +303,12 @@ export class GitService {
     try {
       if (existsSync(indexPath)) copyFileSync(indexPath, scratch)
       const env = { GIT_INDEX_FILE: scratch }
-      const add = await this.gitRaw(root, ['add', '-A', '--', '.'], timeoutMs, env)
+      const add = await this.gitRaw(
+        root,
+        [...SNAPSHOT_BYTES, 'add', '-A', '--', '.'],
+        timeoutMs,
+        env,
+      )
       if (add.code !== 0) throw new GitError(add.stderr.trim() || 'Could not snapshot the folder')
       const tree = (await this.gitRaw(root, ['write-tree'], timeoutMs, env)).stdout.trim()
       if (!/^[0-9a-f]{40,64}$/.test(tree)) throw new GitError('Could not snapshot the folder')
@@ -419,6 +430,7 @@ export class GitService {
       for (const file of remove) rmSync(path.join(root, file), { force: true })
       for (let i = 0; i < restore.length; i += 100) {
         await this.git(root, [
+          ...SNAPSHOT_BYTES,
           'restore',
           `--source=${from}`,
           '--worktree',

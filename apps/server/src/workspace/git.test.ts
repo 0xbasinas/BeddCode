@@ -459,6 +459,21 @@ describe('GitService snapshots (turn checkpoints)', () => {
     expect(sh(dir, 'branch', '--list').trim()).toBe('* main')
   })
 
+  it('undoes to the exact bytes, LF or CRLF, even with core.autocrlf on (Git for Windows)', async () => {
+    const dir = repo()
+    sh(dir, 'config', 'core.autocrlf', 'true')
+    writeFileSync(path.join(dir, 'a.txt'), 'one\ntwo\n')
+    writeFileSync(path.join(dir, 'crlf.txt'), 'x\r\ny\r\n')
+    const before = await git.snapshot(dir)
+    writeFileSync(path.join(dir, 'a.txt'), 'changed\n')
+    writeFileSync(path.join(dir, 'crlf.txt'), 'changed\r\n')
+    const after = await git.snapshot(dir)
+    expect(await git.restoreSnapshot(dir, before, after)).toBe(2)
+    expect(readFileSync(path.join(dir, 'a.txt'), 'utf8')).toBe('one\ntwo\n')
+    expect(readFileSync(path.join(dir, 'crlf.txt'), 'utf8')).toBe('x\r\ny\r\n')
+    expect(await git.matchesSnapshot(dir, before)).toBe(true)
+  })
+
   it('lists what changed between snapshots, diffs a file, and undoes the changes', async () => {
     const dir = repo()
     writeFileSync(path.join(dir, 'keep.txt'), 'untracked and untouched\n')

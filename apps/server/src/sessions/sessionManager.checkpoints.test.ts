@@ -161,9 +161,10 @@ describe('SessionManager: turn changes and undo', () => {
     await until(() =>
       events(store, sessionId).some((e) => e.type === 'turn.completed') ? true : undefined,
     )
-    await new Promise((r) => setTimeout(r, 300))
+    // Its snapshots are dropped once the host has compared them, a little after the turn ends
+    // (later on a slow Windows runner, where every git call is a process start).
+    await until(() => (sh(dir, 'for-each-ref', 'refs/beddcode/') === '' ? true : undefined))
     expect(events(store, sessionId).some((e) => e.type === 'turn.changes')).toBe(false)
-    expect(sh(dir, 'for-each-ref', 'refs/beddcode/')).toBe('')
 
     await manager.prompt(sessionId, 'write1')
     const first = await changesOf(store, sessionId, 1)
