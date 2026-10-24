@@ -17,9 +17,6 @@ interface UiState extends PaneState {
   /** The pane showing now: `lastPane` while expanded, null while collapsed. */
   activePane: PaneId | null
   searchOpen: boolean
-  /** The workspace the left rail narrowed the session list to (see workspaceKey); null is all. */
-  workspace: string | null
-  setWorkspace(workspace: string | null): void
   /** The Environment card under the thread's icon; closed at start, kept while the app runs. */
   environmentOpen: boolean
   setEnvironmentOpen(open: boolean): void
@@ -90,8 +87,6 @@ export const useUiStore = create<UiState>((set) => ({
   ...initial,
   activePane: initial.paneCollapsed ? null : initial.lastPane,
   searchOpen: false,
-  workspace: null,
-  setWorkspace: (workspace) => set({ workspace }),
   environmentOpen: false,
   setEnvironmentOpen: (environmentOpen) => set({ environmentOpen }),
   setSearchOpen: (searchOpen) => set({ searchOpen }),

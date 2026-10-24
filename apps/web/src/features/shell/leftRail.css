@@ -27,27 +27,12 @@
 :root[data-platform='darwin'] .left-rail {
   padding-top: var(--pane-head);
 }
-.left-rail-list,
-.left-rail-foot {
+.left-rail-group {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
   width: 100%;
-}
-.left-rail-list {
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-.left-rail-list::-webkit-scrollbar {
-  display: none;
-}
-.left-rail-sep {
-  width: calc(24px * var(--ui-scale));
-  height: 1px;
-  background: var(--border);
-  flex: none;
 }
 
 .rail-item {
@@ -71,53 +56,4 @@
 .rail-item.on {
   background: var(--bg-active);
   color: var(--text);
-}
-/* The marker at the rail's edge for the workspace being shown. */
-.rail-item.on::before {
-  content: '';
-  position: absolute;
-  left: calc(-8px * var(--ui-scale));
-  top: 50%;
-  width: calc(3px * var(--ui-scale));
-  height: calc(16px * var(--ui-scale));
-  transform: translateY(-50%);
-  border-radius: 0 3px 3px 0;
-  background: var(--text);
-}
-.rail-item.workspace {
-  background: hsl(var(--hue) 28% 22%);
-  color: hsl(var(--hue) 60% 82%);
-  font-size: calc(12px * var(--ui-scale));
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.rail-item.workspace:hover {
-  background: hsl(var(--hue) 30% 28%);
-  color: hsl(var(--hue) 70% 90%);
-}
-.rail-item.workspace.on {
-  background: hsl(var(--hue) 34% 32%);
-  color: hsl(var(--hue) 80% 94%);
-}
-.rail-item.add {
-  border: 1px dashed var(--border-strong);
-  color: var(--text-faint);
-}
-.rail-item.add:hover {
-  color: var(--text);
-  border-color: var(--text-faint);
-  background: transparent;
-}
-.rail-dot {
-  position: absolute;
-  right: calc(2px * var(--ui-scale));
-  bottom: calc(2px * var(--ui-scale));
-  width: calc(9px * var(--ui-scale));
-  height: calc(9px * var(--ui-scale));
-  border-radius: 50%;
-  border: 2px solid var(--bg-panel);
-  background: var(--success);
-}
-.rail-dot.needs-you {
-  background: var(--accent);
 }

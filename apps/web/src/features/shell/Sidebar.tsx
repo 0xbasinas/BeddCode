@@ -52,7 +52,6 @@ import { AddFolderMenu } from '../folders/AddFolderMenu.tsx'
 import { Logo } from '../../ui/Logo.tsx'
 import { isFresh, useFolderFlow } from '../folders/folderFlow.ts'
 import { foldersWithoutSessions, samePath } from '../folders/folderLogic.ts'
-import { NO_PROJECT, workspaceKey } from './workspaces.ts'
 
 type Filter = 'all' | 'needs-you' | 'done'
 
@@ -142,14 +141,7 @@ export function Sidebar() {
           .map((m) => [m.sessionId, m])
       : [],
   )
-  // Sessions of one repository sit together, whether they run in its checkout or a worktree.
-  // The same path on two hosts is two different repositories.
-  const groupKey = (s: SessionView) =>
-    workspaceKey(hostOf.get(s.id) ?? '', s.projectless ? NO_PROJECT : s.projectPath)
-  // The left rail can narrow the list to one workspace.
-  const workspace = useUiStore((s) => s.workspace)
   const visible = all
-    .filter((s) => workspace === null || groupKey(s) === workspace)
     .filter(
       (s) =>
         !searching ||
@@ -167,7 +159,11 @@ export function Sidebar() {
         b.updatedAt - a.updatedAt,
     )
 
+  // Sessions of one repository sit together, whether they run in its checkout or a worktree.
+  // The same path on two hosts is two different repositories.
   const groups = new Map<string, SessionView[]>()
+  const groupKey = (s: SessionView) => `${hostOf.get(s.id)}
+${s.projectless ? 'no-project' : s.projectPath}`
   // Pinned sessions sit in their own section at the top (outside the Done tab and searches).
   const showPinned = filter !== 'done' && !searching
   const pinned = showPinned ? visible.filter((s) => s.pinned) : []
@@ -190,10 +186,7 @@ export function Sidebar() {
       ? foldersWithoutSessions(
           entries
             .filter((e) => selectedHost === 'all' || e.key === selectedHost)
-            .flatMap((e) => projectsOf(e.key).map((project) => ({ hostKey: e.key, project })))
-            .filter(
-              (f) => workspace === null || workspaceKey(f.hostKey, f.project.path) === workspace,
-            ),
+            .flatMap((e) => projectsOf(e.key).map((project) => ({ hostKey: e.key, project }))),
           sessionGroups,
         )
       : []
