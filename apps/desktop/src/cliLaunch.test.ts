@@ -30,7 +30,8 @@ describe('cliLaunch', () => {
 
   it('leaves an ordinary launch alone', () => {
     expect(cliLaunch(context([]))).toBeNull()
-    expect(cliLaunch(context(['open']))).toBeNull()
+    expect(cliLaunch(context(['open']))).not.toBeNull()
+    expect(cliLaunch(context(['/some/folder']))).toBeNull()
     expect(cliLaunch(context(['--some-chromium-flag']))).toBeNull()
   })
 

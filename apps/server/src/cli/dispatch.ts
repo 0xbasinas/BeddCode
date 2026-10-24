@@ -4,12 +4,16 @@ import { dataHome } from '../hostIdentity.ts'
 import { TailscaleService } from '../network/tailscale.ts'
 import { doctor, doctorExitCode, formatChecks } from './doctor.ts'
 import { fetchHealth } from './health.ts'
+import { configCmd } from './configCmd.ts'
 import { hostsCmd } from './hostsCmd.ts'
 import { realIo, type Io } from './io.ts'
-import { hostLogPath, logs } from './logs.ts'
+import { hostLogPath, logs, parseLevel } from './logs.ts'
 import { alertCmd, devicesCmd, openCmd, projectsCmd, scheduleCmd } from './manageCmds.ts'
 import { pair } from './pair.ts'
-import { parseArgs, num } from './args.ts'
+import { reportCmd } from './report.ts'
+import { completionScript, SHELLS } from './spec.ts'
+import { updateCmd } from './update.ts'
+import { parseArgs, num, str } from './args.ts'
 import {
   approveCmd,
   attachCmd,
@@ -27,12 +31,18 @@ export type Handler = (args: string[], ctx: Ctx) => Promise<number>
 function logsCmd(args: string[]): Promise<number> {
   const { flags } = parseArgs(args, {
     bool: ['follow'],
-    string: ['lines'],
+    string: ['lines', 'level'],
     alias: { f: 'follow', n: 'lines' },
   })
   const lines = num(flags.lines, 'lines') ?? 50
   if (!Number.isInteger(lines) || lines < 1) throw new Error('--lines needs a number of lines')
-  return Promise.resolve(logs(hostLogPath(), { lines, follow: flags.follow === true }))
+  return Promise.resolve(
+    logs(hostLogPath(), {
+      lines,
+      follow: flags.follow === true,
+      level: str(flags.level) ? parseLevel(str(flags.level)!) : undefined,
+    }),
+  )
 }
 
 async function doctorCmd(_args: string[], ctx: Ctx): Promise<number> {
@@ -69,6 +79,15 @@ export const HANDLERS: Record<string, Handler> = {
   undo: undoCmd,
   attach: attachCmd,
   hosts: (a, ctx) => hostsCmd(a, ctx.io),
+  config: (a, ctx) => Promise.resolve(configCmd(a, ctx.io)),
+  report: reportCmd,
+  update: updateCmd,
+  completion: (a, ctx) => {
+    const [shell] = a
+    if (!shell) throw new Error(`Usage: beddcode completion ${SHELLS.join('|')}`)
+    ctx.io.out(completionScript(shell))
+    return Promise.resolve(0)
+  },
 }
 
 /** Takes `--port <n>` out of the arguments, wherever it is. */

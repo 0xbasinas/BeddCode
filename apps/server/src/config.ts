@@ -1,4 +1,7 @@
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
 import { defaultGuard, type GuardOptions } from './auth/guard.ts'
+import { dataHome } from './hostIdentity.ts'
 
 export interface ServerConfig {
   port: number
@@ -7,23 +10,61 @@ export interface ServerConfig {
   guard: GuardOptions
 }
 
+/** Settings kept in `<data dir>/config.json` (see `beddcode config`); flags and variables win. */
+export interface ConfigFile {
+  port?: number
+  host?: string
+  allowLan?: boolean
+  requireToken?: boolean
+  allowedOrigins?: string[]
+}
+
+export const configPath = () => path.join(dataHome(), 'config.json')
+
+export function readConfigFile(file = configPath()): ConfigFile {
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as unknown
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as ConfigFile)
+      : {}
+  } catch {
+    return {}
+  }
+}
+
+export function writeConfigFile(config: ConfigFile, file = configPath()): void {
+  mkdirSync(path.dirname(file), { recursive: true })
+  writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`)
+}
+
 const truthy = (v: string | undefined) => v === '1' || v === 'true'
 
-/** Flags win over environment variables, which win over the safe defaults. */
+/**
+ * The settings the host runs with. Built-in defaults, then the config file, then environment
+ * variables, then flags: the closer to the command, the stronger. The file is only read for the
+ * real environment, so tests and embedders get exactly what they pass.
+ */
 export function parseServeArgs(
   args: string[],
   env: Record<string, string | undefined> = process.env,
+  file: ConfigFile = env === process.env ? readConfigFile() : {},
 ): ServerConfig {
   const guard = defaultGuard()
-  guard.allowLan = truthy(env.BEDDCODE_ALLOW_LAN)
-  guard.requireToken = truthy(env.BEDDCODE_REQUIRE_TOKEN)
-  guard.allowedOrigins = (env.BEDDCODE_ALLOWED_ORIGINS ?? '')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean)
+  guard.allowLan =
+    env.BEDDCODE_ALLOW_LAN !== undefined ? truthy(env.BEDDCODE_ALLOW_LAN) : !!file.allowLan
+  guard.requireToken =
+    env.BEDDCODE_REQUIRE_TOKEN !== undefined
+      ? truthy(env.BEDDCODE_REQUIRE_TOKEN)
+      : !!file.requireToken
+  guard.allowedOrigins =
+    env.BEDDCODE_ALLOWED_ORIGINS !== undefined
+      ? env.BEDDCODE_ALLOWED_ORIGINS.split(',')
+          .map((o) => o.trim())
+          .filter(Boolean)
+      : [...(file.allowedOrigins ?? [])]
   const config: ServerConfig = {
-    port: Number(env.BEDDCODE_PORT ?? 3773),
-    host: env.BEDDCODE_HOST ?? '127.0.0.1',
+    port: Number(env.BEDDCODE_PORT ?? file.port ?? 3773),
+    host: env.BEDDCODE_HOST ?? file.host ?? '127.0.0.1',
     guard,
   }
 

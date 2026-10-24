@@ -27,8 +27,13 @@ This machine
   devices             Devices paired with this host; revoke <device> removes one
   pair                Print a one-time code to pair another device with this host
   hosts               Machines this command can talk to (hosts add <address> <code>, hosts rm <name>)
-  logs                Show the host's log (-n <lines>, -f to follow)
+  config              The host's settings: port, host, allowLan, requireToken, allowedOrigins (get, set, unset)
+  logs                Show the host's log (-n <lines>, -f to follow, --level warn|error)
   doctor              Check git, agent CLIs, GitHub, Tailscale and the host, and say how to fix them
+  report              Write doctor output, versions and the recent log to a file for a bug report (--print, --out <file>); secrets removed
+  update              Is there a newer release? (--download [--out <folder>] fetches the installer; exit 10 when one exists)
+  completion <shell>  Tab completion: bash, zsh, fish or powershell
+  host install        Headless setup: run the host in the background for other machines; then \`beddcode pair\`
   serve               Run the host in this terminal
   install-service     Run the host in the background, starting at login
   uninstall-service   Stop it and remove it

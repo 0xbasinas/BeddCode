@@ -11,7 +11,7 @@ import { installService, uninstallService } from './service/install.ts'
 delete process.env.WATCH_REPORT_DEPENDENCIES
 
 // Commands that run or install the host itself; everything else is a client of a running host.
-const HOST_COMMANDS = ['serve', 'install-service', 'uninstall-service']
+const HOST_COMMANDS = ['serve', 'install-service', 'uninstall-service', 'host']
 const COMMANDS = [...HOST_COMMANDS, ...Object.keys(HANDLERS)]
 
 // A bare `beddcode` is help when run as the installed command (its launcher sets BEDDCODE_APP), and
@@ -23,7 +23,18 @@ const command = COMMANDS.includes(first)
   : first.startsWith('-') && !wantsHelp
     ? 'serve'
     : first
-const args = command === first ? rest : [first, ...rest]
+let args = command === first ? rest : [first, ...rest]
+// `beddcode host install|uninstall` is the headless way to say install-service.
+let hostAction: 'install-service' | 'uninstall-service' | null = null
+if (command === 'host') {
+  const [action, ...more] = args
+  if (action !== 'install' && action !== 'uninstall') {
+    console.error('Usage: beddcode host install|uninstall [--port n] [--host address] [--dry-run]')
+    process.exit(1)
+  }
+  hostAction = action === 'install' ? 'install-service' : 'uninstall-service'
+  args = more
+}
 const dryRun = args.includes('--dry-run')
 const serveArgs = args.filter((a) => a !== '--dry-run')
 
@@ -31,13 +42,16 @@ try {
   if (wantsHelp || !COMMANDS.includes(command)) {
     console.log(USAGE)
     process.exitCode = wantsHelp ? 0 : 1
-  } else if (command === 'install-service') {
+  } else if (command === 'install-service' || hostAction === 'install-service') {
     parseServeArgs(serveArgs) // fail now on a typo rather than in the background
     // A background host exists to be reached from other machines, so it listens beyond loopback
     // unless told otherwise. Only the tailnet and paired devices get in (see auth/guard.ts).
     const withHost = serveArgs.includes('--host') ? serveArgs : ['--host', '0.0.0.0', ...serveArgs]
     await installService({ serveArgs: withHost, dryRun })
-  } else if (command === 'uninstall-service') {
+    if (hostAction && !dryRun) {
+      console.log('Installed. Pair a device with: beddcode pair')
+    }
+  } else if (command === 'uninstall-service' || hostAction === 'uninstall-service') {
     await uninstallService({ dryRun })
   } else if (command === 'serve') {
     await runServer(parseServeArgs(serveArgs))
