@@ -95,6 +95,16 @@ function blocks(content: unknown): Block[] {
   return Array.isArray(content) ? (content as Block[]) : []
 }
 
+/** A tool's arguments as pretty JSON (capped), or nothing for none. */
+function argsText(input: Record<string, unknown>): { input?: string } {
+  if (Object.keys(input).length === 0) return {}
+  try {
+    return { input: JSON.stringify(input, null, 2).slice(0, MAX_OUTPUT) }
+  } catch {
+    return {}
+  }
+}
+
 function resultText(content: unknown): string | undefined {
   if (typeof content === 'string') return content.slice(0, MAX_OUTPUT)
   const text = blocks(content)
@@ -246,6 +256,9 @@ export class ClaudeEventMapper {
               toolId,
               kind: toolKind(name),
               title: toolTitle(name, input, this.options.cwd),
+              // MCP tools (BeddCode's agent tools among them) carry no title of their own worth
+              // reading; their arguments let the UI say what they do.
+              ...(name.startsWith('mcp__') ? argsText(input) : {}),
             })
           }
         }

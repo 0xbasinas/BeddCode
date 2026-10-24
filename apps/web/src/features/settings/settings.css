@@ -697,3 +697,74 @@
   min-height: 2px;
   background: var(--text-secondary);
 }
+
+/* Schedules */
+.schedule-row + .schedule-row {
+  border-top: 1px solid var(--border);
+}
+.schedule-row .settings-notice {
+  margin: 0 16px 10px;
+}
+.schedule-prompt {
+  margin: -6px 16px 8px 46px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.schedule-runs {
+  list-style: none;
+  margin: 0 16px 12px 46px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.schedule-runs li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.schedule-runs a {
+  margin-left: auto;
+  color: var(--accent);
+  text-decoration: none;
+}
+.schedule-form-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.schedule-form-row > label {
+  flex: 1 1 160px;
+}
+.schedule-form .mono {
+  font-family: var(--font-mono);
+}
+.schedule-form .schedule-check {
+  flex-direction: row;
+  align-items: center;
+  align-self: flex-end;
+  padding-bottom: 8px;
+}
+.schedule-preview {
+  margin-top: -6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.schedule-preview.error {
+  color: var(--danger, #e5484d);
+}
+.settings-input {
+  flex: 0 1 280px;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-app);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import {
+  Bot,
   Check,
   ChevronDown,
   Folder,
@@ -93,6 +94,7 @@ export function NewSession({
   }>()
   const [chosenFolder, setChosenFolder] = useState(initialProject ?? '')
   const [workspace, setWorkspace] = useState<Workspace>({ mode: 'local' })
+  const [agentTools, setAgentTools] = useState(false)
   const [repo, setRepo] = useState<RepoState | null | 'loading'>('loading')
   const [commands, setCommands] = useState<SlashCommand[]>([])
   const [preview, setPreview] = useState<{ key: string; data?: AgentPreview; failed?: boolean }>()
@@ -248,6 +250,7 @@ export function NewSession({
       effort: choice.effort,
       config: Object.keys(configValues).length > 0 ? configValues : undefined,
       workspace: useWorktree ? { mode: 'worktree', baseBranch: workspace.baseBranch } : undefined,
+      agentTools: agentTools || undefined,
     })
     await prompt(sessionId, value, attachments)
     void navigate({ to: '/session/$sessionId', params: { sessionId } })
@@ -348,6 +351,18 @@ export function NewSession({
                 }}
               />
               <span className="spacer" />
+              <button
+                className={`chip-lite agent-tools-chip ${agentTools ? 'on' : ''}`}
+                aria-pressed={agentTools}
+                title={
+                  agentTools
+                    ? 'This session can start other agents, nested under it. You still answer their approvals.'
+                    : 'Let this session start and manage other agents'
+                }
+                onClick={() => setAgentTools((v) => !v)}
+              >
+                <Bot size={14} /> <span className="chip-text">Can start agents</span>
+              </button>
               {repo && repo !== 'loading' && (
                 <WorkspaceChip repo={repo} workspace={workspace} onChange={setWorkspace} />
               )}

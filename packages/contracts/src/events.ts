@@ -94,6 +94,12 @@ export const SessionEvent = z.discriminatedUnion('type', [
     forkedFrom: z.object({ sessionId: z.string(), title: z.string().optional() }).optional(),
     /** True when the conversation was started outside BeddCode and imported. */
     imported: z.boolean().optional(),
+    /** Set when another session's agent started this one (see agent tools). */
+    parent: z.object({ sessionId: z.string(), depth: z.number().int() }).optional(),
+    /** The agent may start and manage sessions of its own through BeddCode's tools. */
+    agentTools: z.boolean().optional(),
+    /** Set when a schedule started this session. */
+    schedule: z.object({ id: z.string(), name: z.string() }).optional(),
   }),
   /** The provider's own session id, kept so a stopped session can be resumed later. */
   Base.extend({ type: z.literal('session.provider-session'), providerSessionId: z.string() }),

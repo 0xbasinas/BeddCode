@@ -25,6 +25,16 @@ export interface StartSessionInput {
   resumeId?: string
   /** Internal text generation from supplied context; adapters restrict tools for this job. */
   textOnly?: boolean
+  /** MCP servers the host adds for this session only (BeddCode's agent tools), next to the agent's own. */
+  mcpServers?: SessionMcpServer[]
+}
+
+/** A stdio MCP server to start alongside a session. */
+export interface SessionMcpServer {
+  name: string
+  command: string
+  args: string[]
+  env: Record<string, string>
 }
 
 export interface PromptInput {

@@ -8,12 +8,26 @@ import {
   Project,
   ProjectScript,
   PullRequest,
+  PullRequestDetail,
+  PullRequestSummary,
+  GithubStatus,
+  PrFilter,
+  PrAction,
 } from './git.ts'
 import { Device, PairingCode, TailnetStatus } from './hosts.ts'
 import { ConfigOption, SlashCommand } from './events.ts'
 import { PermissionModeOption, ProviderInstance } from './providers.ts'
 import { FileContent, FileEntry, FileMedia, FolderListing, TerminalInfo } from './workspace.ts'
 import { UsageLimits, UsageSummary } from './usage.ts'
+import {
+  AlertEvents,
+  AlertSettings,
+  PushRegistration,
+  Schedule,
+  ScheduleInput,
+  ScheduleRun,
+  SentAlert,
+} from './automation.ts'
 
 /** An ACP agent configured on a host (a command that speaks ACP over stdio). */
 export const AcpAgentSummary = z.object({
@@ -218,6 +232,35 @@ export const RpcMethods = {
   'git.push': { params: z.object({ cwd: z.string() }), result: z.object({}) },
   /** The pull request for the current branch, or null when there is none. */
   'git.pr.get': { params: z.object({ cwd: z.string() }), result: PullRequest.nullable() },
+  /** Whether the host's GitHub CLI is installed and signed in, and the folder's GitHub repo. */
+  'git.gh.status': { params: z.object({ cwd: z.string() }), result: GithubStatus },
+  /** The repo's pull requests: open, the user's own, those awaiting their review, or closed. */
+  'git.pr.list': {
+    params: z.object({
+      cwd: z.string(),
+      filter: PrFilter,
+      limit: z.number().int().min(1).max(100).optional(),
+    }),
+    result: z.object({ items: z.array(PullRequestSummary) }),
+  },
+  'git.pr.view': {
+    params: z.object({ cwd: z.string(), number: z.number().int().positive() }),
+    result: PullRequestDetail,
+  },
+  /** Mark ready, back to draft, close, reopen, comment on or merge a pull request. */
+  'git.pr.act': {
+    params: z.object({ cwd: z.string(), number: z.number().int().positive(), do: PrAction }),
+    result: z.object({ message: z.string().optional() }),
+  },
+  /** Checks a pull request out: here (switching this folder's branch) or into a new worktree. */
+  'git.pr.checkout': {
+    params: z.object({
+      cwd: z.string(),
+      number: z.number().int().positive(),
+      worktree: z.boolean().optional(),
+    }),
+    result: z.object({ branch: z.string(), path: z.string() }),
+  },
   /** Pushes the branch, then opens a pull request with the GitHub CLI. */
   'git.pr.create': {
     params: z.object({
@@ -319,6 +362,8 @@ export const RpcMethods = {
           branch: z.string().optional(),
         })
         .optional(),
+      /** Let the agent start and manage sessions of its own (BeddCode's agent tools). */
+      agentTools: z.boolean().optional(),
     }),
     result: z.object({ sessionId: z.string() }),
   },
@@ -487,6 +532,61 @@ export const RpcMethods = {
   'sessions.approve': {
     params: z.object({ sessionId: z.string(), requestId: z.string(), optionId: z.string() }),
     result: z.object({}),
+  },
+  /** Prompts the host runs on a timer, with their recent runs. */
+  'schedules.list': {
+    params: z.object({}),
+    result: z.object({ schedules: z.array(Schedule), runs: z.array(ScheduleRun) }),
+  },
+  'schedules.save': { params: ScheduleInput, result: Schedule },
+  'schedules.remove': {
+    params: z.object({ id: z.string() }),
+    result: z.object({ removed: z.boolean() }),
+  },
+  'schedules.setPaused': {
+    params: z.object({ id: z.string(), paused: z.boolean() }),
+    result: Schedule,
+  },
+  /** Fires a schedule now, whatever its timer says (still skipped while a run is going). */
+  'schedules.runNow': { params: z.object({ id: z.string() }), result: ScheduleRun },
+  /** Turns a cron expression or interval into its next few times, to check it before saving. */
+  'schedules.preview': {
+    params: z.object({
+      trigger: ScheduleInput.shape.trigger,
+      count: z.number().int().min(1).max(10).optional(),
+    }),
+    result: z.object({ times: z.array(z.number().int()), error: z.string().optional() }),
+  },
+  'alerts.settings': {
+    params: z.object({}),
+    result: z.object({
+      settings: AlertSettings,
+      devices: z.array(PushRegistration.omit({ token: true }).extend({ tokenTail: z.string() })),
+      recent: z.array(SentAlert),
+    }),
+  },
+  'alerts.setSettings': {
+    params: z.object({
+      ntfyUrl: z.string().url().nullable().optional(),
+      ntfyEvents: AlertEvents.optional(),
+    }),
+    result: AlertSettings,
+  },
+  /** Sends a test alert everywhere alerts go. */
+  'alerts.test': { params: z.object({}), result: SentAlert },
+  /** A phone asks for push alerts, or changes which ones it wants. Tied to its pairing. */
+  'push.register': {
+    params: z.object({
+      token: z.string().min(10).max(300),
+      deviceName: z.string().max(80).optional(),
+      platform: z.enum(['android', 'ios']).optional(),
+      events: AlertEvents,
+    }),
+    result: z.object({}),
+  },
+  'push.unregister': {
+    params: z.object({ token: z.string() }),
+    result: z.object({ removed: z.boolean() }),
   },
 } as const
 

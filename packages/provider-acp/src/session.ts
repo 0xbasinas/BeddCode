@@ -214,7 +214,13 @@ export class AcpSession implements ProviderSession {
       const extra = this.input.additionalDirectories ?? []
       const base = {
         cwd: this.input.cwd,
-        mcpServers: [] as unknown[],
+        // stdio servers are the one kind every ACP agent must accept.
+        mcpServers: (this.input.mcpServers ?? []).map((m) => ({
+          name: m.name,
+          command: m.command,
+          args: m.args,
+          env: Object.entries(m.env).map(([name, value]) => ({ name, value })),
+        })) as unknown[],
         // Only sent when the agent says it understands it.
         ...(extra.length > 0 && caps?.sessionCapabilities?.additionalDirectories
           ? { additionalDirectories: extra }

@@ -24,6 +24,8 @@ import { GitService } from './workspace/git.ts'
 import { GithubService } from './workspace/github.ts'
 import { ProjectStore } from './workspace/projects.ts'
 import { createShutdown, watchForCrashes } from './shutdown.ts'
+import type { AgentTools } from './automation/agentTools.ts'
+import { createAutomation } from './automation/index.ts'
 
 /** Starts the host and keeps running until SIGINT/SIGTERM. */
 export async function runServer(config: ServerConfig): Promise<void> {
@@ -54,7 +56,11 @@ export async function runServer(config: ServerConfig): Promise<void> {
     files: new FileService(),
   }
   const watchers = new FileWatchers()
+  // Filled in once the host listens: the agent tools' bridge calls back on this port.
+  let port = config.port
+  let agentTools: AgentTools | undefined
   const sessions = new SessionManager({
+    agentToolServers: (sessionId) => agentTools?.serversFor(sessionId) ?? [],
     store,
     attachments,
     git,
@@ -73,11 +79,25 @@ export async function runServer(config: ServerConfig): Promise<void> {
     },
   )
 
+  const hostId = loadHostId(home)
+  const automation = createAutomation({
+    home,
+    hostId,
+    sessions,
+    store,
+    workspace,
+    port: () => port,
+  })
+  agentTools = automation.agentTools
+  const { schedules, alerts } = automation
+  const tokens = new TokenStore(path.join(home, 'auth.json'))
+  tokens.onRevoke((deviceId) => alerts.forgetDevice(deviceId))
+
   const server = await startServer({
     port: config.port,
     host: config.host,
     guard: config.guard,
-    hostId: loadHostId(home),
+    hostId,
     defaultCwd: process.cwd(),
     webRoot: findWebRoot(),
     store,
@@ -86,11 +106,15 @@ export async function runServer(config: ServerConfig): Promise<void> {
     attachments,
     workspace,
     watchers,
-    tokens: new TokenStore(path.join(home, 'auth.json')),
+    tokens,
     pairing: new PairingManager(),
     tailscale: new TailscaleService(),
+    automation: { schedules, alerts },
+    agentTools,
     log,
   })
+  port = server.port
+  schedules.start()
   log.info(`listening on ${config.host}:${server.port} (data: ${home})`)
   if (!isLoopbackHost(config.host)) {
     log.info(
@@ -103,6 +127,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     log,
     exit: (code) => process.exit(code),
     close: async () => {
+      automation.stop()
       await sessions.close()
       workspace.terminals.shutdown()
       await watchers.closeAll()

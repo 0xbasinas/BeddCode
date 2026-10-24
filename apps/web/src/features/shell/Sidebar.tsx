@@ -18,6 +18,8 @@ import {
   Layers,
   MessageSquare,
   Undo2,
+  Bot,
+  CalendarClock,
   Pin,
   PinOff,
   X,
@@ -27,6 +29,7 @@ import {
   doneMenuAction,
   doneOpen,
   isFiledAway,
+  nestSessions,
   searchSessions,
   sessionNote,
   splitDone,
@@ -191,13 +194,14 @@ ${s.projectless ? 'no-project' : s.projectPath}`
   const hostLabel = (hostKey: string) =>
     hostKey === LOCAL_HOST_KEY ? 'This PC' : (runtimes[hostKey]?.host?.name ?? 'Remote host')
 
-  const sessionRow = (s: SessionView) => (
+  const sessionRow = (s: SessionView, depth = 0) => (
     <Link
       key={s.id}
       to="/session/$sessionId"
       params={{ sessionId: s.id }}
       activeOptions={{ exact: true, includeSearch: false }}
-      className="session-row"
+      className={depth > 0 ? 'session-row child' : 'session-row'}
+      style={depth > 0 ? { ['--nest' as string]: Math.min(depth, 3) } : undefined}
       onContextMenu={(e) => {
         e.preventDefault()
         setMenu({ x: e.clientX, y: e.clientY, session: s })
@@ -231,6 +235,8 @@ ${s.projectless ? 'no-project' : s.projectPath}`
                 <GitBranch size={11} /> <code>{s.branch}</code> ·{' '}
               </>
             )}
+            {s.schedule && <CalendarClock size={11} aria-label={`Scheduled: ${s.schedule.name}`} />}
+            {s.parent && <Bot size={11} aria-label="Started by another session" />}
             {agentLabel(s)}
           </span>
           {s.pinned && !showPinned && <Pin className="session-pin" size={11} aria-label="Pinned" />}
@@ -253,7 +259,9 @@ ${s.projectless ? 'no-project' : s.projectPath}`
   /** A folder's sessions: the list, then its Done section (closed until asked for). */
   const renderGroup = (list: SessionView[], groupKey: string) => {
     // On the Done tab the filed sessions are the list itself.
-    if (filter === 'done') return list.map(sessionRow)
+    const rows = (sessions: SessionView[]) =>
+      nestSessions(sessions).map(({ session, depth }) => sessionRow(session, depth))
+    if (filter === 'done') return rows(list)
     const { active, done } = splitDone(list)
     const open = doneOpen({
       chosen: openDone.has(groupKey),
@@ -263,7 +271,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
     })
     return (
       <>
-        {active.map(sessionRow)}
+        {rows(active)}
         {done.length > 0 && (
           <>
             <button
@@ -274,7 +282,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               <ChevronRight size={13} className={open ? 'open' : undefined} />
               Done <span>{done.length}</span>
             </button>
-            {open && done.map(sessionRow)}
+            {open && rows(done)}
           </>
         )}
       </>
@@ -489,7 +497,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
             <div className="pinned-head">
               <Pin size={13} /> Pinned
             </div>
-            {pinned.map(sessionRow)}
+            {pinned.map((s) => sessionRow(s))}
           </section>
         )}
         {sessionGroups.length === 0 && emptyFolders.length === 0 && pinned.length === 0 && (
@@ -560,6 +568,14 @@ ${s.projectless ? 'no-project' : s.projectPath}`
           onClick={() => void navigate({ to: '/settings' })}
         >
           <Settings size={18} /> Settings
+        </button>
+        <button
+          className="icon-btn"
+          aria-label="Schedules"
+          title="Schedules"
+          onClick={() => void navigate({ to: '/settings', search: { section: 'schedules' } })}
+        >
+          <CalendarClock size={16} />
         </button>
         <button className="link-btn" onClick={() => setHostsOpen(true)} title="Manage hosts">
           {multiHost

@@ -89,11 +89,15 @@ export function sessionAlerts(
     return [{ kind: 'needs-you', title, body: waitingOn(session), sessionId: session.id }]
   }
   if (before === 'running' && session.status === 'idle' && session.lastTurnReason === 'done') {
+    // The session that started this one reads its answer; the user hears from that one.
+    if (session.parent) return []
     return [
       {
         kind: 'turn-done',
         title,
-        body: 'Finished and waiting for your next message',
+        body: session.schedule
+          ? `Scheduled run of “${session.schedule.name}” finished`
+          : 'Finished and waiting for your next message',
         sessionId: session.id,
       },
     ]

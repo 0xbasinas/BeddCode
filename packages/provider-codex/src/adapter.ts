@@ -13,6 +13,7 @@ import { CodexSession } from './session.ts'
 import { discoverCodexModels } from './models.ts'
 import { createCodexHistory, createWithAppServer, listCodexSkills } from './history.ts'
 import { createCodexMcp } from './mcp.ts'
+import { CODEX_BUILTINS, scanCodexPrompts } from './commands.ts'
 import { readCodexLimits } from './limits.ts'
 import { generateSessionText } from '@beddcode/provider-core'
 import { randomUUID } from 'node:crypto'
@@ -142,7 +143,11 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): ProviderA
     forkHistory: (_instanceId, from) =>
       history.fork(from.providerSessionId, from.cwd, from.throughTurn),
     limits: () => readCodexLimits(appServer),
-    listCommands: (_instanceId, cwd) => listCodexSkills(appServer, cwd ?? process.cwd()),
+    listCommands: async (_instanceId, cwd) => [
+      ...CODEX_BUILTINS,
+      ...scanCodexPrompts(),
+      ...(await listCodexSkills(appServer, cwd ?? process.cwd()).catch(() => [])),
+    ],
     mcp: createCodexMcp(executable, env),
   }
 }

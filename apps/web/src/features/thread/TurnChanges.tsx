@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, FolderOpen, History, Undo2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, FolderOpen, GitPullRequest, History, Undo2 } from 'lucide-react'
+import { useUiStore } from '../../stores/ui.ts'
 import type { TranscriptItem } from '@beddcode/client-runtime'
 import type { GitDiff, TurnChangedFile } from '@beddcode/contracts'
 import { PatchView } from '../../ui/PatchView.tsx'
@@ -24,6 +25,7 @@ export function TurnChangesCard({
   hostKey,
   sessionId,
   canUndo,
+  offerPr,
   onOpenFile,
 }: {
   item: Changes
@@ -31,6 +33,8 @@ export function TurnChangesCard({
   sessionId: string
   /** The newest changes of an idle session; older turns cannot be undone safely. */
   canUndo: boolean
+  /** In a worktree: offer to commit these and open a pull request from its branch. */
+  offerPr?: boolean
   onOpenFile?(path: string): void
 }) {
   const [open, setOpen] = useState(item.files.length <= 3 && !item.reverted)
@@ -75,6 +79,15 @@ export function TurnChangesCard({
           </span>
           {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </button>
+        {offerPr && !item.reverted && !confirming && (
+          <button
+            className="turn-undo"
+            onClick={() => useUiStore.getState().showChanges()}
+            title="Commit these in the Git pane, then open a pull request from this worktree's branch"
+          >
+            <GitPullRequest size={14} /> Commit & PR
+          </button>
+        )}
         {canUndo && !item.reverted && !confirming && (
           <button
             className="turn-undo"

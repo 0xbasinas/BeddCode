@@ -20,6 +20,7 @@ import {
 } from '../auth/guard.ts'
 import type { PairingManager } from '../auth/pairing.ts'
 import type { TokenStore } from '../auth/tokens.ts'
+import type { AgentTools } from '../automation/agentTools.ts'
 import type { TailscaleService } from '../network/tailscale.ts'
 import type { EventStore } from '../store/eventStore.ts'
 import type { AgentCatalog } from '../agents/catalog.ts'
@@ -28,7 +29,12 @@ import type { SessionManager } from '../sessions/sessionManager.ts'
 import type { FileWatchers } from '../files/watcher.ts'
 import { serveMedia } from '../files/media.ts'
 import { serveWebApp } from '../web/static.ts'
-import { createRpcRouter, type RpcContext, type WorkspaceServices } from './rpc.ts'
+import {
+  createRpcRouter,
+  type AutomationServices,
+  type RpcContext,
+  type WorkspaceServices,
+} from './rpc.ts'
 
 function parsePairRequest(body: unknown): { code: string; deviceName: string } | null {
   if (typeof body !== 'object' || body === null) return null
@@ -85,6 +91,9 @@ export interface StartServerOptions {
   tokens: TokenStore
   pairing: PairingManager
   tailscale: TailscaleService
+  automation: AutomationServices
+  /** Answers BeddCode's agent tools for sessions that may use them (loopback only). */
+  agentTools?: AgentTools
   /** Who may connect; defaults to this machine plus the tailnet, tokens for everyone else. */
   guard?: GuardOptions
   log: Logger
@@ -128,6 +137,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       tailscale: options.tailscale,
       port: () => listeningPort,
     },
+    options.automation,
   )
 
   const http = createServer((req, res) => {
@@ -179,6 +189,30 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
           const { token, device } = options.tokens.issue(parsed.deviceName)
           log.info(`paired device "${device.name}" from ${req.socket.remoteAddress}`)
           reply(res, 200, { token, host: hostInfo } satisfies PairResult)
+        })
+        .catch(() => reply(res, 400, { error: 'Invalid request' }))
+      return
+    }
+
+    // The agent tools' MCP bridge, run by an agent on this machine with its session's key.
+    if (url === '/agent-tools' && req.method === 'POST') {
+      if (peer !== 'loopback' || origin !== undefined || !options.agentTools)
+        return void res.writeHead(403).end()
+      const auth = req.headers.authorization
+      const sessionId = options.agentTools.sessionFor(
+        auth?.startsWith('Bearer ') ? auth.slice(7) : undefined,
+      )
+      if (!sessionId) return reply(res, 401, { error: 'Unknown session key' })
+      const tools = options.agentTools
+      void readJson(req)
+        .then(async (body) => {
+          const { method, params } = (body ?? {}) as { method?: unknown; params?: unknown }
+          if (typeof method !== 'string') return reply(res, 400, { error: 'Send {method, params}' })
+          try {
+            reply(res, 200, { result: await tools.handle(sessionId, method, params) })
+          } catch (err) {
+            reply(res, 200, { error: err instanceof Error ? err.message : String(err) })
+          }
         })
         .catch(() => reply(res, 400, { error: 'Invalid request' }))
       return
@@ -283,6 +317,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
         if (device) {
           authed = true
           deviceId = device.id
+          context.deviceId = device.id
         } else {
           send({ t: 'denied', reason: 'auth' })
           ws.close(1008, 'auth')

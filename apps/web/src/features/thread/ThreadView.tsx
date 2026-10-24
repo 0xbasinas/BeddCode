@@ -13,6 +13,7 @@ import {
   Pin,
   PinOff,
   ArrowRightLeft,
+  GitPullRequest,
 } from 'lucide-react'
 import type { SessionView } from '@beddcode/client-runtime'
 import { Composer } from '../composer/Composer.tsx'
@@ -41,6 +42,7 @@ import {
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { folderName } from '../../ui/format.ts'
 import { Transcript } from './Transcript.tsx'
+import { ChildAgentsBar, StartedByBanner } from './AgentToolCard.tsx'
 import { endedByDecline, handoffPrompt, sessionChanges } from '@beddcode/client-runtime'
 import { setHandoff } from '../../stores/handoff.ts'
 import { useFollowEnd } from './useFollowEnd.ts'
@@ -276,9 +278,12 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             })}
             {session.worktree ? ` · worktree from ${session.worktree.baseBranch}` : ''}
           </div>
+          {session.parent && <StartedByBanner session={session} hostKey={hostKey} />}
           <Transcript
             items={session.items}
             cwd={session.cwd}
+            sessionId={sessionId}
+            hostKey={hostKey}
             onOpenFile={(path) => {
               useUiStore.getState().openPane('files')
               void useFiles.getState().open(folderId(hostKey, session.cwd), path)
@@ -287,7 +292,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             onAnswer={(requestId, answers) => answerQuestion(sessionId, requestId, answers)}
             onFork={canFork ? (turnNo) => fork(turnNo) : undefined}
             completedTurns={session.completedTurns}
-            changes={{ hostKey, sessionId, idle: !busy }}
+            changes={{ hostKey, sessionId, idle: !busy, worktree: Boolean(session?.worktree) }}
           />
         </div>
       </div>
@@ -316,6 +321,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
         commands={session.commands}
         above={
           <>
+            {session.agentTools && <ChildAgentsBar sessionId={sessionId} hostKey={hostKey} />}
             {session.plan && <PlanCard plan={session.plan} />}
             <QueueList
               queue={session.queue}
@@ -473,6 +479,18 @@ function WorktreeChip({ session, hostKey }: { session: SessionView; hostKey: str
             <Copy size={16} />
             <span className="menu-text">
               <span className="menu-title">{copied ? 'Copied' : 'Copy path'}</span>
+            </span>
+          </button>
+          <button
+            className="menu-row"
+            onClick={() => {
+              useUiStore.getState().showCreatePr()
+              close()
+            }}
+          >
+            <GitPullRequest size={16} />
+            <span className="menu-text">
+              <span className="menu-title">Create pull request</span>
             </span>
           </button>
           <div className="menu-sep" />

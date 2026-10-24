@@ -147,7 +147,9 @@ describe('Codex history', () => {
       mcp: true,
     })
     expect(await adapter.listHistory?.('codex', '/w')).toEqual([])
-    expect(await adapter.listCommands?.('codex', '/w')).toEqual([
+    const commands = (await adapter.listCommands?.('codex', '/w')) ?? []
+    expect(commands.slice(0, 2).map((c) => c.name)).toEqual(['compact', 'review'])
+    expect(commands.filter((c) => c.kind === 'skill')).toEqual([
       { name: 'pdf', description: 'PDFs', kind: 'skill' },
     ])
   })

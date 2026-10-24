@@ -13,9 +13,18 @@ import type { ProjectStore } from '../workspace/projects.ts'
 import { browseFolders } from '../workspace/folders.ts'
 import type { FileService } from '../files/files.ts'
 import type { TerminalManager } from '../terminals/manager.ts'
+import type { AlertService } from '../automation/alerts.ts'
+import { previewTrigger } from '../automation/cron.ts'
+import type { ScheduleService } from '../automation/schedules.ts'
 
 type Handlers = {
-  [M in RpcMethodName]: (params: RpcParams<M>) => Promise<RpcResult<M>>
+  [M in RpcMethodName]: (params: RpcParams<M>, context: RpcContext) => Promise<RpcResult<M>>
+}
+
+/** Schedules, alerts and the agent tools. */
+export interface AutomationServices {
+  schedules: ScheduleService
+  alerts: AlertService
 }
 
 /** Everything that works on a session's folder: git, projects, shells and files. */
@@ -36,6 +45,28 @@ function isDirectory(p: string): boolean {
   }
 }
 
+/** The project's setup commands (installing dependencies...) run in a new worktree. */
+export function runWorktreeSetup(
+  sessions: SessionManager,
+  workspace: Pick<WorkspaceServices, 'projects' | 'terminals'>,
+  params: { cwd?: string; workspace?: { mode: string } },
+  sessionId: string,
+) {
+  if (params.workspace?.mode !== 'worktree' || !params.cwd) return
+  const info = sessions.sessionInfo(sessionId)
+  if (!info) return
+  for (const script of workspace.projects
+    .scriptsFor(params.cwd)
+    .filter((s) => s.runOnWorktreeCreate)) {
+    workspace.terminals.create({
+      cwd: info.cwd,
+      command: script.command,
+      title: script.name,
+      scriptId: script.id,
+    })
+  }
+}
+
 /** Who may reach this host, and how new devices get in. */
 export interface AccessServices {
   tokens: TokenStore
@@ -48,6 +79,8 @@ export interface AccessServices {
 /** What the router knows about the caller. */
 export interface RpcContext {
   peer: PeerClass
+  /** The paired device on the other end, once it has shown its token. */
+  deviceId?: string
 }
 
 /** Managing who may connect is only for someone sitting at this machine. */
@@ -63,12 +96,17 @@ export function createRpcRouter(
   attachments: AttachmentStore,
   workspace: WorkspaceServices,
   access: AccessServices,
+  automation: AutomationServices,
 ) {
   const { git, github, projects, terminals, files } = workspace
+  const { schedules, alerts } = automation
   const handlers: Handlers = {
     'host.pair': async () => access.pairing.create(),
     'devices.list': async () => access.tokens.list(),
-    'devices.revoke': async (p) => ({ revoked: access.tokens.revoke(p.id) }),
+    'devices.revoke': async (p) => {
+      alerts.forgetDevice(p.id)
+      return { revoked: access.tokens.revoke(p.id) }
+    },
     'tailnet.peers': (p) => access.tailscale.discover(p.port ?? access.port()),
     'providers.list': () => sessions.listProviders(),
     'agents.list': async () => agents.list(),
@@ -96,6 +134,11 @@ export function createRpcRouter(
       return {}
     },
     'git.pr.get': (p) => github.pullRequest(p.cwd),
+    'git.gh.status': (p) => github.status(p.cwd),
+    'git.pr.list': async (p) => ({ items: await github.list(p.cwd, p.filter, p.limit) }),
+    'git.pr.view': (p) => github.view(p.cwd, p.number),
+    'git.pr.act': (p) => github.act(p.cwd, p.number, p.do),
+    'git.pr.checkout': (p) => github.checkout(p.cwd, p.number, git, { worktree: p.worktree }),
     'git.pr.create': async (p) => {
       const info = await git.info(p.cwd)
       if (!info.branch || info.detached)
@@ -135,19 +178,7 @@ export function createRpcRouter(
     'worktrees.remove': async (p) => ({ removed: await sessions.removeWorktree(p.sessionId) }),
     'sessions.create': async (p) => {
       const created = await sessions.create(p)
-      if (p.workspace?.mode === 'worktree' && p.cwd) {
-        // The project's setup commands (installing dependencies...) run in the new worktree.
-        const info = sessions.sessionInfo(created.sessionId)
-        for (const script of projects.scriptsFor(p.cwd).filter((s) => s.runOnWorktreeCreate)) {
-          if (info)
-            terminals.create({
-              cwd: info.cwd,
-              command: script.command,
-              title: script.name,
-              scriptId: script.id,
-            })
-        }
-      }
+      runWorktreeSetup(sessions, workspace, p, created.sessionId)
       return created
     },
     'attachments.upload': async (p) => {
@@ -215,6 +246,20 @@ export function createRpcRouter(
       await sessions.approve(p.sessionId, p.requestId, p.optionId)
       return {}
     },
+    'schedules.list': async () => schedules.list(),
+    'schedules.save': async (p) => schedules.saveSchedule(p),
+    'schedules.remove': async (p) => ({ removed: schedules.remove(p.id) }),
+    'schedules.setPaused': async (p) => schedules.setPaused(p.id, p.paused),
+    'schedules.runNow': (p) => schedules.runNow(p.id),
+    'schedules.preview': async (p) => previewTrigger(p.trigger, Date.now(), p.count ?? 3),
+    'alerts.settings': async () => alerts.view(),
+    'alerts.setSettings': async (p) => alerts.setSettings(p),
+    'alerts.test': () => alerts.test(),
+    'push.register': async (p, context) => {
+      alerts.register(context.deviceId, p)
+      return {}
+    },
+    'push.unregister': async (p) => ({ removed: alerts.unregister(p.token) }),
   }
 
   return async function dispatch(
@@ -228,6 +273,6 @@ export function createRpcRouter(
       throw new Error('This can only be done on the host machine itself')
     }
     const parsed = RpcMethods[name].params.parse(params ?? {})
-    return (handlers[name] as (p: unknown) => Promise<unknown>)(parsed)
+    return (handlers[name] as (p: unknown, c: RpcContext) => Promise<unknown>)(parsed, context)
   }
 }

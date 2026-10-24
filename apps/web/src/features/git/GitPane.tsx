@@ -141,6 +141,8 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
           log={log.data}
           refreshKey={version}
           onChanged={changed}
+          ahead={info.data.ahead}
+          hasUpstream={Boolean(info.data.upstream)}
         />
       )}
     </div>

@@ -18,7 +18,7 @@ import type {
   UsageLimits,
   UsageSummary,
 } from '@beddcode/contracts'
-import type { ProviderAdapter, ProviderSession } from '@beddcode/provider-core'
+import type { ProviderAdapter, ProviderSession, SessionMcpServer } from '@beddcode/provider-core'
 import type { Logger } from '@beddcode/shared'
 import { PreviewSeeds, type PreviewCache } from '../agents/previews.ts'
 import type { AttachmentStore } from '../attachments/store.ts'
@@ -40,6 +40,14 @@ export interface SessionManagerDeps {
   detectTtlMs?: number
   /** Remembers what agents offer for new sessions (see `previewAgent`). */
   previews?: PreviewCache
+  /** MCP servers to add to a session that may use BeddCode's agent tools. */
+  agentToolServers?: (sessionId: string) => SessionMcpServer[]
+}
+
+/** Where a session came from, when not straight from the user. */
+export interface SessionOrigin {
+  parent?: { sessionId: string; depth: number }
+  schedule?: { id: string; name: string }
 }
 
 interface LiveSession {
@@ -211,7 +219,10 @@ export class SessionManager {
     return (await this.detect(true)).map((d) => d.instance)
   }
 
-  async create(params: RpcParams<'sessions.create'>): Promise<{ sessionId: string }> {
+  async create(
+    params: RpcParams<'sessions.create'>,
+    origin: SessionOrigin = {},
+  ): Promise<{ sessionId: string }> {
     if (params.projectless && (params.cwd !== undefined || params.workspace?.mode === 'worktree'))
       throw new Error('A session without a project cannot use a project folder or a worktree')
     const { adapter, instance } = await this.findInstance(params.instanceId)
@@ -247,6 +258,7 @@ export class SessionManager {
         model: params.model,
         effort: params.effort,
         config: params.config,
+        mcpServers: this.toolServersFor(sessionId, params.agentTools),
       })
     } catch (err) {
       // Do not leave an unused worktree behind when the agent could not start.
@@ -272,6 +284,9 @@ export class SessionManager {
       permissionMode: params.permissionMode,
       model: params.model,
       effort: params.effort,
+      parent: origin.parent,
+      schedule: origin.schedule,
+      agentTools: (params.agentTools && this.deps.agentToolServers !== undefined) || undefined,
     })
     this.announceModes(sessionId, adapter, instance.id, params.permissionMode)
     void this.pump(sessionId, session)
@@ -743,6 +758,7 @@ export class SessionManager {
       model: chosen.model,
       effort: chosen.effort,
       resumeId,
+      mcpServers: this.toolServersFor(sessionId, created.event.agentTools),
     })
     const live = { session, adapter }
     this.live.set(sessionId, live)
@@ -774,6 +790,25 @@ export class SessionManager {
       })),
       currentModeId: modeId ?? modes[0]?.id,
     })
+  }
+
+  private toolServersFor(sessionId: string, wanted: boolean | undefined) {
+    return wanted && this.deps.agentToolServers ? this.deps.agentToolServers(sessionId) : undefined
+  }
+
+  /** A turn is running, or about to. */
+  isBusy(sessionId: string): boolean {
+    return this.turns.get(sessionId)?.busy ?? false
+  }
+
+  /** The permission mode the session is in now, and the modes it could be in. */
+  currentMode(sessionId: string): string | undefined {
+    let mode: string | undefined
+    for (const { event } of this.deps.store.readSession(sessionId)) {
+      if (event.type === 'session.created') mode = event.permissionMode
+      else if (event.type === 'session.modes' && event.currentModeId) mode = event.currentModeId
+    }
+    return mode
   }
 
   /** How a session was created (its folder, branch, agent). */

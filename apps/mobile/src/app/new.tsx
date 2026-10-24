@@ -7,13 +7,22 @@ import {
   FolderSimplePlus,
   GitBranch,
   Robot,
+  TreeStructure,
 } from 'phosphor-react-native'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import type { SlashCommand } from '@beddcode/contracts'
 import { Pressable, StyleSheet, View } from 'react-native'
 
 import { Composer } from '@/features/composer/Composer'
 import { ModelPicker } from '@/features/composer/ModelPicker'
-import { createSession, prompt, readyProviders, useHostStore, useRuntime } from '@/host/store'
+import {
+  createSession,
+  hostRequest,
+  prompt,
+  readyProviders,
+  useHostStore,
+  useRuntime,
+} from '@/host/store'
 import { colors, radius } from '@/theme/tokens'
 import { Button } from '@/ui/Button'
 import { Header } from '@/ui/Header'
@@ -46,6 +55,7 @@ export default function NewSessionScreen() {
   const chosenFolder = folder === undefined ? startFolder : folder
   const project = projects.find((p) => p.path === chosenFolder)
   const [worktree, setWorktree] = useState(true)
+  const [agentTools, setAgentTools] = useState(false)
   const useWorktree = Boolean(chosenFolder && project?.isRepo && worktree)
 
   const modes = agent?.capabilities.permissionModes ?? []
@@ -175,6 +185,25 @@ export default function NewSessionScreen() {
     modelId,
   ])
 
+  // The agent's slash commands for this folder, so `/` works before the session exists.
+  const [commands, setCommands] = useState<SlashCommand[]>([])
+  const connected = runtime.connection === 'connected'
+  useEffect(() => {
+    setCommands([])
+    if (!host || !agent?.capabilities.commands || !connected) return
+    let cancelled = false
+    hostRequest(host, 'commands.list', {
+      instanceId: agent.id,
+      cwd: chosenFolder || undefined,
+    }).then(
+      (list) => !cancelled && setCommands(list),
+      () => {},
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [host, agent?.id, agent?.capabilities.commands, chosenFolder, connected])
+
   const send = async (value: string, _attachments: string[]) => {
     if (!host) throw new Error('Add a host first')
     if (!agent) throw new Error('No agent is ready on this host')
@@ -186,6 +215,7 @@ export default function NewSessionScreen() {
       model: model?.id,
       effort,
       workspace: useWorktree ? { mode: 'worktree' } : undefined,
+      agentTools: agentTools || undefined,
     })
     await prompt(sessionId, value)
     router.replace({ pathname: '/session/[id]', params: { id: sessionId } })
@@ -253,6 +283,7 @@ export default function NewSessionScreen() {
             <Composer
               placeholder="Describe a task, or paste an issue link…"
               onSend={send}
+              commands={commands}
               mode={
                 mode
                   ? {
@@ -287,6 +318,22 @@ export default function NewSessionScreen() {
                   'workspace',
                 )
               : null}
+            <Pressable
+              style={[styles.chip, agentTools && { borderColor: colors.accent }]}
+              onPress={() => setAgentTools((v) => !v)}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: agentTools }}
+              accessibilityLabel="Can start other agents"
+            >
+              <Icon icon={TreeStructure} size={14} color={agentTools ? colors.accent : undefined} />
+              <Text
+                size={12.5}
+                color={agentTools ? colors.accent : colors.textSecondary}
+                numberOfLines={1}
+              >
+                {agentTools ? 'Can start agents' : 'Single agent'}
+              </Text>
+            </Pressable>
           </View>
         </View>
       </View>
