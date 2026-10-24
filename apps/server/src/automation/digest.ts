@@ -30,7 +30,10 @@ export function digest(events: StoredEvent[]): SessionDigest | undefined {
   let turns = 0
   let lastError: string | undefined
   const open = new Map<string, string>()
+  // Something between two replies (a tool call, say) makes them separate messages.
+  let split = false
   for (const { event } of events) {
+    if (event.type !== 'message.delta') split = reply.length > 0
     switch (event.type) {
       case 'session.created':
         created = event
@@ -51,7 +54,11 @@ export function digest(events: StoredEvent[]): SessionDigest | undefined {
         break
       case 'message.delta':
         if (event.role === 'user') reply = []
-        else reply.push(event.text)
+        else {
+          if (split) reply.push('\n\n')
+          reply.push(event.text)
+        }
+        split = false
         break
       case 'approval.requested':
         open.set(event.requestId, event.title)

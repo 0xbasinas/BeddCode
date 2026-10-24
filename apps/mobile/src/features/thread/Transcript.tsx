@@ -1,4 +1,5 @@
 import {
+  isAgentTool,
   buildBlocks,
   defaultOpen,
   formatDuration,
@@ -37,10 +38,12 @@ import { Icon } from '@/ui/Icon'
 import { Faint, Muted, Text } from '@/ui/Text'
 import { ApprovalCard } from './ApprovalCard'
 import { QuestionCard } from './QuestionCard'
+import { AgentToolCard } from './AgentToolCard'
 
 type Entry =
   | { kind: 'item'; id: string; item: TranscriptItem }
   | { kind: 'tools'; id: string; tools: Tool[] }
+  | { kind: 'agent-tool'; id: string; tool: Tool }
   | { kind: 'edits'; id: string; files: EditedFile[] }
 
 /** Runs of consecutive tool calls read as one group, like the desktop transcript. */
@@ -49,6 +52,9 @@ function entries(items: TranscriptItem[]): Entry[] {
   for (const block of buildBlocks(items)) {
     if (block.kind === 'edits') {
       out.push({ kind: 'edits', id: block.id, files: block.files })
+    } else if (block.item.kind === 'tool' && isAgentTool(block.item)) {
+      // Starting and managing other agents gets a card of its own (see AgentToolCard).
+      out.push({ kind: 'agent-tool', id: block.item.id, tool: block.item })
     } else if (block.item.kind === 'tool') {
       const last = out[out.length - 1]
       if (last?.kind === 'tools') last.tools.push(block.item)
@@ -311,9 +317,12 @@ export function Transcript({
   onAnswer,
   header,
   footer,
+  hostKey,
 }: {
   session: SessionView
   cwd: string
+  /** The session's host, so agent-tool cards can follow the sessions they start. */
+  hostKey?: string
   onApprove(requestId: string, optionId: string): Promise<void>
   onAnswer(requestId: string, answers?: Record<string, string[]>): Promise<void>
   header?: React.ReactElement
@@ -343,6 +352,8 @@ export function Transcript({
       }}
       renderItem={({ item: entry }) => {
         if (entry.kind === 'tools') return <ToolGroup tools={entry.tools} />
+        if (entry.kind === 'agent-tool')
+          return <AgentToolCard tool={entry.tool} parentId={session.id} hostKey={hostKey} />
         if (entry.kind === 'edits') return <EditsCard files={entry.files} cwd={cwd} />
         const item = entry.item
         switch (item.kind) {

@@ -57,6 +57,33 @@ describe('ClaudeEventMapper', () => {
     ])
   })
 
+  it('keeps the arguments of MCP tool calls only', () => {
+    const events = mapAll([
+      {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          id: 'm9',
+          content: [
+            {
+              type: 'tool_use',
+              id: 't9',
+              name: 'mcp__beddcode__start_session',
+              input: { agent: 'codex', prompt: 'hi' },
+            },
+            { type: 'tool_use', id: 't10', name: 'Bash', input: { command: 'ls' } },
+          ],
+        },
+      },
+    ])
+    expect(events[0]).toMatchObject({
+      type: 'tool.started',
+      title: 'Using beddcode · start_session',
+      input: JSON.stringify({ agent: 'codex', prompt: 'hi' }, null, 2),
+    })
+    expect(events[1]).not.toHaveProperty('input')
+  })
+
   it('maps a tool call, its result and a diff only after the edit succeeds', () => {
     const events = mapAll([
       {

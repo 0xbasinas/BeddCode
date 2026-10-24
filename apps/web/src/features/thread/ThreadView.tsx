@@ -41,6 +41,7 @@ import {
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { folderName } from '../../ui/format.ts'
 import { Transcript } from './Transcript.tsx'
+import { ChildAgentsBar, StartedByBanner } from './AgentToolCard.tsx'
 import { endedByDecline, handoffPrompt, sessionChanges } from '@beddcode/client-runtime'
 import { setHandoff } from '../../stores/handoff.ts'
 import { useFollowEnd } from './useFollowEnd.ts'
@@ -276,9 +277,12 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             })}
             {session.worktree ? ` · worktree from ${session.worktree.baseBranch}` : ''}
           </div>
+          {session.parent && <StartedByBanner session={session} hostKey={hostKey} />}
           <Transcript
             items={session.items}
             cwd={session.cwd}
+            sessionId={sessionId}
+            hostKey={hostKey}
             onOpenFile={(path) => {
               useUiStore.getState().openPane('files')
               void useFiles.getState().open(folderId(hostKey, session.cwd), path)
@@ -316,6 +320,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
         commands={session.commands}
         above={
           <>
+            {session.agentTools && <ChildAgentsBar sessionId={sessionId} hostKey={hostKey} />}
             {session.plan && <PlanCard plan={session.plan} />}
             <QueueList
               queue={session.queue}
