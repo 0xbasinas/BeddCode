@@ -8,7 +8,7 @@
     "email": "geobasinas@gmail.com"
   },
   "homepage": "https://github.com/0xbasinas/BeddCode",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "main": "dist/main.cjs",
