@@ -1,44 +1,26 @@
-import { useNavigate } from '@tanstack/react-router'
-import { CalendarClock, PenSquare, Search, Settings } from 'lucide-react'
-import { useUiStore } from '../../stores/ui.ts'
+import { useNavigate, useRouterState } from '@tanstack/react-router'
+import { CalendarClock, Settings } from 'lucide-react'
 import './leftRail.css'
 
-/** The slim column at the left edge: the app's main places, one icon each. */
+/** The slim column at the left edge: one icon per screen. The sessions list keeps its own actions. */
 export function LeftRail() {
   const navigate = useNavigate()
-  const setSearchOpen = useUiStore((s) => s.setSearchOpen)
+  const onSchedules = useRouterState({ select: (s) => s.location.pathname === '/schedules' })
   return (
-    <nav className="left-rail" aria-label="Main">
+    <nav className="left-rail" aria-label="Screens">
       <div className="left-rail-group">
         <button
           type="button"
-          className="rail-item"
-          title="New session"
-          aria-label="New session"
-          onClick={() => void navigate({ to: '/', search: { compose: true } })}
-        >
-          <PenSquare size={18} />
-        </button>
-        <button
-          type="button"
-          className="rail-item"
-          title="Search sessions (Ctrl+K)"
-          aria-label="Search sessions"
-          onClick={() => setSearchOpen(true)}
-        >
-          <Search size={18} />
-        </button>
-      </div>
-      <div className="left-rail-group">
-        <button
-          type="button"
-          className="rail-item"
+          className={`rail-item ${onSchedules ? 'on' : ''}`}
           title="Schedules"
           aria-label="Schedules"
-          onClick={() => void navigate({ to: '/settings', search: { section: 'schedules' } })}
+          aria-current={onSchedules ? 'page' : undefined}
+          onClick={() => void navigate({ to: '/schedules' })}
         >
           <CalendarClock size={18} />
         </button>
+      </div>
+      <div className="left-rail-group">
         <button
           type="button"
           className="rail-item"

@@ -371,16 +371,28 @@ kbd {
 .dot.ok {
   background: var(--success, #4cc38a);
 }
-.sidebar-foot {
-  display: flex;
+/* A host's state in the hosts menu: a dot and a word, right-aligned. */
+.host-status {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
+  gap: calc(6px * var(--ui-scale));
+  margin-left: auto;
   color: var(--text-muted);
-  padding: calc(12px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale));
-  font-size: calc(12px * var(--ui-scale));
-  border-top: 1px solid var(--border-subtle);
+  font-size: calc(11px * var(--ui-scale));
+  white-space: nowrap;
 }
-
+.host-status.ok .dot {
+  background: var(--success, #4cc38a);
+}
+.host-status.warn .dot {
+  background: var(--accent);
+}
+.host-status.failed .dot {
+  background: none;
+  border: 1.5px solid var(--danger);
+  width: calc(7px * var(--ui-scale));
+  height: calc(7px * var(--ui-scale));
+}
 /* Thread */
 .thread,
 .new-session {
@@ -2515,14 +2527,6 @@ a:focus-visible {
   margin-top: calc(4px * var(--ui-scale));
 }
 
-.sidebar-foot .row-btn {
-  padding: 0;
-}
-
-.sidebar-foot .link-btn {
-  font-size: calc(12px * var(--ui-scale));
-}
-
 .thread .thread-head {
   display: flex;
   align-items: flex-start;
@@ -2658,10 +2662,6 @@ a:focus-visible {
   }
   .sidebar-filters .sort-trigger span {
     display: none;
-  }
-  .sidebar-foot {
-    flex-wrap: wrap;
-    gap: calc(12px * var(--ui-scale));
   }
   .thread-head,
   .transcript {
@@ -3861,9 +3861,6 @@ button.tcall-row:hover .tcall-chevron,
 }
 .brand {
   line-height: var(--head-line);
-}
-.sidebar-foot {
-  padding-bottom: 0;
 }
 .thread .thread-head {
   padding-top: 0;

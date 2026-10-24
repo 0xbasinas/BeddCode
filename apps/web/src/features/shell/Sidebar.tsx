@@ -14,7 +14,6 @@ import {
   Plus,
   Search,
   Server,
-  Settings,
   Layers,
   MessageSquare,
   Undo2,
@@ -60,6 +59,22 @@ const PRIORITY: Record<SessionView['status'], number> = {
   failed: 1,
   running: 2,
   idle: 3,
+}
+
+/** A host's connection in a word, and the colour of its dot. */
+function hostState(connection: string | undefined): { label: string; tone: string } {
+  switch (connection) {
+    case 'connected':
+      return { label: 'Online', tone: 'ok' }
+    case 'connecting':
+      return { label: 'Connecting…', tone: 'warn' }
+    case 'reconnecting':
+      return { label: 'Reconnecting…', tone: 'warn' }
+    case 'denied':
+      return { label: 'Needs pairing', tone: 'failed' }
+    default:
+      return { label: 'Offline', tone: 'failed' }
+  }
 }
 
 const OPEN_DONE_KEY = 'beddcode.done-open'
@@ -127,7 +142,6 @@ export function Sidebar() {
     .filter((h) => selectedHost === 'all' || h.hostKey === selectedHost)
     .map((h) => h.session)
   const hostOf = new Map(hosted.map((h) => [h.session.id, h.hostKey]))
-  const multiHost = entries.length > 1
   const online = entries.filter((e) => runtimes[e.key]?.connection === 'connected').length
   const local = runtimes[LOCAL_HOST_KEY]
 
@@ -376,6 +390,12 @@ ${s.projectless ? 'no-project' : s.projectPath}`
                 >
                   {entry.key === LOCAL_HOST_KEY ? <Monitor size={15} /> : <Server size={15} />}
                   <span className="menu-text">{runtimes[entry.key]?.host?.name ?? entry.name}</span>
+                  <span
+                    className={`host-status ${hostState(runtimes[entry.key]?.connection).tone}`}
+                  >
+                    <span className="dot" />
+                    {hostState(runtimes[entry.key]?.connection).label}
+                  </span>
                   {selectedHost === entry.key && <Check size={14} />}
                 </button>
               ))}
@@ -561,32 +581,6 @@ ${s.projectless ? 'no-project' : s.projectPath}`
         ))}
       </div>
 
-      <div className="sidebar-foot">
-        <button
-          className="row-btn"
-          style={{ width: 'auto' }}
-          onClick={() => void navigate({ to: '/settings' })}
-        >
-          <Settings size={18} /> Settings
-        </button>
-        <button
-          className="icon-btn"
-          aria-label="Schedules"
-          title="Schedules"
-          onClick={() => void navigate({ to: '/settings', search: { section: 'schedules' } })}
-        >
-          <CalendarClock size={16} />
-        </button>
-        <button className="link-btn" onClick={() => setHostsOpen(true)} title="Manage hosts">
-          {multiHost
-            ? `${online} of ${entries.length} hosts online`
-            : local?.connection === 'connected'
-              ? 'This PC online'
-              : local?.connection === 'reconnecting'
-                ? 'Reconnecting…'
-                : 'Connecting…'}
-        </button>
-      </div>
       {hostsOpen && <HostsDialog onClose={() => setHostsOpen(false)} />}
       {menu && (
         <ContextMenu
