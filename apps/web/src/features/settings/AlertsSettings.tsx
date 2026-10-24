@@ -138,7 +138,6 @@ export function AlertsSettings({ hostKey }: { hostKey: string }) {
             <Toggle
               key={e.key}
               label={e.label}
-              description={e.description}
               checked={events[e.key]}
               onChange={(value) =>
                 void run(() =>
