@@ -340,6 +340,19 @@ describe('commands and the to-do list', () => {
     ])
     expect(scanClaudeCommands(undefined, path.join(root, 'nowhere'))).toEqual([])
   })
+
+  it('reads argument hints from front matter', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'beddcode-cmds-'))
+    dirs.push(root)
+    mkdirSync(path.join(root, '.claude', 'commands'), { recursive: true })
+    writeFileSync(
+      path.join(root, '.claude', 'commands', 'fix.md'),
+      '---\ndescription: Fix\nargument-hint: [issue-number]\n---\nFix $ARGUMENTS',
+    )
+    expect(scanClaudeCommands(undefined, root)).toEqual([
+      { name: 'fix', description: 'Fix', hint: '[issue-number]', kind: 'command' },
+    ])
+  })
 })
 
 describe('history', () => {

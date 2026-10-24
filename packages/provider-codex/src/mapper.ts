@@ -22,6 +22,32 @@ export interface FileChange {
 const str = (v: unknown): string | undefined =>
   typeof v === 'string' && v.length > 0 ? v : undefined
 
+/** An MCP call's arguments as pretty JSON (capped), or nothing for none. */
+function argsText(args: unknown): { input?: string } {
+  if (args === null || typeof args !== 'object' || Object.keys(args).length === 0) return {}
+  try {
+    return { input: JSON.stringify(args, null, 2).slice(0, MAX_OUTPUT) }
+  } catch {
+    return {}
+  }
+}
+
+/** What an MCP call gave back: its text content, or its error message. */
+function mcpResultText(item: CodexItem): string | undefined {
+  const error = item.error as { message?: unknown } | string | null | undefined
+  if (typeof error === 'string' && error) return error
+  if (error && typeof error === 'object' && typeof error.message === 'string') return error.message
+  const result = item.result as { content?: unknown } | null | undefined
+  const content = Array.isArray(result?.content)
+    ? (result.content as Record<string, unknown>[])
+    : []
+  const text = content
+    .filter((c) => c.type === 'text' && typeof c.text === 'string')
+    .map((c) => c.text as string)
+    .join('\n')
+  return text || undefined
+}
+
 function clip(text: string, max: number) {
   return text.length > max ? `${text.slice(0, max)}…` : text
 }
@@ -236,6 +262,7 @@ export class CodexEventMapper {
           toolId: item.id,
           kind: 'other',
           title: `Using ${String(item.server)} · ${String(item.tool)}`,
+          ...argsText(item.arguments),
         })
         break
       case 'dynamicToolCall':
@@ -261,6 +288,12 @@ export class CodexEventMapper {
     if (!item) return
     this.items.delete(item.id)
     switch (item.type) {
+      case 'exitedReviewMode': {
+        // The review's findings arrive as the item that ends review mode.
+        const text = str(item.review)
+        if (text) out.push({ type: 'message.delta', role: 'assistant', text })
+        break
+      }
       case 'agentMessage': {
         const text = str(item.text)
         if (text && !this.streamed.has(item.id))
@@ -292,7 +325,13 @@ export class CodexEventMapper {
       case 'mcpToolCall':
       case 'dynamicToolCall': {
         const failed = item.status === 'failed' || item.error != null || item.success === false
-        out.push({ type: 'tool.completed', toolId: item.id, ok: !failed })
+        const output = mcpResultText(item)
+        out.push({
+          type: 'tool.completed',
+          toolId: item.id,
+          ok: !failed,
+          ...(output ? { output: output.slice(0, MAX_OUTPUT) } : {}),
+        })
         break
       }
       case 'webSearch':

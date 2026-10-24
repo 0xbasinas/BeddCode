@@ -9,7 +9,7 @@ import type { ProviderAdapter } from '@beddcode/provider-core'
 import { createLogger, resolveExecutable, runCommand, type Logger } from '@beddcode/shared'
 import { ClaudeSession, type QueryFn } from './session.ts'
 import { discoverClaudeModels } from './models.ts'
-import { scanClaudeCommands } from './commands.ts'
+import { CLAUDE_BUILTINS, scanClaudeCommands } from './commands.ts'
 import { createClaudeHistory, type ClaudeHistorySdk } from './history.ts'
 import { createClaudeMcp } from './mcp.ts'
 import { readClaudeLimits } from './limits.ts'
@@ -166,7 +166,11 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
     readHistory: (_instanceId, id, cwd) => history.read(id, cwd),
     forkHistory: (_instanceId, from) =>
       history.fork(from.providerSessionId, from.cwd, from.throughTurn),
-    listCommands: async (_instanceId, cwd) => scanClaudeCommands(cwd),
+    listCommands: async (_instanceId, cwd) => {
+      const custom = scanClaudeCommands(cwd)
+      const names = new Set(custom.map((c) => c.name))
+      return [...custom, ...CLAUDE_BUILTINS.filter((c) => !names.has(c.name))]
+    },
     mcp: createClaudeMcp(executable, env),
   }
 }

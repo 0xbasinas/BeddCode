@@ -81,6 +81,7 @@ Useful options and troubleshooting:
 
 - Use `--port 4000` with both `serve` or `install-service` and `pair` for a custom port. Enter that port in the app's host address.
 - The default network guard accepts loopback and Tailscale address ranges. `--allow-lan` also accepts private LAN addresses; remote devices still need pairing. The daemon does not configure Tailscale or firewall rules.
+- **Tailscale Serve and other local reverse proxies.** A connection that reaches the host through a proxy on the same machine (it carries `X-Forwarded-For`, `Forwarded`, `X-Real-IP` or `Tailscale-User-*` headers) is judged by the address the proxy reports, not as loopback. Devices behind `tailscale serve` therefore pair first like any other tailnet device, `/admin/pair` and the loopback-only calls refuse them, and Tailscale Funnel requests from the public internet are refused outright.
 - `--require-token` requires a paired token even on loopback. The app's built-in local connection assumes the default loopback trust.
 - For a browser UI served from another origin, add that exact origin with `--allow-origin <origin>` on the host. Local development origins are accepted by default. HTTPS/WSS termination is not configured by the daemon; enter a plain hostname, `http://`, or `ws://` address.
 - Linux users can inspect logs with `journalctl --user -u beddcode-server -f`. To keep the user service running after logout, use `loginctl enable-linger "$USER"`.
@@ -99,6 +100,8 @@ In **Git → PR**, choose a base branch and click **Generate PR draft**. The dra
 
 Git drafts keep the selected model but use lower reasoning settings where supported. Claude draft jobs disable extended thinking; Codex uses an advertised minimal/low effort; ACP agents use a lower reasoning choice when they offer one. Conversation settings are unchanged. Context preparation resolves Git metadata once per batch and reads up to four file diffs concurrently; the stale-change check still runs before returning the draft.
 
+**Folder scripts.** Each added folder can keep up to 20 named commands (install, dev server, tests…). They appear as buttons at the top of the **Terminal** pane; one click runs the command in a new terminal titled with the script's name, in the session's own folder or worktree. **Edit** changes them inline. Scripts marked **On new worktree** run by themselves in the new worktree when a session creates one, for example to install dependencies. They are saved on the host with the folder (`projects.setScripts`).
+
 ### Panes
 
 Choose a folder and host in the new-session composer, then open Terminal, Files, or Git from the right rail. These tools work without sending a message or starting an agent. Switching folders switches the tools to that folder; terminals and open files stay associated with their original host and folder. Once a conversation starts, its actual working folder is used, including its worktree if one was created.
@@ -113,7 +116,7 @@ Attachments appear as removable chips in the composer and stay with their host a
 
 ### Workspace preferences
 
-The first-launch checklist helps connect a host and add a project folder. **Ctrl+K** (Cmd+K on macOS) searches sessions by title, folder, branch, or activity. The agent chip below a conversation opens session details, permission choices, repository actions, and local session notes.
+The first-launch checklist helps connect a host and add a project folder. **Ctrl+K** (Cmd+K on macOS) searches sessions by title, folder, branch, activity, or anything said in them; a match inside the conversation shows the matching words under the session. Right-click a session (or use the conversation's **…** menu) to **Pin to top**; pinned sessions sit in their own section above the folders on every client of that host. The agent chip below a conversation opens session details, permission choices, repository actions, and local session notes.
 
 Sessions with a default name use the first message as their title. Use the conversation's **… → Rename session** menu to choose a name; it is saved on the host. After a host restart, interrupted turns show **Stopped · ready to continue** and an explanation in the conversation. Send another message to resume. Approval cards show whether a request was allowed, denied, or cancelled, and keep the full command available under **Details**.
 
@@ -135,10 +138,13 @@ Any agent that speaks the [Agent Client Protocol](https://agentclientprotocol.co
 
 - **Steering and queueing.** Send a message while an agent works. Claude and Codex take it into the running turn (Claude as a priority "next" message, Codex through `turn/steer`); other agents, or `mode: 'queue'`, keep it in a queue that runs after the turn. Queued messages can be cancelled or sent now, and survive a host restart.
 - **Plans and questions.** Claude's plan mode shows the plan for approval (including "approve and auto-accept edits"); to-do lists from Claude, Codex and ACP agents appear as a plan card above the composer. Questions an agent asks (Claude's AskUserQuestion, Codex's request_user_input) become a card with its options.
+- **What a turn changed, and undo.** In a git folder the host takes a snapshot before and after each turn (a scratch index and hidden `refs/beddcode/checkpoints/…` refs; your index, branches and stash are untouched). The turn then ends with a **Changed N files** card that counts everything the turn did, commands and generated files included, with a lazily loaded diff per file. **Undo** on the latest turn's card puts those files back as they were before the turn, after a confirmation, and only while the agent is idle and the folder still matches the turn's result. Staged changes and commits are left alone. Snapshots wait at most four seconds and skip very large untracked trees; removing a worktree drops its snapshots.
+- **Continue with another agent.** The conversation's **… → Continue with another agent** opens the new-session composer in the same folder with a short summary of the session (what you asked, replies, commands, changed files, plan). Pick Claude, Codex or an ACP agent and send it, edited as you like.
+- **Typing before the host is ready.** Pressing Enter while the composer is still connecting, the agent is loading or the folder is being read no longer drops the message: the composer shows "Sends as soon as …" and sends once it can. Escape or **Cancel** stops it.
 - **Fork, resume, history.** Fork a session from any finished turn. **Resume an earlier conversation** on the new-session screen lists what an agent keeps on its host, including conversations started in its own CLI, and brings one in as a session. Claude, Codex and ACP agents that list their sessions are supported.
 - **Tools & MCP.** Settings → Tools & MCP lists, adds and removes MCP servers by running the agent's own CLI (`claude mcp`, `codex mcp`), so its own config files stay the single source.
 - **Commands and skills.** Typing `/` in the composer lists the agent's slash commands and skills (Claude's live list, Codex skills, an ACP agent's available commands).
-- **ACP extras.** Agents' own settings (model, reasoning effort, modes, commands) appear in the composer, including on the new-session screen: the host starts the agent once to read them (`agents.preview`) and remembers the answer, so custom commands such as `grok agent stdio` get the same picker as any registry agent. Choices made there are applied as the session starts. Pictures go to agents that accept images; pictures go to agents that accept images; start-up has timeouts and failures include the agent's last stderr line.
+- **ACP extras.** Agents' own settings (model, reasoning effort, modes, commands) appear in the composer, including on the new-session screen: the host starts the agent once to read them (`agents.preview`) and remembers the answer, so custom commands such as `grok agent stdio` get the same picker as any registry agent. Choices made there are applied as the session starts. Pictures go to agents that accept images; start-up has timeouts and failures include the agent's last stderr line.
 
 ## Layout
 

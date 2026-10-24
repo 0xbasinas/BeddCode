@@ -3,6 +3,7 @@ import type { HostEntry } from '@beddcode/client-runtime'
 import Constants from 'expo-constants'
 import { router } from 'expo-router'
 import {
+  Bell,
   FolderSimple,
   FolderSimplePlus,
   HardDrives,
@@ -11,8 +12,9 @@ import {
   Trash,
   X,
 } from 'phosphor-react-native'
-import type { ReactNode } from 'react'
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { useState, type ReactNode } from 'react'
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native'
+import type { AlertEvents } from '@beddcode/contracts'
 
 import {
   activeRoute,
@@ -22,6 +24,7 @@ import {
   useHostStore,
   useRuntime,
 } from '@/host/store'
+import { applyHostAlerts, hostAlertPrefs, pushUnavailableReason, usePushPrefs } from '@/host/push'
 import { colors, radius } from '@/theme/tokens'
 import { Header } from '@/ui/Header'
 import { Icon } from '@/ui/Icon'
@@ -190,6 +193,8 @@ function HostCard({ entry }: { entry: HostEntry }) {
         })
       )}
 
+      <HostAlerts hostKey={entry.key} online={online} />
+
       <Pressable style={styles.forget} onPress={forget}>
         <Icon icon={Trash} size={16} color={colors.danger} />
         <Text size={13} color={colors.danger}>
@@ -197,6 +202,77 @@ function HostCard({ entry }: { entry: HostEntry }) {
         </Text>
       </Pressable>
     </View>
+  )
+}
+
+const ALERT_EVENTS: { key: keyof AlertEvents; label: string }[] = [
+  { key: 'needsYou', label: 'An agent needs you' },
+  { key: 'turnDone', label: 'A turn finishes' },
+  { key: 'error', label: 'A turn fails' },
+  { key: 'schedule', label: 'A scheduled run finishes' },
+]
+
+/** This phone's push alerts from one host: on or off, and for which happenings. */
+function HostAlerts({ hostKey, online }: { hostKey: string; online: boolean }) {
+  const prefs = usePushPrefs((s) => hostAlertPrefs(s.hosts, hostKey))
+  const save = usePushPrefs((s) => s.set)
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string>()
+  const unavailable = pushUnavailableReason()
+
+  const change = async (next: typeof prefs) => {
+    setBusy(true)
+    setProblem(undefined)
+    try {
+      await applyHostAlerts(hostKey, next)
+      save(hostKey, next)
+    } catch (err) {
+      setProblem(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Row>
+        <Icon icon={Bell} size={18} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text size={13.5}>Push alerts</Text>
+          <Faint size={11.5}>Even when the app is closed. Tap one to open its session.</Faint>
+        </View>
+        <Switch
+          value={prefs.enabled}
+          disabled={busy || !online || (!!unavailable && !prefs.enabled)}
+          onValueChange={(enabled) => void change({ ...prefs, enabled })}
+          trackColor={{ true: colors.accent, false: colors.raised }}
+          accessibilityLabel="Push alerts from this host"
+        />
+      </Row>
+      {problem || unavailable ? (
+        <Row>
+          <Muted size={12}>{problem ?? unavailable}</Muted>
+        </Row>
+      ) : null}
+      {prefs.enabled
+        ? ALERT_EVENTS.map((e) => (
+            <Row key={e.key}>
+              <Text size={13} style={{ flex: 1, paddingLeft: 30 }}>
+                {e.label}
+              </Text>
+              <Switch
+                value={prefs.events[e.key]}
+                disabled={busy || !online}
+                onValueChange={(on) =>
+                  void change({ ...prefs, events: { ...prefs.events, [e.key]: on } })
+                }
+                trackColor={{ true: colors.accent, false: colors.raised }}
+                accessibilityLabel={e.label}
+              />
+            </Row>
+          ))
+        : null}
+    </>
   )
 }
 

@@ -100,6 +100,18 @@ export class ClaudeSession implements ProviderSession {
         env: { ...process.env, ...deps.env },
         abortController: this.abort,
         canUseTool: this.canUseTool,
+        ...(input.mcpServers?.length
+          ? {
+              mcpServers: Object.fromEntries(
+                input.mcpServers.map((m) => [
+                  m.name,
+                  { type: 'stdio' as const, command: m.command, args: m.args, env: m.env },
+                ]),
+              ),
+              // The host's own tools check what each call may do, so Claude need not ask too.
+              allowedTools: input.mcpServers.map((m) => `mcp__${m.name}`),
+            }
+          : {}),
         ...(input.textOnly
           ? {
               tools: [],

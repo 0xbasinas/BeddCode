@@ -47,9 +47,22 @@ jobs:
             console.log('version', app.expo.version, 'code', app.expo.android.versionCode);
           "
 
+      # Push alerts need Firebase's google-services.json and the Expo project id. Both are optional:
+      # without them the app builds as before and its alerts switch explains what is missing.
+      - name: Add the push alert settings, if there are any
+        working-directory: apps/mobile
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON_B64" ]; then
+            echo "$GOOGLE_SERVICES_JSON_B64" | base64 -d > google-services.json
+          fi
+
       # The android/ folder is generated from app.json and its plugins; it is not kept in the repo.
       - name: Generate the Android project
         working-directory: apps/mobile
+        env:
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
         run: pnpm exec expo prebuild --platform android --no-install --clean
 
       - name: Use the release keystore, if there is one

@@ -1,18 +1,24 @@
 import { useCallback, useEffect, useState } from 'react'
+import { placeTerminal } from './terminalTabs.ts'
 import { Paperclip, Plus, SquareTerminal, Trash2, X } from 'lucide-react'
 import type { PaneWorkspace } from '../../stores/composerWorkspace.ts'
-import type { TerminalInfo } from '@beddcode/contracts'
+import type { ProjectScript, TerminalInfo } from '@beddcode/contracts'
 import { hostRequest, useRuntime } from '../../stores/host.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
 import { TerminalView } from './TerminalView.tsx'
 import { attachUpload } from '../composer/attachments.ts'
 import { terminalContext } from './context.ts'
+import { ProjectScripts } from './ProjectScripts.tsx'
+import { samePath } from '../folders/folderLogic.ts'
 
 /** Terminals of the folder selected in the composer or open conversation. */
 export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
   const cwd = workspace.cwd
   const hostKey = useHostKey()
-  const { epoch } = useRuntime(hostKey)
+  const { epoch, projects } = useRuntime(hostKey)
+  const project = workspace.projectPath
+    ? projects.find((p) => samePath(p.path, workspace.projectPath!))
+    : undefined
   const [terminals, setTerminals] = useState<TerminalInfo[] | null>(null)
   const [active, setActive] = useState<string>()
   const [size, setSize] = useState<{ cols: number; rows: number }>()
@@ -34,16 +40,25 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
     }
   }, [hostKey, cwd, epoch])
 
-  const create = useCallback(async () => {
-    setError(undefined)
-    try {
-      const info = await hostRequest(hostKey, 'terminals.create', { cwd })
-      setTerminals((list) => [...(list ?? []), info])
-      setActive(info.id)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }, [hostKey, cwd])
+  const create = useCallback(
+    async (script?: ProjectScript) => {
+      setError(undefined)
+      try {
+        const info = await hostRequest(
+          hostKey,
+          'terminals.create',
+          script
+            ? { cwd, command: script.command, title: script.name, scriptId: script.id }
+            : { cwd },
+        )
+        setTerminals((list) => placeTerminal(list ?? [], info))
+        setActive(info.id)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [hostKey, cwd],
+  )
 
   const close = async (id: string) => {
     await hostRequest(hostKey, 'terminals.close', { id }).catch(() => {})
@@ -113,6 +128,13 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
         </button>
       </div>
 
+      {project && (
+        <ProjectScripts
+          hostKey={hostKey}
+          project={project}
+          onRun={(script) => void create(script)}
+        />
+      )}
       {terminals === null && !error && <div className="git-empty muted">Loading…</div>}
       {error && <div className="composer-error pane-error">{error}</div>}
 
@@ -135,10 +157,10 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
             {terminals.map((t) => (
               <div key={t.id} className="term-tab" aria-selected={t.id === active} role="tab">
                 <button onClick={() => setActive(t.id)}>
-                  <SquareTerminal size={14} /> {t.shell}
+                  <SquareTerminal size={14} /> {t.title ?? t.shell}
                   {t.exited !== undefined && <span className="muted"> (exited)</span>}
                 </button>
-                <button aria-label={`Close ${t.shell}`} onClick={() => void close(t.id)}>
+                <button aria-label={`Close ${t.title ?? t.shell}`} onClick={() => void close(t.id)}>
                   <X size={13} />
                 </button>
               </div>

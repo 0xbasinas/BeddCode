@@ -5,6 +5,7 @@ import {
   folderName,
   isFiledAway,
   sessionNote,
+  nestSessions,
   splitDone,
   timeAgo,
   type SessionView,
@@ -61,7 +62,7 @@ type Row =
       /** The project folder on its host; empty for sessions without a project. */
       path: string
     }
-  | { kind: 'session'; key: string; session: SessionView; hostKey: string }
+  | { kind: 'session'; key: string; session: SessionView; hostKey: string; depth?: number }
   | { kind: 'done'; key: string; count: number; open: boolean; groupKey: string }
 
 /** The sessions of every paired host: the desktop sidebar, as a full screen. */
@@ -136,12 +137,17 @@ export default function SessionsScreen() {
         path: first.projectless ? '' : first.projectPath,
       })
       if (isCollapsed) continue
+      // Sessions another session started sit under it.
+      const push = (sessions: SessionView[]) =>
+        nestSessions(sessions).forEach(({ session, depth }) =>
+          out.push({ kind: 'session', key: session.id, session, hostKey, depth }),
+        )
       if (filter === 'done') {
-        list.forEach((session) => out.push({ kind: 'session', key: session.id, session, hostKey }))
+        push(list)
         continue
       }
       const { active, done } = splitDone(list)
-      active.forEach((session) => out.push({ kind: 'session', key: session.id, session, hostKey }))
+      push(active)
       if (done.length > 0) {
         const open = doneOpen({
           chosen: openDone.includes(key),
@@ -149,10 +155,7 @@ export default function SessionsScreen() {
           done,
         })
         out.push({ kind: 'done', key: `d:${key}`, count: done.length, open, groupKey: key })
-        if (open)
-          done.forEach((session) =>
-            out.push({ kind: 'session', key: session.id, session, hostKey }),
-          )
+        if (open) push(done)
       }
     }
     return out
@@ -348,6 +351,7 @@ export default function SessionsScreen() {
           return (
             <SessionRow
               session={item.session}
+              depth={item.depth ?? 0}
               agent={
                 runtimes[item.hostKey]?.providers.find((p) => p.id === item.session.instanceId)
                   ?.label ?? item.session.instanceId
@@ -431,11 +435,13 @@ export default function SessionsScreen() {
 
 function SessionRow({
   session,
+  depth,
   agent,
   onPress,
   onLongPress,
 }: {
   session: SessionView
+  depth: number
   agent: string
   onPress(): void
   onLongPress(): void
@@ -445,7 +451,12 @@ function SessionRow({
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
-      style={({ pressed }) => [styles.session, pressed && { backgroundColor: colors.hover }]}
+      style={({ pressed }) => [
+        styles.session,
+        depth > 0 && styles.child,
+        depth > 0 && { marginLeft: 14 * Math.min(depth, 3) },
+        pressed && { backgroundColor: colors.hover },
+      ]}
     >
       <View style={styles.lead}>
         <StatusDot session={session} />
@@ -470,7 +481,13 @@ function SessionRow({
           <View style={styles.where}>
             {session.branch ? <Icon icon={GitBranch} size={12} color={colors.faint} /> : null}
             <Text size={12} mono color={colors.faint} numberOfLines={1} style={{ flexShrink: 1 }}>
-              {[session.branch, agent].filter(Boolean).join(' · ')}
+              {[
+                session.branch,
+                session.schedule ? `scheduled: ${session.schedule.name}` : undefined,
+                session.parent ? `started by an agent · ${agent}` : agent,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </Text>
           </View>
           <Diffstat added={session.added} removed={session.removed} />
@@ -481,6 +498,12 @@ function SessionRow({
 }
 
 const styles = StyleSheet.create({
+  child: {
+    borderLeftWidth: 1,
+    borderLeftColor: colors.border,
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
+  },
   top: {
     flexDirection: 'row',
     alignItems: 'center',

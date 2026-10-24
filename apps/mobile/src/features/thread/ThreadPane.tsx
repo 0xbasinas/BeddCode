@@ -1,4 +1,4 @@
-import { doneMenuAction, effortLabel, folderName } from '@beddcode/client-runtime'
+import { doneMenuAction, effortLabel, endedByDecline, folderName } from '@beddcode/client-runtime'
 import { Checks, DotsThree, Stop as StopIcon, ArrowUUpLeft } from 'phosphor-react-native'
 import { useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
@@ -28,6 +28,7 @@ import type { Pane } from '@/features/panes/PaneBar'
 import * as ImagePicker from 'expo-image-picker'
 import { Image as ImageIcon, FolderSimple, TerminalWindow } from 'phosphor-react-native'
 import { Transcript } from './Transcript'
+import { StartedByBanner } from './AgentToolCard'
 
 /** The conversation with the agent: transcript, anything it waits on, and the composer. */
 export function ThreadPane({
@@ -134,6 +135,7 @@ export function ThreadPane({
         <Transcript
           session={session}
           cwd={session.cwd}
+          hostKey={hostKey}
           onApprove={(requestId, optionId) => approve(session.id, requestId, optionId)}
           onAnswer={(requestId, answers) => answerQuestion(session.id, requestId, answers)}
           header={
@@ -146,6 +148,11 @@ export function ThreadPane({
                 })}
                 {session.worktree ? ` · worktree from ${session.worktree.baseBranch}` : ''}
               </Faint>
+              {session.parent ? (
+                <View style={{ alignSelf: 'stretch' }}>
+                  <StartedByBanner session={session} hostKey={hostKey} />
+                </View>
+              ) : null}
             </View>
           }
         />
@@ -172,7 +179,11 @@ export function ThreadPane({
         )}
         <View style={styles.composer}>
           <Composer
-            placeholder={`Reply to ${agent?.label ?? 'the agent'}…`}
+            placeholder={
+              endedByDecline(session)
+                ? `You declined. Tell ${agent?.label ?? 'the agent'} what to do instead…`
+                : `Reply to ${agent?.label ?? 'the agent'}…`
+            }
             running={running}
             onStop={() => void interrupt(session.id)}
             onSend={async (text, ids) => {
@@ -183,6 +194,7 @@ export function ThreadPane({
               )
             }}
             attachments={draft}
+            commands={session.commands}
             onRemoveAttachment={(key) => useAttachments.getState().remove(session.id, [key])}
             onAttach={() => setAttachMenu(true)}
             mode={

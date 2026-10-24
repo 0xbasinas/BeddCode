@@ -9,6 +9,8 @@ import {
   X,
 } from 'phosphor-react-native'
 import { useState } from 'react'
+import { insertCommand, matchCommands } from '@beddcode/client-runtime'
+import type { SlashCommand } from '@beddcode/contracts'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 
 import { EMPTY_ATTACHMENTS, type DraftAttachment } from '@/host/attachments'
@@ -39,6 +41,7 @@ export function Composer({
   context,
   attachments = EMPTY_ATTACHMENTS,
   onRemoveAttachment,
+  commands,
 }: {
   placeholder: string
   onSend(text: string, attachmentIds: string[]): Promise<void> | void
@@ -54,6 +57,8 @@ export function Composer({
   /** Files and snippets waiting to go out with this message. */
   attachments?: DraftAttachment[]
   onRemoveAttachment?: (key: number) => void
+  /** The agent's slash commands, offered while the message is a half-typed `/command`. */
+  commands?: SlashCommand[]
 }) {
   const [text, setText] = useState(initial)
   const [busy, setBusy] = useState(false)
@@ -61,6 +66,8 @@ export function Composer({
   const uploading = attachments.some((a) => a.status === 'uploading')
   const ready = attachments.filter((a) => a.status === 'done' && a.id).map((a) => a.id!)
   const canSend = text.trim().length > 0 && !busy && !uploading
+  const [dismissed, setDismissed] = useState<string>()
+  const matches = dismissed === text ? [] : matchCommands(text, commands)
 
   const send = async () => {
     if (!canSend) return
@@ -78,6 +85,44 @@ export function Composer({
 
   return (
     <View style={styles.wrap}>
+      {matches.length > 0 && (
+        <View style={styles.menu} accessibilityRole="menu">
+          <ScrollView keyboardShouldPersistTaps="always" style={{ maxHeight: 260 }}>
+            {matches.map((c) => (
+              <Pressable
+                key={c.name}
+                accessibilityRole="menuitem"
+                accessibilityLabel={`/${c.name}`}
+                onPress={() => setText(insertCommand(c))}
+                style={({ pressed }) => [
+                  styles.item,
+                  pressed && { backgroundColor: colors.active },
+                ]}
+              >
+                <View style={styles.itemHead}>
+                  <Text size={13.5} style={{ fontFamily: fonts.mono }}>
+                    /{c.name}
+                  </Text>
+                  {c.hint ? <Faint size={12}>{c.hint}</Faint> : null}
+                  {c.kind && c.kind !== 'command' ? <Faint size={11}>{c.kind}</Faint> : null}
+                </View>
+                {c.description ? (
+                  <Muted size={12} numberOfLines={1}>
+                    {c.description}
+                  </Muted>
+                ) : null}
+              </Pressable>
+            ))}
+          </ScrollView>
+          <Pressable
+            onPress={() => setDismissed(text)}
+            style={styles.menuClose}
+            accessibilityLabel="Hide commands"
+          >
+            <Icon icon={X} size={12} />
+          </Pressable>
+        </View>
+      )}
       <View style={styles.box}>
         {attachments.length > 0 && (
           <ScrollView
@@ -198,6 +243,16 @@ export function Composer({
 
 const styles = StyleSheet.create({
   wrap: { gap: 6 },
+  menu: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.control + 4,
+    backgroundColor: colors.card,
+    paddingVertical: 4,
+  },
+  menuClose: { position: 'absolute', top: 6, right: 8, padding: 4 },
+  item: { paddingHorizontal: 12, paddingVertical: 7, gap: 2 },
+  itemHead: { flexDirection: 'row', alignItems: 'baseline', gap: 8, paddingRight: 24 },
   attachment: {
     flexDirection: 'row',
     alignItems: 'center',

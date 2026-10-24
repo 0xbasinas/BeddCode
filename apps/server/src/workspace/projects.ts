@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import type { Project } from '@beddcode/contracts'
+import type { Project, ProjectScript } from '@beddcode/contracts'
 import type { GitService } from './git.ts'
 
 /**
@@ -13,21 +13,59 @@ export class ProjectStore {
     private readonly git: GitService,
   ) {}
 
-  private paths(): string[] {
+  private read(): { paths: string[]; scripts: Record<string, ProjectScript[]> } {
     try {
-      const data = JSON.parse(readFileSync(this.file, 'utf8')) as { paths?: string[] }
-      return Array.isArray(data.paths) ? data.paths : []
+      const data = JSON.parse(readFileSync(this.file, 'utf8')) as {
+        paths?: string[]
+        scripts?: Record<string, ProjectScript[]>
+      }
+      return {
+        paths: Array.isArray(data.paths) ? data.paths : [],
+        scripts: data.scripts && typeof data.scripts === 'object' ? data.scripts : {},
+      }
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { paths: [], scripts: {} }
       throw new Error(`Could not read ${this.file}: ${err instanceof Error ? err.message : err}`)
     }
   }
 
-  private write(paths: string[]) {
+  private paths(): string[] {
+    return this.read().paths
+  }
+
+  private write(paths: string[], scripts = this.read().scripts) {
     mkdirSync(path.dirname(this.file), { recursive: true })
     const tmp = `${this.file}.tmp`
-    writeFileSync(tmp, JSON.stringify({ version: 1, paths }, null, 2))
+    // Scripts of folders no longer in the list are dropped.
+    const kept = Object.fromEntries(
+      Object.entries(scripts).filter(
+        ([folder, list]) => list.length > 0 && paths.some((p) => samePath(p, folder)),
+      ),
+    )
+    const data =
+      Object.keys(kept).length > 0 ? { version: 1, paths, scripts: kept } : { version: 1, paths }
+    writeFileSync(tmp, JSON.stringify(data, null, 2))
     renameSync(tmp, this.file)
+  }
+
+  /** The saved commands of a folder (of the repository a worktree belongs to, for a worktree). */
+  scriptsFor(folder: string): ProjectScript[] {
+    const { scripts } = this.read()
+    const key = Object.keys(scripts).find((p) => samePath(p, folder))
+    return key ? (scripts[key] ?? []) : []
+  }
+
+  /** Replaces an added folder's saved commands. */
+  async setScripts(folder: string, list: ProjectScript[]): Promise<Project> {
+    const { paths, scripts } = this.read()
+    const stored = paths.find((p) => samePath(p, folder))
+    if (!stored) throw new Error(`Not an added folder: ${folder}`)
+    const ids = new Set(list.map((s) => s.id))
+    if (ids.size !== list.length) throw new Error('Each script needs its own id')
+    const next = Object.fromEntries(Object.entries(scripts).filter(([p]) => !samePath(p, stored)))
+    next[stored] = list
+    this.write(paths, next)
+    return this.describe(stored)
   }
 
   async list(): Promise<Project[]> {
@@ -75,6 +113,7 @@ export class ProjectStore {
       name: path.basename(folder) || folder,
       isRepo: info?.isRepo ?? false,
       branch: info?.branch,
+      ...(this.scriptsFor(folder).length > 0 ? { scripts: this.scriptsFor(folder) } : {}),
     }
   }
 }

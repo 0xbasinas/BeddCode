@@ -3,6 +3,7 @@ import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { SessionEvent, type StoredEvent } from '@beddcode/contracts'
 import { migrations } from './migrations.ts'
+import { isSnapshot, snapshotKey } from './snapshots.ts'
 
 export type EventListener = (stored: StoredEvent) => void
 
@@ -16,7 +17,10 @@ export class EventStore {
   private readonly readStmt
   private readonly lastSeqStmt
   private readonly bySessionStmt
+  private readonly lastSnapshotStmt
   private readonly listeners = new Set<EventListener>()
+  /** The latest commands/config/modes event per session and type, to skip unchanged repeats. */
+  private readonly snapshots = new Map<string, { seq: number; key: string }>()
 
   /** `file` is a path, or ':memory:' for tests. */
   constructor(file: string) {
@@ -34,6 +38,9 @@ export class EventStore {
       'SELECT seq, payload FROM events WHERE session_id = ? ORDER BY seq',
     )
     this.lastSeqStmt = this.db.prepare('SELECT COALESCE(MAX(seq), 0) AS seq FROM events')
+    this.lastSnapshotStmt = this.db.prepare(
+      'SELECT seq, payload FROM events WHERE session_id = ? AND type = ? ORDER BY seq DESC LIMIT 1',
+    )
   }
 
   private migrate() {
@@ -41,7 +48,9 @@ export class EventStore {
     for (let v = row.user_version; v < migrations.length; v++) {
       this.db.exec('BEGIN')
       try {
-        this.db.exec(migrations[v] as string)
+        const step = migrations[v]!
+        if (typeof step === 'string') this.db.exec(step)
+        else step(this.db)
         this.db.exec(`PRAGMA user_version = ${v + 1}`)
         this.db.exec('COMMIT')
       } catch (err) {
@@ -51,8 +60,20 @@ export class EventStore {
     }
   }
 
+  /**
+   * Commits an event and tells listeners. A commands/config/modes event identical to the session's
+   * previous one is not stored or sent again; the stored original is returned instead.
+   */
   append(event: SessionEvent): StoredEvent {
     const parsed = SessionEvent.parse(event)
+    let snapshot: { slot: string; key: string } | undefined
+    if (isSnapshot(parsed)) {
+      const slot = `${parsed.sessionId}\n${parsed.type}`
+      const key = snapshotKey(parsed)
+      const previous = this.snapshots.get(slot) ?? this.loadSnapshot(parsed.sessionId, parsed.type)
+      if (previous?.key === key) return { seq: previous.seq, event: parsed }
+      snapshot = { slot, key }
+    }
     const row = this.insert.get(
       parsed.sessionId,
       parsed.type,
@@ -60,8 +81,18 @@ export class EventStore {
       JSON.stringify(parsed),
     ) as { seq: number }
     const stored: StoredEvent = { seq: row.seq, event: parsed }
+    if (snapshot) this.snapshots.set(snapshot.slot, { seq: row.seq, key: snapshot.key })
     for (const listener of this.listeners) listener(stored)
     return stored
+  }
+
+  private loadSnapshot(sessionId: string, type: string) {
+    const row = this.lastSnapshotStmt.get(sessionId, type) as
+      { seq: number; payload: string } | undefined
+    if (!row) return undefined
+    const found = { seq: row.seq, key: snapshotKey(JSON.parse(row.payload)) }
+    this.snapshots.set(`${sessionId}\n${type}`, found)
+    return found
   }
 
   /** Events with seq greater than `afterSeq`, oldest first. */
@@ -121,6 +152,16 @@ export class EventStore {
       }
     }
     return out
+  }
+
+  /** Sessions another session's agent started, oldest first. */
+  childrenOf(parentSessionId: string): string[] {
+    const rows = this.db
+      .prepare(
+        "SELECT session_id AS id FROM events WHERE type = 'session.created' AND json_extract(payload, '$.parent.sessionId') = ? ORDER BY seq",
+      )
+      .all(parentSessionId) as { id: string }[]
+    return rows.map((r) => r.id)
   }
 
   lastSeq(): number {

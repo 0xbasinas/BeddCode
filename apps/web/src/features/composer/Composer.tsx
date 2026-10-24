@@ -16,7 +16,7 @@ import {
   EMPTY_ATTACHMENTS,
   useAttachments,
 } from './attachments.ts'
-import { insertCommand, matchCommands } from './slash.ts'
+import { insertCommand, matchCommands } from '@beddcode/client-runtime'
 import { ModeMenu, type ModeItem } from './Menus.tsx'
 
 interface ComposerProps {
@@ -26,7 +26,11 @@ interface ComposerProps {
   /** A turn is running or waiting on an answer: show Stop instead of Send. */
   busy: boolean
   disabled?: boolean
+  /** Why sending is not possible yet (connecting, loading the agent); shown when the user tries. */
+  disabledReason?: string
   autoFocus?: boolean
+  /** The box takes focus whenever this changes to a new, set value (e.g. the agent awaits a reply). */
+  focusSignal?: string | number
   /** The host files are uploaded to; attachments must live where the agent runs. */
   hostKey: string
   /** Session id, or a separate draft for the new-session composer. */
@@ -64,6 +68,10 @@ export function Composer(props: ComposerProps) {
   const sendingRef = useRef(false)
   const [dragging, setDragging] = useState(false)
   const input = useRef<HTMLInputElement>(null)
+  const box = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    if (props.focusSignal !== undefined) box.current?.focus()
+  }, [props.focusSignal])
 
   const addFiles = (list: FileList | File[]) => {
     for (const file of Array.from(list)) {
@@ -77,8 +85,22 @@ export function Composer(props: ComposerProps) {
   const canSend =
     !props.disabled && !pending && !sending && (props.text.trim().length > 0 || ready.length > 0)
 
+  const hasContent = props.text.trim().length > 0 || files.length > 0
+  // Enter (or Send) while the host is still connecting or the agent or an upload is still loading
+  // is not dropped: the message goes out as soon as it can.
+  const [armed, setArmed] = useState(false)
+  const waitingToSend = armed && hasContent
+  useEffect(() => {
+    if (armed && !hasContent) setArmed(false)
+  }, [armed, hasContent])
+  const trySend = () => {
+    if (canSend) void send()
+    else if (hasContent && !sending) setArmed(true)
+  }
+
   const send = async () => {
     if (!canSend || sendingRef.current) return
+    setArmed(false)
     sendingRef.current = true
     setSending(true)
     setError(null)
@@ -101,6 +123,10 @@ export function Composer(props: ComposerProps) {
       setSending(false)
     }
   }
+
+  useEffect(() => {
+    if (armed && canSend) void send()
+  }, [armed, canSend])
 
   const matches = matchCommands(props.text, props.commands)
   const [slashIndex, setSlashIndex] = useState(0)
@@ -181,6 +207,7 @@ export function Composer(props: ComposerProps) {
           </div>
         )}
         <textarea
+          ref={box}
           value={props.text}
           placeholder={props.placeholder}
           rows={2}
@@ -207,9 +234,16 @@ export function Composer(props: ComposerProps) {
                 return
               }
             }
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+            // keyCode 229: some IMEs report a composition's Enter without isComposing.
+            const composing = e.nativeEvent.isComposing || e.keyCode === 229
+            if (e.key === 'Enter' && !e.shiftKey && !composing) {
               e.preventDefault()
-              void send()
+              trySend()
+              return
+            }
+            if (e.key === 'Escape' && waitingToSend) {
+              e.preventDefault()
+              setArmed(false)
             }
           }}
         />
@@ -260,13 +294,24 @@ export function Composer(props: ComposerProps) {
             className="send"
             title={props.busy ? 'Send (steers the agent, or queues it)' : 'Send'}
             aria-label="Send"
-            disabled={!canSend}
-            onClick={() => void send()}
+            disabled={!canSend && !(hasContent && !sending && (props.disabled || pending))}
+            aria-busy={waitingToSend || sending}
+            onClick={trySend}
           >
             <ArrowUp size={18} />
           </button>
         </div>
       </div>
+      {waitingToSend && !error && (
+        <div className="composer-waiting" role="status">
+          <span className="spinner-dot" aria-hidden />
+          Sends as soon as{' '}
+          {props.disabledReason ?? (pending ? 'your files are uploaded' : 'it can')}
+          <button className="link-btn" onClick={() => setArmed(false)}>
+            Cancel
+          </button>
+        </div>
+      )}
       {error && <div className="composer-error">{error}</div>}
       {props.footer}
     </div>

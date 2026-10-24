@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TranscriptItem } from './replica.ts'
-import { buildBlocks, totalChanges } from './blocks.ts'
+import { buildBlocks, sessionChanges, totalChanges } from './blocks.ts'
 
 const user = (id: string): TranscriptItem => ({ kind: 'message', id, role: 'user', text: id })
 const text = (id: string): TranscriptItem => ({ kind: 'message', id, role: 'assistant', text: id })
@@ -98,5 +98,31 @@ describe('buildBlocks: denied requests', () => {
   it('keeps it when the request names no tool, and keeps allowed answers', () => {
     expect(buildBlocks([tool('deny'), approval('deny')])).toHaveLength(2)
     expect(buildBlocks([tool('allow'), approval('allow', 't1')])).toHaveLength(2)
+  })
+})
+
+describe('buildBlocks with recorded turn changes', () => {
+  it('lets the host-recorded changes card stand in for that turn’s agent diffs', () => {
+    const items = [
+      { kind: 'message', id: '1', role: 'user', text: 'one' },
+      { kind: 'diff', id: '2', path: 'a.ts', added: 1, removed: 0, patch: '+a' },
+      {
+        kind: 'changes',
+        id: '3',
+        before: 'b',
+        after: 'c',
+        files: [{ path: 'a.ts', status: 'M', added: 3, removed: 1 }],
+      },
+      { kind: 'message', id: '4', role: 'user', text: 'two' },
+      { kind: 'diff', id: '5', path: 'b.ts', added: 2, removed: 2, patch: '+b' },
+    ] as const
+    const blocks = buildBlocks([...items] as never)
+    expect(blocks.map((b) => (b.kind === 'edits' ? 'edits' : b.item.kind))).toEqual([
+      'message',
+      'changes',
+      'message',
+      'edits',
+    ])
+    expect(sessionChanges([...items] as never)).toEqual({ added: 5, removed: 3 })
   })
 })

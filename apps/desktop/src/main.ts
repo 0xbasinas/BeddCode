@@ -114,7 +114,9 @@ function loadFromHost(win: BrowserWindow) {
       off()
       void win.loadURL(appUrl)
     } else if (state.status === 'failed') {
-      void win.loadURL(splash('BeddCode could not start its host', state.detail))
+      void win.loadURL(
+        splash('BeddCode could not start its host. Trying again every minute.', state.detail),
+      )
     }
   }
   const off = daemon.onChange(check)

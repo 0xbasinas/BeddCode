@@ -17,6 +17,9 @@ import { FileIcon } from '../files/FileIcon.tsx'
 import { ApprovalCard } from './ApprovalCard.tsx'
 import { QuestionCard } from './QuestionCard.tsx'
 import { ToolGroup } from './ToolCalls.tsx'
+import { AgentToolCard } from './AgentToolCard.tsx'
+import { isAgentTool } from '@beddcode/client-runtime'
+import { TurnChangesCard } from './TurnChanges.tsx'
 
 type Item = TranscriptItem
 
@@ -28,9 +31,17 @@ export function Transcript({
   onOpenFile,
   onFork,
   completedTurns = 0,
+  changes,
+  sessionId,
+  hostKey,
 }: {
   items: Item[]
   cwd: string
+  /** This session and its host, so calls to the agent tools can follow the sessions they start. */
+  sessionId?: string
+  hostKey?: string
+  /** Where turn changes are read and undone; without it their cards are not shown. */
+  changes?: { hostKey: string; sessionId: string; idle: boolean; worktree?: boolean }
   onApprove(requestId: string, optionId: string): void | Promise<void>
   onAnswer?(requestId: string, answers?: Record<string, string[]>): void | Promise<void>
   onOpenFile?(path: string): void
@@ -40,6 +51,7 @@ export function Transcript({
   completedTurns?: number
 }) {
   const blocks = buildBlocks(items)
+  const latestChanges = items.findLast((i) => i.kind === 'changes')?.id
   // The last reply of each turn is where "fork from here" goes.
   const lastReplyOfTurn = new Map<number, number>()
   blocks.forEach((b, i) => {
@@ -59,13 +71,38 @@ export function Transcript({
           return (
             <EditedFilesCard key={block.id} files={block.files} cwd={cwd} onOpenFile={onOpenFile} />
           )
+        if (block.item.kind === 'changes') {
+          return changes ? (
+            <TurnChangesCard
+              key={block.item.id}
+              item={block.item}
+              hostKey={changes.hostKey}
+              sessionId={changes.sessionId}
+              canUndo={changes.idle && block.item.id === latestChanges}
+              offerPr={changes.worktree && changes.idle && block.item.id === latestChanges}
+              onOpenFile={onOpenFile}
+            />
+          ) : null
+        }
         if (block.item.kind === 'tool') {
-          const previous = blocks[index - 1]
-          if (previous?.kind === 'item' && previous.item.kind === 'tool') return null
+          // Starting and managing other agents gets cards of its own, outside the runs of tools.
+          if (isAgentTool(block.item)) {
+            return (
+              <AgentToolCard
+                key={block.item.id}
+                tool={block.item}
+                parentId={sessionId}
+                hostKey={hostKey ?? changes?.hostKey}
+              />
+            )
+          }
+          const plainTool = (b: (typeof blocks)[number] | undefined) =>
+            b?.kind === 'item' && b.item.kind === 'tool' && !isAgentTool(b.item)
+          if (plainTool(blocks[index - 1])) return null
           const tools: Extract<Item, { kind: 'tool' }>[] = []
           for (let i = index; i < blocks.length; i++) {
             const next = blocks[i]
-            if (next?.kind !== 'item' || next.item.kind !== 'tool') break
+            if (!plainTool(next) || next?.kind !== 'item' || next.item.kind !== 'tool') break
             tools.push(next.item)
           }
           return <ToolGroup key={block.item.id} tools={tools} />
@@ -142,6 +179,8 @@ function ItemView({
       )
     case 'diff':
       return null // grouped into the "Edited files" card
+    case 'changes':
+      return null // drawn by Transcript, which knows the host
   }
 }
 

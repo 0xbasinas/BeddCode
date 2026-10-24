@@ -298,3 +298,76 @@ describe('defaultShell', () => {
     expect(defaultShell({}, 'linux', () => null)).toMatchObject({ file: '/bin/sh', name: 'sh' })
   })
 })
+
+describe('TerminalManager (script runs and ended terminals)', () => {
+  /** Every terminal gets its own fake pty; `exit(i)` ends the i-th one. */
+  function ptys() {
+    const made: { exit(code: number): void; killed: boolean; writes: string[] }[] = []
+    const factory: PtyFactory = () => {
+      let onExit: (e: { exitCode: number }) => void = () => {}
+      const rec = {
+        exit: (code: number) => onExit({ exitCode: code }),
+        killed: false,
+        writes: [] as string[],
+      }
+      made.push(rec)
+      return {
+        pid: made.length,
+        onData: () => {},
+        onExit: (l) => (onExit = l),
+        write: (d) => rec.writes.push(d),
+        resize: () => {},
+        kill: () => {
+          rec.killed = true
+        },
+        pause: () => {},
+        resume: () => {},
+      }
+    }
+    return { factory, made }
+  }
+
+  it('replaces the earlier terminal of a script run again in the same folder', () => {
+    const p = ptys()
+    const m = track(new TerminalManager({ pty: p.factory }))
+    const plain = m.create({ cwd: '/x', shell: node('') })
+    const first = m.create({
+      cwd: '/x',
+      shell: node(''),
+      command: 'npm test',
+      title: 'Test',
+      scriptId: 'test',
+    })
+    const elsewhere = m.create({
+      cwd: '/y',
+      shell: node(''),
+      command: 'npm test',
+      scriptId: 'test',
+    })
+    const watcher = new Collector()
+    m.attach(first.id, watcher)
+    const again = m.create({
+      cwd: '/x',
+      shell: node(''),
+      command: 'npm test',
+      title: 'Test',
+      scriptId: 'test',
+    })
+    expect(again.scriptId).toBe('test')
+    expect(p.made[1]!.killed).toBe(true)
+    expect(watcher.frames.at(-1)).toMatchObject({ t: 'term.exit', id: first.id })
+    expect(m.list().map((t) => t.id)).toEqual([plain.id, elsewhere.id, again.id])
+    expect(p.made[3]!.writes).toEqual(['npm test\r'])
+  })
+
+  it('forgets the oldest ended terminals past the limit, never running ones', () => {
+    const p = ptys()
+    const m = track(new TerminalManager({ pty: p.factory, maxExited: 2 }))
+    const ids = Array.from({ length: 5 }, () => m.create({ cwd: '/x', shell: node('') }).id)
+    p.made[0]!.exit(0)
+    p.made[2]!.exit(1)
+    expect(m.list()).toHaveLength(5)
+    p.made[3]!.exit(0)
+    expect(m.list().map((t) => t.id)).toEqual([ids[1], ids[2], ids[3], ids[4]])
+  })
+})

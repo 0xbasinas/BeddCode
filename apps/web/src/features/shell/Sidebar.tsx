@@ -18,6 +18,10 @@ import {
   Layers,
   MessageSquare,
   Undo2,
+  Bot,
+  CalendarClock,
+  Pin,
+  PinOff,
   X,
 } from 'lucide-react'
 import {
@@ -25,6 +29,8 @@ import {
   doneMenuAction,
   doneOpen,
   isFiledAway,
+  nestSessions,
+  searchSessions,
   sessionNote,
   splitDone,
   type SessionView,
@@ -32,7 +38,12 @@ import {
 import type { Project } from '@beddcode/contracts'
 import { ContextMenu, type ContextMenuItem } from '../../ui/ContextMenu.tsx'
 import { Dropdown } from '../../ui/Dropdown.tsx'
-import { setSessionDone, useAllSessions, useHostStore } from '../../stores/host.ts'
+import {
+  setSessionDone,
+  setSessionPinned,
+  useAllSessions,
+  useHostStore,
+} from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { HostsDialog } from '../hosts/HostsDialog.tsx'
 import { folderName, timeAgo } from '../../ui/format.ts'
@@ -121,13 +132,23 @@ export function Sidebar() {
   const local = runtimes[LOCAL_HOST_KEY]
 
   const needsYou = all.filter((s) => s.status === 'needs-you').length
+  const searching = searchOpen && query.trim() !== ''
+  // Searching looks at what was said in each session too, and shows the matching words.
+  const messageHits = new Map(
+    searching
+      ? searchSessions(all, query, { limit: 500, snippetChars: 44 })
+          .filter((m) => m.field === 'message')
+          .map((m) => [m.sessionId, m])
+      : [],
+  )
   const visible = all
     .filter(
       (s) =>
-        !searchOpen ||
+        !searching ||
+        messageHits.has(s.id) ||
         `${s.title} ${s.projectless ? 'No project' : s.projectPath} ${s.branch ?? ''} ${activityLine(s)}`
           .toLowerCase()
-          .includes(query.toLowerCase()),
+          .includes(query.trim().toLowerCase()),
     )
     .filter((s) =>
       filter === 'all' ? true : filter === 'needs-you' ? s.status === 'needs-you' : isFiledAway(s),
@@ -143,7 +164,13 @@ export function Sidebar() {
   const groups = new Map<string, SessionView[]>()
   const groupKey = (s: SessionView) => `${hostOf.get(s.id)}
 ${s.projectless ? 'no-project' : s.projectPath}`
-  for (const s of visible) groups.set(groupKey(s), [...(groups.get(groupKey(s)) ?? []), s])
+  // Pinned sessions sit in their own section at the top (outside the Done tab and searches).
+  const showPinned = filter !== 'done' && !searching
+  const pinned = showPinned ? visible.filter((s) => s.pinned) : []
+  for (const s of visible) {
+    if (showPinned && s.pinned) continue
+    groups.set(groupKey(s), [...(groups.get(groupKey(s)) ?? []), s])
+  }
 
   // Added folders show up straight away, before any session runs in them.
   const sessionGroups = [...groups].map(([key, list]) => ({
@@ -167,13 +194,14 @@ ${s.projectless ? 'no-project' : s.projectPath}`
   const hostLabel = (hostKey: string) =>
     hostKey === LOCAL_HOST_KEY ? 'This PC' : (runtimes[hostKey]?.host?.name ?? 'Remote host')
 
-  const sessionRow = (s: SessionView) => (
+  const sessionRow = (s: SessionView, depth = 0) => (
     <Link
       key={s.id}
       to="/session/$sessionId"
       params={{ sessionId: s.id }}
       activeOptions={{ exact: true, includeSearch: false }}
-      className="session-row"
+      className={depth > 0 ? 'session-row child' : 'session-row'}
+      style={depth > 0 ? { ['--nest' as string]: Math.min(depth, 3) } : undefined}
       onContextMenu={(e) => {
         e.preventDefault()
         setMenu({ x: e.clientX, y: e.clientY, session: s })
@@ -207,14 +235,23 @@ ${s.projectless ? 'no-project' : s.projectPath}`
                 <GitBranch size={11} /> <code>{s.branch}</code> ·{' '}
               </>
             )}
+            {s.schedule && <CalendarClock size={11} aria-label={`Scheduled: ${s.schedule.name}`} />}
+            {s.parent && <Bot size={11} aria-label="Started by another session" />}
             {agentLabel(s)}
           </span>
+          {s.pinned && !showPinned && <Pin className="session-pin" size={11} aria-label="Pinned" />}
           {(s.added > 0 || s.removed > 0) && (
             <span className="stat">
               <span className="add">+{s.added}</span> <span className="del">−{s.removed}</span>
             </span>
           )}
         </span>
+        {messageHits.get(s.id)?.snippet && (
+          <span className="session-snippet" title={messageHits.get(s.id)?.snippet}>
+            {messageHits.get(s.id)?.role === 'user' ? 'You: ' : ''}
+            {messageHits.get(s.id)?.snippet}
+          </span>
+        )}
       </span>
     </Link>
   )
@@ -222,7 +259,9 @@ ${s.projectless ? 'no-project' : s.projectPath}`
   /** A folder's sessions: the list, then its Done section (closed until asked for). */
   const renderGroup = (list: SessionView[], groupKey: string) => {
     // On the Done tab the filed sessions are the list itself.
-    if (filter === 'done') return list.map(sessionRow)
+    const rows = (sessions: SessionView[]) =>
+      nestSessions(sessions).map(({ session, depth }) => sessionRow(session, depth))
+    if (filter === 'done') return rows(list)
     const { active, done } = splitDone(list)
     const open = doneOpen({
       chosen: openDone.has(groupKey),
@@ -232,7 +271,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
     })
     return (
       <>
-        {active.map(sessionRow)}
+        {rows(active)}
         {done.length > 0 && (
           <>
             <button
@@ -243,7 +282,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               <ChevronRight size={13} className={open ? 'open' : undefined} />
               Done <span>{done.length}</span>
             </button>
-            {open && done.map(sessionRow)}
+            {open && rows(done)}
           </>
         )}
       </>
@@ -260,6 +299,12 @@ ${s.projectless ? 'no-project' : s.projectPath}`
         icon: action.kind === 'restore' ? <Undo2 size={15} /> : <CheckCheck size={15} />,
         disabled: action.kind === 'busy',
         onSelect: () => void setSessionDone(session.id, action.kind === 'file'),
+      },
+      {
+        id: 'pin',
+        label: session.pinned ? 'Unpin' : 'Pin to top',
+        icon: session.pinned ? <PinOff size={15} /> : <Pin size={15} />,
+        onSelect: () => void setSessionPinned(session.id, !session.pinned),
       },
     ]
   }
@@ -447,7 +492,15 @@ ${s.projectless ? 'no-project' : s.projectPath}`
       )}
 
       <div className="session-list">
-        {sessionGroups.length === 0 && emptyFolders.length === 0 && (
+        {pinned.length > 0 && (
+          <section className="pinned-group" aria-label="Pinned sessions">
+            <div className="pinned-head">
+              <Pin size={13} /> Pinned
+            </div>
+            {pinned.map((s) => sessionRow(s))}
+          </section>
+        )}
+        {sessionGroups.length === 0 && emptyFolders.length === 0 && pinned.length === 0 && (
           <div className="sidebar-empty">
             <span className="empty-icon">
               {searchOpen && query ? (
@@ -469,7 +522,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
             </h3>
             <p>
               {searchOpen && query
-                ? 'Try another title, folder, or branch.'
+                ? 'Try other words from a title, folder, branch, or message.'
                 : local?.connection !== 'connected' && online === 0
                   ? 'Connecting to host…'
                   : all.length === 0
@@ -515,6 +568,14 @@ ${s.projectless ? 'no-project' : s.projectPath}`
           onClick={() => void navigate({ to: '/settings' })}
         >
           <Settings size={18} /> Settings
+        </button>
+        <button
+          className="icon-btn"
+          aria-label="Schedules"
+          title="Schedules"
+          onClick={() => void navigate({ to: '/settings', search: { section: 'schedules' } })}
+        >
+          <CalendarClock size={16} />
         </button>
         <button className="link-btn" onClick={() => setHostsOpen(true)} title="Manage hosts">
           {multiHost

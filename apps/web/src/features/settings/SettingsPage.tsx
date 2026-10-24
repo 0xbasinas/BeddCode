@@ -4,6 +4,8 @@ import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panel
 import {
   ArrowLeft,
   Bell,
+  BellRing,
+  CalendarClock,
   ChartPie,
   Code2,
   GitBranch,
@@ -28,6 +30,8 @@ import { PermissionsSettings } from './PermissionsSettings.tsx'
 import { ToolsSettings } from './ToolsSettings.tsx'
 import { NotificationsSettings } from './NotificationsSettings.tsx'
 import { UsageSettings } from './UsageSettings.tsx'
+import { SchedulesSettings } from './SchedulesSettings.tsx'
+import { AlertsSettings } from './AlertsSettings.tsx'
 import './settings.css'
 import { Select } from '../../ui/Select.tsx'
 import { Logo } from '../../ui/Logo.tsx'
@@ -40,6 +44,8 @@ export type SettingsSection =
   | 'agents'
   | 'permissions'
   | 'tools'
+  | 'schedules'
+  | 'alerts'
   | 'hosts'
   | 'git'
   | 'editor'
@@ -53,6 +59,8 @@ const SECTIONS = [
   { id: 'agents', label: 'Agents', group: 'Agents', icon: Sparkles },
   { id: 'permissions', label: 'Permissions', group: 'Agents', icon: Shield },
   { id: 'tools', label: 'Tools & MCP', group: 'Agents', icon: Wrench },
+  { id: 'schedules', label: 'Schedules', group: 'Automation', icon: CalendarClock },
+  { id: 'alerts', label: 'Phone alerts', group: 'Automation', icon: BellRing },
   { id: 'hosts', label: 'Hosts', group: 'Workspace', icon: Server },
   { id: 'git', label: 'Git', group: 'Workspace', icon: GitBranch },
   { id: 'editor', label: 'Editor', group: 'Workspace', icon: Code2 },
@@ -164,23 +172,35 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
             {(section === 'agents' ||
               section === 'permissions' ||
               section === 'tools' ||
+              section === 'schedules' ||
+              section === 'alerts' ||
               section === 'usage') && (
               <>
                 <header className="settings-heading">
                   <h2>
                     {section === 'permissions'
                       ? 'Permissions'
-                      : section === 'tools'
-                        ? 'Tools & MCP'
-                        : section === 'usage'
-                          ? 'Usage'
-                          : 'Agents'}
+                      : section === 'schedules'
+                        ? 'Schedules'
+                        : section === 'alerts'
+                          ? 'Phone alerts'
+                          : section === 'tools'
+                            ? 'Tools & MCP'
+                            : section === 'usage'
+                              ? 'Usage'
+                              : 'Agents'}
                   </h2>
                 </header>
                 {entries.length > 1 && (
                   <label className="settings-host">
                     <Monitor size={16} />
-                    <span>{section === 'usage' ? 'Usage on' : 'Agents on'}</span>
+                    <span>
+                      {section === 'usage'
+                        ? 'Usage on'
+                        : section === 'schedules' || section === 'alerts'
+                          ? 'Host'
+                          : 'Agents on'}
+                    </span>
                     <Select
                       aria-label="Settings host"
                       value={selectedHost}
@@ -200,6 +220,10 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
                   <AgentsSettings key={selectedHost} hostKey={selectedHost} />
                 ) : section === 'tools' ? (
                   <ToolsSettings key={selectedHost} hostKey={selectedHost} />
+                ) : section === 'schedules' ? (
+                  <SchedulesSettings key={selectedHost} hostKey={selectedHost} />
+                ) : section === 'alerts' ? (
+                  <AlertsSettings key={selectedHost} hostKey={selectedHost} />
                 ) : section === 'usage' ? (
                   <UsageSettings key={selectedHost} hostKey={selectedHost} />
                 ) : (

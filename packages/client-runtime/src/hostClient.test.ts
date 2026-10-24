@@ -174,6 +174,68 @@ describe('HostClient', () => {
     expect(seen).toEqual([1, 2])
   })
 
+  it('on wake, checks a connection that looks open and drops it when it does not answer', () => {
+    const client = new HostClient({
+      url: 'ws://host/ws',
+      onEvent: () => {},
+      probeTimeoutMs: 300,
+      createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
+      backoff: { minMs: 100, maxMs: 100 },
+    })
+    client.start()
+    const first = FakeSocket.instances[0]!
+    first.open()
+    first.receive(welcome)
+    first.receive({ t: 'event', stored: ev(3) })
+    // Still alive: it answers, nothing changes.
+    client.reconnectNow()
+    expect(first.sent.at(-1)).toEqual({ t: 'ping' })
+    first.receive({ t: 'pong' })
+    vi.advanceTimersByTime(400)
+    expect(client.connectionState).toBe('connected')
+    expect(FakeSocket.instances).toHaveLength(1)
+    // After a sleep the socket is dead but nobody told us.
+    client.reconnectNow()
+    vi.advanceTimersByTime(300)
+    expect(client.connectionState).toBe('reconnecting')
+    vi.advanceTimersByTime(200)
+    const second = FakeSocket.instances[1]!
+    second.open()
+    second.receive(welcome)
+    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 3 })
+    client.stop()
+  })
+
+  it('on wake, skips the rest of a long back-off', () => {
+    const client = new HostClient({
+      url: 'ws://host/ws',
+      onEvent: () => {},
+      createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
+      backoff: { minMs: 60_000, maxMs: 60_000 },
+      heartbeatMs: 1_000_000,
+    })
+    client.start()
+    FakeSocket.instances[0]!.drop()
+    expect(client.connectionState).toBe('reconnecting')
+    vi.advanceTimersByTime(1_000)
+    expect(FakeSocket.instances).toHaveLength(1)
+    client.reconnectNow()
+    expect(FakeSocket.instances).toHaveLength(2)
+    // A second nudge while that attempt is under way does not start another.
+    client.reconnectNow()
+    expect(FakeSocket.instances).toHaveLength(2)
+    const second = FakeSocket.instances[1]!
+    second.open()
+    second.receive(welcome)
+    expect(client.connectionState).toBe('connected')
+    // The skipped timer does not fire a stray attempt later.
+    vi.advanceTimersByTime(120_000)
+    expect(FakeSocket.instances).toHaveLength(2)
+    client.stop()
+    client.reconnectNow()
+    expect(FakeSocket.instances).toHaveLength(2)
+  })
+
   it('reconnects and resumes after the last seen seq', () => {
     const seen: number[] = []
     const client = makeClient((e) => seen.push(e.seq))

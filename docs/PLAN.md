@@ -123,7 +123,7 @@ Each adapter declares what it really supports: resume, fork, steering mid-turn, 
 
 - Server binds to the tailnet interface (100.x address) or `0.0.0.0` with a tailnet-only guard; refuse non-tailnet peers by default. Discovery: `tailscale status --json` on the client lists reachable peers running BeddCode (probe the port), so "Add host" can be a picker with MagicDNS names instead of typing URLs.
 - **Auth is minimal, not a permission system:** first connection uses the 6-digit pairing code shown by the server (matches your onboarding screens), exchanged for a long-lived bearer token stored per client. Tailnet membership is the network boundary; the token is the identity.
-- Optional later: Tailscale Serve for HTTPS/MagicDNS certs.
+- Tailscale Serve (HTTPS/MagicDNS certs) works in front of a loopback-bound host: the guard classifies proxied requests by their forwarded address (`classifyRequest`), so Serve clients pair like other tailnet peers and Funnel traffic is refused.
 - Host identity is a stable ID independent of address, so a changed IP doesn't create a duplicate host.
 - Remote service install: `beddcode-server install-service` (systemd on Linux, scheduled task / NSSM-style service on Windows).
 - Clients save an ordered list of routes per host (tailnet name, tailnet IP) and fall back automatically.
@@ -137,6 +137,9 @@ Each adapter declares what it really supports: resume, fork, steering mid-turn, 
 - **Files pane:** tree + editor (Monaco or CodeMirror; decide in a short spike), file watcher with debounce.
 - **Browser pane:** Electron `WebContentsView`; for a remote host, the page to preview is reached through the tailnet.
 - **Attachments, issue-link prompts, notifications** (desktop toast on "needs you").
+- **Turn checkpoints:** before/after snapshots per turn (`turn.changes`), per-file diff (`sessions.turnDiff`) and undo of the latest turn (`sessions.undoTurn` → `turn.reverted`).
+- **Folder scripts** (`projects.setScripts`), run in titled terminals, optionally on worktree creation.
+- **Pinned sessions** (`sessions.setPinned` → `session.pinned`), message-content search, and a handoff summary for continuing with another agent.
 
 ## 5. Phased roadmap
 

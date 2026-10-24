@@ -147,6 +147,38 @@ describe('CodexEventMapper', () => {
     ])
   })
 
+  it('keeps an MCP call’s arguments and the text it gave back', () => {
+    const events = mapAll([
+      started({
+        type: 'mcpToolCall',
+        id: 't2',
+        server: 'beddcode',
+        tool: 'start_session',
+        arguments: { agent: 'codex', prompt: 'hi' },
+      }),
+      completed({
+        type: 'mcpToolCall',
+        id: 't2',
+        status: 'completed',
+        error: null,
+        result: { content: [{ type: 'text', text: '{"session_id":"s1"}' }] },
+      }),
+      started({ type: 'mcpToolCall', id: 't3', server: 'beddcode', tool: 'stop', arguments: {} }),
+      completed({ type: 'mcpToolCall', id: 't3', status: 'failed', error: { message: 'nope' } }),
+    ])
+    expect(events).toMatchObject([
+      {
+        type: 'tool.started',
+        title: 'Using beddcode · start_session',
+        input: '{\n  "agent": "codex",\n  "prompt": "hi"\n}',
+      },
+      { type: 'tool.completed', ok: true, output: '{"session_id":"s1"}' },
+      { type: 'tool.started', title: 'Using beddcode · stop' },
+      { type: 'tool.completed', ok: false, output: 'nope' },
+    ])
+    expect(events[2]).not.toHaveProperty('input')
+  })
+
   it('maps turn outcomes and retryable errors', () => {
     expect(mapAll([['turn/completed', { turn: { status: 'completed' } }]])).toMatchObject([
       { type: 'turn.completed', reason: 'done' },

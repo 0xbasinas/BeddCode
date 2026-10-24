@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import {
+  Bot,
   Check,
   ChevronDown,
   Folder,
@@ -31,6 +32,7 @@ import {
   useRuntime,
 } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
+import { clearHandoff, peekHandoff } from '../../stores/handoff.ts'
 import { Welcome, setupWasSkipped, skipSetup } from './Welcome.tsx'
 import { showWelcome } from './welcomeLogic.ts'
 import { chooseFolder } from '../folders/folderFlow.ts'
@@ -73,14 +75,16 @@ export function NewSession({
       ? (initialHost ?? defaultHostKey)
       : LOCAL_HOST_KEY,
   )
-  const { providers, connection, host, replica, projects, synced } = useRuntime(hostKey)
+  const { providers, connection, host, replica, projects, synced, loadError } = useRuntime(hostKey)
   // The welcome checklist stays up until the first session, so adding a folder never jumps
   // straight into a composer; its last step starts the session.
   const hasSessions = useHostStore((s) =>
     Object.values(s.runtimes).some((r) => r.replica.order.length > 0),
   )
   const [setupSkipped, setSetupSkipped] = useState(setupWasSkipped)
-  const [text, setText] = useState('')
+  // "Continue with another agent" leaves a summary of the old session to start from.
+  const [text, setText] = useState(() => peekHandoff(hostKey) ?? '')
+  useEffect(() => clearHandoff(), [])
   const [instanceId, setInstanceId] = useState<string>()
   const defaults = usePreferences((s) => hostDefaults(s.hosts, host?.hostId ?? hostKey))
   const [selection, setSelection] = useState<{
@@ -90,6 +94,7 @@ export function NewSession({
   }>()
   const [chosenFolder, setChosenFolder] = useState(initialProject ?? '')
   const [workspace, setWorkspace] = useState<Workspace>({ mode: 'local' })
+  const [agentTools, setAgentTools] = useState(false)
   const [repo, setRepo] = useState<RepoState | null | 'loading'>('loading')
   const [commands, setCommands] = useState<SlashCommand[]>([])
   const [preview, setPreview] = useState<{ key: string; data?: AgentPreview; failed?: boolean }>()
@@ -124,7 +129,14 @@ export function NewSession({
     useComposerWorkspace.setState({
       workspace:
         !welcome && folder
-          ? { hostKey, cwd: folder, draftId, title: folderName(folder), instanceId: agent?.id }
+          ? {
+              hostKey,
+              cwd: folder,
+              draftId,
+              title: folderName(folder),
+              instanceId: agent?.id,
+              projectPath: folder,
+            }
           : undefined,
     })
     return () => useComposerWorkspace.setState({ workspace: undefined })
@@ -238,6 +250,7 @@ export function NewSession({
       effort: choice.effort,
       config: Object.keys(configValues).length > 0 ? configValues : undefined,
       workspace: useWorktree ? { mode: 'worktree', baseBranch: workspace.baseBranch } : undefined,
+      agentTools: agentTools || undefined,
     })
     await prompt(sessionId, value, attachments)
     void navigate({ to: '/session/$sessionId', params: { sessionId } })
@@ -267,14 +280,25 @@ export function NewSession({
             ? 'Connecting to your host…'
             : agent
               ? 'Describe a task, paste an issue link, or ask a question.'
-              : 'No agent is ready on this host yet. Install and sign in to Claude Code or Codex, or add an ACP agent.'}
+              : loadError && providers.length === 0
+                ? `${loadError}. Trying again…`
+                : 'No agent is ready on this host yet. Install and sign in to Claude Code or Codex, or add an ACP agent.'}
         </p>
         <Composer
           text={text}
           onTextChange={setText}
           placeholder="Describe a task, or paste an issue link…"
           busy={false}
-          disabled={connection !== 'connected' || !agent}
+          disabled={connection !== 'connected' || !agent || (!!folder && repo === 'loading')}
+          disabledReason={
+            connection !== 'connected'
+              ? 'the host is connected'
+              : !agent
+                ? loadError && providers.length === 0
+                  ? 'the host lists its agents'
+                  : 'an agent is ready'
+                : 'the folder is read'
+          }
           autoFocus
           hostKey={hostKey}
           draftId={draftId}
@@ -327,6 +351,18 @@ export function NewSession({
                 }}
               />
               <span className="spacer" />
+              <button
+                className={`chip-lite agent-tools-chip ${agentTools ? 'on' : ''}`}
+                aria-pressed={agentTools}
+                title={
+                  agentTools
+                    ? 'This session can start other agents, nested under it. You still answer their approvals.'
+                    : 'Let this session start and manage other agents'
+                }
+                onClick={() => setAgentTools((v) => !v)}
+              >
+                <Bot size={14} /> <span className="chip-text">Can start agents</span>
+              </button>
               {repo && repo !== 'loading' && (
                 <WorkspaceChip repo={repo} workspace={workspace} onChange={setWorkspace} />
               )}
