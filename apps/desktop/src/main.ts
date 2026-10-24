@@ -1,7 +1,9 @@
+import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { BrowserShared, BrowserViews } from './browserViews.ts'
 import { parseBrowserCommand } from './browserCommand.ts'
+import { cliLaunch } from './cliLaunch.ts'
 import { Daemon, probeHealth, readLogTail, type DaemonState } from './daemon.ts'
 import { autoUpdater } from 'electron-updater'
 import { hostPort, serverLaunch } from './serverLaunch.ts'
@@ -180,41 +182,66 @@ ipcMain.handle('beddcode:browser', (event, raw: unknown) => {
   return command && target ? target.handle(command) : null
 })
 
-// One app at a time: a second launch brings the first one forward instead of starting its own host.
-if (!app.requestSingleInstanceLock()) {
-  app.quit()
-} else {
-  app.on('second-instance', () => {
-    const win = BrowserWindow.getAllWindows()[0]
-    if (!win) return
-    if (win.isMinimized()) win.restore()
-    win.focus()
+/** The whole app: its window and the host it supervises. */
+function startApp() {
+  // One app at a time: a second launch brings the first one forward instead of starting its own host.
+  if (!app.requestSingleInstanceLock()) {
+    app.quit()
+  } else {
+    app.on('second-instance', () => {
+      const win = BrowserWindow.getAllWindows()[0]
+      if (!win) return
+      if (win.isMinimized()) win.restore()
+      win.focus()
+    })
+  }
+
+  let stopping = false
+  app.on('before-quit', (event) => {
+    if (stopping || !daemon) return
+    // Give the host a moment to shut down before the app goes.
+    event.preventDefault()
+    stopping = true
+    void Promise.all([daemon.stop(), shared?.forwards.closeAll()]).finally(() => app.quit())
+  })
+
+  app.whenReady().then(() => {
+    browserShared()
+    startDaemon()
+    createWindow()
+    if (
+      shouldAutoUpdate({ packaged: app.isPackaged, platform: process.platform, env: process.env })
+    ) {
+      startAutoUpdate(autoUpdater, (message) => console.warn(message))
+    }
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+  })
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit()
   })
 }
 
-let stopping = false
-app.on('before-quit', (event) => {
-  if (stopping || !daemon) return
-  // Give the host a moment to shut down before the app goes.
-  event.preventDefault()
-  stopping = true
-  void Promise.all([daemon.stop(), shared?.forwards.closeAll()]).finally(() => app.quit())
+// Started as `beddcode status` and the like, the app is the command line tool and opens no window.
+const cli = cliLaunch({
+  argv: process.argv,
+  packaged: app.isPackaged,
+  defaultApp: Boolean(process.defaultApp),
+  resourcesPath: process.resourcesPath,
+  execPath: process.execPath,
 })
-
-app.whenReady().then(() => {
-  browserShared()
-  startDaemon()
-  createWindow()
-  if (
-    shouldAutoUpdate({ packaged: app.isPackaged, platform: process.platform, env: process.env })
-  ) {
-    startAutoUpdate(autoUpdater, (message) => console.warn(message))
-  }
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+if (cli) {
+  const child = spawn(cli.command, cli.args, {
+    stdio: 'inherit',
+    env: { ...process.env, ...cli.env },
   })
-})
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
+  child.on('error', (err) => {
+    console.error(err.message)
+    app.exit(1)
+  })
+  child.on('exit', (code) => app.exit(code ?? 1))
+} else {
+  startApp()
+}

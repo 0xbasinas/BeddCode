@@ -1,0 +1,12 @@
+#!/bin/sh
+# The beddcode command for a headless host: runs the bundled host script with its own Node when the installer fetched one, else the Node on PATH.
+# Installed by scripts/install-host.sh; the release tarball keeps it next to server/ and web/.
+set -eu
+here=$(dirname "$(readlink -f "$0")")
+export BEDDCODE_WEB_ROOT="$here/web"
+export NODE_NO_WARNINGS=1
+[ "$#" -eq 0 ] && set -- help
+# The Node the installer downloaded, if it had to; otherwise the one on PATH.
+node="$here/node/bin/node"
+[ -x "$node" ] || node=node
+exec "$node" "$here/server/main.mjs" "$@"

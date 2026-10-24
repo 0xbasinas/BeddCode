@@ -10,6 +10,58 @@ On Windows, the package is also being added to [winget](https://learn.microsoft.
 
 Agent CLIs (`claude`, `codex`, `grok`, …) are not bundled; install them and sign in on each machine that runs sessions.
 
+### The `beddcode` command
+
+The installed app also gives you a `beddcode` command, so a terminal is enough to look after a host. It runs on the app's own runtime; nothing else has to be installed.
+
+```bash
+# Sessions
+beddcode ls                  # sessions on this host (--all, --status needs-you, --json)
+beddcode run "fix the tests" # start a session in this folder (--agent, --model, --mode, --worktree)
+beddcode run --wait "..."    # stream the answer; exit 0 done, 1 error, 2 stopped, 3 needs you
+git diff | beddcode run --wait "review this"   # piped input is added to the prompt
+beddcode attach last         # watch a session live, answer approvals, type to steer
+beddcode send last "also add a test"           # (--queue to run it after the current turn)
+beddcode stop last           # interrupt the running turn
+beddcode approve last        # answer what the agent is waiting on (allow | deny | a number)
+beddcode undo last           # put back what the latest turn changed
+
+# Automation
+beddcode schedule add "every 30m" "check the build"   # or a cron: "0 9 * * 1-5" (ls, runs, run, pause, resume, rm)
+beddcode projects add .      # add this folder to BeddCode;  beddcode open . also opens the app
+beddcode alert test          # send a test phone alert
+beddcode hosts add <address> <code>   # talk to another machine's host; then pass --host <name>
+
+# This machine
+beddcode status              # is the host on this machine running, and which version
+beddcode doctor              # check git, agent CLIs, GitHub, Tailscale and the host; says how to fix each
+beddcode pair                # a one-time code to pair a phone or another computer
+beddcode devices             # paired devices;  beddcode revoke <device> removes one
+beddcode config set allow-lan on   # the host's settings, kept in its data folder (get, unset)
+beddcode logs -f --level warn      # the host's log (-n <lines>, -f to follow, --level)
+beddcode report              # a file with doctor output, versions and the recent log, secrets removed
+beddcode update              # is there a newer release? (--download fetches the installer)
+beddcode completion bash     # tab completion: bash, zsh, fish or powershell
+beddcode open                # start the desktop app
+beddcode serve               # run the host in this terminal
+beddcode host install        # run the host in the background at login (host uninstall removes it)
+```
+
+A session is named by its id, the start of its id, part of its title, or `last`. Add `--host <name>` to use a host you added with `hosts add`. For tab completion, `eval "$(beddcode completion bash)"` (or `zsh`), `beddcode completion fish > ~/.config/fish/completions/beddcode.fish`, or `beddcode completion powershell | Out-String | Invoke-Expression` in a profile.
+
+`--port <n>` selects another port. On Windows the installer adds the command to your user PATH (open a new terminal after installing); on Linux the `.deb` already puts `beddcode` on PATH, and the AppImage takes the same arguments (`./BeddCode.AppImage status`). With no arguments `beddcode` opens the app on Linux and shows its help on Windows. From a checkout, the same commands run as `pnpm --filter @beddcode/server start <command>`.
+
+#### A host with no desktop
+
+On a Linux server or a spare machine, one line installs just the host and keeps it running in the background (needs curl and tar; Node.js is downloaded for it if the machine has none):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/0xbasinas/BeddCode/main/scripts/install-host.sh | sh
+beddcode pair        # then pair your phone or another computer with the code it prints
+```
+
+It downloads `beddcode-host-linux-x64.tar.gz` from the latest release, unpacks it to `~/.local/share/beddcode-host`, puts `beddcode` in `~/.local/bin` and runs `beddcode host install`. If the machine has no Node.js 22+, it downloads the official Node 22 (checked against nodejs.org's hash) into the same folder; nothing is installed system-wide, and `--own-node` forces that even when Node exists. Pass `--version <tag>`, `--no-service` or `--own-node` after `sh -s --`. Run `sudo loginctl enable-linger "$USER"` so it keeps running after you log out, and install and sign in to an agent CLI (Claude Code, Codex) on that machine; `beddcode doctor` checks.
+
 ## Develop
 
 Requires Node 22+ and pnpm.

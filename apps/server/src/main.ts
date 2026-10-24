@@ -1,7 +1,6 @@
-import os from 'node:os'
-import type { PairingCode } from '@beddcode/contracts'
 import { parseServeArgs } from './config.ts'
-import { TailscaleService } from './network/tailscale.ts'
+import { HANDLERS, runHandler } from './cli/dispatch.ts'
+import { USAGE } from './cli/usage.ts'
 import { runServer } from './runServer.ts'
 import { installService, uninstallService } from './service/install.ts'
 
@@ -11,83 +10,53 @@ import { installService, uninstallService } from './service/install.ts'
 // before a terminal can exist, leaves them quiet. Watch mode itself is unaffected.
 delete process.env.WATCH_REPORT_DEPENDENCIES
 
-const USAGE = `BeddCode host
+// Commands that run or install the host itself; everything else is a client of a running host.
+const HOST_COMMANDS = ['serve', 'install-service', 'uninstall-service', 'host']
+const COMMANDS = [...HOST_COMMANDS, ...Object.keys(HANDLERS)]
 
-Usage: beddcode-server [command] [options]
-
-Commands:
-  serve               Run the host (default)
-  pair                Print a one-time code to pair another device with this host
-  install-service     Run the host in the background, starting at login
-  uninstall-service   Stop it and remove it
-
-Options for serve and install-service:
-  --host <address>    Address to listen on (default 127.0.0.1; use 0.0.0.0 for other machines)
-  --port <number>     Port (default 3773)
-  --allow-lan         Also accept machines on your local network, not just the tailnet
-  --require-token     Ask for a paired device's token even from this machine
-  --allow-origin <o>  Let a web page at this origin connect (repeatable)
-
-Other: --dry-run      With (un)install-service, show what would happen and change nothing
-`
-
-/** Pairing happens on the machine itself, through the running host. */
-async function pair(port: number) {
-  let code: PairingCode
-  try {
-    const res = await fetch(`http://127.0.0.1:${port}/admin/pair`, { method: 'POST' })
-    if (!res.ok) throw new Error(`the host answered ${res.status}`)
-    code = (await res.json()) as PairingCode
-  } catch (err) {
-    console.error(
-      `Could not reach the host on port ${port} (${err instanceof Error ? err.message : err}). Is it running?`,
-    )
-    process.exitCode = 1
-    return
-  }
-
-  const status = await new TailscaleService().status()
-  const addresses = [
-    status.self && `${status.self.dnsName || status.self.name} (${status.self.ip})`,
-    ...Object.values(os.networkInterfaces())
-      .flat()
-      .filter((i) => i && i.family === 'IPv4' && !i.internal && !i.address.startsWith('169.254.'))
-      .map((i) => i!.address),
-  ].filter(Boolean)
-  const minutes = Math.round((code.expiresAt - Date.now()) / 60_000)
-  console.log(`Pairing code: ${code.code}   (valid for ${minutes} minutes, works once)`)
-  console.log(`Add this host in BeddCode with one of these addresses on port ${port}:`)
-  addresses.forEach((a) => console.log(`  ${a}`))
-}
-
-const [first = 'serve', ...rest] = process.argv.slice(2)
+// A bare `beddcode` is help when run as the installed command (its launcher sets BEDDCODE_APP), and
+// the host when started by the app itself or from a checkout, which pass options or nothing.
+const [first = process.env.BEDDCODE_APP ? 'help' : 'serve', ...rest] = process.argv.slice(2)
 const wantsHelp = first === '--help' || first === '-h' || first === 'help'
-const known = ['serve', 'pair', 'install-service', 'uninstall-service']
-const command = known.includes(first)
+const command = COMMANDS.includes(first)
   ? first
   : first.startsWith('-') && !wantsHelp
     ? 'serve'
     : first
-const args = command === first ? rest : [first, ...rest]
+let args = command === first ? rest : [first, ...rest]
+// `beddcode host install|uninstall` is the headless way to say install-service.
+let hostAction: 'install-service' | 'uninstall-service' | null = null
+if (command === 'host') {
+  const [action, ...more] = args
+  if (action !== 'install' && action !== 'uninstall') {
+    console.error('Usage: beddcode host install|uninstall [--port n] [--host address] [--dry-run]')
+    process.exit(1)
+  }
+  hostAction = action === 'install' ? 'install-service' : 'uninstall-service'
+  args = more
+}
 const dryRun = args.includes('--dry-run')
 const serveArgs = args.filter((a) => a !== '--dry-run')
 
 try {
-  if (wantsHelp || !known.includes(command)) {
+  if (wantsHelp || !COMMANDS.includes(command)) {
     console.log(USAGE)
     process.exitCode = wantsHelp ? 0 : 1
-  } else if (command === 'pair') {
-    await pair(parseServeArgs(serveArgs).port)
-  } else if (command === 'install-service') {
+  } else if (command === 'install-service' || hostAction === 'install-service') {
     parseServeArgs(serveArgs) // fail now on a typo rather than in the background
     // A background host exists to be reached from other machines, so it listens beyond loopback
     // unless told otherwise. Only the tailnet and paired devices get in (see auth/guard.ts).
     const withHost = serveArgs.includes('--host') ? serveArgs : ['--host', '0.0.0.0', ...serveArgs]
     await installService({ serveArgs: withHost, dryRun })
-  } else if (command === 'uninstall-service') {
+    if (hostAction && !dryRun) {
+      console.log('Installed. Pair a device with: beddcode pair')
+    }
+  } else if (command === 'uninstall-service' || hostAction === 'uninstall-service') {
     await uninstallService({ dryRun })
-  } else {
+  } else if (command === 'serve') {
     await runServer(parseServeArgs(serveArgs))
+  } else {
+    process.exitCode = await runHandler(command, args, parseServeArgs([]).port)
   }
 } catch (err) {
   console.error(err instanceof Error ? err.message : err)

@@ -29,6 +29,7 @@ import type { AttachmentStore } from '../attachments/store.ts'
 import type { SessionManager } from '../sessions/sessionManager.ts'
 import type { FileWatchers } from '../files/watcher.ts'
 import { serveMedia } from '../files/media.ts'
+import { VERSION } from '../version.ts'
 import { serveWebApp } from '../web/static.ts'
 import { handleTunnel } from './tunnel.ts'
 import {
@@ -114,7 +115,6 @@ export interface RunningServer {
   close(): Promise<void>
 }
 
-const VERSION = '0.0.0'
 const REPLAY_BATCH = 1000
 const IDLE_TIMEOUT_MS = 45_000
 

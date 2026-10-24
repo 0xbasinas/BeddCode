@@ -40,3 +40,38 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+
+  # The host alone, for machines with no desktop (see scripts/install-host.sh). It is built on the
+  # same Ubuntu release as the Linux installer, because the terminal library is native.
+  host:
+    name: Headless host (linux-x64)
+    runs-on: ubuntu-24.04
+    needs: installers
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @beddcode/web build
+      - run: node apps/desktop/scripts/build-host.mjs --out dist-host/beddcode-host
+      - run: |
+          cp scripts/host-bundle/beddcode dist-host/beddcode-host/beddcode
+          chmod +x dist-host/beddcode-host/beddcode
+          tar -czf dist-host/beddcode-host-linux-x64.tar.gz -C dist-host/beddcode-host .
+      # Smoke test: the unpacked host starts and reports its version.
+      - run: |
+          mkdir smoke && tar -xzf dist-host/beddcode-host-linux-x64.tar.gz -C smoke
+          ./smoke/beddcode completion bash > /dev/null
+          ./smoke/beddcode config
+      - uses: actions/upload-artifact@v5
+        with:
+          name: beddcode-host-linux-x64
+          path: dist-host/beddcode-host-linux-x64.tar.gz
+      # On a tag the installers job has made the draft release; add the tarball to it.
+      - if: startsWith(github.ref, 'refs/tags/')
+        run: gh release upload "$GITHUB_REF_NAME" dist-host/beddcode-host-linux-x64.tar.gz --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -35,6 +35,9 @@ const EXTERNAL = [
   'utf-8-validate',
 ]
 
+const appVersion = JSON.parse(
+  readFileSync(path.join(root, 'apps/desktop/package.json'), 'utf8'),
+).version
 const serverDir = path.join(root, 'apps/server')
 const requireFromServer = createRequire(path.join(serverDir, 'package.json'))
 const requireFromClaude = createRequire(path.join(root, 'packages/provider-claude/package.json'))
@@ -78,6 +81,8 @@ await build({
       'const __dirname = __dirname_of(__filename)',
     ].join('\n'),
   },
+  // The host reports the app's own version (see apps/server/src/version.ts).
+  define: { __BEDDCODE_VERSION__: JSON.stringify(appVersion) },
   legalComments: 'none',
   logLevel: 'warning',
 })

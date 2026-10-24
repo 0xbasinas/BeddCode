@@ -62,3 +62,44 @@ describe('planService', () => {
     ).toThrow(/Linux and Windows/)
   })
 })
+
+describe('planService with an environment', () => {
+  const env = { ELECTRON_RUN_AS_NODE: '1', BEDDCODE_WEB_ROOT: '/opt/BeddCode/resources/web' }
+
+  it('sets it in the systemd unit', () => {
+    const plan = planService({
+      platform: 'linux',
+      home: '/home/me',
+      command: ['/opt/BeddCode/beddcode', '/opt/BeddCode/resources/server/main.mjs'],
+      serveArgs: [],
+      env,
+    })
+    const unit = plan.files[0]!.content
+    expect(unit).toContain('Environment=ELECTRON_RUN_AS_NODE=1')
+    expect(unit).toContain('Environment=BEDDCODE_WEB_ROOT=/opt/BeddCode/resources/web')
+  })
+
+  it('has cmd set it before the scheduled task starts the host', () => {
+    const plan = planService({
+      platform: 'win32',
+      home: 'C:\\Users\\me',
+      command: ['C:\\Apps\\BeddCode.exe', 'C:\\Apps\\resources\\server\\main.mjs'],
+      serveArgs: [],
+      env: { ELECTRON_RUN_AS_NODE: '1' },
+    })
+    const task = plan.install[0]!
+    expect(task[task.indexOf('/TR') + 1]).toMatch(
+      /^cmd \/d \/c ".*set "ELECTRON_RUN_AS_NODE=1" && /,
+    )
+  })
+
+  it('changes nothing without one', () => {
+    const plan = planService({
+      platform: 'linux',
+      home: '/home/me',
+      command: ['/usr/bin/node', '/x.js'],
+      serveArgs: [],
+    })
+    expect(plan.files[0]!.content).not.toContain('Environment=')
+  })
+})

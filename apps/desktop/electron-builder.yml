@@ -34,6 +34,10 @@ win:
     - target: nsis
       arch: [x64]
   icon: build/icon.ico
+  # The `beddcode` command (see build/installer.nsh, which puts this folder on PATH).
+  extraResources:
+    - from: build/cli
+      to: cli
   # Sign by setting CSC_LINK and CSC_KEY_PASSWORD (a code-signing certificate) when building.
 nsis:
   oneClick: false
@@ -41,6 +45,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   deleteAppDataOnUninstall: false
   shortcutName: BeddCode
+  include: build/installer.nsh
   artifactName: BeddCode-Setup-${version}.${ext}
 
 linux:
