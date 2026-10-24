@@ -8,7 +8,6 @@ import {
   ChevronRight,
   CornerLeftUp,
   FolderGit2,
-  Folder,
   GitBranch,
   Hand,
   List,
@@ -190,17 +189,18 @@ function childName(view: AgentToolView, labels: Record<string, string>) {
   return agentDisplayName(view.child?.agent, labels)
 }
 
-/** Where the child works: worktree or folder, and its branch. */
+/** Where the child works when it is not simply the parent's folder: a worktree and its branch. */
 function WhereLine({ view }: { view: AgentToolView }) {
   const child = view.child
-  if (!child?.folder && !child?.branch) return null
+  if (!child?.worktree && !child?.branch) return null
   return (
     <div className="agent-where" title={child.folder}>
-      {child.worktree ? <FolderGit2 size={12} /> : <Folder size={12} />}
-      <span>
-        {child.worktree ? 'Worktree' : 'Folder'}
-        {child.folder ? ` · ${folderName(child.folder)}` : ''}
-      </span>
+      {child.worktree && (
+        <>
+          <FolderGit2 size={12} />
+          <span>Worktree{child.folder ? ` · ${folderName(child.folder)}` : ''}</span>
+        </>
+      )}
       {child.branch && (
         <>
           <GitBranch size={12} />
@@ -236,8 +236,9 @@ function StartCard({ view, tool, labels, now }: CardProps) {
         ) : (
           <PhasePill phase={phase} elapsed={elapsed} />
         )}
+        {child?.id && child.known && <OpenSession id={child.id} label="Open" />}
       </div>
-      {view.prompt && <p className="agent-task">{preview(view.prompt, 280)}</p>}
+      {view.prompt && <p className="agent-task">{preview(view.prompt, 200)}</p>}
       <WhereLine view={view} />
       {liveNow && child?.activity && (
         <div className="agent-activity">
@@ -247,11 +248,6 @@ function StartCard({ view, tool, labels, now }: CardProps) {
       )}
       {view.error && <p className="agent-error">{view.error}</p>}
       {!liveNow && child?.reply && <Fold label="Result" text={child.reply} />}
-      {child?.id && child.known && (
-        <div className="agent-card-foot">
-          <OpenSession id={child.id} />
-        </div>
-      )}
     </div>
   )
 }
@@ -267,6 +263,10 @@ function ResultCard({ view, tool, labels, now }: CardProps) {
       ? 'failed'
       : (child?.phase ?? 'done')
   const body = view.name === 'wait_for' ? view.reply : view.transcript
+  // The start call's card already shows this reply; a second copy would only repeat it.
+  if (view.name === 'wait_for' && !view.pending && !view.error && body && body === child?.reply) {
+    return <AgentToolRow view={view} tool={tool} labels={labels} now={now} />
+  }
   return (
     <div className={`agent-card compact ${view.error ? 'error' : ''}`}>
       <div className="agent-card-head">
@@ -281,6 +281,7 @@ function ResultCard({ view, tool, labels, now }: CardProps) {
         </span>
         {ms !== undefined && <span className="tcall-time">{formatDuration(ms)}</span>}
         <PhasePill phase={phase} />
+        {child?.id && child.known && <OpenSession id={child.id} label="Open" />}
       </div>
       {view.pending && child?.activity && (
         <div className="agent-activity">
@@ -298,11 +299,6 @@ function ResultCard({ view, tool, labels, now }: CardProps) {
       {view.error && <p className="agent-error">{view.error}</p>}
       {body && <Fold label={view.name === 'wait_for' ? 'Reply' : 'Conversation'} text={body} />}
       {!view.pending && !body && !view.error && <p className="agent-note">No reply yet.</p>}
-      {child?.id && child.known && (
-        <div className="agent-card-foot">
-          <OpenSession id={child.id} />
-        </div>
-      )}
     </div>
   )
 }
