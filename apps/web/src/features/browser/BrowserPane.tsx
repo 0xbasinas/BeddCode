@@ -321,10 +321,6 @@ export function BrowserPane({ draftId }: { draftId?: string }) {
             <Globe size={26} />
           </span>
           <h3>Nothing to preview</h3>
-          <p>
-            Open a page to see the app your agent is building, such as a dev server on{' '}
-            <code>localhost:3000</code>.
-          </p>
           <button
             className="primary-btn"
             onClick={() => go(address || 'localhost:3000', tabs.length === 0)}
