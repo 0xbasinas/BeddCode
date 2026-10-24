@@ -2,6 +2,14 @@
 
 A desktop workspace for running coding agents (Claude Code, Codex, and ACP-compatible CLIs) on local and remote hosts. See [docs/PLAN.md](docs/PLAN.md) for the architecture and roadmap, and `ui-docs/` for the designs.
 
+## Install
+
+Download the installer for your system from the [latest release](https://github.com/0xbasinas/BeddCode/releases/latest): `BeddCode-Setup-<version>.exe` for Windows, or the `.AppImage` / `.deb` for Linux. Windows builds are not code-signed yet, so SmartScreen may warn on first run. The app updates itself from GitHub releases.
+
+On Windows, the package is also being added to [winget](https://learn.microsoft.com/windows/package-manager/) as `BeddCode.BeddCode`. Once the [submission](https://github.com/microsoft/winget-pkgs/pull/460891) is merged, `winget install BeddCode.BeddCode` will work; `packaging/winget/` holds the manifests and the steps (see its README).
+
+Agent CLIs (`claude`, `codex`, `grok`, …) are not bundled; install them and sign in on each machine that runs sessions.
+
 ## Develop
 
 Requires Node 22+ and pnpm.
@@ -37,7 +45,7 @@ This builds the web app, bundles the host (`apps/desktop/scripts/build-host.mjs`
 
 - The Windows installer and Linux AppImage update themselves from GitHub releases (a .deb is updated by the package manager). `BEDDCODE_NO_UPDATE=1` turns it off.
 - To sign the Windows installer, set `CSC_LINK` and `CSC_KEY_PASSWORD` when building. Unsigned builds work, but Windows warns on first run.
-- Pushing a tag such as `v0.2.0` runs `.github/workflows/release.yml`, which builds both installers and attaches them to a draft release. `.github/workflows/ci.yml` checks every push and pull request on Windows and Linux.
+- Pushing a tag such as `v0.2.0` runs `.github/workflows/release.yml`, which builds both installers and attaches them to a draft release. Publishing that release runs `.github/workflows/winget.yml`, which opens the update pull request for winget (needs the `WINGET_TOKEN` secret; see `packaging/winget/README.md`). `.github/workflows/ci.yml` checks every push and pull request on Windows and Linux.
 - `node scripts/make-icons.mjs` renders every icon from `assets/logo/mark.svg`.
 
 The server uses Node's file watcher with the `tsx` TypeScript loader. Electron waits for both the host's `/health` endpoint and the web UI port before opening, with a 30-second startup timeout. If startup fails, inspect the server output in that terminal. To start the host separately, run `pnpm --filter @beddcode/server start`; the UI reconnects automatically when it becomes available.
@@ -46,7 +54,7 @@ The server uses Node's file watcher with the `tsx` TypeScript loader. Electron w
 
 The `Android` workflow (`.github/workflows/android.yml`) builds the phone app as an APK, so it runs without a dev server. Pushing a tag such as `v0.2.0` attaches `BeddCode-<version>-android.apk` to that release, and **Actions → Android → Run workflow** builds one on demand as a downloadable artifact. Install it by opening the file on the phone and allowing installs from that source.
 
-It is signed with the debug key unless you add the repository secrets `ANDROID_KEYSTORE_BASE64` (your `.jks`, base64-encoded), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Keep using the same key: Android only installs an update over an app signed by the same one. The build is arm64 only. To build locally, run `pnpm --filter @beddcode/mobile exec expo prebuild --platform android` and then `./gradlew assembleRelease` in `apps/mobile/android` (JDK 17 and the Android SDK).
+It is signed with the debug key unless you add the repository secrets `ANDROID_KEYSTORE_BASE64` (your `.jks`, base64-encoded), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Keep using the same key: Android only installs an update over an app signed by the same one. The build is arm64 only. For push alerts, add a Firebase `google-services.json` (at `apps/mobile/google-services.json`, which is gitignored, or as the `GOOGLE_SERVICES_JSON_B64` secret for this workflow), upload the FCM V1 service-account key to Expo/EAS credentials, and set the EAS project id as `EAS_PROJECT_ID` (environment variable or repository variable); without them the phone says why push is unavailable. To build locally, run `pnpm --filter @beddcode/mobile exec expo prebuild --platform android` and then `./gradlew assembleRelease` in `apps/mobile/android` (JDK 17 and the Android SDK).
 
 ### Server environment
 
@@ -96,6 +104,8 @@ Useful options and troubleshooting:
 
 In **Git → Changes**, select files and click **Generate message** to draft a commit summary and description with Claude Code, Codex, or a configured ACP agent on that host. The themed agent picker chooses which account generates the draft. Edit the result, then choose **Commit** or **Commit & push**. Unselected staged files keep their staging state. Commit/push progress and results stay visible across Git tabs and pane switches. If pushing fails after a successful commit, the app keeps the commit, shows Git's error, and offers **Retry push** without making another commit. The commit count refreshes after the operation completes. A branch without an upstream shows **Publish branch**.
 
+The **PR** tab also works with the folder's whole GitHub repo through your own `gh`: list open, mine, review-requested or closed pull requests with checks and review state, open one for its description, checks, conversation and files, then comment, mark ready or draft, close or reopen, and merge after a confirmation. This branch's pull request is pinned; if it has none, the tab offers to create one.
+
 In **Git → PR**, choose a base branch and click **Generate PR draft**. The draft uses committed branch changes, excluding uncommitted files. Review and edit it before clicking **Push & create pull request**. Draft generation also works when GitHub is unavailable; creating the PR requires `gh` authentication. Generation runs separately from the conversation in a temporary folder and supplies the diff as context. Native Claude runs without tools and Codex uses an ephemeral read-only thread. ACP generation advertises no client tools, declines file, terminal and permission requests, and selects a read-only or asking mode when offered. ACP has no universal switch to disable an agent's own tools; reported tool use rejects the draft. The agent must already be signed in and return the requested JSON. Generation closes its process afterward, and closes its provider session when the agent supports that operation.
 
 Git drafts keep the selected model but use lower reasoning settings where supported. Claude draft jobs disable extended thinking; Codex uses an advertised minimal/low effort; ACP agents use a lower reasoning choice when they offer one. Conversation settings are unchanged. Context preparation resolves Git metadata once per batch and reads up to four file diffs concurrently; the stale-change check still runs before returning the draft.
@@ -120,7 +130,7 @@ The first-launch checklist helps connect a host and add a project folder. **Ctrl
 
 Sessions with a default name use the first message as their title. Use the conversation's **… → Rename session** menu to choose a name; it is saved on the host. After a host restart, interrupted turns show **Stopped · ready to continue** and an explanation in the conversation. Send another message to resume. Approval cards show whether a request was allowed, denied, or cancelled, and keep the full command available under **Details**.
 
-**Settings** includes General, Appearance, Shortcuts, Agents, Permissions, Hosts, Git, Editor, and About. Set the default host and workspace type, choose comfortable or compact density, reduce motion, or change editor font size, indentation, wrapping, and line numbers. UI preferences and session notes are saved on this client. Unsaved editor text survives navigating between panes and Settings within the app; use Ctrl+S to write it to the host.
+**Settings** includes General, Appearance, Notifications, Shortcuts, Agents, Permissions, Tools & MCP, Schedules, Phone alerts, Hosts, Git, Editor, Usage, and About. Set the default host and workspace type, choose comfortable or compact density, reduce motion, or change editor font size, indentation, wrapping, and line numbers. UI preferences and session notes are saved on this client. Unsaved editor text survives navigating between panes and Settings within the app; use Ctrl+S to write it to the host.
 
 ### ACP agents
 
@@ -142,6 +152,10 @@ Any agent that speaks the [Agent Client Protocol](https://agentclientprotocol.co
 - **Continue with another agent.** The conversation's **… → Continue with another agent** opens the new-session composer in the same folder with a short summary of the session (what you asked, replies, commands, changed files, plan). Pick Claude, Codex or an ACP agent and send it, edited as you like.
 - **Typing before the host is ready.** Pressing Enter while the composer is still connecting, the agent is loading or the folder is being read no longer drops the message: the composer shows "Sends as soon as …" and sends once it can. Escape or **Cancel** stops it.
 - **Fork, resume, history.** Fork a session from any finished turn. **Resume an earlier conversation** on the new-session screen lists what an agent keeps on its host, including conversations started in its own CLI, and brings one in as a session. Claude, Codex and ACP agents that list their sessions are supported.
+- **Agents managing agents.** The new-session chip **Can start agents** (off by default) gives that session BeddCode's tools over a loopback MCP bridge: `start_session`, `send_message`, `get_status`, `read_transcript`, `wait_for`, `stop`, `list_children`. Works with Claude, Codex and ACP agents, across providers. A child never gets looser permissions than its parent; sessions nest 2 deep, with at most 5 children running and 10 in total. The calls show as cards in the transcript that fold to one line (who was started, its task, live status, the result), a child shows a **Started by** banner with a way back, and the parent shows a bar of its children above the composer. Children appear nested under their parent in the sidebar, and their approvals come to you. A child of a **No project** session stays without a project.
+- **Browser use.** The chip **Can use browser** (off by default, desktop app) gives an agent `browser_*` tools (tabs, navigate, snapshot, click, type, scroll, screenshot, console, …) that run in tabs of the agent's own. You can take over, stop it or let it continue from a banner; form sends to non-local hosts and JavaScript ask first, depending on the permission mode.
+- **Scheduled prompts.** **Settings → Schedules** (per host): run every N minutes or on a cron expression, either starting a fresh session (agent, model, permissions, folder, optional worktree) or sending a heartbeat to an existing one. Schedules run on the host with every app closed and keep a run history; pause, resume or run one now. A run is skipped while the previous one is going, and missed runs are not backfilled.
+- **Phone alerts.** **Settings → Phone alerts** (per host): the host sends a push to paired phones when a turn finishes, an agent needs you, a turn fails or a scheduled run finishes; each phone picks its events, and tapping one opens the session. Push needs a Firebase `google-services.json` and an EAS project (see the Android section); an optional [ntfy](https://ntfy.sh) topic works without either. Desktop and web keep their OS notifications.
 - **Tools & MCP.** Settings → Tools & MCP lists, adds and removes MCP servers by running the agent's own CLI (`claude mcp`, `codex mcp`), so its own config files stay the single source.
 - **Commands and skills.** Typing `/` in the composer lists the agent's slash commands and skills (Claude's live list, Codex skills, an ACP agent's available commands).
 - **ACP extras.** Agents' own settings (model, reasoning effort, modes, commands) appear in the composer, including on the new-session screen: the host starts the agent once to read them (`agents.preview`) and remembers the answer, so custom commands such as `grok agent stdio` get the same picker as any registry agent. Choices made there are applied as the session starts. Pictures go to agents that accept images; start-up has timeouts and failures include the agent's last stderr line.
@@ -158,3 +172,9 @@ Any agent that speaks the [Agent Client Protocol](https://agentclientprotocol.co
 - `packages/provider-core` – provider adapter interface
 - `packages/provider-claude`, `provider-codex` – native adapters; `provider-acp` – generic ACP client (registry agents and local commands)
 - `packages/client-runtime` – host connection runtime
+- `packaging/winget` – the winget manifests and how to submit them
+- `docs` – the plan ([PLAN.md](docs/PLAN.md)), design screenshots, and product proposals in `docs/prd` (agent orchestration "Flows" and computer use; neither is built yet)
+
+## License
+
+[MIT](LICENSE)
