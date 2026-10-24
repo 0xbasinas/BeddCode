@@ -2,7 +2,11 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
+  Bot,
   Bug,
+  Hand,
+  Play,
+  Square,
   Camera,
   ChevronDown,
   ChevronUp,
@@ -23,8 +27,11 @@ import {
 } from 'lucide-react'
 import type { BrowserConsoleEntry, BrowserPageState } from '@beddcode/contracts'
 import {
+  agentKey,
   browserCommand,
   nativeBrowser,
+  pauseAgent,
+  resumeAgent,
   useBrowser,
   type BrowserPrompt,
   type BrowserTab,
@@ -33,7 +40,7 @@ import { useNativeLayout } from './nativeView.ts'
 import { previewTarget } from './preview.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
 import { attachUpload, stageAttachment } from '../composer/attachments.ts'
-import { hostRequest } from '../../stores/host.ts'
+import { hostRequest, interrupt, useHostStore } from '../../stores/host.ts'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import {
   CANCEL_PICK_SCRIPT,
@@ -262,6 +269,9 @@ export function BrowserPane({ draftId }: { draftId?: string }) {
             <div key={t.id} className="term-tab" role="tab" aria-selected={t.id === active}>
               <button onClick={() => activate(t.id)} title={t.url}>
                 <TabIcon tab={t} page={pages[t.id]} /> {t.title || t.url}
+                {t.agent && (
+                  <Bot size={13} className="tab-agent" aria-label={`${t.agent.label}'s tab`} />
+                )}
               </button>
               <button aria-label={`Close ${t.title}`} onClick={() => close(t.id)}>
                 <X size={13} />
@@ -409,6 +419,7 @@ export function BrowserPane({ draftId }: { draftId?: string }) {
         </div>
       )}
 
+      {current?.agent && <AgentBanner tab={current} />}
       {desktop && <NativePage tab={blank ? undefined : current} page={page} onRetry={reload} />}
       {!desktop && current && !blank && (
         <iframe
@@ -466,6 +477,59 @@ export function BrowserPane({ draftId }: { draftId?: string }) {
   )
 }
 
+/**
+ * Shown over a tab an agent drives: who, and the user's controls. Take over pauses the agent's
+ * browser use (its next browser call is told the user has the browser); Stop also ends its turn.
+ */
+function AgentBanner({ tab }: { tab: BrowserTab }) {
+  const agent = tab.agent!
+  const key = agentKey(agent.hostKey, agent.sessionId)
+  const paused = useBrowser((s) => Boolean(s.paused[key]))
+  const session = useHostStore((s) => s.runtimes[agent.hostKey]?.replica.sessions[agent.sessionId])
+  const working = session?.status === 'running'
+  const title = session?.title || agent.sessionTitle
+  return (
+    <div
+      className={`banner agent-banner ${paused ? 'paused' : working ? 'working' : ''}`}
+      role="status"
+    >
+      <Bot size={15} />
+      <span className="agent-banner-text">
+        {paused ? (
+          <>You have control of this tab</>
+        ) : (
+          <>
+            <strong>{agent.label}</strong>{' '}
+            {working ? 'is using this tab' : 'has been using this tab'}
+          </>
+        )}
+        {title && <span className="muted"> · {title}</span>}
+      </span>
+      {paused ? (
+        <button onClick={() => resumeAgent(agent.hostKey, agent.sessionId)}>
+          <Play size={13} /> Let {agent.label} continue
+        </button>
+      ) : (
+        <>
+          <button onClick={() => pauseAgent(agent.hostKey, agent.sessionId)}>
+            <Hand size={13} /> Take over
+          </button>
+          {working && (
+            <button
+              onClick={() => {
+                pauseAgent(agent.hostKey, agent.sessionId)
+                void interrupt(agent.sessionId).catch(() => {})
+              }}
+            >
+              <Square size={12} /> Stop
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 function TabIcon({ tab, page }: { tab: BrowserTab; page?: Page }) {
   if (page?.loading) return <span className="tab-spinner" aria-hidden />
   if (page?.crashed) return <Bug size={14} className="danger" />
@@ -485,7 +549,7 @@ function NativePage({ tab, page, onRetry }: { tab?: BrowserTab; page: Page; onRe
   const snapshot = useNativeLayout(host, tab?.id ?? null, Boolean(tab) && !problem)
   if (!tab) return null
   return (
-    <div className="page-frame native-frame" ref={host}>
+    <div className={`page-frame native-frame ${tab.agent ? 'agent-driven' : ''}`} ref={host}>
       {snapshot && !problem && <img className="page-snapshot" src={snapshot} alt="" />}
       {page.crashed && (
         <div className="page-problem" role="alert">

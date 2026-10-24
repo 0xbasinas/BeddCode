@@ -258,7 +258,7 @@ export class SessionManager {
         model: params.model,
         effort: params.effort,
         config: params.config,
-        mcpServers: this.toolServersFor(sessionId, params.agentTools),
+        mcpServers: this.toolServersFor(sessionId, params.agentTools || params.browserTools),
       })
     } catch (err) {
       // Do not leave an unused worktree behind when the agent could not start.
@@ -287,6 +287,7 @@ export class SessionManager {
       parent: origin.parent,
       schedule: origin.schedule,
       agentTools: (params.agentTools && this.deps.agentToolServers !== undefined) || undefined,
+      browserTools: (params.browserTools && this.deps.agentToolServers !== undefined) || undefined,
     })
     this.announceModes(sessionId, adapter, instance.id, params.permissionMode)
     void this.pump(sessionId, session)
@@ -631,6 +632,7 @@ export class SessionManager {
   }
 
   interrupt(sessionId: string): Promise<void> {
+    this.dropAsks(sessionId)
     return this.requireLive(sessionId).session.interrupt()
   }
 
@@ -671,7 +673,62 @@ export class SessionManager {
   }
 
   approve(sessionId: string, requestId: string, optionId: string): Promise<void> {
+    const asked = this.hostAsks.get(requestId)
+    if (asked && asked.sessionId === sessionId) {
+      asked.settle(optionId === 'allow')
+      return Promise.resolve()
+    }
     return this.requireLive(sessionId).session.respondToApproval(requestId, optionId)
+  }
+
+  private readonly hostAsks = new Map<string, { sessionId: string; settle(allow: boolean): void }>()
+
+  /**
+   * Asks the user in the session's conversation, like an agent's own approval, for something the
+   * host's tools are about to do. Resolves false when refused or left unanswered for `timeoutMs`.
+   */
+  askUser(
+    sessionId: string,
+    ask: { title: string; detail?: string; toolId?: string },
+    timeoutMs = 4 * 60_000,
+  ): Promise<boolean> {
+    const requestId = `host-${randomUUID()}`
+    return new Promise<boolean>((resolve) => {
+      const settle = (allow: boolean) => {
+        if (!this.hostAsks.delete(requestId)) return
+        clearTimeout(timer)
+        this.deps.store.append({
+          type: 'approval.resolved',
+          sessionId,
+          at: Date.now(),
+          requestId,
+          optionId: allow ? 'allow' : 'deny',
+        })
+        resolve(allow)
+      }
+      const timer = setTimeout(() => settle(false), timeoutMs)
+      timer.unref?.()
+      this.hostAsks.set(requestId, { sessionId, settle })
+      this.deps.store.append({
+        type: 'approval.requested',
+        sessionId,
+        at: Date.now(),
+        requestId,
+        toolId: ask.toolId,
+        title: ask.title,
+        detail: ask.detail,
+        options: [
+          { id: 'allow', label: 'Allow', kind: 'allow' },
+          { id: 'deny', label: 'Deny', kind: 'deny' },
+        ],
+      })
+    })
+  }
+
+  /** Refuses whatever the host asked in a session, when its turn ends or it is stopped. */
+  dropAsks(sessionId: string) {
+    for (const asked of this.hostAsks.values())
+      if (asked.sessionId === sessionId) asked.settle(false)
   }
 
   async close() {
@@ -758,7 +815,10 @@ export class SessionManager {
       model: chosen.model,
       effort: chosen.effort,
       resumeId,
-      mcpServers: this.toolServersFor(sessionId, created.event.agentTools),
+      mcpServers: this.toolServersFor(
+        sessionId,
+        created.event.agentTools || created.event.browserTools,
+      ),
     })
     const live = { session, adapter }
     this.live.set(sessionId, live)

@@ -1,5 +1,6 @@
 import {
   PROTOCOL_VERSION,
+  type BrowserUseCall,
   type ClientFrame,
   ServerFrame,
   type HostInfo,
@@ -30,6 +31,8 @@ export interface HostClientOptions {
   /** Terminal output and file-change notifications: live data that is not part of the event log. */
   onFrame?(frame: Extract<ServerFrame, { t: 'term.out' | 'term.exit' | 'fs.changed' }>): void
   onState?(state: ConnectionState, host?: HostInfo): void
+  /** An agent's browser tool call to run (only after `offerBrowser` said this client can). */
+  onBrowserCall?(id: string, call: BrowserUseCall): void
   /** Inject a socket for tests; defaults to the platform WebSocket. */
   createSocket?(url: string): WebSocket
   backoff?: { minMs: number; maxMs: number }
@@ -148,6 +151,19 @@ export class HostClient {
     })
   }
 
+  private browserOffer: Extract<ClientFrame, { t: 'browser.offer' }> | null = null
+
+  /**
+   * Tells the host whether this client runs agents' browser tools and which session it shows.
+   * Remembered and sent again on every reconnect.
+   */
+  offerBrowser(offer: Omit<Extract<ClientFrame, { t: 'browser.offer' }>, 't'>) {
+    const frame = { t: 'browser.offer' as const, ...offer }
+    if (JSON.stringify(frame) === JSON.stringify(this.browserOffer)) return
+    this.browserOffer = frame
+    this.send(frame)
+  }
+
   /** Sends a frame if connected. Returns false when it could not be sent (the caller may retry). */
   send(frame: ClientFrame): boolean {
     const ws = this.ws
@@ -227,6 +243,7 @@ export class HostClient {
         this.attempt = 0
         this.setState('connected', frame.host)
         ws.send(JSON.stringify({ t: 'subscribe', afterSeq: this.lastSeq }))
+        if (this.browserOffer) ws.send(JSON.stringify(this.browserOffer))
         break
       case 'denied':
         this.setState('denied')
@@ -250,6 +267,9 @@ export class HostClient {
       case 'term.exit':
       case 'fs.changed':
         this.options.onFrame?.(frame)
+        break
+      case 'browser.call':
+        this.options.onBrowserCall?.(frame.id, frame.call)
         break
       case 'res': {
         const p = this.pending.get(frame.id)

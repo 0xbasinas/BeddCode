@@ -30,6 +30,7 @@ import {
   uniqueFileName,
   viewBounds,
 } from './browserGuard.ts'
+import { BrowserAgent } from './browserAgent.ts'
 import { PortForwards } from './portForward.ts'
 
 /** Sent to the app page for everything the pane's pages do (see preload.ts). */
@@ -53,7 +54,12 @@ interface Page {
   visible: boolean
   console: ConsoleLog
   findText?: string
+  /** The agent driving this tab, if one is (see `agent-control`). */
+  agent: string | null
 }
+
+/** Size a hidden agent tab renders at when the pane was never laid out. */
+const PARKED_SIZE = { width: 1280, height: 800 }
 
 /**
  * The browser pane's pages, one native WebContentsView per tab, laid over the pane by the app
@@ -65,6 +71,7 @@ export class BrowserViews {
   private pages = new Map<number, Page>()
   private visibleTab: number | null = null
   private readonly sweep: NodeJS.Timeout
+  private readonly agent = new BrowserAgent()
 
   constructor(
     private readonly win: BrowserWindow,
@@ -76,6 +83,10 @@ export class BrowserViews {
     // A reload of the app page starts its tabs over; pages it no longer knows must go.
     win.webContents.on('did-navigate', () => this.closeAll())
     win.webContents.on('render-process-gone', () => this.closeAll())
+    // Hidden agent tabs sit at the window's corner (see park); it moves when the window resizes.
+    win.on('resize', () => {
+      for (const page of this.pages.values()) if (page.agent && !page.visible) this.park(page)
+    })
     win.on('closed', () => {
       clearInterval(this.sweep)
       shared.windows.delete(this)
@@ -144,6 +155,39 @@ export class BrowserViews {
         await this.shared.session.clearCache()
         this.shared.permissions.clear()
         return true
+      case 'agent-control': {
+        const page = this.pages.get(command.tabId)
+        if (!page) return false
+        page.agent = command.agent
+        if (!page.view) return true
+        if (command.agent) {
+          if (!page.visible) this.park(page)
+        } else {
+          this.agent.detach(page.view.webContents)
+          if (!page.visible) this.unpark(page)
+        }
+        return true
+      }
+      case 'agent': {
+        const page = this.pages.get(command.tabId)
+        const contents = page?.view?.webContents
+        if (!page || !contents || contents.isDestroyed())
+          return {
+            ok: false,
+            error: 'The tab has no page loaded. Open it again with browser_tabs.',
+          }
+        if (!page.agent) page.agent = command.action.agent
+        if (!page.visible) this.park(page)
+        return this.agent.run(
+          {
+            tabId: page.tabId,
+            contents,
+            console: page.console,
+            load: (url) => this.load(page, url),
+          },
+          command.action,
+        )
+      }
     }
     const page = this.pages.get(command.tabId)
     const contents = page?.view?.webContents
@@ -254,6 +298,7 @@ export class BrowserViews {
       lastShown: Date.now(),
       visible: false,
       console: new ConsoleLog(),
+      agent: null,
     }
     page.view = view
     page.visible = false
@@ -271,6 +316,7 @@ export class BrowserViews {
     this.load(page, url)
     // A tab shown before its page existed gets it laid out at once.
     if (this.visibleTab === tabId && this.lastBounds) this.layout(tabId, this.lastRect)
+    else if (page.agent) this.park(page)
   }
 
   private load(page: Page, url: string) {
@@ -408,6 +454,13 @@ export class BrowserViews {
       contents.setZoomFactor(page.zoom)
       this.state(tabId, { zoom: page.zoom })
     })
+    // The user clicking or typing in a page an agent drives takes it over (the agent's own input
+    // arrives while an action runs).
+    contents.on('input-event', (_e, input) => {
+      if (!page.agent || !page.visible || this.agent.busy(contents)) return
+      if (input.type === 'mouseDown' || input.type === 'rawKeyDown' || input.type === 'keyDown')
+        this.send({ type: 'user-input', tabId })
+    })
     contents.on('before-input-event', (event, input) => {
       const action = shortcutFor(input, process.platform)
       if (!action) return
@@ -442,7 +495,7 @@ export class BrowserViews {
     contents.on('will-redirect', (event) => guard(event, event.url))
     contents.setWindowOpenHandler(({ url, disposition, features }) => {
       const where = popupDisposition(url, disposition, features)
-      if (where === 'tab') this.send({ type: 'open', url })
+      if (where === 'tab') this.send({ type: 'open', url, tabId })
       if (where !== 'window') return { action: 'deny' }
       return {
         action: 'allow',
@@ -486,14 +539,48 @@ export class BrowserViews {
       if (page.visible !== show) {
         page.visible = show
         // Detached rather than merely hidden: only then does the page learn it is hidden
-        // (document.hidden, visibilitychange) and get throttled like a background tab.
-        if (show) this.win.contentView.addChildView(page.view)
+        // (document.hidden, visibilitychange) and get throttled like a background tab. An agent's
+        // tab is parked instead, so it keeps rendering for the agent to look at.
+        if (show) {
+          if (!this.win.contentView.children.includes(page.view))
+            this.win.contentView.addChildView(page.view)
+        } else if (page.agent) this.park(page)
         else this.win.contentView.removeChildView(page.view)
       }
     }
     // The shown tab's page may have been discarded: bring it back.
     const page = tabId === null ? undefined : this.pages.get(tabId)
     if (bounds && page && !page.view) this.create(page.tabId, page.url)
+  }
+
+  /**
+   * Keeps a hidden page rendering: attached, but placed so that only its top-left pixel overlaps
+   * the window's bottom-right corner, where the rounded corner clips it. Chromium then treats it
+   * as visible (it paints, runs animation frames, can be captured) without the user seeing it. A
+   * detached or setVisible(false) view stops painting, and screenshots of it hang.
+   */
+  private park(page: Page) {
+    const view = page.view
+    if (!view || this.win.isDestroyed()) return
+    const [w, h] = this.win.getContentSize() as [number, number]
+    const size = this.lastParkSize()
+    view.setBounds({ x: Math.max(0, w - 1), y: Math.max(0, h - 1), ...size })
+    view.setBorderRadius(16)
+    if (!this.win.contentView.children.includes(view)) this.win.contentView.addChildView(view)
+  }
+
+  private unpark(page: Page) {
+    const view = page.view
+    if (view && !this.win.isDestroyed() && this.win.contentView.children.includes(view))
+      this.win.contentView.removeChildView(view)
+  }
+
+  /** A parked page renders at the size it has when shown, so what the agent sees matches. */
+  private lastParkSize() {
+    const bounds = viewBounds(this.lastRect, this.win.webContents.getZoomFactor())
+    return bounds && bounds.width > 200 && bounds.height > 200
+      ? { width: bounds.width, height: bounds.height }
+      : PARKED_SIZE
   }
 
   private discardIdle() {
@@ -504,6 +591,7 @@ export class BrowserViews {
         visible: p.visible,
         lastShown: p.lastShown,
         busy:
+          p.agent !== null ||
           p.view!.webContents.isCurrentlyAudible() ||
           p.view!.webContents.isDevToolsOpened() ||
           this.shared.hasPrompt(p.view!.webContents),

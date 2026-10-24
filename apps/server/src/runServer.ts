@@ -87,6 +87,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     store,
     workspace,
     port: () => port,
+    browserImageDir: path.join(attachments.root, 'browser'),
   })
   agentTools = automation.agentTools
   const { schedules, alerts } = automation
@@ -111,6 +112,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     tailscale: new TailscaleService(),
     automation: { schedules, alerts },
     agentTools,
+    browser: automation.browser,
     log,
   })
   port = server.port

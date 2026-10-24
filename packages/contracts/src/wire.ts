@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { BrowserUnavailable, BrowserUseCall, BrowserUseResult } from './browserUse.ts'
 import { StoredEvent } from './events.ts'
 
 export const PROTOCOL_VERSION = 1
@@ -28,6 +29,19 @@ export const ClientFrame = z.discriminatedUnion('t', [
   z.object({ t: z.literal('fs.unwatch'), cwd: z.string() }),
   /** Subscribe to the event log, resuming after `afterSeq`. */
   z.object({ t: z.literal('subscribe'), afterSeq: z.number().int().nonnegative() }),
+  /**
+   * Whether this client can run agents' browser tools (the desktop app can), and which session
+   * it shows, so the host picks the right one. Sent again whenever either changes.
+   */
+  z.object({
+    t: z.literal('browser.offer'),
+    available: z.boolean(),
+    reason: BrowserUnavailable.optional(),
+    /** The session open in this client, and when the user last looked at it (epoch ms). */
+    focus: z.object({ sessionId: z.string(), at: z.number() }).optional(),
+  }),
+  /** The answer to a `browser.call`. */
+  z.object({ t: z.literal('browser.result'), id: z.string(), result: BrowserUseResult }),
 ])
 export type ClientFrame = z.infer<typeof ClientFrame>
 
@@ -66,5 +80,7 @@ export const ServerFrame = z.discriminatedUnion('t', [
   z.object({ t: z.literal('fs.changed'), cwd: z.string(), paths: z.array(z.string()) }),
   /** Sent once the requested replay is complete; later `event` frames are live. */
   z.object({ t: z.literal('caught-up'), seq: z.number().int().nonnegative() }),
+  /** An agent's browser tool call for this client to run (only sent to clients that offered). */
+  z.object({ t: z.literal('browser.call'), id: z.string(), call: BrowserUseCall }),
 ])
 export type ServerFrame = z.infer<typeof ServerFrame>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ConfigOption } from '@beddcode/contracts'
-import { CLIENT_MODES, allowOption, approvalSetup } from './permissions.ts'
+import { CLIENT_MODES, allowOption, approvalSetup, isHostTool } from './permissions.ts'
 
 const MODE: ConfigOption = {
   id: 'mode',
@@ -78,5 +78,32 @@ describe('allowOption', () => {
     expect(allowOption([no, always, once])).toBe(once)
     expect(allowOption([no, always])).toBe(always)
     expect(allowOption([no])).toBeUndefined()
+  })
+})
+
+describe('isHostTool', () => {
+  const own = ['beddcode']
+  it('knows the host tools by name, raw input or server', () => {
+    expect(isHostTool({ title: 'beddcode__browser_click' }, own)).toBe(true)
+    expect(
+      isHostTool({ title: 'use_tool', rawInput: { tool_name: 'beddcode__browser_type' } }, own),
+    ).toBe(true)
+    expect(
+      isHostTool(
+        { title: 'x', rawInput: { server_name: 'beddcode', tool_name: 'browser_snapshot' } },
+        own,
+      ),
+    ).toBe(true)
+    expect(isHostTool({ title: 'mcp__beddcode__start_session' }, own)).toBe(true)
+  })
+  it('leaves everything else to the user', () => {
+    expect(isHostTool({ title: 'beddcode__browser_click' }, [])).toBe(false)
+    expect(isHostTool({ title: 'Run rm -rf beddcode__x' }, own)).toBe(false)
+    expect(
+      isHostTool({ title: 'other__browser_click', rawInput: { server_name: 'other' } }, own),
+    ).toBe(false)
+    expect(isHostTool({ title: 'use_tool', rawInput: { tool_name: 'evilbeddcode__x' } }, own)).toBe(
+      false,
+    )
   })
 })

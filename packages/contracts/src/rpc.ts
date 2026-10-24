@@ -364,6 +364,8 @@ export const RpcMethods = {
         .optional(),
       /** Let the agent start and manage sessions of its own (BeddCode's agent tools). */
       agentTools: z.boolean().optional(),
+      /** Let the agent use the desktop app's browser pane (BeddCode's browser tools). */
+      browserTools: z.boolean().optional(),
     }),
     result: z.object({ sessionId: z.string() }),
   },

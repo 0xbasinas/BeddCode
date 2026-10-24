@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { Group, Panel, Separator, useDefaultLayout, usePanelRef } from 'react-resizable-panels'
 import { startHosts } from '../../stores/host.ts'
+// Runs agents' browser tool calls in the desktop app's browser pane.
+import '../browser/browserAgent.ts'
 import { startNotifications } from '../notifications/notifier.ts'
 import { RightRail } from './RightRail.tsx'
 import { HostStatusBanner } from './HostStatusBanner.tsx'

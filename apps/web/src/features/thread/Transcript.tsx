@@ -18,7 +18,8 @@ import { ApprovalCard } from './ApprovalCard.tsx'
 import { QuestionCard } from './QuestionCard.tsx'
 import { ToolGroup } from './ToolCalls.tsx'
 import { AgentToolCard } from './AgentToolCard.tsx'
-import { isAgentTool } from '@beddcode/client-runtime'
+import { isAgentTool, isBrowserTool } from '@beddcode/client-runtime'
+import { BrowserToolCard } from './BrowserToolCard.tsx'
 import { TurnChangesCard } from './TurnChanges.tsx'
 
 type Item = TranscriptItem
@@ -96,8 +97,30 @@ export function Transcript({
               />
             )
           }
+          // A run of browser steps is one card.
+          if (isBrowserTool(block.item)) {
+            const browserTool = (b: (typeof blocks)[number] | undefined) =>
+              b?.kind === 'item' && b.item.kind === 'tool' && isBrowserTool(b.item)
+            if (browserTool(blocks[index - 1])) return null
+            const run: Extract<Item, { kind: 'tool' }>[] = []
+            for (let i = index; i < blocks.length; i++) {
+              const next = blocks[i]
+              if (!browserTool(next) || next?.kind !== 'item' || next.item.kind !== 'tool') break
+              run.push(next.item)
+            }
+            return (
+              <BrowserToolCard
+                key={block.item.id}
+                tools={run}
+                hostKey={hostKey ?? changes?.hostKey}
+              />
+            )
+          }
           const plainTool = (b: (typeof blocks)[number] | undefined) =>
-            b?.kind === 'item' && b.item.kind === 'tool' && !isAgentTool(b.item)
+            b?.kind === 'item' &&
+            b.item.kind === 'tool' &&
+            !isAgentTool(b.item) &&
+            !isBrowserTool(b.item)
           if (plainTool(blocks[index - 1])) return null
           const tools: Extract<Item, { kind: 'tool' }>[] = []
           for (let i = index; i < blocks.length; i++) {

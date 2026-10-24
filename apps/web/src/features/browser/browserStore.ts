@@ -10,7 +10,22 @@ export interface BrowserTab {
   favicon?: string
   /** The page is a port on a remote host forwarded here: which host, and its port there. */
   via?: { host: string; port: number }
+  /** An agent drives this tab (browser use): whose session, and how to show it. */
+  agent?: BrowserTabAgent
 }
+
+export interface BrowserTabAgent {
+  hostKey: string
+  sessionId: string
+  /** "Claude Code", "Codex"… */
+  label: string
+  sessionTitle?: string
+  /** The page is a forwarded remote port: the local port it is reached at here. */
+  localPort?: number
+}
+
+/** The key an agent session's browser state is kept under. */
+export const agentKey = (hostKey: string, sessionId: string) => `${hostKey}|${sessionId}`
 
 /** A question a page asked that waits for the user. */
 export type BrowserPrompt =
@@ -32,7 +47,22 @@ interface BrowserState {
   prompts: BrowserPrompt[]
   downloads: BrowserDownload[]
   requests: BrowserRequests
-  open(url: string, options?: { newTab?: boolean; via?: BrowserTab['via'] }): void
+  /** Agent sessions whose browser use the user paused (took over, or stopped), by agentKey. */
+  paused: Record<string, true>
+  /** Each agent session's current tab, by agentKey. */
+  agentTab: Record<string, number>
+  /** Something to tell an agent with its next answer (a page opened a tab), by agentKey. */
+  agentNotes: Record<string, string>
+  /** Opens a page; returns its tab. `background` leaves the shown tab as it is. */
+  open(
+    url: string,
+    options?: {
+      newTab?: boolean
+      via?: BrowserTab['via']
+      background?: boolean
+      agent?: BrowserTabAgent
+    },
+  ): number
   close(id: number): void
   activate(id: number): void
   /** The page navigated on its own (a link, a redirect): keep the address bar in step. */
@@ -69,22 +99,35 @@ export const useBrowser = create<BrowserState>((set, get) => ({
   prompts: [],
   downloads: [],
   requests: { find: 0, address: 0 },
+  paused: {},
+  agentTab: {},
+  agentNotes: {},
 
   open(url, options) {
     const { tabs, active } = get()
     const current = tabs.find((t) => t.id === active)
-    if (current && !options?.newTab) {
+    if (current && !options?.newTab && !options?.agent) {
       set({
         tabs: tabs.map((t) =>
           t.id === current.id ? { ...t, url, title: tabLabel(url), via: options?.via } : t,
         ),
       })
       load(current.id, url, 'navigate')
-      return
+      return current.id
     }
-    const tab: BrowserTab = { id: nextId++, url, title: tabLabel(url), via: options?.via }
-    set({ tabs: [...tabs, tab], active: tab.id })
+    const tab: BrowserTab = {
+      id: nextId++,
+      url,
+      title: tabLabel(url),
+      via: options?.via,
+      agent: options?.agent,
+    }
+    set({
+      tabs: [...tabs, tab],
+      active: options?.background && active !== null ? active : tab.id,
+    })
     load(tab.id, url, 'ensure')
+    return tab.id
   },
 
   close(id) {
@@ -95,6 +138,9 @@ export const useBrowser = create<BrowserState>((set, get) => ({
       const { [id]: _gone, ...rest } = pages
       return {
         tabs: next,
+        agentTab: Object.fromEntries(
+          Object.entries(useBrowser.getState().agentTab).filter(([, tab]) => tab !== id),
+        ),
         pages: rest,
         prompts: prompts.filter((p) => p.tabId !== id),
         active: active === id ? (next[index]?.id ?? next[index - 1]?.id ?? null) : active,
@@ -137,9 +183,32 @@ export function applyBrowserEvent(event: BrowserEvent): void {
       if (state.favicon !== undefined) faviconed(tabId, state.favicon)
       return
     }
-    case 'open':
+    case 'open': {
+      // A page an agent drives opens its links in another tab of the agent's, out of the way.
+      const from = store.getState().tabs.find((t) => t.id === event.tabId)
+      if (from?.agent) {
+        const key = agentKey(from.agent.hostKey, from.agent.sessionId)
+        const id = store
+          .getState()
+          .open(event.url, { newTab: true, background: true, agent: from.agent })
+        void browserCommand({ op: 'agent-control', tabId: id, agent: from.agent.label })
+        store.setState((s) => ({
+          agentTab: { ...s.agentTab, [key]: id },
+          agentNotes: {
+            ...s.agentNotes,
+            [key]: `The page opened ${event.url} in a new tab (Tab ${id}), which is now your current tab.`,
+          },
+        }))
+        return
+      }
       store.getState().open(event.url, { newTab: true })
       return
+    }
+    case 'user-input': {
+      const tab = store.getState().tabs.find((t) => t.id === event.tabId)
+      if (tab?.agent) pauseAgent(tab.agent.hostKey, tab.agent.sessionId)
+      return
+    }
     case 'shortcut': {
       const { open, close, requests } = store.getState()
       if (event.action === 'new-tab') open('about:blank', { newTab: true })
@@ -163,6 +232,20 @@ export function applyBrowserEvent(event: BrowserEvent): void {
       }))
       return
   }
+}
+
+/** Stops an agent session's browser use until resumeAgent (the user took over). */
+export function pauseAgent(hostKey: string, sessionId: string) {
+  const key = agentKey(hostKey, sessionId)
+  useBrowser.setState((s) => (s.paused[key] ? s : { paused: { ...s.paused, [key]: true } }))
+}
+
+export function resumeAgent(hostKey: string, sessionId: string) {
+  const key = agentKey(hostKey, sessionId)
+  useBrowser.setState((s) => {
+    const { [key]: _gone, ...paused } = s.paused
+    return { paused }
+  })
 }
 
 // One subscription for the app's lifetime: pages keep reporting while the pane is closed.

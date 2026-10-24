@@ -1,13 +1,15 @@
 import { randomBytes } from 'node:crypto'
 import path from 'node:path'
-import type {
-  PermissionModeOption,
-  ProviderInstance,
-  RpcParams,
-  StoredEvent,
+import {
+  isBrowserToolName,
+  type PermissionModeOption,
+  type ProviderInstance,
+  type RpcParams,
+  type StoredEvent,
 } from '@beddcode/contracts'
 import type { SessionMcpServer } from '@beddcode/provider-core'
 import type { SessionOrigin } from '../sessions/sessionManager.ts'
+import { BROWSER_INSTRUCTIONS, BROWSER_TOOL_DEFINITIONS, type BrowserTools } from './browserUse.ts'
 import { digest, transcript, type SessionDigest } from './digest.ts'
 
 /** How deep sessions may nest: a child (1) may start children of its own (2), and those none. */
@@ -183,7 +185,20 @@ export class AgentTools {
   constructor(
     private readonly host: AgentToolsHost,
     private readonly bridge: { file: string; url: () => string; execPath?: string },
+    private readonly browser?: BrowserTools,
   ) {}
+
+  /** Which tool sets a session was given when it was created. */
+  private features(sessionId: string): { agents: boolean; browser: boolean } {
+    const created = this.host.readSession(sessionId).find((e) => e.event.type === 'session.created')
+    const event = created?.event.type === 'session.created' ? created.event : undefined
+    return {
+      // The server is only given to sessions with one of the two; without the browser flag it
+      // was for the agent tools.
+      agents: event?.agentTools === true || event?.browserTools !== true,
+      browser: event?.browserTools === true && this.browser !== undefined,
+    }
+  }
 
   /** The MCP server to give a session that may use the tools. */
   serversFor(sessionId: string): SessionMcpServer[] {
@@ -215,12 +230,36 @@ export class AgentTools {
 
   /** One request from the bridge. */
   async handle(sessionId: string, method: string, params: unknown): Promise<unknown> {
-    if (method === 'instructions') return INSTRUCTIONS
-    if (method === 'tools/list') return { tools: TOOL_DEFINITIONS }
+    const has = this.features(sessionId)
+    if (method === 'instructions')
+      return [has.agents && INSTRUCTIONS, has.browser && BROWSER_INSTRUCTIONS]
+        .filter(Boolean)
+        .join('\n\n')
+    if (method === 'tools/list')
+      return {
+        tools: [
+          ...(has.agents ? TOOL_DEFINITIONS : []),
+          ...(has.browser ? BROWSER_TOOL_DEFINITIONS : []),
+        ],
+      }
     if (method !== 'tools/call') throw new Error(`Unknown method ${method}`)
     const p = (params ?? {}) as { name?: string; arguments?: Args }
+    const name = String(p.name)
+    if (isBrowserToolName(name)) {
+      if (!has.browser || !this.browser)
+        return {
+          content: [{ type: 'text', text: 'This session may not use the browser.' }],
+          isError: true,
+        }
+      return this.browser.call(sessionId, name, p.arguments ?? {})
+    }
+    if (!has.agents)
+      return {
+        content: [{ type: 'text', text: `Unknown tool ${name}` }],
+        isError: true,
+      }
     try {
-      const result = await this.call(sessionId, String(p.name), p.arguments ?? {})
+      const result = await this.call(sessionId, name, p.arguments ?? {})
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
     } catch (err) {
       return {

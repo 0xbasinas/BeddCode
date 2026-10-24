@@ -45,7 +45,8 @@ export type BrowserShortcutAction = 'find' | 'focus-address' | 'new-tab' | 'clos
 
 export type BrowserEvent =
   | { type: 'state'; tabId: number; state: Partial<BrowserPageState> }
-  | { type: 'open'; url: string }
+  /** A page opened a link in a new tab; `tabId` is the page's own tab. */
+  | { type: 'open'; url: string; tabId?: number }
   | { type: 'shortcut'; tabId: number; action: BrowserShortcutAction }
   | {
       type: 'permission'
@@ -66,6 +67,8 @@ export type BrowserEvent =
       received: number
       total: number
     }
+  /** The user clicked or typed in a page an agent is driving (see `agent-control`). */
+  | { type: 'user-input'; tabId: number }
 
 export type BrowserCommand =
   /** Creates the tab's page if it has none (new, or discarded) and loads `url` in it. */
@@ -96,3 +99,19 @@ export type BrowserCommand =
   | { op: 'forward-port'; route: string; token?: string; port: number }
   /** Forgets cookies, storage and cache of every page in the pane. */
   | { op: 'clear-data' }
+  /**
+   * Marks a tab as driven by an agent (or not, with null): its page keeps rendering while hidden,
+   * so it can be looked at, and the user's own clicks and keys are reported as `user-input`.
+   */
+  | { op: 'agent-control'; tabId: number; agent: string | null }
+  /** Runs one browser tool on the tab's page; resolves to a BrowserUseResult. */
+  | { op: 'agent'; tabId: number; action: BrowserAgentAction }
+
+/** One browser tool call for a tab, as the app page hands it to the main process. */
+export interface BrowserAgentAction {
+  tool: string
+  args: Record<string, unknown>
+  agent: string
+  confirmSubmits?: boolean
+  approved?: boolean
+}

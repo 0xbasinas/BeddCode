@@ -29,7 +29,7 @@ import {
   type AskedQuestions,
 } from './questions.ts'
 import { AcpEventMapper, toConfigOptions } from './mapper.ts'
-import { allowOption, approvalSetup, type ModeSource } from './permissions.ts'
+import { allowOption, approvalSetup, isHostTool, type ModeSource } from './permissions.ts'
 import type { AgentProfile } from './profiles.ts'
 import { promptUsage, usageEvents } from './usage.ts'
 import { TerminalManager } from './terminals.ts'
@@ -780,7 +780,9 @@ export class AcpSession implements ProviderSession {
   /** Shows the agent's own options and returns the one the user picks, by its own id. */
   private askPermission(req: RequestPermissionRequest): Promise<unknown> {
     // Approving everything: the protocol lets a client answer on the user's behalf.
-    if (this.approveAll) {
+    // The host's own tools (see isHostTool) go through; they ask the user themselves if needed.
+    const own = (this.input.mcpServers ?? []).map((m) => m.name)
+    if (this.approveAll || isHostTool(req.toolCall, own)) {
       const allow = allowOption(req.options)
       if (allow)
         return Promise.resolve({ outcome: { outcome: 'selected', optionId: allow.optionId } })

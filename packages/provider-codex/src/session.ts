@@ -501,7 +501,15 @@ export function mcpConfig(servers: SessionMcpServer[]): Record<string, unknown> 
     servers.map((m) => [
       `mcp_servers.${m.name}`,
       // Waiting on another session can take a while; Codex gives up on a tool after 60 s by default.
-      { command: m.command, args: m.args, env: m.env, tool_timeout_sec: 600 },
+      // The host asks the user itself where a tool needs it (browser_evaluate, form sends), and
+      // Codex's own MCP prompt would only reach us as an elicitation we can't show, so approve here.
+      {
+        command: m.command,
+        args: m.args,
+        env: m.env,
+        tool_timeout_sec: 600,
+        default_tools_approval_mode: 'approve',
+      },
     ]),
   )
 }

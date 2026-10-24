@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import type { SessionEvent } from '@beddcode/contracts'
 import { createLogger, type Transport } from '@beddcode/shared'
 import { createCodexAdapter } from './adapter.ts'
-import { CodexSession } from './session.ts'
+import { CodexSession, mcpConfig } from './session.ts'
 
 type Msg = { id?: number; method?: string; params?: Record<string, unknown>; result?: unknown }
 
@@ -615,5 +615,21 @@ describe('Codex commands', () => {
     await turn
     await session.close()
     rmSync(dir, { recursive: true, force: true })
+  })
+})
+
+describe('mcpConfig', () => {
+  it('adds host servers as dotted overrides that Codex runs without its own prompt', () => {
+    expect(
+      mcpConfig([{ name: 'beddcode', command: 'node', args: ['tools.mjs'], env: { A: '1' } }]),
+    ).toEqual({
+      'mcp_servers.beddcode': {
+        command: 'node',
+        args: ['tools.mjs'],
+        env: { A: '1' },
+        tool_timeout_sec: 600,
+        default_tools_approval_mode: 'approve',
+      },
+    })
   })
 })

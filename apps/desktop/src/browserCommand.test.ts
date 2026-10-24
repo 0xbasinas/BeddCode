@@ -55,3 +55,44 @@ describe('parseBrowserCommand', () => {
       expect(parseBrowserCommand(bad)).toBeNull()
   })
 })
+
+describe('parseBrowserCommand: agents', () => {
+  it('accepts agent control and actions', () => {
+    expect(parseBrowserCommand({ op: 'agent-control', tabId: 3, agent: 'Claude Code' })).toEqual({
+      op: 'agent-control',
+      tabId: 3,
+      agent: 'Claude Code',
+    })
+    expect(parseBrowserCommand({ op: 'agent-control', tabId: 3, agent: null })).toMatchObject({
+      agent: null,
+    })
+    expect(
+      parseBrowserCommand({
+        op: 'agent',
+        tabId: 3,
+        action: {
+          tool: 'browser_click',
+          args: { ref: 'e4' },
+          agent: 'Codex',
+          confirmSubmits: true,
+        },
+      }),
+    ).toMatchObject({
+      op: 'agent',
+      tabId: 3,
+      action: { tool: 'browser_click', args: { ref: 'e4' }, agent: 'Codex' },
+    })
+  })
+  it('refuses unknown tools and odd arguments', () => {
+    const action = (a: Record<string, unknown>) =>
+      parseBrowserCommand({
+        op: 'agent',
+        tabId: 1,
+        action: { agent: 'X', args: {}, tool: 'browser_click', ...a },
+      })
+    expect(action({ tool: 'shell_exec' })).toBeNull()
+    expect(action({ args: [1, 2] })).toBeNull()
+    expect(action({ args: { text: 'x'.repeat(300_000) } })).toBeNull()
+    expect(parseBrowserCommand({ op: 'agent-control', tabId: 1, agent: 5 })).toBeNull()
+  })
+})

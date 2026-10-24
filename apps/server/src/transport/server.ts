@@ -21,6 +21,7 @@ import {
 import type { PairingManager } from '../auth/pairing.ts'
 import type { TokenStore } from '../auth/tokens.ts'
 import type { AgentTools } from '../automation/agentTools.ts'
+import type { BrowserBroker } from '../automation/browserUse.ts'
 import type { TailscaleService } from '../network/tailscale.ts'
 import type { EventStore } from '../store/eventStore.ts'
 import type { AgentCatalog } from '../agents/catalog.ts'
@@ -95,6 +96,8 @@ export interface StartServerOptions {
   automation: AutomationServices
   /** Answers BeddCode's agent tools for sessions that may use them (loopback only). */
   agentTools?: AgentTools
+  /** Runs agents' browser tools on connected desktop apps. */
+  browser?: BrowserBroker
   /** Who may connect; defaults to this machine plus the tailnet, tokens for everyone else. */
   guard?: GuardOptions
   log: Logger
@@ -300,6 +303,8 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       ws.close(1008, 'device revoked')
     })
     let unsubscribe: (() => void) | null = null
+    // Joins the browser broker once it offers (the desktop app does).
+    const browserClient = options.browser?.connect(send)
     lastSeen.set(ws, Date.now())
     const alive = () => {
       if (lastSeen.has(ws)) lastSeen.set(ws, Date.now())
@@ -318,6 +323,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       unsubscribe?.()
       terminalDetach.forEach((detach) => detach())
       watching.forEach((release) => release())
+      browserClient?.close()
     })
 
     ws.on('message', (raw) => {
@@ -397,6 +403,10 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
               ),
             )
           }
+          break
+        case 'browser.offer':
+        case 'browser.result':
+          browserClient?.frame(frame)
           break
         case 'fs.unwatch':
           watching.get(frame.cwd)?.()

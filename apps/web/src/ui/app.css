@@ -5337,3 +5337,176 @@ button.agent-tools-chip.on:hover {
 .pr-more:hover {
   color: var(--text);
 }
+
+/* Browser use: a tab an agent drives */
+.tab-agent {
+  color: #8b7cff;
+  flex: none;
+}
+.agent-banner {
+  background: rgba(124, 108, 255, 0.12);
+  color: var(--text);
+}
+.agent-banner > svg {
+  color: #8b7cff;
+  flex: none;
+}
+.agent-banner.working > svg {
+  animation: agent-pulse 1.4s ease-in-out infinite;
+}
+.agent-banner.paused {
+  background: rgba(240, 164, 60, 0.12);
+}
+.agent-banner.paused > svg {
+  color: var(--accent);
+}
+.agent-banner-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-banner button {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  text-decoration: none;
+  padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-radius: calc(7px * var(--ui-scale));
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text);
+  white-space: nowrap;
+}
+.agent-banner button:hover {
+  border-color: #8b7cff;
+}
+.native-frame.agent-driven {
+  outline: 2px solid #8b7cff;
+  outline-offset: 2px;
+}
+@keyframes agent-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Browser use in the conversation: a run of steps, with the page as it looked after the last */
+.browser-card-icon {
+  color: #8b7cff;
+}
+.browser-card-count {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.browser-card-body {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.browser-rows {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.browser-row-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 0;
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.browser-row-head:disabled {
+  cursor: default;
+}
+.browser-row-head:not(:disabled):hover {
+  color: var(--text-secondary);
+}
+.browser-row-head[aria-expanded='true'] .agent-card-chevron {
+  transform: rotate(90deg);
+}
+.browser-row-icon {
+  flex: none;
+  color: var(--text-faint);
+}
+.browser-row.running .browser-row-icon {
+  color: #8b7cff;
+}
+.browser-row-icon.danger,
+.browser-row-error {
+  color: var(--danger);
+}
+.browser-row-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-row-pic {
+  flex: none;
+  color: var(--text-faint);
+}
+.browser-row-error {
+  padding-left: 20px;
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-row-body {
+  margin: 2px 0 6px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.browser-row-body pre {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: var(--bg-code);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-secondary);
+}
+.browser-thumb {
+  display: block;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: #fff;
+  object-fit: cover;
+  object-position: top left;
+}
+.browser-thumb.placeholder {
+  background: var(--bg-raised);
+}
+.browser-thumb.latest {
+  flex: none;
+  width: 168px;
+  aspect-ratio: 16 / 10;
+  cursor: zoom-in;
+}
+.browser-thumb.latest.big {
+  width: 380px;
+  cursor: zoom-out;
+}
+.browser-thumb.large {
+  width: min(100%, 420px);
+  aspect-ratio: 16 / 10;
+}

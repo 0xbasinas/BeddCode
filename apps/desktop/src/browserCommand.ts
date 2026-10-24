@@ -1,4 +1,4 @@
-import type { BrowserCommand, BrowserRect } from '@beddcode/contracts'
+import { isBrowserToolName, type BrowserCommand, type BrowserRect } from '@beddcode/contracts'
 
 // The app page is trusted, but whatever crosses IPC is checked for shape before the main process
 // acts on it: a bug there should fail closed, not reach WebContents with garbage.
@@ -102,6 +102,36 @@ export function parseBrowserCommand(raw: unknown): BrowserCommand | null {
       }
     case 'clear-data':
       return { op }
+    case 'agent-control':
+      return isTab(c.tabId) && (c.agent === null || isText(c.agent, 200))
+        ? { op, tabId: c.tabId, agent: c.agent as string | null }
+        : null
+    case 'agent': {
+      if (!isTab(c.tabId) || typeof c.action !== 'object' || c.action === null) return null
+      const a = c.action as Raw
+      if (typeof a.tool !== 'string' || !isBrowserToolName(a.tool) || !isText(a.agent, 200))
+        return null
+      if (typeof a.args !== 'object' || a.args === null || Array.isArray(a.args)) return null
+      // Arguments come from an agent: bounded, plain JSON.
+      let size: number
+      try {
+        size = JSON.stringify(a.args).length
+      } catch {
+        return null
+      }
+      if (size > 200_000) return null
+      return {
+        op,
+        tabId: c.tabId,
+        action: {
+          tool: a.tool,
+          args: a.args as Record<string, unknown>,
+          agent: a.agent,
+          confirmSubmits: a.confirmSubmits === true,
+          approved: a.approved === true,
+        },
+      }
+    }
     default:
       return null
   }

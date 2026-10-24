@@ -118,3 +118,24 @@ export function allowOption<T extends { kind: string }>(options: T[]): T | undef
     options.find((o) => o.kind === 'allow_once') ?? options.find((o) => o.kind === 'allow_always')
   )
 }
+
+/**
+ * Whether a permission request is for a tool of one of the host's own MCP servers (BeddCode's
+ * agent and browser tools). Those ask the user themselves where it matters, so the agent's own
+ * prompt for each call is only noise. Agents name them "<server>__<tool>" in the title or the
+ * raw input (Grok: `{ tool_name: "beddcode__browser_click" }`), or give the server by name.
+ */
+export function isHostTool(
+  toolCall: { title?: string | null; rawInput?: unknown },
+  servers: readonly string[],
+): boolean {
+  if (!servers.length) return false
+  const raw = (toolCall.rawInput ?? {}) as Record<string, unknown>
+  const names = [toolCall.title, raw.tool_name, raw.toolName, raw.name].filter(
+    (n): n is string => typeof n === 'string',
+  )
+  const server = [raw.server_name, raw.serverName, raw.server].find((s) => typeof s === 'string')
+  return servers.some(
+    (s) => server === s || names.some((n) => n.startsWith(`${s}__`) || n.startsWith(`mcp__${s}__`)),
+  )
+}
