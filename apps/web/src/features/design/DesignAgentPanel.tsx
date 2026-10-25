@@ -1,13 +1,23 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import type { AgentPreview, SlashCommand } from '@beddcode/contracts'
 import { MousePointer2, Plus } from 'lucide-react'
 import { useEditorStore } from './store/editor-store'
 import { findElementInList } from './lib/element-utils'
 import { Composer } from '../composer/Composer.tsx'
-import { ModelMenu } from '../composer/Menus.tsx'
+import { ConfigMenu } from '../composer/ConfigMenu.tsx'
+import { ModelMenu, type ModelChoice } from '../composer/Menus.tsx'
+import { AgentChip } from '../newsession/NewSession.tsx'
 import { ThreadView } from '../thread/ThreadView.tsx'
 import { Select } from '../../ui/Select.tsx'
 import { modelChoice } from '../../ui/models.ts'
-import { createSession, prompt, useAllSessions, useRuntime } from '../../stores/host.ts'
+import {
+  createSession,
+  hostRequest,
+  prompt,
+  readyProviders,
+  useAllSessions,
+  useRuntime,
+} from '../../stores/host.ts'
 import { agentDefaults, defaultAgent, hostDefaults, usePreferences } from '../../stores/preferences.ts'
 
 const NEW = 'new'
@@ -35,7 +45,7 @@ function SelectionStrip() {
  * user can steer the drawing without leaving the Design screen. With none yet, the box starts one.
  */
 export function DesignAgentPanel({ hostKey }: { hostKey: string }) {
-  const { providers, host } = useRuntime(hostKey)
+  const { providers, host, connection } = useRuntime(hostKey)
   const all = useAllSessions()
   const sessions = useMemo(
     () => all.filter((s) => s.hostKey === hostKey && s.session.designTools).map((s) => s.session),
@@ -46,30 +56,63 @@ export function DesignAgentPanel({ hostKey }: { hostKey: string }) {
   const defaults = usePreferences((s) => hostDefaults(s.hosts, host?.hostId ?? hostKey))
 
   const shown = picked === NEW ? undefined : (sessions.find((s) => s.id === picked) ?? sessions[0])
-  const [agentId, setAgentId] = useState<string>()
-  const ready = providers.filter((p) => p.status === 'ready')
-  const agent = defaultAgent(providers, agentId ?? defaults.instanceId)
+  const [instanceId, setInstanceId] = useState<string>()
+  const ready = readyProviders(providers)
+  const agent = ready.find((p) => p.id === instanceId) ?? defaultAgent(providers, defaults.instanceId)
   const saved = agentDefaults(defaults, agent)
-  const choice = modelChoice(
-    agent?.capabilities.models ?? [],
-    agent?.capabilities.efforts ?? [],
-    { model: saved.model, effort: saved.effort },
-  )
-  const [chosen, setChosen] = useState<typeof choice>()
-  const pick = chosen ?? choice
-  const changeAgent = (id: string) => {
-    setAgentId(id)
-    setChosen(undefined)
-  }
+  const selectionKey = `${host?.hostId ?? hostKey}:${agent?.id ?? ''}`
+  const [selection, setSelection] = useState<{ key: string; modeId?: string; choice: ModelChoice }>()
+  const [configState, setConfigState] = useState<{ key: string; values: Record<string, string | boolean> }>()
+  const [commands, setCommands] = useState<SlashCommand[]>([])
+  const [preview, setPreview] = useState<{ key: string; data?: AgentPreview }>()
+
+  const modeId = selection?.key === selectionKey ? selection.modeId : saved.permissionMode
+  const chosen = selection?.key === selectionKey ? selection.choice : { model: saved.model, effort: saved.effort }
+  const choice = modelChoice(agent?.capabilities.models ?? [], agent?.capabilities.efforts ?? [], chosen)
+  const setModeId = (next: string) => setSelection({ key: selectionKey, modeId: next, choice })
+  const setChoice = (next: ModelChoice) => setSelection({ key: selectionKey, modeId, choice: next })
+
+  // The agent's slash commands, and for ACP agents the modes and settings they only reveal on start.
+  useEffect(() => {
+    setCommands([])
+    if (!agent?.capabilities.commands || connection !== 'connected') return
+    let cancelled = false
+    hostRequest(hostKey, 'commands.list', { instanceId: agent.id }).then(
+      (list) => !cancelled && setCommands(list),
+      () => {},
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [hostKey, agent?.id, agent?.capabilities.commands, connection])
+  useEffect(() => {
+    if (!agent || agent.kind !== 'acp' || connection !== 'connected') return
+    let cancelled = false
+    hostRequest(hostKey, 'agents.preview', { instanceId: agent.id }).then(
+      (data) => !cancelled && setPreview({ key: selectionKey, data }),
+      () => {},
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [hostKey, agent?.id, agent?.kind, connection, selectionKey])
+  const offered = preview?.key === selectionKey ? preview.data : undefined
+  const configValues = configState?.key === selectionKey ? configState.values : {}
+  const configOptions = (offered?.config ?? []).map((o) => ({ ...o, value: configValues[o.id] ?? o.value }))
+  const nativeModes = agent?.capabilities.permissionModes ?? []
+  const modes = nativeModes.length > 0 ? nativeModes : (offered?.modes ?? [])
+  const validModeId = modes.some((m) => m.id === modeId) ? modeId : undefined
+  const slashCommands = commands.length > 0 ? commands : (offered?.commands ?? [])
 
   const start = async (value: string, attachments: string[]) => {
     if (!agent) throw new Error('No agent is ready on this host')
     const sessionId = await createSession(hostKey, {
       instanceId: agent.id,
       projectless: true,
-      permissionMode: saved.permissionMode,
-      model: pick.model,
-      effort: pick.effort,
+      permissionMode: validModeId,
+      model: choice.model,
+      effort: choice.effort,
+      config: Object.keys(configValues).length > 0 ? configValues : undefined,
       designTools: true,
     })
     await prompt(sessionId, value, attachments)
@@ -113,37 +156,41 @@ export function DesignAgentPanel({ hostKey }: { hostKey: string }) {
               Describe what to draw. The agent works on the open canvas and you watch it appear.
             </span>
           </div>
-          {ready.length > 1 && (
-            <Select
-              aria-label="Agent harness"
-              value={agent?.id ?? ''}
-              onChange={(e) => changeAgent(e.target.value)}
-            >
-              {ready.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-            </Select>
-          )}
           <Composer
             draftId="design-agent"
             hostKey={hostKey}
             text={text}
             onTextChange={setText}
             placeholder={agent ? 'Describe a design…' : 'No agent is ready on this host'}
-            disabled={!agent}
+            disabled={connection !== 'connected' || !agent}
             busy={false}
+            commands={slashCommands}
             onSend={start}
+            modes={modes}
+            modeId={validModeId ?? offered?.currentModeId}
+            onModeChange={setModeId}
             modelSlot={
-              (agent?.capabilities.models?.length ?? 0) > 0 ? (
-                <ModelMenu
-                  models={agent?.capabilities.models ?? []}
-                  efforts={agent?.capabilities.efforts ?? []}
-                  value={pick}
-                  onChange={setChosen}
-                />
-              ) : undefined
+              agent && (
+                <>
+                  <ConfigMenu
+                    options={configOptions}
+                    onChange={(id, value) =>
+                      setConfigState({ key: selectionKey, values: { ...configValues, [id]: value } })
+                    }
+                  />
+                  <ModelMenu
+                    models={agent.capabilities.models ?? []}
+                    efforts={agent.capabilities.efforts ?? []}
+                    value={choice}
+                    onChange={setChoice}
+                  />
+                </>
+              )
+            }
+            footer={
+              <div className="footer-bar">
+                <AgentChip agents={providers} current={agent} onPick={setInstanceId} />
+              </div>
             }
           />
         </div>

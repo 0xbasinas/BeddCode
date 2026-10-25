@@ -480,7 +480,7 @@ const statusText: Record<ProviderInstance['status'], string> = {
   error: 'Unavailable',
 }
 
-function AgentChip({
+export function AgentChip({
   agents,
   current,
   onPick,
