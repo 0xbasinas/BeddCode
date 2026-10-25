@@ -15,6 +15,8 @@ export type PairingCode = z.infer<typeof PairingCode>
 export const RelaySettings = z.object({
   /** The relay's websocket address (wss://…), unset when no relay is used. */
   url: z.string().optional(),
+  /** Whether this host presents a password to the relay (the password itself is never sent back). */
+  passwordSet: z.boolean(),
   status: z.enum(['off', 'connecting', 'online', 'offline']),
 })
 export type RelaySettings = z.infer<typeof RelaySettings>

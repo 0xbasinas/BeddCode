@@ -10,6 +10,8 @@ export interface ServerConfig {
   guard: GuardOptions
   /** A relay that lets devices on any network reach this host (e.g. wss://relay.example.com). */
   relayUrl?: string
+  /** The password the relay asks of hosts, when its owner set one. */
+  relayPassword?: string
 }
 
 /** Settings kept in `<data dir>/config.json` (see `beddcode config`); flags and variables win. */
@@ -20,6 +22,7 @@ export interface ConfigFile {
   requireToken?: boolean
   allowedOrigins?: string[]
   relayUrl?: string
+  relayPassword?: string
 }
 
 export const configPath = () => path.join(dataHome(), 'config.json')
@@ -98,6 +101,8 @@ export function parseServeArgs(
   }
   const relayUrl = env.BEDDCODE_RELAY_URL ?? file.relayUrl
   if (relayUrl) config.relayUrl = relayUrl
+  const relayPassword = env.BEDDCODE_RELAY_PASSWORD ?? file.relayPassword
+  if (relayPassword) config.relayPassword = relayPassword
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!
@@ -124,6 +129,9 @@ export function parseServeArgs(
         break
       case '--relay-url':
         config.relayUrl = value()
+        break
+      case '--relay-password':
+        config.relayPassword = value()
         break
       default:
         throw new Error(`Unknown option: ${arg}`)

@@ -148,6 +148,7 @@ function RelaySetting({ onChange }: { onChange(): void }) {
   const connected = local?.connection === 'connected'
   const [settings, setSettings] = useState<RelaySettings>()
   const [value, setValue] = useState('')
+  const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const alive = useHostMounted()
@@ -169,13 +170,17 @@ function RelaySetting({ onChange }: { onChange(): void }) {
   useEffect(() => {
     if (settings) setValue((current) => current || (settings.url ?? '').replace(/^wss?:\/\//, ''))
   }, [settings])
-  const save = async (url: string | null) => {
+  const save = async (url: string | null, newPassword?: string) => {
     setBusy(true)
     setError(undefined)
     try {
-      const next = await hostRequest(LOCAL_HOST_KEY, 'host.relay.set', { url })
+      const next = await hostRequest(LOCAL_HOST_KEY, 'host.relay.set', {
+        url,
+        ...(newPassword !== undefined ? { password: newPassword } : {}),
+      })
       if (!alive.current) return
       setSettings(next)
+      setPassword('')
       if (!url) setValue('')
       onChange()
     } catch (err) {
@@ -193,13 +198,15 @@ function RelaySetting({ onChange }: { onChange(): void }) {
       </div>
       <p className="hosts-secondary-copy">
         Paste the address of a relay (like relay.example.com) so your phone can reach this computer
-        on any network. Everything stays encrypted between your devices.
+        on any network. Everything stays encrypted between your devices. If you locked your relay
+        with a password, enter it too.
       </p>
       <form
         className="hosts-address-copy"
+        style={{ flexWrap: 'wrap' }}
         onSubmit={(e) => {
           e.preventDefault()
-          if (value.trim()) void save(value.trim())
+          if (value.trim()) void save(value.trim(), password ? password : undefined)
         }}
       >
         <input
@@ -215,6 +222,18 @@ function RelaySetting({ onChange }: { onChange(): void }) {
           {busy && <HostSpinner />}
           Save
         </button>
+        <input
+          className="hosts-input"
+          type="password"
+          value={password}
+          placeholder={
+            settings.passwordSet ? 'Password set (type to change)' : 'Password (optional)'
+          }
+          onChange={(e) => setPassword(e.target.value)}
+          disabled={busy}
+          autoComplete="off"
+          aria-label="Relay password"
+        />
         {settings.url && (
           <button
             className="hosts-button destructive"

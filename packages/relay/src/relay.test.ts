@@ -9,11 +9,7 @@ import {
   randomBytes,
   toBase64,
 } from '@beddcode/client-runtime/relayCrypto'
-import {
-  RelaySocket,
-  buildRelayRoute,
-  parseRelayRoute,
-} from '@beddcode/client-runtime/relaySocket'
+import { RelaySocket, buildRelayRoute, parseRelayRoute } from '@beddcode/client-runtime/relaySocket'
 import { startRelay, type RunningRelay } from './node.ts'
 
 const cleanup: (() => unknown)[] = []
@@ -23,7 +19,8 @@ afterEach(async () => {
 
 /** Set RELAY_TEST_PORT to run these against an already-running relay (e.g. `wrangler dev`). */
 async function boot(): Promise<RunningRelay> {
-  if (process.env.RELAY_TEST_PORT) return { port: Number(process.env.RELAY_TEST_PORT), close: async () => {} }
+  if (process.env.RELAY_TEST_PORT)
+    return { port: Number(process.env.RELAY_TEST_PORT), close: async () => {} }
   const relay = await startRelay({ port: 0, host: '127.0.0.1' })
   cleanup.push(() => relay.close())
   return relay
@@ -45,7 +42,13 @@ async function fakeHost(port: number, route: ReturnType<typeof parseRelayRoute> 
   const channels = new Map<string, { channel?: SecureChannel; pieces: Reassembler }>()
   const received: string[] = []
   ws.on('message', (raw) => {
-    const f = JSON.parse(String(raw)) as { t: string; c: string; n?: string; d?: string; f?: boolean }
+    const f = JSON.parse(String(raw)) as {
+      t: string
+      c: string
+      n?: string
+      d?: string
+      f?: boolean
+    }
     if (f.t === 'open') channels.set(f.c, { pieces: new Reassembler() })
     const peer = channels.get(f.c)
     if (!peer) return
@@ -155,6 +158,33 @@ describe('relay', () => {
     host.ws.close()
     await gone
     expect(device.readyState).toBe(3)
+  })
+
+  it('lets only hosts with the password open a room, but devices need none', async () => {
+    const relay = await startRelay({ port: 0, host: '127.0.0.1', hostPassword: 's3cret' })
+    cleanup.push(() => relay.close())
+    const key = newRelayKey()
+    const route = parseRelayRoute(buildRelayRoute(`ws://127.0.0.1:${relay.port}`, key))!
+
+    const stranger = new WebSocket(`ws://127.0.0.1:${relay.port}/host/${route.room}`)
+    cleanup.push(() => stranger.terminate())
+    const refused = await new Promise<string>((resolve) => {
+      stranger.once('unexpected-response', (_req, res) => resolve(String(res.statusCode)))
+      stranger.once('open', () => resolve('open'))
+      stranger.once('error', () => {})
+    })
+    expect(refused).toBe('401')
+
+    const host = new WebSocket(`ws://127.0.0.1:${relay.port}/host/${route.room}`, {
+      headers: { authorization: 'Bearer s3cret' },
+    })
+    cleanup.push(() => host.terminate())
+    await opened(host)
+    host.send(JSON.stringify({ t: 'host', auth: route.auth }))
+    expect(JSON.parse(await nextMessage(host))).toEqual({ t: 'ready' })
+    const device = new WebSocket(`ws://127.0.0.1:${relay.port}/client/${route.room}`)
+    cleanup.push(() => device.terminate())
+    await opened(device)
   })
 
   it('rejects bad paths and malformed frames', async () => {

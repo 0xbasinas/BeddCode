@@ -284,7 +284,11 @@ export const RpcMethods = {
   'host.relay.get': { params: z.object({}), result: RelaySettings },
   /** Sets (an ordinary address such as relay.example.com) or clears (null) the relay; takes effect at once. */
   'host.relay.set': {
-    params: z.object({ url: z.string().nullable() }),
+    params: z.object({
+      url: z.string().nullable(),
+      /** The relay's password: leave out to keep the current one, empty or null to remove it. */
+      password: z.string().nullable().optional(),
+    }),
     result: RelaySettings,
   },
   /** Paired devices, and removal of one (its token stops working). Loopback connections only. */

@@ -76,6 +76,8 @@ class DeviceSocket extends EventEmitter implements ConnSocket {
 export interface RelayAgentOptions {
   /** The relay's address, e.g. `wss://relay.example.com`. */
   url: string
+  /** The password the relay asks of hosts, if its owner set one. */
+  password?: string
   /** The 32-byte key this host shares with its paired devices (base64url). */
   key: string
   /** Serves a device connection. */
@@ -128,7 +130,12 @@ export class RelayAgent {
   private connect() {
     if (this.stopped) return
     this.status = 'connecting'
-    const ws = new WebSocket(`${this.options.url.replace(/\/+$/, '')}/host/${this.room.room}`)
+    const ws = new WebSocket(
+      `${this.options.url.replace(/\/+$/, '')}/host/${this.room.room}`,
+      this.options.password
+        ? { headers: { authorization: `Bearer ${this.options.password}` } }
+        : undefined,
+    )
     this.ws = ws
     ws.on('open', () => ws.send(JSON.stringify({ t: 'host', auth: this.room.auth })))
     ws.on('message', (raw) => this.receive(ws, String(raw)))
@@ -183,14 +190,11 @@ export class RelayAgent {
       this.status = 'online'
       this.options.log.info('reachable through the relay')
       this.awaitingPong = false
-      this.heartbeat = setInterval(
-        () => {
-          if (this.awaitingPong) return void ws.terminate()
-          this.awaitingPong = true
-          ws.ping()
-        },
-        this.options.heartbeatMs ?? 25_000,
-      )
+      this.heartbeat = setInterval(() => {
+        if (this.awaitingPong) return void ws.terminate()
+        this.awaitingPong = true
+        ws.ping()
+      }, this.options.heartbeatMs ?? 25_000)
       return
     }
     if (frame.t === 'open') {

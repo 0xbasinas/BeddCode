@@ -109,17 +109,25 @@ export async function runServer(config: ServerConfig): Promise<void> {
   const tailscale = new TailscaleService()
   // The relay can be switched on, changed or off while the host runs (see `relayControl`).
   let relayUrl = config.relayUrl
+  let relayPassword = config.relayPassword
   let relayRoute: string | undefined
   let relay: RelayAgent | undefined
   const relaySettings = (): RelaySettings => ({
     url: relayUrl,
+    passwordSet: !!relayPassword,
     status: relay && relay.status !== 'stopped' ? relay.status : 'off',
   })
   const relayControl = {
     get: relaySettings,
-    async set(input: string | null): Promise<RelaySettings> {
+    // A password of undefined keeps the one in use; an empty one removes it.
+    async set(input: string | null, password?: string | null): Promise<RelaySettings> {
       const next = input === null || input.trim() === '' ? undefined : normalizeRelayUrl(input)
-      writeConfigFile({ ...readConfigFile(), relayUrl: next })
+      if (password !== undefined) relayPassword = password?.trim() || undefined
+      writeConfigFile({
+        ...readConfigFile(),
+        relayUrl: next,
+        relayPassword: next ? relayPassword : undefined,
+      })
       relayUrl = next
       relay?.stop()
       relay = undefined
@@ -135,6 +143,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     relay = new RelayAgent({
       url,
       key,
+      password: relayPassword,
       attach: (socket) => server.attach(socket, 'other'),
       log,
     })

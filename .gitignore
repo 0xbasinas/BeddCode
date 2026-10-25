@@ -8,3 +8,6 @@ dist
 
 apps/desktop/build/host
 apps/desktop/release
+
+# Cloudflare local dev state
+.wrangler/

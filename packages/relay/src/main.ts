@@ -6,6 +6,7 @@ const port = Number(process.env.PORT ?? 8787)
 const relay = await startRelay({
   port,
   host: process.env.HOST,
+  hostPassword: process.env.RELAY_PASSWORD || undefined,
   log: (m) => console.log(`[relay] ${m}`),
 })
 const stop = () => void relay.close().then(() => process.exit(0))

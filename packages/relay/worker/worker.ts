@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 import {
   CLAIM_TIMEOUT_MS,
   CLOSE,
+  hostAllowed,
   MAX_CLIENTS_PER_ROOM,
   newClientId,
   parseClientFrame,
@@ -18,6 +19,8 @@ import {
  */
 export interface Env {
   ROOMS: DurableObjectNamespace<Room>
+  /** Optional (`wrangler secret put RELAY_PASSWORD`): without it, only your own hosts can open rooms. */
+  RELAY_PASSWORD?: string
 }
 
 export default {
@@ -27,6 +30,12 @@ export default {
     const target = route(url.pathname)
     if (!target || request.headers.get('Upgrade') !== 'websocket')
       return new Response('Not found', { status: 404 })
+    // Refused here, before any room exists, so strangers cost nothing.
+    if (
+      target.role === 'host' &&
+      !hostAllowed(env.RELAY_PASSWORD, request.headers.get('Authorization'))
+    )
+      return new Response('Unauthorized', { status: 401 })
     return env.ROOMS.get(env.ROOMS.idFromName(target.room)).fetch(request)
   },
 } satisfies ExportedHandler<Env>
@@ -112,7 +121,9 @@ export class Room extends DurableObject<Env> {
     if (!device) return
     if (frame.t === 'close') return device.close(1000, 'closed by host')
     device.send(
-      JSON.stringify(frame.t === 'hi' ? { t: 'hi', n: frame.n } : { t: 'm', d: frame.d, f: frame.f }),
+      JSON.stringify(
+        frame.t === 'hi' ? { t: 'hi', n: frame.n } : { t: 'm', d: frame.d, f: frame.f },
+      ),
     )
   }
 

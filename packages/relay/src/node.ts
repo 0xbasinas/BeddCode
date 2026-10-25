@@ -8,6 +8,7 @@ import {
   newClientId,
   parseClientFrame,
   parseHostFrame,
+  hostAllowed,
   route,
   sameSecret,
 } from './protocol.ts'
@@ -16,6 +17,8 @@ export interface RelayOptions {
   port: number
   host?: string
   log?: (message: string) => void
+  /** When set, only hosts that present this password may open a room. Devices never need it. */
+  hostPassword?: string
   /** Rooms nobody has used for this long are forgotten, and can be claimed again. Default 30 days. */
   roomTtlMs?: number
 }
@@ -56,6 +59,10 @@ export async function startRelay(options: RelayOptions): Promise<RunningRelay> {
     const target = route((req.url ?? '').split('?')[0]!)
     if (!target) {
       socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n')
+      return
+    }
+    if (target.role === 'host' && !hostAllowed(options.hostPassword, req.headers.authorization)) {
+      socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n')
       return
     }
     wss.handleUpgrade(req, socket, head, (ws) =>

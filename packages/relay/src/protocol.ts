@@ -83,6 +83,16 @@ export function sameSecret(a: string, b: string): boolean {
   return diff === 0
 }
 
+/** May this connection act as a host? Always, unless the relay's owner set a password for hosts. */
+export function hostAllowed(
+  password: string | undefined,
+  authorization: string | null | undefined,
+) {
+  if (!password) return true
+  const given = /^Bearer (.+)$/.exec(authorization ?? '')?.[1] ?? ''
+  return sameSecret(password, given)
+}
+
 export function newClientId(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(8))
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')

@@ -91,7 +91,7 @@ export interface AccessServices {
 
 export interface RelayControl {
   get(): RelaySettings
-  set(url: string | null): Promise<RelaySettings>
+  set(url: string | null, password?: string | null): Promise<RelaySettings>
 }
 
 /** What the router knows about the caller. */
@@ -142,7 +142,7 @@ export function createRpcRouter(
     },
     'host.relay.set': (p) => {
       if (!access.relay) throw new Error('This host does not support relays')
-      return access.relay.set(p.url)
+      return access.relay.set(p.url, p.password)
     },
     'devices.list': async () => access.tokens.list(),
     'devices.revoke': async (p) => {
