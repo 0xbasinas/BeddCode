@@ -2,7 +2,8 @@ name: Android
 
 # Builds the phone app as an installable APK. Pushing a tag such as v0.2.0 attaches it to that
 # release (next to the desktop installers); "Run workflow" builds one on demand and keeps it as a
-# downloadable artifact.
+# downloadable artifact. Choose "debug" when running it by hand to get a development build, which
+# loads the app from `pnpm --filter @beddcode/mobile start` instead of carrying it inside.
 #
 # The APK is signed with the debug key unless these repository secrets are set, which signs it with
 # your own key so later builds update the installed app in place:
@@ -12,6 +13,12 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      variant:
+        description: release (standalone app) or debug (development build)
+        type: choice
+        options: [release, debug]
+        default: release
 
 permissions:
   contents: write
@@ -78,7 +85,7 @@ jobs:
       - name: Build the APK
         working-directory: apps/mobile/android
         env:
-          NODE_ENV: production
+          NODE_ENV: ${{ inputs.variant == 'debug' && 'development' || 'production' }}
           KEYSTORE_FILE: ${{ steps.signing.outputs.file }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -94,7 +101,7 @@ jobs:
             )
           fi
           # arm64 covers every phone made in the last several years and keeps the APK small.
-          ./gradlew assembleRelease --no-daemon \
+          ./gradlew ${{ inputs.variant == 'debug' && 'assembleDebug' || 'assembleRelease' }} --no-daemon \
             -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" \
             -PreactNativeArchitectures=arm64-v8a \
             "${signing[@]}"
@@ -103,8 +110,11 @@ jobs:
         id: apk
         run: |
           version=$(node -p "require('./apps/mobile/app.json').expo.version")
-          name="BeddCode-${version}-android.apk"
-          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk "$name"
+          variant="${{ inputs.variant || 'release' }}"
+          suffix=""
+          [ "$variant" = debug ] && suffix="-dev"
+          name="BeddCode-${version}-android${suffix}.apk"
+          cp "apps/mobile/android/app/build/outputs/apk/$variant/app-$variant.apk" "$name"
           echo "name=$name" >> "$GITHUB_OUTPUT"
           ls -lh "$name"
 
