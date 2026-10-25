@@ -40,6 +40,32 @@ export function writeConfigFile(config: ConfigFile, file = configPath()): void {
   writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`)
 }
 
+/**
+ * A relay can be given as an ordinary address (`relay.example.com`, `https://relay.example.com`);
+ * the websocket form is derived from it. Plain http/ws is only for a relay on this machine or network.
+ */
+export function normalizeRelayUrl(input: string): string {
+  const raw = input.trim()
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`
+  let url: URL
+  try {
+    url = new URL(withScheme)
+  } catch {
+    throw new Error(`The relay address must look like https://relay.example.com, not ${input}`)
+  }
+  const scheme: Record<string, string> = {
+    'https:': 'wss:',
+    'wss:': 'wss:',
+    'http:': 'ws:',
+    'ws:': 'ws:',
+  }
+  const proto = scheme[url.protocol]
+  if (!proto || !url.hostname || url.username || url.search || url.hash || url.pathname !== '/') {
+    throw new Error(`The relay address must look like https://relay.example.com, not ${input}`)
+  }
+  return `${proto}//${url.host}`
+}
+
 const truthy = (v: string | undefined) => v === '1' || v === 'true'
 
 /**
@@ -107,11 +133,7 @@ export function parseServeArgs(
   if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535) {
     throw new Error(`Invalid port: ${config.port}`)
   }
-  if (config.relayUrl && !/^wss?:\/\/[^\s/@?#]+(:\d+)?\/?$/i.test(config.relayUrl)) {
-    throw new Error(
-      `The relay address must look like wss://relay.example.com, not ${config.relayUrl}`,
-    )
-  }
+  if (config.relayUrl) config.relayUrl = normalizeRelayUrl(config.relayUrl)
   return config
 }
 

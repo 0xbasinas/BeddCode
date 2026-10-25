@@ -22,7 +22,7 @@ PORT=8787 pnpm --filter @beddcode/relay start
 ## Point a host at it
 
 ```sh
-beddcode config set relay-url wss://your-relay.example.workers.dev
+beddcode config set relay-url https://your-relay.example.workers.dev
 ```
 
 (or `--relay-url`, or `BEDDCODE_RELAY_URL`). Restart the host; pairing links and QR codes then include a relay route,

@@ -1,4 +1,4 @@
-import { configPath, readConfigFile, writeConfigFile, type ConfigFile } from '../config.ts'
+import { configPath, normalizeRelayUrl, readConfigFile, writeConfigFile, type ConfigFile } from '../config.ts'
 import type { Io } from './io.ts'
 
 type Kind = 'number' | 'string' | 'boolean' | 'list'
@@ -18,7 +18,7 @@ export const SETTINGS: Record<keyof ConfigFile, { kind: Kind; help: string }> = 
   allowedOrigins: { kind: 'list', help: 'Web page origins allowed to connect (comma separated)' },
   relayUrl: {
     kind: 'string',
-    help: 'A relay (wss://relay.example.com) so devices on any network can reach this host',
+    help: 'A relay address (https://relay.example.com) so devices on any network can reach this host',
   },
 }
 
@@ -51,7 +51,7 @@ export function parseValue(key: keyof ConfigFile, raw: string): ConfigFile[keyof
       .filter(Boolean)
   }
   if (!raw) throw new Error(`${key} needs a value`)
-  return raw
+  return key === 'relayUrl' ? normalizeRelayUrl(raw) : raw
 }
 
 const show = (v: unknown) => (Array.isArray(v) ? v.join(',') : String(v))
