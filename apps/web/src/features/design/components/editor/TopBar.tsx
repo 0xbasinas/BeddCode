@@ -196,34 +196,6 @@ export function TopBar() {
             <button className="flex items-center h-6 px-2 rounded hover:bg-[color:var(--dc-hover)] text-[color:var(--dc-text2)] text-[11px] transition-colors duration-100">File</button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="bg-[color:var(--dc-raised)] border-[color:var(--dc-hover)] text-[color:var(--dc-text2)] min-w-[200px]">
-            <DropdownMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => { const s = useEditorStore.getState(); s.setSelectedElementIds([]); s.closeServerProject() }}>
-              <FileText className="w-4 h-4 mr-2" />New Design<DropdownMenuShortcut>⌘N</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={handleLoad}>
-              <FolderOpen className="w-4 h-4 mr-2" />Open...<DropdownMenuShortcut>⌘O</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={handleSave}>
-              <Save className="w-4 h-4 mr-2" />Save<DropdownMenuShortcut>⌘S</DropdownMenuShortcut>
-            </DropdownMenuItem>
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={fetchServerProjects}>
-                <CloudOff className="w-4 h-4 mr-2" />Load from Server
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="bg-[color:var(--dc-raised)] border-[color:var(--dc-hover)] text-[color:var(--dc-text2)]">
-                {serverProjects.length === 0 ? (
-                  <DropdownMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)] text-[color:var(--dc-faint)]" disabled>
-                    No projects found
-                  </DropdownMenuItem>
-                ) : (
-                  serverProjects.map((p) => (
-                    <DropdownMenuItem key={p.id} className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleLoadFromServer(p.id)}>
-                      {loadingServer ? 'Loading...' : p.name}
-                    </DropdownMenuItem>
-                  ))
-                )}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-            <DropdownMenuSeparator className="bg-[color:var(--dc-hover)]" />
             {/* PHASE 4: real import menu — images / editable SVG / project JSON */}
             <DropdownMenuSub>
               <DropdownMenuSubTrigger className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]">
@@ -241,14 +213,6 @@ export function TopBar() {
                 </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            <DropdownMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => {
-              const state = useEditorStore.getState()
-              state.pushHistory()
-              state.loadElements(createVidVerseDesign())
-              state.setFileName('VidVerse Mobile App')
-            }}>
-              <FileText className="w-4 h-4 mr-2" />Load Demo Design
-            </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-[color:var(--dc-hover)]" />
             <DropdownMenuSub>
               <DropdownMenuSubTrigger className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]">
@@ -358,11 +322,6 @@ export function TopBar() {
             <DropdownMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => useEditorStore.getState().setShowRulers(!useEditorStore.getState().showRulers)}>Toggle Rulers</DropdownMenuItem>
             <DropdownMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => useEditorStore.getState().setSnapToGrid(!useEditorStore.getState().snapToGrid)}>Toggle Snap to Grid</DropdownMenuItem>
             <DropdownMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => useEditorStore.getState().setSnapToElements(!useEditorStore.getState().snapToElements)}>Toggle Snap to Elements</DropdownMenuItem>
-            {/* PHASE 23 (F14) — comment visibility (source: toggle-show-comments,
-                figma_app ×2, comments sidebar setting) */}
-            <DropdownMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => useEditorStore.getState().setShowComments(!useEditorStore.getState().showComments)}>
-              Show Comments
-            </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-[color:var(--dc-hover)]" />
             {/* PHASE 21 (VW17) — outline mode + variants (source: toggle-outlines,
                 toggle-outline-mode-hidden-layers, toggle-outline-mode-object-bounds).
@@ -383,15 +342,6 @@ export function TopBar() {
             </DropdownMenuItem>
             <DropdownMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" disabled={!useEditorStore.getState().pixelPreview} onClick={() => { const s = useEditorStore.getState(); s.setPixelPreviewRetina(!s.pixelPreviewRetina) }}>
               Pixel Preview: Retina
-            </DropdownMenuItem>
-            <DropdownMenuSeparator className="bg-[color:var(--dc-hover)]" />
-            {/* PHASE 22 (C19) — multiplayer presence (source: multiplayer_cursors
-                visual_bell + toggle-viewport-overlay-hiding / temporarilyHideViewportOverlay) */}
-            <DropdownMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => { const s = useEditorStore.getState(); s.setShowMultiplayerCursors(!s.showMultiplayerCursors) }}>
-              Multiplayer Cursors
-            </DropdownMenuItem>
-            <DropdownMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => { const s = useEditorStore.getState(); s.setHideViewportOverlay(!s.hideViewportOverlay) }}>
-              Hide Viewport Overlay
             </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-[color:var(--dc-hover)]" />
             <DropdownMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={toggleLeftSidebar}>Toggle Left Panel</DropdownMenuItem>
@@ -585,27 +535,6 @@ export function TopBar() {
             )}
           </span>
         )}
-
-        {/* Save indicator */}
-        <div className="flex items-center gap-1 ml-1">
-          {isSaving ? (
-            <span className="text-[9px] text-[color:var(--dc-accent)] animate-pulse">Saving...</span>
-          ) : showSaveIndicator ? (
-            <span className="text-[9px] text-[#2ED573] flex items-center gap-0.5">
-              <Check className="w-2.5 h-2.5" />
-              Saved
-            </span>
-          ) : isDirty ? (
-            <span className="text-[9px] text-[color:var(--dc-muted)] flex items-center gap-0.5" title={formatSaveTime(lastSavedAt)}>
-              <CloudOff className="w-2.5 h-2.5" />
-              Unsaved
-            </span>
-          ) : lastSavedAt ? (
-            <span className="text-[9px] text-[color:var(--dc-faint)]" title={formatSaveTime(lastSavedAt)}>
-              {formatSaveTime(lastSavedAt)}
-            </span>
-          ) : null}
-        </div>
       </div>
 
       {/* Center section */}
@@ -620,10 +549,6 @@ export function TopBar() {
 
       {/* Right section */}
       <div className="flex items-center gap-1.5">
-        <button className="flex items-center gap-1 bg-[color:var(--dc-accent)] hover:bg-[color:var(--dc-accent-hover)] text-white text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors duration-100">
-          <Share2 className="w-3 h-3" />Share
-        </button>
-
         {/* Zoom controls */}
         <div className="flex items-center gap-px ml-0.5">
           <button onClick={() => setZoom(zoom - 0.1)} className="flex items-center justify-center w-6 h-6 rounded hover:bg-[color:var(--dc-hover)] text-[color:var(--dc-muted)] hover:text-white transition-colors duration-100" title="Zoom out">
