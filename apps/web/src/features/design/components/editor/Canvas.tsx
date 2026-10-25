@@ -2085,7 +2085,8 @@ export function Canvas() {
   ) : null
 
   // Grid - dot grid pattern like Figma
-  const gridEl = showGrid ? (
+  // The dots follow the visible area (not a fixed square), and fade out once they would blur into grey.
+  const gridEl = showGrid && safeZoom >= 0.25 ? (
     <g opacity={0.3}>
       <defs>
         <pattern id="dotGrid" width={gridSize} height={gridSize} patternUnits="userSpaceOnUse">
@@ -2096,7 +2097,7 @@ export function Canvas() {
           <circle cx={gridSize * 4} cy={gridSize * 4} r={1 / safeZoom} fill="#888" />
         </pattern>
       </defs>
-      <rect x={-10000} y={-10000} width={20000} height={20000} fill="url(#dotGridLarge)" />
+      <rect x={viewportBounds.minX} y={viewportBounds.minY} width={viewportBounds.maxX - viewportBounds.minX} height={viewportBounds.maxY - viewportBounds.minY} fill="url(#dotGridLarge)" />
     </g>
   ) : null
 
@@ -2118,8 +2119,8 @@ export function Canvas() {
   // Origin crosshair
   const originEl = (
     <g opacity={0.3}>
-      <line x1={0} y1={-10000} x2={0} y2={10000} stroke="#0D99FF" strokeWidth={0.5 / safeZoom} />
-      <line x1={-10000} y1={0} x2={10000} y2={0} stroke="#0D99FF" strokeWidth={0.5 / safeZoom} />
+      <line x1={0} y1={viewportBounds.minY} x2={0} y2={viewportBounds.maxY} stroke="#0D99FF" strokeWidth={0.5 / safeZoom} />
+      <line x1={viewportBounds.minX} y1={0} x2={viewportBounds.maxX} y2={0} stroke="#0D99FF" strokeWidth={0.5 / safeZoom} />
     </g>
   )
 
