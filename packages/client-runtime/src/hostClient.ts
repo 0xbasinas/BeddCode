@@ -39,9 +39,26 @@ export interface HostClientOptions {
   onDesignImport?(request: Extract<ServerFrame, { t: 'design.import' }>): void
   /** An agent's edit needs auto layout and text sizes worked out (same condition). */
   onDesignLayout?(request: Extract<ServerFrame, { t: 'design.layout' }>): void
+  /** How long a message waits for the connection to come back before it fails. Default 30 s. */
+  queueWaitMs?: number
   /** Inject a socket for tests; defaults to the platform WebSocket. */
   createSocket?(url: string): WebSocket
   backoff?: { minMs: number; maxMs: number }
+}
+
+/** Requests that change something and would otherwise be lost, or doubled, by a dropped connection. */
+const RELIABLE_METHODS: ReadonlySet<string> = new Set([
+  'sessions.create',
+  'sessions.prompt',
+  'sessions.approve',
+  'sessions.answer',
+  'sessions.dequeue',
+])
+
+class ConnectionLost extends Error {
+  constructor() {
+    super('connection lost')
+  }
 }
 
 interface Pending {
@@ -69,6 +86,8 @@ export class HostClient {
   /** Drops the current socket and moves on, as when it times out. */
   private abandonSocket: (() => void) | null = null
   private readonly pending = new Map<string, Pending>()
+  /** Reliable requests waiting for a connection; woken when one is up (or the client stops). */
+  private readonly waiting = new Set<() => void>()
 
   constructor(private readonly options: HostClientOptions) {
     this.lastSeq = options.initialSeq ?? 0
@@ -106,6 +125,7 @@ export class HostClient {
     this.ws?.close()
     this.ws = null
     this.failPending(new Error('client stopped'))
+    for (const wake of [...this.waiting]) wake()
   }
 
   /**
@@ -138,6 +158,54 @@ export class HostClient {
   }
 
   request<M extends RpcMethodName>(method: M, params: RpcParams<M>): Promise<RpcResult<M>> {
+    if (RELIABLE_METHODS.has(method)) return this.reliable(method, params)
+    return this.send1(method, params)
+  }
+
+  /**
+   * Sends a request that must not be lost: while the connection is down it waits for it, and a
+   * connection that drops mid-request sends it again with the same `rid`, which the host answers
+   * from its first run instead of doing the work twice.
+   */
+  private reliable<M extends RpcMethodName>(
+    method: M,
+    params: RpcParams<M>,
+  ): Promise<RpcResult<M>> {
+    const rid = Math.random().toString(36).slice(2) + Date.now().toString(36)
+    const deadline = Date.now() + (this.options.requestTimeoutMs ?? 180_000)
+    const waitMs = this.options.queueWaitMs ?? 30_000
+    return new Promise((resolve, reject) => {
+      const attempt = () => {
+        if (this.state === 'stopped' || this.state === 'denied')
+          return reject(new Error('not connected'))
+        if (Date.now() >= deadline) return reject(new Error('The host took too long to answer.'))
+        if (this.state !== 'connected' || !this.ws || this.ws.readyState !== 1) {
+          const wake = () => {
+            clearTimeout(giveUp)
+            this.waiting.delete(wake)
+            attempt()
+          }
+          const giveUp = setTimeout(() => {
+            this.waiting.delete(wake)
+            reject(new Error('not connected'))
+          }, Math.min(waitMs, deadline - Date.now()))
+          this.waiting.add(wake)
+          return
+        }
+        this.send1(method, params, rid).then(
+          (result) => resolve(result),
+          (err: unknown) => (err instanceof ConnectionLost ? attempt() : reject(err)),
+        )
+      }
+      attempt()
+    })
+  }
+
+  private send1<M extends RpcMethodName>(
+    method: M,
+    params: RpcParams<M>,
+    rid?: string,
+  ): Promise<RpcResult<M>> {
     const ws = this.ws
     if (!ws || ws.readyState !== 1 || this.state !== 'connected') {
       return Promise.reject(new Error('not connected'))
@@ -153,7 +221,7 @@ export class HostClient {
         )
       }, this.options.requestTimeoutMs ?? 180_000)
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer })
-      ws.send(JSON.stringify({ t: 'req', id, method, params }))
+      ws.send(JSON.stringify({ t: 'req', id, method, params, rid }))
     })
   }
 
@@ -201,7 +269,7 @@ export class HostClient {
       this.clearSocketTimers()
       this.ws = null
       this.abandonSocket = null
-      this.failPending(new Error('connection lost'))
+      this.failPending(new ConnectionLost())
       if (!welcomed) this.route = (this.route + 1) % this.routes.length
       if (this.state !== 'stopped' && this.state !== 'denied') this.scheduleReconnect()
     }
@@ -264,6 +332,7 @@ export class HostClient {
         ws.send(JSON.stringify({ t: 'subscribe', afterSeq: this.lastSeq }))
         if (this.browserOffer) ws.send(JSON.stringify(this.browserOffer))
         if (this.designView) ws.send(JSON.stringify(this.designView))
+        for (const wake of [...this.waiting]) wake()
         break
       case 'denied':
         this.setState('denied')

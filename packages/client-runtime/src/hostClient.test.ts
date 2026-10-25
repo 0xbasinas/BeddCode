@@ -277,6 +277,59 @@ describe('HostClient', () => {
     )
   })
 
+  it('sends a message again after a reconnect, under the same rid, and waits while offline', async () => {
+    const client = makeClient(() => {})
+    client.start()
+    const first = FakeSocket.instances[0]!
+    first.open()
+    first.receive(welcome)
+
+    const sent = client.request('sessions.prompt', { sessionId: 's', text: 'hi' })
+    const req = first.sent.at(-1) as { id: string; rid?: string }
+    expect(req.rid).toBeTruthy()
+    first.drop()
+    // Offline: nothing is sent yet, and the message keeps waiting.
+    vi.advanceTimersByTime(50)
+    await Promise.resolve()
+
+    vi.advanceTimersByTime(200)
+    const second = FakeSocket.instances[1]!
+    second.open()
+    second.receive(welcome)
+    await Promise.resolve()
+    const again = second.sent.find((f) => f.t === 'req') as { id: string; rid?: string }
+    expect(again.rid).toBe(req.rid)
+    second.receive({ t: 'res', id: again.id, ok: true, result: { ok: 1 } })
+    await expect(sent).resolves.toEqual({ ok: 1 })
+
+    // Started while offline: it goes out once connected.
+    second.drop()
+    const queued = client.request('sessions.prompt', { sessionId: 's', text: 'later' })
+    vi.advanceTimersByTime(200)
+    const third = FakeSocket.instances[2]!
+    third.open()
+    third.receive(welcome)
+    await Promise.resolve()
+    const out = third.sent.find((f) => f.t === 'req') as { id: string }
+    third.receive({ t: 'res', id: out.id, ok: true, result: { ok: 2 } })
+    await expect(queued).resolves.toEqual({ ok: 2 })
+  })
+
+  it('fails a waiting message when the connection does not come back in time', async () => {
+    const client = new HostClient({
+      url: 'ws://host/ws',
+      onEvent: () => {},
+      createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
+      backoff: { minMs: 100, maxMs: 100 },
+      queueWaitMs: 1000,
+    })
+    client.start()
+    const late = client.request('sessions.prompt', { sessionId: 's', text: 'x' })
+    const failed = expect(late).rejects.toThrow('not connected')
+    vi.advanceTimersByTime(1100)
+    await failed
+  })
+
   it('forwards terminal and file frames, and sends frames only while connected', () => {
     const frames: string[] = []
     const client = new HostClient({

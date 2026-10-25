@@ -4344,6 +4344,11 @@ button.tcall-row:hover .tcall-chevron,
   color: var(--text-muted);
   font: calc(11px * var(--ui-scale)) / 1.5 var(--font-mono);
 }
+.host-banner-detail {
+  margin-top: calc(2px * var(--ui-scale));
+  color: var(--text-muted);
+  font-size: calc(12px * var(--ui-scale));
+}
 .host-banner-actions {
   display: flex;
   gap: calc(8px * var(--ui-scale));

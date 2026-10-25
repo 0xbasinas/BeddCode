@@ -13,6 +13,11 @@ export const ClientFrame = z.discriminatedUnion('t', [
     id: z.string(),
     method: z.string(),
     params: z.unknown().optional(),
+    /**
+     * Names a request that may be sent again after a dropped connection. The host does the work
+     * once and answers every repeat with the same result.
+     */
+    rid: z.string().max(64).optional(),
   }),
   /** Start receiving a terminal's output; the server replays what it has buffered first. */
   z.object({ t: z.literal('term.attach'), id: z.string() }),

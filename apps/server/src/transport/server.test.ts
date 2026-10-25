@@ -969,6 +969,31 @@ describe('automation', () => {
     })
   })
 
+  it('does the work of a repeated request once, as after a reconnect', async () => {
+    const { server, store } = await boot()
+    const first = await Client.connect(server.port)
+    const make = (c: Client, id: string) => {
+      c.send({
+        t: 'req',
+        id,
+        rid: 'same-request',
+        method: 'sessions.create',
+        params: { instanceId: 'fake', permissionMode: 'full', title: 'Once' },
+      })
+      return c
+        .until((fs) => fs.some((f) => f.t === 'res' && f.id === id))
+        .then(() => c.frames.find((f) => f.t === 'res' && f.id === id) as Extract<ServerFrame, { t: 'res' }>)
+    }
+    const a1 = await make(first, 'a')
+    first.ws.terminate()
+    const second = await Client.connect(server.port)
+    const a2 = await make(second, 'b')
+    expect(a1.ok && a2.ok).toBe(true)
+    expect(a2.result).toEqual(a1.result)
+    const created = store.readAfter(0, 100).filter((e) => e.event.type === 'session.created')
+    expect(created).toHaveLength(1)
+  })
+
   it('turns away agent-tool calls without the session key', async () => {
     const { server } = await boot()
     const call = (headers: Record<string, string>) =>

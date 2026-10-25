@@ -119,6 +119,11 @@ export interface RunningServer {
 }
 
 const REPLAY_BATCH = 1000
+/** How long a repeated request (same `rid`) still gets the first answer. */
+const REPEAT_TTL_MS = 5 * 60_000
+const REPEAT_MAX = 1000
+
+type Outcome = { ok: true; result: unknown } | { ok: false; error: string }
 const IDLE_TIMEOUT_MS = 45_000
 
 export async function startServer(options: StartServerOptions): Promise<RunningServer> {
@@ -133,6 +138,26 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
   }
   const guard = options.guard ?? defaultGuard()
   let listeningPort = options.port
+  /** Requests that carry a `rid`: the work runs once, a repeat after a reconnect gets its answer. */
+  const repeats = new Map<string, { at: number; outcome: Promise<Outcome> }>()
+  const runOnce = (key: string, run: () => Promise<unknown>): Promise<Outcome> => {
+    const now = Date.now()
+    for (const [k, v] of repeats) {
+      if (now - v.at > REPEAT_TTL_MS || repeats.size > REPEAT_MAX) repeats.delete(k)
+      else break
+    }
+    const known = repeats.get(key)
+    if (known) return known.outcome
+    const outcome = run().then(
+      (result): Outcome => ({ ok: true, result }),
+      (err: unknown): Outcome => ({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    )
+    repeats.set(key, { at: now, outcome })
+    return outcome
+  }
   const dispatch = createRpcRouter(
     options.sessions,
     options.agents,
@@ -370,18 +395,22 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
           }
           send({ t: 'welcome', protocol: PROTOCOL_VERSION, host: hostInfo })
           break
-        case 'req':
-          dispatch(frame.method, frame.params, context).then(
-            (result) => send({ t: 'res', id: frame.id, ok: true, result }),
-            (err: unknown) =>
-              send({
-                t: 'res',
-                id: frame.id,
-                ok: false,
-                error: err instanceof Error ? err.message : String(err),
-              }),
+        case 'req': {
+          const run = () => dispatch(frame.method, frame.params, context)
+          const outcome = frame.rid
+            ? runOnce(`${deviceId ?? 'local'}:${frame.rid}`, run)
+            : run().then(
+                (result): Outcome => ({ ok: true, result }),
+                (err: unknown): Outcome => ({
+                  ok: false,
+                  error: err instanceof Error ? err.message : String(err),
+                }),
+              )
+          void outcome.then((o) =>
+            send(o.ok ? { t: 'res', id: frame.id, ok: true, result: o.result } : { t: 'res', id: frame.id, ok: false, error: o.error }),
           )
           break
+        }
         case 'term.attach':
           terminalDetach.get(frame.id)?.()
           try {
