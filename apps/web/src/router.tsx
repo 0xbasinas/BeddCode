@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import {
   createHashHistory,
   createRootRoute,
@@ -13,6 +14,11 @@ import {
   parseSettingsSection,
   type SettingsSection,
 } from './features/settings/SettingsPage.tsx'
+
+// The editor and its libraries are large; load them when the screen is first opened.
+const DesignPage = lazy(() =>
+  import('./features/design/DesignPage.tsx').then((m) => ({ default: m.DesignPage })),
+)
 
 const rootRoute = createRootRoute({ component: AppShell })
 const indexRoute = createRoute({
@@ -68,9 +74,19 @@ const schedulesRoute = createRoute({
   component: SchedulesPage,
 })
 
+const designRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/design',
+  component: () => (
+    <Suspense fallback={null}>
+      <DesignPage />
+    </Suspense>
+  ),
+})
+
 // Hash history so the Electron build works when loaded from file://.
 export const router = createRouter({
-  routeTree: rootRoute.addChildren([indexRoute, sessionRoute, schedulesRoute, settingsRoute]),
+  routeTree: rootRoute.addChildren([indexRoute, sessionRoute, designRoute, schedulesRoute, settingsRoute]),
   history: createHashHistory(),
 })
 

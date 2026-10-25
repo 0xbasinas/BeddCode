@@ -1,5 +1,5 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router'
-import { CalendarClock, House, Settings } from 'lucide-react'
+import { CalendarClock, House, PenTool, Settings } from 'lucide-react'
 import './leftRail.css'
 
 /** The slim column at the left edge: one icon per screen. The sessions list keeps its own actions. */
@@ -8,6 +8,7 @@ export function LeftRail() {
   const path = useRouterState({ select: (s) => s.location.pathname })
   const onHome = path === '/'
   const onSchedules = path === '/schedules'
+  const onDesign = path === '/design'
   return (
     <nav className="left-rail" aria-label="Screens">
       <div className="left-rail-group">
@@ -20,6 +21,16 @@ export function LeftRail() {
           onClick={() => void navigate({ to: '/' })}
         >
           <House size={18} />
+        </button>
+        <button
+          type="button"
+          className={`rail-item ${onDesign ? 'on' : ''}`}
+          title="Design"
+          aria-label="Design"
+          aria-current={onDesign ? 'page' : undefined}
+          onClick={() => void navigate({ to: '/design' })}
+        >
+          <PenTool size={18} />
         </button>
       </div>
       <div className="left-rail-group">

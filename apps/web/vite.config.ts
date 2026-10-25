@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 // Hosts can be on any machine, and the browser pane and attached media come from anywhere, so
 // connections, images and frames stay open to the network; what is locked down is code: scripts
@@ -38,7 +39,7 @@ function contentSecurityPolicy(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), contentSecurityPolicy()],
+  plugins: [react(), tailwindcss(), contentSecurityPolicy()],
   // Relative base so the Electron build can load dist/index.html from disk.
   base: './',
   server: { port: 5173, strictPort: true },

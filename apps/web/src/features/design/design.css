@@ -1,0 +1,365 @@
+/* Adapted from OpenFigma (MIT, see LICENSE.openfigma): Tailwind utilities without its page-wide reset,
+   and the editor tokens scoped to .design-root so the rest of the app keeps its own styles. */
+
+@layer theme, base, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+.design-root {
+  --radius: 0.625rem;
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  .design-root, .design-root *, .design-root ::before, .design-root ::after {
+    box-sizing: border-box;
+    border: 0 solid var(--border);
+    outline-color: color-mix(in oklab, var(--ring) 50%, transparent);
+  }
+  .design-root button, .design-root input, .design-root select, .design-root textarea {
+    font: inherit; color: inherit; background: transparent; margin: 0;
+  }
+  .design-root button { cursor: pointer; }
+  .design-root { font-family: Inter, system-ui, -apple-system, sans-serif; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 2px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Global scrollbar styling */
+.design-root ::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.design-root ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.design-root ::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 2px;
+}
+
+.design-root ::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Selection color */
+.design-root ::selection {
+  background: rgba(13, 153, 255, 0.3);
+  color: white;
+}
+
+/* Prevent text selection on canvas */
+.select-none {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Figma-style instant transitions for interactive elements */
+.design-root :is(button, a, input, select, textarea) {
+  transition: color 100ms ease, background-color 100ms ease, border-color 100ms ease, opacity 100ms ease;
+}
+
+/* Fix for dropdown menus in dark theme */
+[data-radix-popper-content-wrapper] {
+  z-index: 9999 !important;
+}
+
+/* Native app feel: prevent text selection and drag on canvas */
+.canvas-svg-export {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  outline: none;
+}
+
+/* Hand tool cursor styles */
+.canvas-svg-export[style*="grab"] {
+  cursor: grab !important;
+}
+
+/* Smooth panning animation */
+.pan-smooth {
+  will-change: transform;
+  transition: none;
+}
+
+/* Prevent browser address bar highlight on Ctrl+L */
+.design-root input:focus {
+  outline: none;
+}
+
+/* ============================================================
+   FIGMA UI3 DESIGN TOKENS — PHASE 1 (tokens v2)
+   Source: PHASE-0 extraction of the real Figma web bundle
+   (see PROJECT_ANALYSIS.md §2, DECISION-007).
+   - Anchor literals (blue/purple/red/green-500, grey-800, semantic
+     surfaces) are VERIFIED values extracted from the source CSS.
+   - Full ramp steps are REGENERATED algorithmically around those
+     anchors (port-source bundle is LOST-SOURCE) — script:
+     scripts/gen_fig_ramps.py
+   - Typography (11px/16px body-medium, Inter 450/550, Roboto Mono),
+     radius 2/5/13/full, spacers 4-40, elevation 100-500: verified
+     extraction results.
+   ============================================================ */
+@theme {
+  /* --- blue ramp (anchor #0D99FF verified) --- */
+  --color-fig-blue-50: #C9D4DC;
+  --color-fig-blue-100: #B7CBDA;
+  --color-fig-blue-200: #9ABED8;
+  --color-fig-blue-300: #65AFE4;
+  --color-fig-blue-400: #2CA0F4;
+  --color-fig-blue-500: #0D99FF;
+  --color-fig-blue-600: #0083E3;
+  --color-fig-blue-700: #056BB6;
+  --color-fig-blue-800: #0A4D7D;
+  --color-fig-blue-900: #0B2F4A;
+  /* --- purple ramp (anchor #9747FF verified) --- */
+  --color-fig-purple-50: #EFECF3;
+
+  --color-fig-purple-100: #E4DDEE;
+  --color-fig-purple-200: #D4C4E8;
+  --color-fig-purple-300: #BC97ED;
+  --color-fig-purple-400: #A464F7;
+  --color-fig-purple-500: #9747FF;
+  --color-fig-purple-600: #801EFF;
+  --color-fig-purple-700: #6B06EE;
+  --color-fig-purple-800: #560FB3;
+  --color-fig-purple-900: #40127D;
+  /* --- red ramp (anchor #F24822 verified) --- */
+  --color-fig-red-50: #DED1CF;
+  --color-fig-red-100: #DBC3BE;
+  --color-fig-red-200: #D7ACA3;
+  --color-fig-red-300: #DE8673;
+  --color-fig-red-400: #EA5E3F;
+  --color-fig-red-500: #F24822;
+  --color-fig-red-600: #DE330D;
+  --color-fig-red-700: #B32D0F;
+  --color-fig-red-800: #7E2512;
+  --color-fig-red-900: #4D1B0F;
+  /* --- green ramp (anchor #14AE5C verified) --- */
+  --color-fig-green-50: #9FBCAD;
+  --color-fig-green-100: #8CBBA2;
+  --color-fig-green-200: #6EBA92;
+  --color-fig-green-300: #39C67B;
+  --color-fig-green-400: #1FB866;
+  --color-fig-green-500: #14AE5C;
+  --color-fig-green-600: #108949;
+  --color-fig-green-700: #0E6335;
+  --color-fig-green-800: #0A331D;
+  --color-fig-green-900: #020805;
+  /* --- grey ramp (anchor #2C2C2C = UI3 toolbar surface, verified) --- */
+  --color-fig-grey-50: #FAFAFA;
+  --color-fig-grey-100: #F4F4F4;
+  --color-fig-grey-200: #E6E6E6;
+  --color-fig-grey-300: #D1D1D1;
+  --color-fig-grey-400: #B8B8B8;
+  --color-fig-grey-500: #9E9E9E;
+  --color-fig-grey-600: #808080;
+  --color-fig-grey-700: #5C5C5C;
+  --color-fig-grey-800: #2C2C2C;
+  --color-fig-grey-900: #212121;
+
+  /* --- semantic UI3 colors (values verified from source + current
+         component usage: #1E1E1E panels, #383838 borders, #3C3C3C hover) --- */
+  --color-fig-surface: #2C2C2C;          /* floating toolbar / menus */
+  --color-fig-surface-panel: #1E1E1E;    /* side panels, inputs bg */
+  --color-fig-surface-canvas: #1E1E1E;   /* editor canvas backdrop */
+  --color-fig-surface-hover: #3C3C3C;
+  --color-fig-surface-active: #0D99FF;
+  --color-fig-border: #383838;
+  --color-fig-border-strong: #555555;
+  --color-fig-text-primary: #FFFFFF;
+  --color-fig-text-secondary: #CCCCCC;
+  --color-fig-text-tertiary: #AAAAAA;
+  --color-fig-text-disabled: #666666;
+  --color-fig-text-faint: #555555;
+  --color-fig-accent: #0D99FF;           /* = fig-blue-500 */
+  --color-fig-accent-hover: #0B87E0;
+  --color-fig-danger: #F24822;           /* = fig-red-500 */
+  --color-fig-success: #14AE5C;          /* = fig-green-500 */
+  --color-fig-component: #A259FF;        /* component instances (existing repo value) */
+  --color-fig-selection: #0D99FF;
+
+  /* --- fonts (next/font variables, see layout.tsx) --- */
+  --font-fig-sans: var(--font-inter), Inter, system-ui, sans-serif;
+  --font-fig-mono: var(--font-roboto-mono), 'Roboto Mono', monospace;
+}
+
+.design-root {
+  /* --- typography tokens (verified: body-medium = 11px/16px, Inter 450/550) --- */
+  --fig-font-family: var(--font-inter), Inter, system-ui, -apple-system, sans-serif;
+  --fig-font-family-mono: var(--font-roboto-mono), 'Roboto Mono', monospace;
+  --fig-font-weight-regular: 450;   /* Figma uses non-standard 450/550 */
+  --fig-font-weight-medium: 550;
+  --fig-text-2xs: 9px;    /* micro labels / uppercase section heads */
+  --fig-text-xs: 10px;    /* small UI labels, line-height 14px */
+  --fig-text-body: 11px;  /* body-medium — the UI3 workhorse */
+  --fig-text-body-lh: 16px;
+  --fig-text-sm: 12px;    /* menus, line-height 16px */
+  --fig-text-sm-lh: 16px;
+  --fig-text-base: 13px;  /* headings, line-height 20px */
+  --fig-text-base-lh: 20px;
+
+  /* --- radius (verified: 2 / 5 / 13 / full) --- */
+  --fig-radius-xs: 2px;
+  --fig-radius-sm: 5px;
+  --fig-radius-lg: 13px;
+  --fig-radius-full: 9999px;
+
+  /* --- spacers (verified 4-40 ladder) --- */
+  --fig-space-1: 4px;
+  --fig-space-2: 8px;
+  --fig-space-3: 12px;
+  --fig-space-4: 16px;
+  --fig-space-5: 20px;
+  --fig-space-6: 24px;
+  --fig-space-7: 32px;
+  --fig-space-8: 40px;
+
+  /* --- elevation 100-500 (UI3 dark shadows) --- */
+  --fig-shadow-100: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --fig-shadow-200: 0 2px 4px rgba(0, 0, 0, 0.30);
+  --fig-shadow-300: 0 4px 8px rgba(0, 0, 0, 0.35);
+  --fig-shadow-400: 0 8px 16px rgba(0, 0, 0, 0.40);
+  --fig-shadow-500: 0 12px 28px rgba(0, 0, 0, 0.50);
+
+  /* --- UI3 chrome dimensions (verified measurements) --- */
+  --fig-toolbar-btn: 32px;   /* tool hit-target 32x32 */
+  --fig-toolbar-h: 48px;     /* floating toolbar pill height */
+  --fig-panel-left: 241px;   /* left sidebar width */
+  --fig-panel-right: 320px;  /* right sidebar width */
+  --fig-layer-row: 28px;     /* layer panel row height */
+}
+.design-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
