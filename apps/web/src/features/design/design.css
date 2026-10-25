@@ -66,7 +66,7 @@
   --dc-muted: var(--text-muted);
   --dc-faint: var(--text-faint);
   --dc-accent: #d2d2d2; /* neutral grey: the editor does not use the app's orange */
-  --dc-accent-hover: color-mix(in oklab, var(--accent) 82%, black);
+  --dc-accent-hover: color-mix(in oklab, var(--dc-accent) 82%, black);
   --dc-on-accent: #161616;
   --dc-danger: var(--danger);
   --dc-success: var(--success);
