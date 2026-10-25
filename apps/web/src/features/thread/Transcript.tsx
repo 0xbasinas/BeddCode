@@ -56,18 +56,40 @@ export function Transcript({
 }) {
   const blocks = buildBlocks(items)
   const latestChanges = items.findLast((i) => i.kind === 'changes')?.id
-  // The last reply of each turn is where "fork from here" goes.
-  const lastReplyOfTurn = new Map<number, number>()
-  blocks.forEach((b, i) => {
-    if (
-      b.kind === 'item' &&
-      b.item.kind === 'message' &&
-      b.item.role === 'assistant' &&
-      b.item.turnNo
-    ) {
-      lastReplyOfTurn.set(b.item.turnNo, i)
+  // "Fork from here" goes at the end of each turn: after its last reply or, when the turn was
+  // stopped mid-work, after the tool calls that ran before the stop.
+  const forkAnchor = new Map<number, number>()
+  {
+    let segment: { turnNo?: number; last: number } = { last: -1 }
+    const close = () => {
+      if (segment.turnNo !== undefined && segment.last >= 0) forkAnchor.set(segment.turnNo, segment.last)
+      segment = { last: -1 }
     }
-  })
+    blocks.forEach((b, i) => {
+      if (b.kind !== 'item') return
+      if (b.item.kind === 'message' && b.item.role === 'user') return close()
+      if (b.item.kind === 'message' && b.item.role === 'assistant' && b.item.turnNo)
+        segment.turnNo = b.item.turnNo
+      if (b.item.kind === 'message' || b.item.kind === 'tool') segment.last = i
+    })
+    close()
+  }
+  const forkButton = (turnNo: number) =>
+    onFork && (
+      <button
+        className={`fork-here${turnNo === stoppedTurn ? ' always' : ''}`}
+        title="Fork from here: start a new session from this point"
+        aria-label="Fork from here"
+        onClick={() => void onFork(turnNo)}
+      >
+        <GitFork size={14} />
+      </button>
+    )
+  const forkable = (turnNo: number | undefined, last: number) =>
+    onFork !== undefined &&
+    turnNo !== undefined &&
+    forkAnchor.get(turnNo) === last &&
+    turnNo <= completedTurns
   return (
     <>
       {blocks.map((block, index) => {
@@ -131,27 +153,23 @@ export function Transcript({
             if (!plainTool(next) || next?.kind !== 'item' || next.item.kind !== 'tool') break
             tools.push(next.item)
           }
-          return <ToolGroup key={block.item.id} tools={tools} />
+          const stopTurn = [...forkAnchor].find(([, at]) => at >= index && at < index + tools.length)?.[0]
+          const group = <ToolGroup key={block.item.id} tools={tools} />
+          return forkable(stopTurn, index + tools.length - 1) ? (
+            <div key={block.item.id} className="has-fork">
+              {group}
+              {forkButton(stopTurn!)}
+            </div>
+          ) : (
+            group
+          )
         }
         const turnNo = block.item.kind === 'message' ? block.item.turnNo : undefined
-        const canFork =
-          onFork !== undefined &&
-          turnNo !== undefined &&
-          lastReplyOfTurn.get(turnNo) === index &&
-          turnNo <= completedTurns
+        const canFork = forkable(turnNo, index)
         return (
           <div key={block.item.id} className={canFork ? 'has-fork' : undefined}>
             <ItemView item={block.item} cwd={cwd} onApprove={onApprove} onAnswer={onAnswer} />
-            {canFork && (
-              <button
-                className={`fork-here${turnNo === stoppedTurn ? ' always' : ''}`}
-                title="Fork from here: start a new session from this point"
-                aria-label="Fork from here"
-                onClick={() => void onFork(turnNo)}
-              >
-                <GitFork size={14} />
-              </button>
-            )}
+            {canFork && forkButton(turnNo!)}
           </div>
         )
       })}
