@@ -183,7 +183,7 @@ export function TopBar() {
   }
 
   return (
-    <div className="h-10 bg-[#2C2C2C] flex items-center justify-between px-1 select-none border-b border-[#1A1A1A] shrink-0">
+    <div className="h-10 bg-[#2C2C2C] flex items-center justify-between gap-2 px-1 overflow-x-auto overflow-y-hidden custom-scrollbar [&>*]:shrink-0 select-none border-b border-[#1A1A1A] shrink-0">
       {/* Left section */}
       <div className="flex items-center gap-1">
         <button onClick={toggleLeftSidebar} className="flex items-center justify-center w-7 h-7 rounded hover:bg-[#3C3C3C] transition-colors duration-100" title="Toggle left panel">
@@ -263,12 +263,6 @@ export function TopBar() {
                 <DropdownMenuItem className="hover:bg-[#3C3C3C] focus:bg-[#3C3C3C]" onClick={() => handleExportFormat('WEBP')}>Export as WEBP</DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            <DropdownMenuSeparator className="bg-[#3C3C3C]" />
-            {/* PHASE 22 (C20) — version history (source: versionHistory.versions,
-                restoreVersionId, activeCanvasEditModeType HISTORY) */}
-            <DropdownMenuItem className="hover:bg-[#3C3C3C] focus:bg-[#3C3C3C]" onClick={() => useEditorStore.getState().setVersionHistoryOpen(!useEditorStore.getState().versionHistoryOpen)}>
-              Show Version History
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -631,14 +625,6 @@ export function TopBar() {
         <div className="w-6 h-6 rounded-full bg-[#FFD700] flex items-center justify-center text-[10px] font-bold text-black">U</div>
         <button className="flex items-center gap-1 bg-[#0D99FF] hover:bg-[#0B87E0] text-white text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors duration-100">
           <Share2 className="w-3 h-3" />Share
-        </button>
-        <button
-          onClick={() => useEditorStore.getState().startPreview()}
-          className="flex items-center justify-center w-6 h-6 rounded hover:bg-[#3C3C3C] text-[#888] hover:text-white transition-colors duration-100"
-          title="Present prototype (▶)"
-          data-testid="present-button"
-        >
-          <Play className="w-3.5 h-3.5" />
         </button>
 
         {/* Zoom controls */}

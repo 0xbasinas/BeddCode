@@ -4,7 +4,6 @@ import { useEditorStore } from '../../store/editor-store'
 import { findElementInList } from '../../lib/element-utils'
 import { PropertiesPanel } from './PropertiesPanel'
 import { ComponentPanel } from './ComponentPanel'
-import { InteractionsPanel } from './prototype/InteractionsPanel'
 import { MousePointer2, Zap, Copy, Check, ChevronDown, ChevronRight } from 'lucide-react'
 
 export function RightSidebar() {
@@ -29,14 +28,6 @@ export function RightSidebar() {
           Design
         </button>
         <button
-          onClick={() => setRightTab('prototype')}
-          className={`flex-1 px-3 py-1.5 text-[10px] font-semibold transition-colors duration-100 uppercase tracking-wider ${
-            rightTab === 'prototype' ? 'text-white border-b-2 border-[#0D99FF]' : 'text-[#888] hover:text-[#CCC]'
-          }`}
-        >
-          Prototype
-        </button>
-        <button
           onClick={() => setRightTab('inspect')}
           className={`flex-1 px-3 py-1.5 text-[10px] font-semibold transition-colors duration-100 uppercase tracking-wider ${
             rightTab === 'inspect' ? 'text-white border-b-2 border-[#0D99FF]' : 'text-[#888] hover:text-[#CCC]'
@@ -50,25 +41,6 @@ export function RightSidebar() {
       {rightTab === 'design' && (
         <div className="flex-1 flex flex-col overflow-hidden">
           <PropertiesPanel />
-        </div>
-      )}
-
-      {/* Prototype Tab — real interactions editor (PHASE 2) */}
-      {rightTab === 'prototype' && (
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-          {selectedElement ? (
-            <InteractionsPanel element={selectedElement} />
-          ) : (
-            <div className="flex-1 flex items-center justify-center p-4">
-              <div className="text-center">
-                <div className="w-8 h-8 rounded-full bg-[#2C2C2C] flex items-center justify-center mx-auto mb-2">
-                  <Zap className="w-4 h-4 text-[#666]" />
-                </div>
-                <p className="text-[10px] text-[#888] mb-0.5">No interactions</p>
-                <p className="text-[9px] text-[#666]">Select an element to add interactions</p>
-              </div>
-            </div>
-          )}
         </div>
       )}
 

@@ -263,7 +263,7 @@ export function Toolbar() {
         </div>
       )}
 
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[100] flex items-center rounded-[13px] bg-fig-surface border border-fig-border overflow-visible" style={{ boxShadow: 'var(--fig-shadow-400)' }} ref={menuRef}>
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[100] max-w-[calc(100%-12px)] flex items-center rounded-[13px] bg-fig-surface border border-fig-border overflow-visible" style={{ boxShadow: 'var(--fig-shadow-400)' }} ref={menuRef}>
         {/* Tool groups */}
         {toolGroups.map((group, groupIdx) => (
           <React.Fragment key={groupIdx}>
@@ -335,10 +335,10 @@ export function Toolbar() {
         ))}
 
         {/* Divider before zoom */}
-        <div className="w-px h-4 bg-[#383838]" />
+        <div className="w-px h-4 bg-[#383838] @max-[720px]:hidden" />
 
         {/* Zoom controls in toolbar */}
-        <div className="flex items-center px-[1px] py-[2px] gap-[1px]">
+        <div className="flex items-center px-[1px] py-[2px] gap-[1px] @max-[720px]:hidden">
           <button
             onClick={() => setZoom(Math.max(0.01, zoom - 0.1))}
             className="flex items-center justify-center w-6 rounded-md text-fig-text-tertiary hover:bg-fig-surface-hover hover:text-white transition-colors duration-100"
@@ -386,11 +386,11 @@ export function Toolbar() {
         </div>
 
         {/* Divider before mode switch */}
-        <div className="w-px h-4 bg-[#383838]" />
+        <div className="w-px h-4 bg-[#383838] @max-[720px]:hidden" />
 
         {/* Mode toggle - Figma tab style */}
-        <div className="flex items-center px-0.5 py-[2px]">
-          {(['design', 'prototype', 'dev'] as EditorMode[]).map((m) => (
+        <div className="flex items-center px-0.5 py-[2px] @max-[720px]:hidden">
+          {(['design', 'dev'] as EditorMode[]).map((m) => (
             <button
               key={m}
               onClick={() => setEditorMode(m)}
