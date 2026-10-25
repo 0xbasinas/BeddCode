@@ -1,0 +1,12 @@
+name = "beddcode-relay"
+main = "worker.ts"
+compatibility_date = "2025-01-01"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+# SQLite-backed objects are the only kind the free plan offers; the relay only stores a small claim.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]

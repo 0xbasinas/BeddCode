@@ -16,6 +16,10 @@ export const SETTINGS: Record<keyof ConfigFile, { kind: Kind; help: string }> = 
   },
   requireToken: { kind: 'boolean', help: "Ask for a paired device's token even from this machine" },
   allowedOrigins: { kind: 'list', help: 'Web page origins allowed to connect (comma separated)' },
+  relayUrl: {
+    kind: 'string',
+    help: 'A relay (wss://relay.example.com) so devices on any network can reach this host',
+  },
 }
 
 const KEYS = Object.keys(SETTINGS) as (keyof ConfigFile)[]

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildPairLink, parsePairLink, pairWithLink } from './pairLink.ts'
+import { newRelayKey } from './relayCrypto.ts'
+import { buildRelayRoute } from './relaySocket.ts'
 
 const link = {
   code: '123456',
@@ -10,9 +12,10 @@ const link = {
 
 describe('pair links', () => {
   it('round-trips through build and parse', () => {
-    const text = buildPairLink({ ...link, relay: 'relay+wss://r.example/abc#k=xyz' })
+    const relay = buildRelayRoute('wss://r.example', newRelayKey())
+    const text = buildPairLink({ ...link, relay })
     expect(text.startsWith('beddcode://pair?')).toBe(true)
-    expect(parsePairLink(text)).toEqual({ ...link, relay: 'relay+wss://r.example/abc#k=xyz' })
+    expect(parsePairLink(text)).toEqual({ ...link, relay })
   })
 
   it('rejects other text, bad codes, and links with nowhere to connect', () => {

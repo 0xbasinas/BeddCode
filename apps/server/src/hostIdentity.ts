@@ -22,3 +22,22 @@ export function loadHostId(home: string): string {
   writeFileSync(file, id)
   return id
 }
+
+/**
+ * The key this host shares with its paired devices for the relay: created once and kept, so a
+ * restart does not cut off devices that already paired. Anyone holding it can reach this host
+ * through the relay (a device still needs its own token), so it is only readable by this user.
+ */
+export function loadRelayKey(home: string, create: () => string): string {
+  const file = path.join(home, 'relay-key')
+  try {
+    const existing = readFileSync(file, 'utf8').trim()
+    if (existing) return existing
+  } catch {
+    // first run
+  }
+  const key = create()
+  mkdirSync(home, { recursive: true })
+  writeFileSync(file, key, { mode: 0o600 })
+  return key
+}

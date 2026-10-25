@@ -25,6 +25,11 @@ import { ProjectStore } from '../workspace/projects.ts'
 import { EventStore } from '../store/eventStore.ts'
 import { startServer, type RunningServer } from './server.ts'
 import { createAutomation } from '../automation/index.ts'
+import { startRelay } from '@beddcode/relay'
+import { RelayAgent } from '../relay/agent.ts'
+import { pairWithLink } from '../../../../packages/client-runtime/src/pairLink.ts'
+import { newRelayKey } from '../../../../packages/client-runtime/src/relayCrypto.ts'
+import { buildRelayRoute } from '../../../../packages/client-runtime/src/relaySocket.ts'
 import { HostClient } from '../../../../packages/client-runtime/src/hostClient.ts'
 import { applyEvent, emptyReplica } from '../../../../packages/client-runtime/src/replica.ts'
 
@@ -992,6 +997,65 @@ describe('automation', () => {
     expect(a2.result).toEqual(a1.result)
     const created = store.readAfter(0, 100).filter((e) => e.event.type === 'session.created')
     expect(created).toHaveLength(1)
+  })
+
+  it('pairs and serves a device through a relay, end to end', async () => {
+    const host = await boot()
+    const relay = await startRelay({ port: 0, host: '127.0.0.1' })
+    cleanup.push(() => relay.close())
+    const key = newRelayKey()
+    const agent = new RelayAgent({
+      url: `ws://127.0.0.1:${relay.port}`,
+      key,
+      attach: (socket) => host.server.attach(socket, 'other'),
+      log: createLogger('test', 'error'),
+      backoff: { minMs: 10, maxMs: 20 },
+    })
+    agent.start()
+    cleanup.push(() => agent.stop())
+    await vi.waitFor(() => expect(agent.status).toBe('online'))
+
+    // Pair with only the relay to go by (a phone on mobile data).
+    const route = buildRelayRoute(`ws://127.0.0.1:${relay.port}`, key)
+    const { code } = host.pairing.create()
+    await expect(
+      pairWithLink({ code: '000000', routes: [], relay: route }, 'Phone'),
+    ).rejects.toThrow(/wrong or has expired/)
+    const entry = await pairWithLink({ code, hostId: 'host-1', routes: [], relay: route }, 'Phone')
+    expect(entry).toMatchObject({ key: 'host-1', routes: [route] })
+    expect(host.tokens.list().map((d) => d.name)).toContain('Phone')
+
+    // Then use it like any other connection.
+    let replica = emptyReplica()
+    const states: string[] = []
+    const client = new HostClient({
+      url: route,
+      token: entry.token,
+      expectedHostId: 'host-1',
+      onEvent: (stored) => {
+        replica = applyEvent(replica, stored)
+      },
+      onState: (s) => states.push(s),
+    })
+    client.start()
+    cleanup.push(() => client.stop())
+    await vi.waitFor(() => expect(client.connectionState).toBe('connected'))
+    const providers = await client.request('providers.list', {})
+    expect(providers.some((p) => p.id === 'fake')).toBe(true)
+
+    const { sessionId } = await client.request('sessions.create', {
+      instanceId: 'fake',
+      permissionMode: 'full',
+      title: 'Over the relay',
+    })
+    await client.request('sessions.prompt', { sessionId, text: 'hello' })
+    await vi.waitFor(() => expect(replica.sessions[sessionId]?.completedTurns).toBe(1))
+
+    // A device with the wrong token is refused inside the encrypted channel, too.
+    const intruder = new HostClient({ url: route, token: 'nope', onEvent: () => {} })
+    intruder.start()
+    cleanup.push(() => intruder.stop())
+    await vi.waitFor(() => expect(intruder.connectionState).toBe('denied'))
   })
 
   it('turns away agent-tool calls without the session key', async () => {

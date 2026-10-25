@@ -8,6 +8,8 @@ export interface ServerConfig {
   /** Address to listen on. Loopback unless the user opens the host to other machines. */
   host: string
   guard: GuardOptions
+  /** A relay that lets devices on any network reach this host (e.g. wss://relay.example.com). */
+  relayUrl?: string
 }
 
 /** Settings kept in `<data dir>/config.json` (see `beddcode config`); flags and variables win. */
@@ -17,6 +19,7 @@ export interface ConfigFile {
   allowLan?: boolean
   requireToken?: boolean
   allowedOrigins?: string[]
+  relayUrl?: string
 }
 
 export const configPath = () => path.join(dataHome(), 'config.json')
@@ -67,6 +70,8 @@ export function parseServeArgs(
     host: env.BEDDCODE_HOST ?? file.host ?? '127.0.0.1',
     guard,
   }
+  const relayUrl = env.BEDDCODE_RELAY_URL ?? file.relayUrl
+  if (relayUrl) config.relayUrl = relayUrl
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!
@@ -91,6 +96,9 @@ export function parseServeArgs(
       case '--allow-origin':
         guard.allowedOrigins.push(value())
         break
+      case '--relay-url':
+        config.relayUrl = value()
+        break
       default:
         throw new Error(`Unknown option: ${arg}`)
     }
@@ -98,6 +106,11 @@ export function parseServeArgs(
 
   if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535) {
     throw new Error(`Invalid port: ${config.port}`)
+  }
+  if (config.relayUrl && !/^wss?:\/\/[^\s/@?#]+(:\d+)?\/?$/i.test(config.relayUrl)) {
+    throw new Error(
+      `The relay address must look like wss://relay.example.com, not ${config.relayUrl}`,
+    )
   }
   return config
 }

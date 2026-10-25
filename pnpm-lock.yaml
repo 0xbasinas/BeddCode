@@ -375,6 +375,9 @@ importers:
         specifier: ^8.18.0
         version: 8.22.0
     devDependencies:
+      '@beddcode/relay':
+        specifier: workspace:*
+        version: link:../../packages/relay
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.5
@@ -499,6 +502,12 @@ importers:
       '@beddcode/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@noble/ciphers':
+        specifier: ^2.4.0
+        version: 2.4.0
+      '@noble/hashes':
+        specifier: ^2.4.0
+        version: 2.4.0
 
   packages/contracts:
     dependencies:
@@ -575,6 +584,31 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.5
+
+  packages/relay:
+    dependencies:
+      ws:
+        specifier: ^8.18.0
+        version: 8.22.0
+    devDependencies:
+      '@beddcode/client-runtime':
+        specifier: workspace:*
+        version: link:../client-runtime
+      '@beddcode/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@cloudflare/workers-types':
+        specifier: ^4.20250101.0
+        version: 4.20260702.1
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.5
+      '@types/ws':
+        specifier: ^8.5.0
+        version: 8.18.2
+      tsx:
+        specifier: ^4.20.0
+        version: 4.23.15
 
   packages/shared:
     devDependencies:
@@ -1043,6 +1077,9 @@ packages:
   '@babel/types@7.29.8':
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
+
+  '@cloudflare/workers-types@4.20260702.1':
+    resolution: {integrity: sha512-mOhf5TUEB1m2vPrxtqoIGfz0fUC9xyxRDx5gWHy5s+OCo6dcV+g7wI1R7gYCMFohhqF/2y2xeKVwMwCJjfn/WA==}
 
   '@codemirror/autocomplete@6.20.4':
     resolution: {integrity: sha512-yF8RhOf2SXlg00+qtupzLhrglcas61boqaONiNcbPIebHCpJocpqTBA6dyrtUrQO47hqyTdeob/3XnYilT7TaQ==}
@@ -1902,6 +1939,10 @@ packages:
     cpu: [x64]
     os: [linux]
     libc: [glibc]
+
+  '@noble/ciphers@2.4.0':
+    resolution: {integrity: sha512-AnjFn0Jv92laAkvMrghlFZq4qQCIN/4DxFV/eooqtC2YTjB7kBeLMS2T9KJX4Dn+ZVXLOwK0lSgqDtx9gvxtiw==}
+    engines: {node: '>= 20.19.0'}
 
   '@noble/hashes@1.8.0':
     resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
@@ -7167,6 +7208,8 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
+  '@cloudflare/workers-types@4.20260702.1': {}
+
   '@codemirror/autocomplete@6.20.4':
     dependencies:
       '@codemirror/language': 6.13.1
@@ -8319,6 +8362,8 @@ snapshots:
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
+
+  '@noble/ciphers@2.4.0': {}
 
   '@noble/hashes@1.8.0': {}
 

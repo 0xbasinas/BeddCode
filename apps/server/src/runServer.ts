@@ -11,7 +11,10 @@ import { AttachmentStore } from './attachments/store.ts'
 import { PairingManager } from './auth/pairing.ts'
 import { TokenStore } from './auth/tokens.ts'
 import { isLoopbackHost, type ServerConfig } from './config.ts'
-import { dataHome, loadHostId } from './hostIdentity.ts'
+import { dataHome, loadHostId, loadRelayKey } from './hostIdentity.ts'
+import { RelayAgent } from './relay/agent.ts'
+import { newRelayKey } from '@beddcode/client-runtime/relayCrypto'
+import { buildRelayRoute } from '@beddcode/client-runtime/relaySocket'
 import { findWebRoot } from './web/static.ts'
 import { TailscaleService } from './network/tailscale.ts'
 import { reachableRoutes } from './network/reachable.ts'
@@ -97,6 +100,9 @@ export async function runServer(config: ServerConfig): Promise<void> {
   tokens.onRevoke((deviceId) => alerts.forgetDevice(deviceId))
 
   const tailscale = new TailscaleService()
+  const relayKey = config.relayUrl ? loadRelayKey(home, newRelayKey) : undefined
+  const relayRoute =
+    config.relayUrl && relayKey ? buildRelayRoute(config.relayUrl, relayKey) : undefined
   const server = await startServer({
     port: config.port,
     host: config.host,
@@ -116,6 +122,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     reachable: async () => ({
       hostId,
       name: os.hostname(),
+      relay: relayRoute,
       routes: await reachableRoutes({
         tailscale,
         port,
@@ -130,6 +137,17 @@ export async function runServer(config: ServerConfig): Promise<void> {
     log,
   })
   port = server.port
+  // Devices on other networks reach this host through the relay, which this host dials out to.
+  const relay =
+    config.relayUrl && relayKey
+      ? new RelayAgent({
+          url: config.relayUrl,
+          key: relayKey,
+          attach: (socket) => server.attach(socket, 'other'),
+          log,
+        })
+      : undefined
+  relay?.start()
   schedules.start()
   log.info(`listening on ${config.host}:${server.port} (data: ${home})`)
   if (!isLoopbackHost(config.host)) {
@@ -143,6 +161,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     log,
     exit: (code) => process.exit(code),
     close: async () => {
+      relay?.stop()
       automation.stop()
       await sessions.close()
       workspace.terminals.shutdown()

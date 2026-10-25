@@ -7,6 +7,8 @@ export const PROTOCOL_VERSION = 1
 /** Frames carried over the single host WebSocket (JSON text frames). */
 export const ClientFrame = z.discriminatedUnion('t', [
   z.object({ t: z.literal('ping') }),
+  /** Pair this device using a one-time code, over a connection that has no HTTP (a relay). */
+  z.object({ t: z.literal('pair'), code: z.string().max(32), deviceName: z.string().max(80) }),
   z.object({ t: z.literal('hello'), protocol: z.number().int(), token: z.string().optional() }),
   z.object({
     t: z.literal('req'),
@@ -106,6 +108,10 @@ export const ServerFrame = z.discriminatedUnion('t', [
   z.object({ t: z.literal('event'), stored: StoredEvent }),
   /** The host refused this connection (missing or wrong token). It closes right after. */
   z.object({ t: z.literal('denied'), reason: z.enum(['auth', 'origin', 'network']) }),
+  /** The answer to `pair` when the code was right: this device's token, shown once. */
+  z.object({ t: z.literal('paired'), token: z.string(), host: HostInfo }),
+  /** The answer to `pair` when it was not (wrong, expired, or too many tries). */
+  z.object({ t: z.literal('pair.failed'), error: z.string() }),
   /** Terminal output. `replay` marks the buffered history sent on attach. */
   z.object({
     t: z.literal('term.out'),

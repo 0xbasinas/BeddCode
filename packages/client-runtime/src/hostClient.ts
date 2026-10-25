@@ -9,6 +9,7 @@ import {
   type RpcResult,
   type StoredEvent,
 } from '@beddcode/contracts'
+import { RelaySocket, isRelayRoute } from './relaySocket.ts'
 
 /** `denied`: the host refused our token. It will not help to retry; the device has to be paired again. */
 export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'stopped' | 'denied'
@@ -260,7 +261,10 @@ export class HostClient {
   }
 
   private open() {
-    const create = this.options.createSocket ?? ((url: string) => new WebSocket(url))
+    const create =
+      this.options.createSocket ??
+      ((url: string) =>
+        (isRelayRoute(url) ? new RelaySocket(url) : new WebSocket(url)) as unknown as WebSocket)
     const ws = create(this.activeUrl)
     this.ws = ws
     let welcomed = false

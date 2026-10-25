@@ -7,6 +7,8 @@
     ".": "./src/index.ts",
     "./hostClient": "./src/hostClient.ts",
     "./pairLink": "./src/pairLink.ts",
+    "./relaySocket": "./src/relaySocket.ts",
+    "./relayCrypto": "./src/relayCrypto.ts",
     "./replica": "./src/replica.ts"
   },
   "scripts": {
@@ -14,6 +16,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@beddcode/contracts": "workspace:*"
+    "@beddcode/contracts": "workspace:*",
+    "@noble/ciphers": "^2.4.0",
+    "@noble/hashes": "^2.4.0"
   }
 }

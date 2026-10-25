@@ -1,5 +1,6 @@
 import { PairResult } from '@beddcode/contracts'
 import { pairWithHost, parseAddress, type HostEntry } from './hostCatalog.ts'
+import { pairViaRelay, parseRelayRoute } from './relaySocket.ts'
 
 /**
  * Everything another device needs to pair with a host, in one link a QR code can carry:
@@ -26,8 +27,8 @@ export function buildPairLink(link: PairLink): string {
 }
 
 const WS_ROUTE = /^wss?:\/\/[^\s/@?#]+(\/[^\s]*)?$/i
-/** A relay route carries the relay's address, the room and the key; see relay.ts. */
-const RELAY_ROUTE = /^relay\+wss?:\/\/[^\s@]+$/i
+/** A relay route carries the relay's address and the key; see relaySocket.ts. */
+const isRelay = (route: string) => parseRelayRoute(route) !== null
 
 /** Reads a pairing link a person pasted, or a scanner opened. Null for anything else. */
 export function parsePairLink(input: string): PairLink | null {
@@ -58,7 +59,7 @@ export function parsePairLink(input: string): PairLink | null {
         if (WS_ROUTE.test(value)) link.routes.push(value)
         break
       case 'y':
-        if (RELAY_ROUTE.test(value)) link.relay = value
+        if (isRelay(value)) link.relay = value
         break
     }
   }
@@ -95,6 +96,19 @@ export async function pairWithLink(
       lastError = err instanceof Error ? err : new Error(String(err))
       // A wrong or used code will not be right on another address.
       if (!/Could not reach/.test(lastError.message)) throw lastError
+    }
+  }
+  // No direct address answered: ask through the relay, which works from any network.
+  if (link.relay) {
+    const result = await pairViaRelay(link.relay, link.code, deviceName)
+    if (link.hostId && result.host.hostId !== link.hostId) {
+      throw new Error('The relay answered as a different computer than the one in the link.')
+    }
+    return {
+      key: result.host.hostId,
+      name: result.host.name,
+      routes: [...link.routes, link.relay],
+      token: result.token,
     }
   }
   throw (

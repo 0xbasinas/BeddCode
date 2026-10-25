@@ -114,9 +114,27 @@ export interface StartServerOptions {
   idleTimeoutMs?: number
 }
 
+/**
+ * What a connection needs from its socket. A `ws` WebSocket does; so does the stand-in for a
+ * device that arrives through a relay (see relay/agent.ts).
+ */
+export interface ConnSocket {
+  readonly readyState: number
+  readonly OPEN: number
+  readonly bufferedAmount: number
+  send(data: string): void
+  close(code?: number, reason?: string): void
+  terminate(): void
+  ping(): void
+  on(event: 'pong' | 'close', listener: () => void): unknown
+  on(event: 'message', listener: (raw: unknown) => void): unknown
+}
+
 export interface RunningServer {
   port: number
   hostInfo: HostInfo
+  /** Serves a connection that did not come in through this host's own listener (a relay's). */
+  attach(socket: ConnSocket, peer: PeerClass): void
   close(): Promise<void>
 }
 
@@ -285,7 +303,10 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     server.handleUpgrade(req, socket, head, (ws) => server.emit('connection', ws, req))
   })
   wss.on('connection', (ws, req) =>
-    handleConnection(ws, classifyRequest(req.socket.remoteAddress, req.headers)),
+    handleConnection(
+      ws as unknown as ConnSocket,
+      classifyRequest(req.socket.remoteAddress, req.headers),
+    ),
   )
   tunnels.on('connection', (ws, req) =>
     handleTunnel(ws, {
@@ -300,7 +321,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
   // A laptop that slept or a phone that lost its network leaves a socket that never closes on its
   // own; its subscriptions, terminals and watchers would stay attached. Close the silent ones.
   const idleMs = options.idleTimeoutMs ?? IDLE_TIMEOUT_MS
-  const lastSeen = new Map<WebSocket, number>()
+  const lastSeen = new Map<ConnSocket, number>()
   const sweep = setInterval(
     () => {
       const now = Date.now()
@@ -319,7 +340,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
   )
   sweep.unref()
 
-  function handleConnection(ws: WebSocket, peer: PeerClass) {
+  function handleConnection(ws: ConnSocket, peer: PeerClass) {
     // Trusted peers (this machine) are in at once; everyone else proves a token in `hello`.
     let authed = !needsToken(peer, guard)
     let deviceId: string | undefined
@@ -371,6 +392,24 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
         frame = ClientFrame.parse(JSON.parse(String(raw)))
       } catch {
         ws.close(1003, 'invalid frame')
+        return
+      }
+
+      if (!authed && frame.t === 'pair') {
+        const outcome = options.pairing.redeem(frame.code)
+        if (outcome === 'ok') {
+          const { token, device } = options.tokens.issue(frame.deviceName)
+          log.info(`paired device "${device.name}" over a relay`)
+          send({ t: 'paired', token, host: hostInfo })
+        } else {
+          send({
+            t: 'pair.failed',
+            error:
+              outcome === 'locked'
+                ? 'Too many wrong codes. Wait a minute and ask for a new one.'
+                : 'That code is wrong or has expired',
+          })
+        }
         return
       }
 
@@ -494,6 +533,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
   return {
     port,
     hostInfo,
+    attach: handleConnection,
     close: () =>
       new Promise<void>((resolve) => {
         clearInterval(sweep)
