@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { MousePointer2, Plus } from 'lucide-react'
+import { useEditorStore } from './store/editor-store'
+import { findElementInList } from './lib/element-utils'
 import { Composer } from '../composer/Composer.tsx'
 import { ModelMenu } from '../composer/Menus.tsx'
 import { ThreadView } from '../thread/ThreadView.tsx'
@@ -9,6 +11,24 @@ import { createSession, prompt, useAllSessions, useRuntime } from '../../stores/
 import { agentDefaults, defaultAgent, hostDefaults, usePreferences } from '../../stores/preferences.ts'
 
 const NEW = 'new'
+
+/** What is selected on the canvas, which the agent can read with design_get_selection. */
+function SelectionStrip() {
+  const names = useEditorStore((s) =>
+    s.selectedElementIds.map((id) => findElementInList(s.elements, id)?.name ?? '').filter(Boolean).join('|'),
+  )
+  const list = names ? names.split('|') : []
+  if (list.length === 0) return null
+  return (
+    <div className="design-agent-selection" title="The agent can see this selection">
+      <MousePointer2 size={12} />
+      <span>
+        Agent sees: {list.slice(0, 3).join(', ')}
+        {list.length > 3 ? ` +${list.length - 3}` : ''}
+      </span>
+    </div>
+  )
+}
 
 /**
  * An agent next to the canvas: the conversation of a session that has the design tools, so the
@@ -76,6 +96,7 @@ export function DesignAgentPanel({ hostKey }: { hostKey: string }) {
           <Plus size={14} />
         </button>
       </div>
+      <SelectionStrip />
       {shown ? (
         <ThreadView key={shown.id} sessionId={shown.id} />
       ) : (

@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import type { DesignProject } from '@beddcode/contracts'
 import type { DesignStore } from './designStore.ts'
+import type { DesignLink } from './designLink.ts'
 
 export const DESIGN_TOOL_NAMES = [
   'design_list',
@@ -10,6 +11,8 @@ export const DESIGN_TOOL_NAMES = [
   'design_update',
   'design_remove',
   'design_add_page',
+  'design_screenshot',
+  'design_get_selection',
 ] as const
 export type DesignToolName = (typeof DESIGN_TOOL_NAMES)[number]
 export const isDesignToolName = (name: string): name is DesignToolName =>
@@ -152,13 +155,34 @@ export const DESIGN_TOOL_DEFINITIONS = [
     description: 'Adds an empty page to a design and returns its id.',
     inputSchema: { type: 'object', properties: { design, name: { type: 'string' } } },
   },
+  {
+    name: 'design_screenshot',
+    description:
+      'Draws a design (a page, or one element and what is inside it) to a picture and returns it, so you can see what you made: layout, overlaps, clipped text, colours. Needs the BeddCode desktop or web app open on this host. Look at it after drawing and fix what is off.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        design,
+        page,
+        element: { type: 'string', description: 'Id of one element to draw by itself; the whole page if omitted.' },
+        scale: { type: 'number', description: 'Pixel scale, 0.25 to 2 (default 1).' },
+      },
+    },
+  },
+  {
+    name: 'design_get_selection',
+    description:
+      'What the user has selected in the Design screen right now (id, type, name, position, size and style of each element). When the user says "this", "these" or "the selected card", read this first.',
+    inputSchema: { type: 'object', properties: {} },
+  },
 ] as const
 
 export const DESIGN_INSTRUCTIONS = `BeddCode design canvas. You can draw on the design canvases kept on this host; the user has the same canvas open in the Design screen and sees your changes as you make them.
 - design_read first when working on an existing design. Coordinates are in pixels, origin top-left; a child's x and y are relative to its frame or group.
 - Build in a few design_add calls rather than many: a frame per screen or card, with its children inside it. Give frames a fill and a size before filling them.
 - Text uses textContent, fontSize and textColor (not fill). Colours are CSS strings.
-- Use design_read afterwards to check positions and sizes; nothing is rendered for you, so keep your own sums right.`
+- After drawing, call design_screenshot to look at the result and fix what is off. design_read gives the exact numbers.
+- When the user refers to "this" or "the selected" element, call design_get_selection.`
 
 type Args = Record<string, unknown>
 type El = Record<string, unknown> & { id: string; type: string; children?: El[] }
@@ -168,7 +192,7 @@ interface Page {
   elements: El[]
 }
 export interface DesignMcpResult {
-  content: { type: 'text'; text: string }[]
+  content: ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string })[]
   isError?: boolean
 }
 
@@ -212,6 +236,10 @@ function find(list: El[], id: string): { el: El; siblings: El[] } | undefined {
     }
   }
   return undefined
+}
+
+function flatIds(els: El[]): string[] {
+  return els.flatMap((e) => [e.id, ...(e.children ? flatIds(e.children) : [])])
 }
 
 function build(raw: unknown, depth: number, budget: { left: number }): El {
@@ -282,7 +310,10 @@ function summarize(el: El, depth: number): Record<string, unknown> {
 
 /** The design tools: they work on the host's designs directly, so no editor has to be open. */
 export class DesignTools {
-  constructor(private readonly designs: DesignStore) {}
+  constructor(
+    private readonly designs: DesignStore,
+    private readonly link?: DesignLink,
+  ) {}
 
   private resolve(args: Args): string {
     const given = typeof args.design === 'string' ? args.design : undefined
@@ -291,6 +322,35 @@ export class DesignTools {
       return given
     }
     return this.designs.list()[0]?.id ?? this.designs.create('Untitled', 'agent').id
+  }
+
+  /** Like `call`, and also runs the tools that need an app to answer (pictures). */
+  async callAsync(tool: DesignToolName, args: Args): Promise<DesignMcpResult> {
+    if (tool !== 'design_screenshot') return this.call(tool, args)
+    try {
+      return await this.screenshot(args)
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  private async screenshot(args: Args): Promise<DesignMcpResult> {
+    if (!this.link) return fail('Pictures of designs are not available on this host.')
+    const id = this.resolve(args)
+    const d = this.designs.get(id)!
+    const pg = pageOf(d.project, typeof args.page === 'string' ? args.page : undefined)
+    const elementId = typeof args.element === 'string' ? args.element : undefined
+    if (elementId && !find(pg.elements, elementId))
+      throw new Error(`No element ${elementId} on page ${pg.id}`)
+    const scale = Math.min(Math.max(Number(args.scale) || 1, 0.25), 2)
+    const result = await this.link.render({ designId: id, pageId: pg.id, elementId, scale })
+    if (!result.ok) return fail(result.error)
+    return {
+      content: [
+        { type: 'text', text: `${d.name}, page ${pg.name}${elementId ? `, element ${elementId}` : ''}` },
+        { type: 'image', data: result.image.data, mimeType: result.image.mime },
+      ],
+    }
   }
 
   call(tool: DesignToolName, args: Args): DesignMcpResult {
@@ -303,6 +363,19 @@ export class DesignTools {
 
   private run(tool: DesignToolName, args: Args): unknown {
     switch (tool) {
+      case 'design_screenshot':
+        throw new Error('design_screenshot needs callAsync')
+      case 'design_get_selection': {
+        const view = this.link?.current()
+        const d = view?.designId ? this.designs.get(view.designId) : undefined
+        if (!view || !d) return 'Nothing is open in a Design screen right now, so nothing is selected.'
+        const pg = pageOf(d.project, view.pageId)
+        const picked = view.selection
+          .map((sel) => find(pg.elements, sel)?.el)
+          .filter((e): e is El => e !== undefined)
+        if (!picked.length) return { design: d.id, page: pg.id, selected: [], note: 'Nothing is selected.' }
+        return { design: d.id, page: pg.id, selected: picked.map((e) => summarize(e, 2)) }
+      }
       case 'design_list':
         return { designs: this.designs.list() }
       case 'design_create': {
@@ -343,6 +416,7 @@ export class DesignTools {
             } else pg.elements.push(...made)
           },
           'agent',
+          flatIds(made),
         )
         const ids = (els: El[]): unknown[] =>
           els.map((e) => (e.children?.length ? { id: e.id, children: ids(e.children) } : e.id))
@@ -353,6 +427,7 @@ export class DesignTools {
         if (!Array.isArray(args.updates) || !args.updates.length)
           throw new Error('updates must be a non-empty array')
         const missing: string[] = []
+        const touched: string[] = []
         this.designs.mutate(
           id,
           (project) => {
@@ -370,9 +445,11 @@ export class DesignTools {
               const props = pick(raw)
               delete props.type
               Object.assign(hit.el, props)
+              touched.push(elId)
             }
           },
           'agent',
+          touched,
         )
         if (missing.length)
           throw new Error(`No element with id ${missing.join(', ')} (the others were updated)`)

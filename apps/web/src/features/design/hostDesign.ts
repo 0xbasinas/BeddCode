@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DesignSummary } from '@beddcode/contracts'
-import { hostRequest, onHostFrame } from '../../stores/host.ts'
+import { hostRequest, onHostFrame, reportDesignView } from '../../stores/host.ts'
 import { useEditorStore } from './store/editor-store'
 import { buildProjectPayload } from './lib/server-project'
 
@@ -141,6 +141,31 @@ export function useHostDesign(hostKey: string) {
     }
   }, [save])
 
+  // What is open here, so an agent can read the selection and draw the design it is looking at.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const report = () => {
+      const s = useEditorStore.getState()
+      reportDesignView(hostKey, {
+        designId: current.current ?? undefined,
+        pageId: s.activePageId,
+        selection: s.selectedElementIds.slice(0, 200),
+      })
+    }
+    const stop = useEditorStore.subscribe((s, prev) => {
+      if (s.selectedElementIds === prev.selectedElementIds && s.activePageId === prev.activePageId)
+        return
+      clearTimeout(timer)
+      timer = setTimeout(report, 150)
+    })
+    report()
+    return () => {
+      stop()
+      clearTimeout(timer)
+      reportDesignView(hostKey, {})
+    }
+  }, [hostKey, currentId])
+
   // Changes from elsewhere.
   useEffect(
     () =>
@@ -148,6 +173,8 @@ export function useHostDesign(hostKey: string) {
         if (frame.t !== 'design.changed') return
         const clientId = useEditorStore.getState().clientId
         void refreshList().catch(() => {})
+        if (frame.origin === 'agent' && frame.touched?.length)
+          useEditorStore.getState().markAgentTouched(frame.touched)
         // An agent drawing on another design: follow it, so the user watches the work happen.
         if (frame.origin === 'agent' && frame.id !== current.current && current.current) {
           void switchRef.current(frame.id).catch(() => {})

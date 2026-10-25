@@ -208,6 +208,18 @@ function startHost(entry: HostEntry) {
         answer({ ok: false, error: err instanceof Error ? err.message : String(err) }),
       )
     },
+    onDesignRender(request) {
+      const { id, ...req } = request
+      const answer = (reply: { image?: { data: string; mime: string }; error?: string }) =>
+        client.send({ t: 'design.rendered', id, ...reply })
+      // The editor's drawing code is loaded only when an agent asks for a picture.
+      import('../features/design/agentRender.ts')
+        .then((m) => m.renderForAgent(entry.key, req))
+        .then(
+          (image) => answer({ image }),
+          (err: unknown) => answer({ error: err instanceof Error ? err.message : String(err) }),
+        )
+    },
     onCaughtUp() {
       flush()
       patchRuntime(entry.key, () => ({ synced: true }))
@@ -223,6 +235,7 @@ function startHost(entry: HostEntry) {
   })
   clients.set(entry.key, client)
   client.offerBrowser(browserOffer())
+  client.offerDesign({ canRender: true, ...designViews.get(entry.key) })
   client.start()
 }
 
@@ -235,6 +248,18 @@ let browserCallHandler: BrowserCallHandler | null = null
 const browserOffer = (focus?: { sessionId: string; at: number }) => {
   const available = typeof window !== 'undefined' && !!window.beddcodeDesktop?.browser
   return available ? { available, focus } : { available, reason: 'web' as const }
+}
+
+/** What each host was last told is open in the Design screen. */
+const designViews = new Map<string, { designId?: string; pageId?: string; selection?: string[] }>()
+
+/** Tells a host what this window has open in the Design screen, so agents can see the selection. */
+export function reportDesignView(
+  hostKey: string,
+  view: { designId?: string; pageId?: string; selection?: string[] },
+) {
+  designViews.set(hostKey, view)
+  clients.get(hostKey)?.offerDesign({ canRender: true, ...view })
 }
 
 /** Sets who runs agents' browser tool calls (features/browser/browserAgent.ts). */

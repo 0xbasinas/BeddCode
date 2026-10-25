@@ -113,6 +113,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     automation: { schedules, alerts, designs },
     agentTools,
     browser: automation.browser,
+    designLink: automation.designLink,
     log,
   })
   port = server.port

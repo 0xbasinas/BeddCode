@@ -7,6 +7,8 @@ export interface DesignChange {
   id: string
   rev: number
   origin?: string
+  /** Ids of the elements an agent just added or changed. */
+  touched?: string[]
 }
 
 const SAFE_ID = /^[\w-]{1,64}$/
@@ -98,23 +100,28 @@ export class DesignStore {
   }
 
   /** Replaces a design's content (the editor saves whole projects). */
-  save(id: string, project: DesignProject, origin?: string): DesignSummary {
+  save(id: string, project: DesignProject, origin?: string, touched?: string[]): DesignSummary {
     const design = this.load(id)
     if (!design) throw new Error(`No design ${id}`)
     const name = typeof project.name === 'string' && project.name.trim() ? project.name : design.name
     const next: Design = { ...design, name, project, rev: design.rev + 1, updatedAt: Date.now() }
     this.write(next)
-    this.emit(next, origin)
+    this.emit(next, origin, touched)
     return this.summary(next)
   }
 
   /** Changes a design in place with `edit`; used by the agents' tools. */
-  mutate(id: string, edit: (project: DesignProject) => void, origin?: string): DesignSummary {
+  mutate(
+    id: string,
+    edit: (project: DesignProject) => void,
+    origin?: string,
+    touched?: string[],
+  ): DesignSummary {
     const design = this.load(id)
     if (!design) throw new Error(`No design ${id}`)
     const project = structuredClone(design.project)
     edit(project)
-    return this.save(id, project, origin)
+    return this.save(id, project, origin, touched)
   }
 
   rename(id: string, name: string, origin?: string): DesignSummary {
@@ -131,7 +138,8 @@ export class DesignStore {
     }
   }
 
-  private emit(design: Design, origin?: string) {
-    for (const l of this.listeners) l({ id: design.id, rev: design.rev, origin })
+  private emit(design: Design, origin?: string, touched?: string[]) {
+    for (const l of this.listeners)
+      l({ id: design.id, rev: design.rev, origin, ...(touched?.length ? { touched } : {}) })
   }
 }

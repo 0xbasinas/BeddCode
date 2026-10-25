@@ -602,3 +602,35 @@ export async function exportAsPDF(): Promise<void> {
 export async function exportElementAsPNG(element: DesignElement, scale: number = 2): Promise<void> {
   return exportElement(element, { format: 'PNG', scale })
 }
+
+/**
+ * An element and what is inside it, drawn offscreen to a PNG data URL (not downloaded). The SVG
+ * goes straight onto a canvas, so nothing depends on the page's styles or on being on screen.
+ */
+export async function renderElementToDataUrl(
+  element: DesignElement,
+  opts: { scale: number; background?: string }
+): Promise<string> {
+  const svg = buildElementSvg(element, opts.scale)
+  // The page's fonts do not reach an SVG drawn as an image, so give text a sensible fallback.
+  const markup = new XMLSerializer()
+    .serializeToString(svg)
+    .replace(/font-family="([^"]*)"/g, (_m, f) => `font-family="${f}, system-ui, 'Segoe UI', Arial, sans-serif"`)
+  const img = new Image()
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve()
+    img.onerror = () => reject(new Error('The design could not be drawn to a picture'))
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`
+  })
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(element.width * opts.scale))
+  canvas.height = Math.max(1, Math.round(element.height * opts.scale))
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('No 2d canvas available')
+  if (opts.background) {
+    ctx.fillStyle = opts.background
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+  }
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+  return canvas.toDataURL('image/png')
+}

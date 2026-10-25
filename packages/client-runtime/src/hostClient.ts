@@ -33,6 +33,8 @@ export interface HostClientOptions {
   onState?(state: ConnectionState, host?: HostInfo): void
   /** An agent's browser tool call to run (only after `offerBrowser` said this client can). */
   onBrowserCall?(id: string, call: BrowserUseCall): void
+  /** An agent wants a picture of a design (only after `offerDesign` said this client can). */
+  onDesignRender?(request: Extract<ServerFrame, { t: 'design.render' }>): void
   /** Inject a socket for tests; defaults to the platform WebSocket. */
   createSocket?(url: string): WebSocket
   backoff?: { minMs: number; maxMs: number }
@@ -164,6 +166,19 @@ export class HostClient {
     this.send(frame)
   }
 
+  private designView: Extract<ClientFrame, { t: 'design.view' }> | null = null
+
+  /**
+   * Tells the host whether this client can draw designs for agents and what it has open in the
+   * Design screen. Remembered and sent again on every reconnect.
+   */
+  offerDesign(view: Omit<Extract<ClientFrame, { t: 'design.view' }>, 't'>) {
+    const frame = { t: 'design.view' as const, ...view }
+    if (JSON.stringify(frame) === JSON.stringify(this.designView)) return
+    this.designView = frame
+    this.send(frame)
+  }
+
   /** Sends a frame if connected. Returns false when it could not be sent (the caller may retry). */
   send(frame: ClientFrame): boolean {
     const ws = this.ws
@@ -244,6 +259,7 @@ export class HostClient {
         this.setState('connected', frame.host)
         ws.send(JSON.stringify({ t: 'subscribe', afterSeq: this.lastSeq }))
         if (this.browserOffer) ws.send(JSON.stringify(this.browserOffer))
+        if (this.designView) ws.send(JSON.stringify(this.designView))
         break
       case 'denied':
         this.setState('denied')
@@ -271,6 +287,9 @@ export class HostClient {
         break
       case 'browser.call':
         this.options.onBrowserCall?.(frame.id, frame.call)
+        break
+      case 'design.render':
+        this.options.onDesignRender?.(frame)
         break
       case 'res': {
         const p = this.pending.get(frame.id)

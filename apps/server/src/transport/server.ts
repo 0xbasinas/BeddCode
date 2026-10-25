@@ -22,6 +22,7 @@ import type { PairingManager } from '../auth/pairing.ts'
 import type { TokenStore } from '../auth/tokens.ts'
 import type { AgentTools } from '../automation/agentTools.ts'
 import type { BrowserBroker } from '../automation/browserUse.ts'
+import type { DesignLink } from '../design/designLink.ts'
 import type { TailscaleService } from '../network/tailscale.ts'
 import type { EventStore } from '../store/eventStore.ts'
 import type { AgentCatalog } from '../agents/catalog.ts'
@@ -99,6 +100,8 @@ export interface StartServerOptions {
   agentTools?: AgentTools
   /** Runs agents' browser tools on connected desktop apps. */
   browser?: BrowserBroker
+  /** Pictures of designs for agents, drawn by connected apps, and what they have selected. */
+  designLink?: DesignLink
   /** Who may connect; defaults to this machine plus the tailnet, tokens for everyone else. */
   guard?: GuardOptions
   log: Logger
@@ -305,6 +308,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     let unsubscribe: (() => void) | null = null
     // Joins the browser broker once it offers (the desktop app does).
     const browserClient = options.browser?.connect(send)
+    const designClient = options.designLink?.connect(send)
     // Design canvases saved by anyone, so open editors can refresh.
     const stopDesigns = options.automation.designs.onChange((c) => {
       if (authed) send({ t: 'design.changed', ...c })
@@ -328,6 +332,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       terminalDetach.forEach((detach) => detach())
       watching.forEach((release) => release())
       browserClient?.close()
+      designClient?.close()
       stopDesigns()
     })
 
@@ -408,6 +413,10 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
               ),
             )
           }
+          break
+        case 'design.view':
+        case 'design.rendered':
+          designClient?.frame(frame)
           break
         case 'browser.offer':
         case 'browser.result':

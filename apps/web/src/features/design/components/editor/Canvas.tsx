@@ -1751,6 +1751,32 @@ export function Canvas() {
     )
   })() : null
 
+  // What an agent just drew or changed: an accent outline that fades after a few seconds.
+  const agentTouched = useEditorStore((s) => s.agentTouched)
+  const agentTouchedEl = agentTouched ? (
+    <g pointerEvents="none" key={agentTouched.at}>
+      {agentTouched.ids.map((id) => {
+        const el = findElementInList(elements, id)
+        if (!el) return null
+        const abs = getAbsolutePosition(id)
+        return (
+          <rect
+            key={id}
+            className="agent-touched"
+            x={(abs?.x ?? el.x) - 1 / safeZoom}
+            y={(abs?.y ?? el.y) - 1 / safeZoom}
+            width={el.width + 2 / safeZoom}
+            height={el.height + 2 / safeZoom}
+            fill="none"
+            stroke="var(--dc-accent)"
+            strokeWidth={2 / safeZoom}
+            rx={el.cornerRadius ? el.cornerRadius / 4 : 0}
+          />
+        )
+      })}
+    </g>
+  ) : null
+
   // Distance measurement lines (show automatically when element is selected, like Figma)
   // In Figma, distance measurements show automatically on selection
   const measurementEl = selectedElementIds.length === 1 ? (() => {
@@ -2198,6 +2224,7 @@ export function Canvas() {
               {eyedropperEl}
               {selectionHandlesEl}
               {hoverHighlightEl}
+              {agentTouchedEl}
               {measurementEl}
               {multiSelectBoxEl}
               {scaleHandlesEl}

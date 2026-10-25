@@ -9,6 +9,7 @@ import { AlertService } from './alerts.ts'
 import { writeBridge } from './bridge.ts'
 import { DesignStore } from '../design/designStore.ts'
 import { DesignTools } from '../design/designTools.ts'
+import { DesignLink } from '../design/designLink.ts'
 import { BrowserBroker, BrowserTools } from './browserUse.ts'
 import { ScheduleService } from './schedules.ts'
 
@@ -78,6 +79,7 @@ export function createAutomation(deps: AutomationDeps) {
     deps.browserImageDir ?? path.join(home, 'browser-images'),
   )
   const designs = new DesignStore(path.join(home, 'designs'))
+  const designLink = new DesignLink()
   const agentTools = new AgentTools(
     {
       create,
@@ -93,7 +95,7 @@ export function createAutomation(deps: AutomationDeps) {
     },
     { file: writeBridge(home), url: () => `http://127.0.0.1:${deps.port()}/agent-tools` },
     browser,
-    new DesignTools(designs),
+    new DesignTools(designs, designLink),
   )
   const stopAlerts = store.subscribe((stored) => alerts.onEvent(stored))
   return {
@@ -102,6 +104,7 @@ export function createAutomation(deps: AutomationDeps) {
     agentTools,
     browser: broker,
     designs,
+    designLink,
     stop() {
       schedules.stop()
       stopAlerts()

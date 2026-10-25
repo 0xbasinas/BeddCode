@@ -42,6 +42,25 @@ export const ClientFrame = z.discriminatedUnion('t', [
   }),
   /** The answer to a `browser.call`. */
   z.object({ t: z.literal('browser.result'), id: z.string(), result: BrowserUseResult }),
+  /**
+   * Whether this client can draw designs to pictures for agents (the web and desktop apps can),
+   * and what it has open in the Design screen: the design, its page and the selected elements.
+   * Sent again whenever any of it changes.
+   */
+  z.object({
+    t: z.literal('design.view'),
+    canRender: z.boolean(),
+    designId: z.string().optional(),
+    pageId: z.string().optional(),
+    selection: z.array(z.string()).max(200).optional(),
+  }),
+  /** The answer to a `design.render`: a picture, or why there is none. */
+  z.object({
+    t: z.literal('design.rendered'),
+    id: z.string(),
+    image: z.object({ data: z.string(), mime: z.string() }).optional(),
+    error: z.string().optional(),
+  }),
 ])
 export type ClientFrame = z.infer<typeof ClientFrame>
 
@@ -87,6 +106,17 @@ export const ServerFrame = z.discriminatedUnion('t', [
     id: z.string(),
     rev: z.number().int(),
     origin: z.string().optional(),
+    /** Ids of the elements an agent just added or changed. */
+    touched: z.array(z.string()).max(500).optional(),
+  }),
+  /** An agent wants a picture of (part of) a design; only sent to clients that can render. */
+  z.object({
+    t: z.literal('design.render'),
+    id: z.string(),
+    designId: z.string(),
+    pageId: z.string().optional(),
+    elementId: z.string().optional(),
+    scale: z.number().optional(),
   }),
   z.object({ t: z.literal('browser.call'), id: z.string(), call: BrowserUseCall }),
 ])

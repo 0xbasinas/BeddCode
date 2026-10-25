@@ -269,7 +269,7 @@ export class AgentTools {
           content: [{ type: 'text', text: 'This session may not use the design canvas.' }],
           isError: true,
         }
-      return this.design.call(name, p.arguments ?? {})
+      return this.design.callAsync(name, p.arguments ?? {})
     }
     if (!has.agents)
       return {

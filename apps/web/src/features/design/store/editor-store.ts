@@ -627,6 +627,9 @@ interface EditorState {
   lastRemoteOrigin: string | null
   /** Bumped when a project is opened, so the canvas fits it into view. */
   fitNonce: number
+  /** Elements an agent just drew or changed; shown highlighted for a few seconds. */
+  agentTouched: { ids: string[]; at: number } | null
+  markAgentTouched: (ids: string[]) => void
 
   // Prototype player state (PHASE 2)
   /** Fullscreen prototype playback is active */
@@ -1662,6 +1665,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   syncStatus: 'offline',
   lastRemoteOrigin: null,
   fitNonce: 0,
+  agentTouched: null,
+  markAgentTouched: (ids) => {
+    const at = Date.now()
+    set({ agentTouched: { ids, at } })
+    setTimeout(() => {
+      if (get().agentTouched?.at === at) set({ agentTouched: null })
+    }, 3500)
+  },
 
   isPreviewing: false,
   previewFrameId: null,
@@ -3433,7 +3444,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const normalized = normalizeServerProject(project)
       // Preserve the user's selection when the selected elements still exist.
       const preservedSelection = state.selectedElementIds.filter((id) =>
-        normalized.activePageElements.some((e) => e.id === id)
+        findElementInList(normalized.activePageElements, id) !== null
       )
       return {
         elements: normalized.activePageElements,

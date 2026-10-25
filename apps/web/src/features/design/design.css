@@ -485,3 +485,36 @@
   color: var(--text, inherit);
   font-weight: 500;
 }
+
+/* An agent's edit: its elements are outlined for a moment, with a pulsing dot while it works. */
+.agent-touched {
+  animation: agent-fade 3.5s ease-out forwards;
+}
+@keyframes agent-fade {
+  0%, 60% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.agent-dot {
+  animation: agent-pulse 1s ease-in-out infinite;
+}
+@keyframes agent-pulse {
+  50% { opacity: 0.3; }
+}
+
+.design-agent-selection {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 8px 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-muted, #8a8a8a);
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+  flex-shrink: 0;
+}
+.design-agent-selection span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

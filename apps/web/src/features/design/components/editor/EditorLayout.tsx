@@ -9,6 +9,18 @@ import { FindReplaceModal } from './FindReplaceModal'
 import { ShortcutsModal } from './ShortcutsModal'
 
 /** Left sidebar 241px, right sidebar 320px (the Figma UI3 measurements OpenFigma uses). */
+/** Shown for a few seconds while an agent is drawing on the canvas. */
+function AgentBadge() {
+  const active = useEditorStore((s) => s.agentTouched !== null)
+  if (!active) return null
+  return (
+    <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full bg-[color:var(--dc-raised)] border border-[color:var(--dc-accent)] px-2.5 py-1 text-[11px] text-[color:var(--dc-text2)] pointer-events-none">
+      <span className="agent-dot w-1.5 h-1.5 rounded-full bg-[color:var(--dc-accent)]" />
+      Agent is drawing
+    </div>
+  )
+}
+
 export function EditorLayout() {
   const { leftSidebarVisible, rightSidebarVisible } = useEditorStore()
   return (
@@ -22,6 +34,7 @@ export function EditorLayout() {
         )}
         <div className="relative flex-1 min-w-0 h-full">
           <Canvas />
+          <AgentBadge />
           <Toolbar />
           <FindReplaceModal />
           <ShortcutsModal />
