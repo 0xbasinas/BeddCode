@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
+import '@/host/randomSource'
 import { startPush } from '@/host/push'
 import { startHosts, useHostStore } from '@/host/store'
 import { colors } from '@/theme/tokens'
