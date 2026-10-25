@@ -1,12 +1,15 @@
 import { useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Bot, Plus, Trash2 } from 'lucide-react'
 import { useHostStore } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { Select } from '../../ui/Select.tsx'
 import { useHostDesign, type DesignSync } from './hostDesign.ts'
+import { DesignAgentPanel } from './DesignAgentPanel.tsx'
 import { EditorLayout } from './components/editor/EditorLayout.tsx'
 import { Toaster } from './components/ui/toaster.tsx'
 import './design.css'
+
+const AGENT_KEY = 'beddcode.design.agent'
 
 const SYNC_LABEL: Record<DesignSync, string> = {
   loading: 'Opening…',
@@ -22,6 +25,21 @@ export function DesignPage() {
   const [hostKey, setHostKey] = useState(LOCAL_HOST_KEY)
   const selected = entries.some((e) => e.key === hostKey) ? hostKey : LOCAL_HOST_KEY
   const { designs, currentId, sync, create, remove, switchTo } = useHostDesign(selected)
+  const [agentOpen, setAgentOpen] = useState(() => {
+    try {
+      return localStorage.getItem(AGENT_KEY) !== 'closed'
+    } catch {
+      return true
+    }
+  })
+  const toggleAgent = () => {
+    setAgentOpen(!agentOpen)
+    try {
+      localStorage.setItem(AGENT_KEY, agentOpen ? 'closed' : 'open')
+    } catch {
+      // the choice lasts until the screen is left
+    }
+  }
   return (
     <main className="panel design-main">
       <div className="design-bar">
@@ -70,9 +88,22 @@ export function DesignPage() {
           <Trash2 size={14} />
         </button>
         <span className={`design-sync ${sync}`}>{SYNC_LABEL[sync]}</span>
+        <button
+          type="button"
+          className={`design-bar-btn design-agent-toggle ${agentOpen ? 'on' : ''}`}
+          title={agentOpen ? 'Hide agent' : 'Show agent'}
+          aria-label="Toggle agent panel"
+          aria-pressed={agentOpen}
+          onClick={toggleAgent}
+        >
+          <Bot size={14} />
+        </button>
       </div>
-      <div className="design-editor">
-        <EditorLayout />
+      <div className="design-body">
+        <div className="design-editor">
+          <EditorLayout />
+        </div>
+        {agentOpen && <DesignAgentPanel hostKey={selected} />}
       </div>
       <Toaster />
     </main>

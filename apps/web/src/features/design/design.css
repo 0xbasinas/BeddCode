@@ -426,3 +426,62 @@
   color: revert-layer;
   border: revert-layer;
 }
+
+/* The agent beside the canvas. */
+.design-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.design-body > .design-editor {
+  min-width: 0;
+}
+.design-agent-toggle.on {
+  color: var(--accent);
+}
+.design-agent {
+  flex: 0 0 clamp(300px, 28vw, 380px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+.design-agent-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  flex-shrink: 0;
+}
+.design-agent > .thread {
+  flex: 1;
+  border-radius: 0;
+  --pane-pad-x: 12px;
+}
+.design-agent .thread-head {
+  display: none;
+}
+.design-agent .transcript-inner {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+.design-agent-new {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 12px;
+  gap: 12px;
+}
+.design-agent-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-muted, #8a8a8a);
+}
+.design-agent-intro strong {
+  color: var(--text, inherit);
+  font-weight: 500;
+}
