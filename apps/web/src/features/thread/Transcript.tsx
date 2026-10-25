@@ -32,6 +32,7 @@ export function Transcript({
   onOpenFile,
   onFork,
   completedTurns = 0,
+  stoppedTurn,
   changes,
   sessionId,
   hostKey,
@@ -50,6 +51,8 @@ export function Transcript({
   onFork?(turnNo: number): void | Promise<void>
   /** Turns that have finished; a fork can only end after one of them. */
   completedTurns?: number
+  /** A turn the user stopped; its fork button stays visible instead of waiting for a hover. */
+  stoppedTurn?: number
 }) {
   const blocks = buildBlocks(items)
   const latestChanges = items.findLast((i) => i.kind === 'changes')?.id
@@ -141,7 +144,7 @@ export function Transcript({
             <ItemView item={block.item} cwd={cwd} onApprove={onApprove} onAnswer={onAnswer} />
             {canFork && (
               <button
-                className="fork-here"
+                className={`fork-here${turnNo === stoppedTurn ? ' always' : ''}`}
                 title="Fork from here: start a new session from this point"
                 aria-label="Fork from here"
                 onClick={() => void onFork(turnNo)}

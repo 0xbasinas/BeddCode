@@ -301,6 +301,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             onAnswer={(requestId, answers) => answerQuestion(sessionId, requestId, answers)}
             onFork={canFork ? (turnNo) => fork(turnNo) : undefined}
             completedTurns={session.completedTurns}
+            stoppedTurn={session.lastTurnReason === 'cancelled' ? session.completedTurns : undefined}
             changes={{ hostKey, sessionId, idle: !busy, worktree: Boolean(session?.worktree) }}
           />
         </div>

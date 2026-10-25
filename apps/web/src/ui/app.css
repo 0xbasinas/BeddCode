@@ -3042,6 +3042,10 @@ select option:disabled {
   opacity: 1;
   color: var(--text-muted);
 }
+.fork-here.always {
+  opacity: 1;
+  color: var(--text-muted);
+}
 .fork-here:hover {
   background: var(--bg-hover);
   color: var(--text);
