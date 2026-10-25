@@ -51,8 +51,11 @@ export const usePushPrefs = create<PushState>()(
   ),
 )
 
+// One shared object: a selector that returned a fresh one each time would re-render forever.
+const NO_PREFS: HostAlertPrefs = { enabled: false, events: DEFAULT_ALERT_EVENTS }
+
 export const hostAlertPrefs = (hosts: PushState['hosts'], hostKey: string): HostAlertPrefs =>
-  hosts[hostKey] ?? { enabled: false, events: DEFAULT_ALERT_EVENTS }
+  hosts[hostKey] ?? NO_PREFS
 
 /** Why this build cannot get a push token, in words, or undefined when it can try. */
 export function pushUnavailableReason(): string | undefined {
