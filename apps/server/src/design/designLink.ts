@@ -3,6 +3,7 @@ import type { ClientFrame, ServerFrame } from '@beddcode/contracts'
 type ViewFrame = Extract<ClientFrame, { t: 'design.view' }>
 type RenderedFrame = Extract<ClientFrame, { t: 'design.rendered' }>
 type ImportedFrame = Extract<ClientFrame, { t: 'design.imported' }>
+type LaidOutFrame = Extract<ClientFrame, { t: 'design.laidout' }>
 
 export interface DesignView {
   designId?: string
@@ -19,7 +20,10 @@ export interface RenderRequest {
 
 export type RenderResult = { ok: true; image: { data: string; mime: string } } | { ok: false; error: string }
 export type ImportResult = { ok: true; elements: unknown[] } | { ok: false; error: string }
-type Answer = RenderResult | ImportResult
+export type LayoutResult =
+  | { ok: true; pages: { id: string; elements: unknown[] }[] }
+  | { ok: false; error: string }
+type Answer = RenderResult | ImportResult | LayoutResult
 
 const RENDER_TIMEOUT_MS = 20_000
 
@@ -58,7 +62,7 @@ export class DesignLink {
       at: 0,
     }
     return {
-      frame: (frame: ViewFrame | RenderedFrame | ImportedFrame) => {
+      frame: (frame: ViewFrame | RenderedFrame | ImportedFrame | LaidOutFrame) => {
         if (frame.t === 'design.view') {
           client.canRender = frame.canRender
           client.view = {
@@ -73,7 +77,12 @@ export class DesignLink {
         const p = this.pending.get(frame.id)
         if (!p || !p.clients.has(client.id)) return
         // A client that could not draw it does not end the wait while another may still answer.
-        const answered = frame.t === 'design.rendered' ? frame.image : frame.elements
+        const answered =
+          frame.t === 'design.rendered'
+            ? frame.image
+            : frame.t === 'design.laidout'
+              ? frame.pages
+              : frame.elements
         if (!answered) {
           p.clients.delete(client.id)
           if (p.clients.size > 0) return
@@ -85,7 +94,9 @@ export class DesignLink {
             ? { ok: true, image: frame.image }
             : frame.t === 'design.imported' && frame.elements
               ? { ok: true, elements: frame.elements }
-              : { ok: false, error: frame.error ?? 'The app could not do this.' },
+              : frame.t === 'design.laidout' && frame.pages
+                ? { ok: true, pages: frame.pages }
+                : { ok: false, error: frame.error ?? 'The app could not do this.' },
         )
       },
       close: () => {
@@ -136,6 +147,11 @@ export class DesignLink {
   /** Asks the connected apps for a picture. */
   render(request: RenderRequest, timeoutMs = RENDER_TIMEOUT_MS): Promise<RenderResult> {
     return this.ask((id) => ({ t: 'design.render', id, ...request }), timeoutMs, 'draw the design') as Promise<RenderResult>
+  }
+
+  /** Asks the connected apps to work out auto layout and text sizes of a design. */
+  layout(designId: string, timeoutMs = 10_000): Promise<LayoutResult> {
+    return this.ask((id) => ({ t: 'design.layout', id, designId }), timeoutMs, 'lay out the design') as Promise<LayoutResult>
   }
 
   /** Asks the connected apps to turn SVG markup into design elements. */

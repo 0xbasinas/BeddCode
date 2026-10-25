@@ -54,6 +54,13 @@ export const ClientFrame = z.discriminatedUnion('t', [
     pageId: z.string().optional(),
     selection: z.array(z.string()).max(200).optional(),
   }),
+  /** The answer to a `design.layout`: every page with auto layout and text sizes worked out. */
+  z.object({
+    t: z.literal('design.laidout'),
+    id: z.string(),
+    pages: z.array(z.object({ id: z.string(), elements: z.array(z.unknown()) })).optional(),
+    error: z.string().optional(),
+  }),
   /** The answer to a `design.import`: the elements the SVG became, or why it did not. */
   z.object({
     t: z.literal('design.imported'),
@@ -125,6 +132,8 @@ export const ServerFrame = z.discriminatedUnion('t', [
     elementId: z.string().optional(),
     scale: z.number().optional(),
   }),
+  /** After an agent's edit: work out auto layout and text sizes of a design and send the pages back. */
+  z.object({ t: z.literal('design.layout'), id: z.string(), designId: z.string() }),
   /** An agent wants SVG markup turned into editable elements; only sent to clients that can render. */
   z.object({
     t: z.literal('design.import'),

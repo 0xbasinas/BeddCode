@@ -77,6 +77,32 @@ describe('design tools', () => {
     expect(run('design_read').json.elements[0].id).toBe(row!.id)
   })
 
+  it('saves the auto layout a connected app works out after an edit', async () => {
+    const sent: ServerFrame[] = []
+    const client = link.connect((f) => sent.push(f))
+    client.frame({ t: 'design.view', canRender: true })
+    const pending = tools.callAsync('design_add', {
+      elements: [
+        {
+          type: 'frame',
+          name: 'Row',
+          autoLayout: { direction: 'horizontal', gap: 8, padding: 4 },
+          children: [{ type: 'rectangle', name: 'A', width: 10, height: 10 }],
+        },
+      ],
+    })
+    await new Promise((r) => setTimeout(r, 0))
+    const asked = sent.find((f) => f.t === 'design.layout') as Extract<ServerFrame, { t: 'design.layout' }>
+    const stored = store.get(asked.designId)!.project.pages as { id: string; elements: any[] }[]
+    expect(stored[0]!.elements[0].autoLayout).toMatchObject({ gap: 8, paddingTop: 4, paddingLeft: 4, alignItems: 'start' })
+    const laid = structuredClone(stored[0]!.elements)
+    laid[0].children[0].x = 4
+    laid[0].children[0].y = 4
+    client.frame({ t: 'design.laidout', id: asked.id, pages: [{ id: stored[0]!.id, elements: laid }] })
+    await pending
+    expect(run('design_read').json.elements[0].children[0]).toMatchObject({ x: 4, y: 4 })
+  })
+
   it('draws SVG through a connected app as editable elements', async () => {
     const sent: ServerFrame[] = []
     const client = link.connect((f) => sent.push(f))
@@ -97,6 +123,9 @@ describe('design tools', () => {
       id: asked.id,
       elements: [{ id: 'x', type: 'frame', name: 'Imported SVG', x: 0, y: 0, width: 16, height: 16, children: [{ id: 'p', type: 'path', x: 0, y: 0, width: 16, height: 16 }] }],
     })
+    await new Promise((r) => setTimeout(r, 0))
+    const layout = sent.find((f) => f.t === 'design.layout') as Extract<ServerFrame, { t: 'design.layout' }>
+    client.frame({ t: 'design.laidout', id: layout.id, pages: [] })
     expect((await pending).isError).toBeUndefined()
     const el = run('design_read').json.elements[0]
     expect(el).toMatchObject({ name: 'Slash', x: 5, y: 6, type: 'frame' })

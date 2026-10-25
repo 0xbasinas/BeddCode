@@ -220,6 +220,16 @@ function startHost(entry: HostEntry) {
           (err: unknown) => answer({ error: err instanceof Error ? err.message : String(err) }),
         )
     },
+    onDesignLayout(request) {
+      const answer = (reply: { pages?: { id: string; elements: unknown[] }[]; error?: string }) =>
+        client.send({ t: 'design.laidout', id: request.id, ...reply })
+      import('../features/design/agentRender.ts')
+        .then((m) => m.layoutForAgent(entry.key, request.designId))
+        .then(
+          (pages) => answer({ pages }),
+          (err: unknown) => answer({ error: err instanceof Error ? err.message : String(err) }),
+        )
+    },
     onDesignImport(request) {
       const answer = (reply: { elements?: unknown[]; error?: string }) =>
         client.send({ t: 'design.imported', id: request.id, ...reply })

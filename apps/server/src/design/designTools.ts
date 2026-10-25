@@ -33,6 +33,11 @@ const FIELDS: ReadonlySet<string> = new Set([
   'layoutPositioning', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight', 'arrowHeadStyle',
 ])
 
+const MUTATING: ReadonlySet<string> = new Set([
+  'design_add', 'design_update', 'design_remove', 'design_add_page', 'design_add_svg',
+  'design_duplicate', 'design_move',
+])
+
 const ADD_TYPES = [
   'frame', 'rectangle', 'ellipse', 'text', 'line', 'arrow', 'polygon', 'star', 'group',
 ] as const
@@ -70,9 +75,9 @@ const elementProps = {
   letterSpacing: { type: 'number', description: 'Pixels.' },
   textAutoResize: {
     type: 'string',
-    enum: ['none', 'width-auto', 'grow'],
+    enum: ['fixed', 'hug', 'grow'],
     description:
-      'none: fixed box. width-auto: one line that sizes to its text. grow: fixed width, height follows the text.',
+      'fixed: the box you set. hug: one line, the box sizes to its text (the default when you give no width). grow: wraps at your width, the height follows the text (the default when you give a width).',
   },
   fills: {
     type: 'array',
@@ -103,7 +108,7 @@ const elementProps = {
   autoLayout: {
     type: 'object',
     description:
-      'On a frame: lays its children out in a row or column, so rows and lists line up by themselves. Fields: direction ("horizontal" | "vertical"), gap, paddingTop/Right/Bottom/Left, alignItems ("start"|"center"|"end"|"stretch"), justifyContent ("start"|"center"|"end"|"space-between"), primaryAxisSizing / counterAxisSizing ("fixed"|"hug"|"fill").',
+      'On a frame: lays its children out in a row or column, so rows and lists line up by themselves (their x and y are worked out; do not set them). Everything not given is 0 or "start". Fields: direction ("horizontal" | "vertical"), gap, padding (all four sides) or paddingTop/Right/Bottom/Left, alignItems ("start"|"center"|"end"|"stretch"), justifyContent ("start"|"center"|"end"|"space-between"), primaryAxisSizing / counterAxisSizing ("fixed"|"hug"|"fill").',
   },
   clipContent: { type: 'boolean', description: 'On a frame: hide what sticks out.' },
 }
@@ -276,7 +281,8 @@ Basics
 - design_read first when working on an existing design. Coordinates are in pixels, origin top-left; a child's x and y are relative to its frame or group.
 - Build in a few design_add calls: a frame per screen or card with its children inside. Give frames a fill and a size before filling them.
 - Text uses textContent, fontSize, fontWeight, textColor, lineHeight, letterSpacing and textAlign (not fill). Use "Inter" for UI text and a monospace family (e.g. "JetBrains Mono") for code, paths and numbers. Colours are CSS strings.
-- Use autoLayout on a frame for rows, lists and stacks instead of computing positions; use design_duplicate for repeated rows.
+- Use auto layout for every row, list, toolbar, card body and button: set autoLayout on the frame ({direction, gap, padding, alignItems, justifyContent}) and do not give its children x or y; they are placed for you. Children: layoutSizingH/V "fill" stretches along the frame, "hug" fits the content; a frame with primaryAxisSizing/counterAxisSizing "hug" grows to its children. Text without a width hugs its content. Example row: {type:"frame", name:"Row", width:260, height:32, fill:"transparent", autoLayout:{direction:"horizontal", gap:8, paddingLeft:12, paddingRight:12, alignItems:"center"}, children:[icon frame, {type:"text", textContent:"limits.ts", layoutSizingH:"fill"}, {type:"text", textContent:"+3 −1"}]}. Stack rows in a vertical auto layout frame. Positions you give are only for the top-level frames and for children you want absolutely placed (layoutPositioning:"absolute").
+- After each edit the app works out auto layout and text sizes, so design_read and design_screenshot show the real result. Use design_duplicate for repeated rows.
 - Icons, logos and glyphs: always design_add_svg with real vector shapes. Never use letters or unicode symbols as icons.
 
 Matching a reference image
@@ -306,13 +312,40 @@ const fail = (text: string): DesignMcpResult => ({ content: [{ type: 'text', tex
 
 const newId = (type: string) => `${type}-${Date.now().toString(36)}-${randomBytes(3).toString('hex')}`
 
+const AXIS_SIZING = new Set(['fixed', 'hug', 'fill'])
+
+/** An auto layout with every field set, so unspecified values are 0 and "start", not the editor's 10px. */
+function normAutoLayout(raw: unknown, base?: unknown): Record<string, unknown> {
+  const r = {
+    ...(typeof base === 'object' && base !== null ? base : {}),
+    ...(typeof raw === 'object' && raw !== null ? raw : {}),
+  } as Record<string, unknown>
+  const given = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
+  const n = (v: unknown, d: number) => (v !== undefined && v !== null && Number.isFinite(Number(v)) ? Number(v) : d)
+  const pad = (side: string) => (given.padding !== undefined ? n(given.padding, 0) : n(r[side], 0))
+  const sizing = (v: unknown) => (typeof v === 'string' && AXIS_SIZING.has(v) ? v : 'fixed')
+  return {
+    direction: r.direction === 'horizontal' ? 'horizontal' : 'vertical',
+    gap: n(r.gap, 0),
+    paddingTop: pad('paddingTop'),
+    paddingRight: pad('paddingRight'),
+    paddingBottom: pad('paddingBottom'),
+    paddingLeft: pad('paddingLeft'),
+    alignItems: typeof r.alignItems === 'string' ? r.alignItems : 'start',
+    justifyContent: typeof r.justifyContent === 'string' ? r.justifyContent : 'start',
+    primaryAxisSizing: sizing(r.primaryAxisSizing),
+    counterAxisSizing: sizing(r.counterAxisSizing),
+    ...(r.wrap === true ? { wrap: true, counterAxisGap: n(r.counterAxisGap, 0) } : {}),
+  }
+}
+
 function pick(raw: unknown): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   if (typeof raw !== 'object' || raw === null) return out
   for (const [k, v] of Object.entries(raw)) {
     if (!FIELDS.has(k) || v === undefined) continue
     if (typeof v === 'number' && !Number.isFinite(v)) continue
-    out[k] = v
+    out[k] = k === 'autoLayout' && typeof v === 'object' && v !== null ? normAutoLayout(v) : v
   }
   return out
 }
@@ -394,7 +427,7 @@ function build(raw: unknown, depth: number, budget: { left: number }): El {
           textColor: '#000000',
           lineHeight: 1.4,
           letterSpacing: 0,
-          textAutoResize: 'grow',
+          textAutoResize: src.width === undefined ? 'hug' : 'grow',
         }
       : {}),
     ...props,
@@ -454,23 +487,69 @@ export class DesignTools {
     private readonly link?: DesignLink,
   ) {}
 
+  /** The design the last call worked on, for the layout pass that follows an edit. */
+  private lastDesign: string | undefined
+
   private resolve(args: Args): string {
     const given = typeof args.design === 'string' ? args.design : undefined
-    if (given) {
-      if (!this.designs.get(given)) throw new Error(`No design ${given}. See design_list.`)
-      return given
-    }
-    return this.designs.list()[0]?.id ?? this.designs.create('Untitled', 'agent').id
+    const id = (() => {
+      if (given) {
+        if (!this.designs.get(given)) throw new Error(`No design ${given}. See design_list.`)
+        return given
+      }
+      return this.designs.list()[0]?.id ?? this.designs.create('Untitled', 'agent').id
+    })()
+    this.lastDesign = id
+    return id
+  }
+
+  /**
+   * After an edit, a connected app works out auto layout and text sizes (it has the fonts and the
+   * layout engine) and the result is saved, so design_read and the screenshots show real geometry.
+   */
+  private async settleLayout(): Promise<void> {
+    const id = this.lastDesign
+    const link = this.link
+    if (!id || !link) return
+    const before = this.designs.get(id)
+    if (!before) return
+    const result = await link.layout(id)
+    if (!result.ok) return
+    const now = this.designs.get(id)
+    // Someone else changed it meanwhile; their editor lays out its own edits.
+    if (!now || now.rev !== before.rev) return
+    const changed = pagesOf(now.project).some((pg) => {
+      const got = result.pages.find((p) => p.id === pg.id)
+      return got !== undefined && JSON.stringify(got.elements) !== JSON.stringify(pg.elements)
+    })
+    if (!changed) return
+    this.designs.mutate(
+      id,
+      (project) => {
+        for (const pg of pagesOf(project)) {
+          const got = result.pages.find((p) => p.id === pg.id)
+          if (got) pg.elements = got.elements as El[]
+        }
+      },
+      'agent',
+    )
   }
 
   /** Like `call`, and also runs the tools that need an app to answer (pictures). */
   async callAsync(tool: DesignToolName, args: Args): Promise<DesignMcpResult> {
-    if (tool !== 'design_screenshot' && tool !== 'design_add_svg') return this.call(tool, args)
+    let result: DesignMcpResult
     try {
-      return tool === 'design_add_svg' ? await this.addSvg(args) : await this.screenshot(args)
+      result =
+        tool === 'design_add_svg'
+          ? await this.addSvg(args)
+          : tool === 'design_screenshot'
+            ? await this.screenshot(args)
+            : this.call(tool, args)
     } catch (err) {
       return fail(err instanceof Error ? err.message : String(err))
     }
+    if (!result.isError && MUTATING.has(tool)) await this.settleLayout().catch(() => {})
+    return result
   }
 
   private async addSvg(args: Args): Promise<DesignMcpResult> {
@@ -681,9 +760,21 @@ export class DesignTools {
             /icon|glyph|logo|chevron|caret|close|search|check|arrow|rail/i.test(String(e.name ?? '')) ||
             (e.type === 'text' && /^[^\p{L}\p{N}\s]{1,2}$/u.test(String(e.textContent ?? ''))),
         )
+        const loose = flat.filter(
+          (e) =>
+            e.type === 'frame' && !e.autoLayout && (e.children?.length ?? 0) >= 3 && e.children!.every((c) => c.layoutPositioning !== 'absolute'),
+        )
         return {
           design: id,
           added: ids(made),
+          ...(loose.length
+            ? {
+                layoutHint: `Frames like ${loose
+                  .slice(0, 3)
+                  .map((e) => `"${e.name}"`)
+                  .join(', ')} hold several children placed by hand. If they are a row, list or stack, give the frame autoLayout (design_update) and drop the children's x/y, so spacing stays even.`,
+              }
+            : {}),
           ...(iconish.length
             ? {
                 hint: `Elements like ${iconish
@@ -715,6 +806,8 @@ export class DesignTools {
                 continue
               }
               const props = pick(raw)
+              if (typeof raw.autoLayout === 'object' && raw.autoLayout !== null)
+                props.autoLayout = normAutoLayout(raw.autoLayout, hit.el.autoLayout)
               delete props.type
               Object.assign(hit.el, props)
               touched.push(elId)

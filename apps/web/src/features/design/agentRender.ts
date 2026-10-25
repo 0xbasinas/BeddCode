@@ -89,3 +89,57 @@ export async function importSvgForAgent(svg: string, width?: number) {
   if (result.elements.length === 0) throw new Error('The SVG had no shapes the editor could draw')
   return result.elements
 }
+
+/** A text element's box sized to its content, as its autoResize mode says. */
+async function sizeText(el: DesignElement): Promise<DesignElement> {
+  const { measureText } = await import('./lib/text-measure')
+  const mode = el.textAutoResize || 'fixed'
+  if (el.type !== 'text' || mode === 'fixed' || typeof el.textContent !== 'string') return el
+  const m = measureText(
+    {
+      text: el.textContent,
+      fontFamily: el.fontFamily || 'Inter',
+      fontSize: el.fontSize || 16,
+      fontWeight: el.fontWeight || 400,
+      lineHeight: el.lineHeight || 1.4,
+      letterSpacing: el.letterSpacing || 0,
+      fontStyle: el.fontStyle || 'normal',
+    },
+    mode,
+    el.width,
+  )
+  return mode === 'hug' ? { ...el, width: m.width, height: m.height } : { ...el, height: m.height }
+}
+
+/** Text boxes sized, then auto layout worked out from the inside out. */
+async function layoutTree(el: DesignElement): Promise<DesignElement> {
+  const { computeAutoLayout } = await import('./lib/auto-layout')
+  const sized = await sizeText(el)
+  if (!sized.children?.length) return sized
+  const kids = await Promise.all(sized.children.map(layoutTree))
+  let cur: DesignElement = { ...sized, children: kids }
+  if (cur.type !== 'frame' || !cur.autoLayout) return cur
+  const res = computeAutoLayout(cur)
+  // A parent can resize its children ("fill"); those with layouts of their own need another pass.
+  const placed = await Promise.all(
+    res.children.map((c, i) => {
+      const before = kids.find((k) => k.id === c.id) ?? kids[i]
+      const resized = before && (before.width !== c.width || before.height !== c.height)
+      return resized && c.children?.length ? layoutTree(c) : c
+    }),
+  )
+  cur = { ...cur, children: placed, width: res.width, height: res.height }
+  return cur
+}
+
+/** Every page of a design with text sizes and auto layout worked out, for the host to keep. */
+export async function layoutForAgent(hostKey: string, designId: string) {
+  const design = await hostRequest(hostKey, 'design.get', { id: designId })
+  const project = design.project as { pages?: { id: string; elements?: unknown[] }[] }
+  return Promise.all(
+    (project.pages ?? []).map(async (page) => ({
+      id: page.id,
+      elements: await Promise.all((page.elements ?? []).map((e) => layoutTree(normalizeServerElement(e)))),
+    })),
+  )
+}

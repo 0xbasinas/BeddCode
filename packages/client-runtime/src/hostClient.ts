@@ -37,6 +37,8 @@ export interface HostClientOptions {
   onDesignRender?(request: Extract<ServerFrame, { t: 'design.render' }>): void
   /** An agent wants SVG markup turned into design elements (same condition). */
   onDesignImport?(request: Extract<ServerFrame, { t: 'design.import' }>): void
+  /** An agent's edit needs auto layout and text sizes worked out (same condition). */
+  onDesignLayout?(request: Extract<ServerFrame, { t: 'design.layout' }>): void
   /** Inject a socket for tests; defaults to the platform WebSocket. */
   createSocket?(url: string): WebSocket
   backoff?: { minMs: number; maxMs: number }
@@ -295,6 +297,9 @@ export class HostClient {
         break
       case 'design.import':
         this.options.onDesignImport?.(frame)
+        break
+      case 'design.layout':
+        this.options.onDesignLayout?.(frame)
         break
       case 'res': {
         const p = this.pending.get(frame.id)
