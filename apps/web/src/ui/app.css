@@ -5588,3 +5588,14 @@ button.agent-tools-chip.on:hover {
   flex: 1;
   min-width: 0;
 }
+/* Design fills the window: the canvas must receive the mouse, not move the window. */
+:root:has(.window-island) .shell-solo > * {
+  -webkit-app-region: no-drag;
+}
+/* Its slim top bar is the window's handle, and stays clear of the window buttons' card. */
+:root[data-desktop='true'] .design-bar {
+  -webkit-app-region: drag;
+}
+:root:has(.window-island) .design-bar {
+  padding-right: calc(var(--island-w) + var(--gap) * 2);
+}
