@@ -46,7 +46,9 @@ export function DesignAgentPanel({ hostKey }: { hostKey: string }) {
   const defaults = usePreferences((s) => hostDefaults(s.hosts, host?.hostId ?? hostKey))
 
   const shown = picked === NEW ? undefined : (sessions.find((s) => s.id === picked) ?? sessions[0])
-  const agent = defaultAgent(providers, defaults.instanceId)
+  const [agentId, setAgentId] = useState<string>()
+  const ready = providers.filter((p) => p.status === 'ready')
+  const agent = defaultAgent(providers, agentId ?? defaults.instanceId)
   const saved = agentDefaults(defaults, agent)
   const choice = modelChoice(
     agent?.capabilities.models ?? [],
@@ -55,6 +57,10 @@ export function DesignAgentPanel({ hostKey }: { hostKey: string }) {
   )
   const [chosen, setChosen] = useState<typeof choice>()
   const pick = chosen ?? choice
+  const changeAgent = (id: string) => {
+    setAgentId(id)
+    setChosen(undefined)
+  }
 
   const start = async (value: string, attachments: string[]) => {
     if (!agent) throw new Error('No agent is ready on this host')
@@ -107,6 +113,19 @@ export function DesignAgentPanel({ hostKey }: { hostKey: string }) {
               Describe what to draw. The agent works on the open canvas and you watch it appear.
             </span>
           </div>
+          {ready.length > 1 && (
+            <Select
+              aria-label="Agent harness"
+              value={agent?.id ?? ''}
+              onChange={(e) => changeAgent(e.target.value)}
+            >
+              {ready.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </Select>
+          )}
           <Composer
             draftId="design-agent"
             hostKey={hostKey}
