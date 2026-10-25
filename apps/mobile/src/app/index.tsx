@@ -301,10 +301,11 @@ export default function SessionsScreen() {
 
   return (
     <Screen>
+      {/* Pinned: only the sessions below scroll. */}
+      <View style={{ paddingHorizontal: 8 }}>{header}</View>
       <FlatList
         data={rows}
         keyExtractor={(r) => r.key}
-        ListHeaderComponent={header}
         ListEmptyComponent={empty ?? undefined}
         contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 8 }}
         keyboardShouldPersistTaps="handled"
