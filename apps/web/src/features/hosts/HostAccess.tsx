@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Clock, Monitor, RefreshCw, Trash2 } from 'lucide-react'
-import type { Device, PairingCode, RelaySettings, TailnetStatus } from '@beddcode/contracts'
+import type { Device, PairingCode, RelaySettings } from '@beddcode/contracts'
 import { hostRequest, useHostStore } from '../../stores/host.ts'
-import { DEFAULT_PORT, LOCAL_HOST_KEY, parseAddress } from '../../stores/hostCatalog.ts'
+import { LOCAL_HOST_KEY, parsePairLink } from '../../stores/hostCatalog.ts'
 import { CopyHostText, HostNote, HostSpinner, useHostMounted } from './HostControls.tsx'
 import { QrCode } from './QrCode.tsx'
 
 export function ShareThisComputer({ onClose }: { onClose(): void }) {
   const local = useHostStore((s) => s.runtimes[LOCAL_HOST_KEY])
-  const localEntry = useHostStore((s) => s.entries.find((entry) => entry.key === LOCAL_HOST_KEY))
   const [code, setCode] = useState<PairingCode>()
-  const [tailnet, setTailnet] = useState<TailnetStatus>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [now, setNow] = useState(Date.now())
@@ -38,18 +36,6 @@ export function ShareThisComputer({ onClose }: { onClose(): void }) {
   useEffect(() => {
     if (!connected) return
     void generate()
-    let cancelled = false
-    void (async () => {
-      try {
-        const result = await hostRequest(LOCAL_HOST_KEY, 'tailnet.peers', {})
-        if (!cancelled) setTailnet(result)
-      } catch {
-        /* Address entry remains available without discovery. */
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
   }, [connected, generate])
   useEffect(() => {
     if (!code) return
@@ -57,17 +43,19 @@ export function ShareThisComputer({ onClose }: { onClose(): void }) {
     return () => clearInterval(timer)
   }, [code])
   const left = code ? Math.max(0, Math.ceil((code.expiresAt - now) / 1000)) : 0
-  const host = tailnet?.self?.dnsName || tailnet?.self?.ip || local?.host?.name
-  const port = parseAddress(localEntry?.routes[0] ?? '')?.port ?? DEFAULT_PORT
-  const address = host ? `${host}:${port}` : undefined
+  // Only an address another device can really use is worth showing: the computer's own name
+  // means nothing to a phone, so it comes from the pairing link's direct routes.
+  const pairLink = code?.link ? parsePairLink(code.link) : null
+  const address = pairLink?.routes[0]?.replace(/^wss?:\/\//i, '').replace(/\/ws$/, '')
+  const relayOnly = !!pairLink && !pairLink.routes.length && !!pairLink.relay
   return (
     <>
       <div className="hosts-dialog-body">
         <div className="hosts-flow-heading">
           <h2>Let another computer connect</h2>
           <p>
-            On your phone or another computer, scan the code below, or choose Add host and enter the
-            address and code.
+            On your phone or another computer, scan the code below, or choose Add host and paste the
+            link or enter the code.
           </p>
         </div>
         {address && (
@@ -75,6 +63,12 @@ export function ShareThisComputer({ onClose }: { onClose(): void }) {
             <code>{address}</code>
             <CopyHostText text={address} label="Copy host address" iconOnly />
           </div>
+        )}
+        {connected && pairLink && !address && !relayOnly && (
+          <HostNote tone="warning">
+            Other devices cannot reach this computer yet. Turn on Connect from anywhere below, or
+            allow network access for this host.
+          </HostNote>
         )}
         {!connected ? (
           <HostNote tone="warning">
@@ -86,7 +80,7 @@ export function ShareThisComputer({ onClose }: { onClose(): void }) {
           <div className="hosts-field">
             {code.link ? (
               <div className="hosts-qr">
-                <QrCode text={code.link} label="Pairing QR code" />
+                <QrCode text={code.link} label="Pairing QR code" size={240} />
                 <div>
                   <strong>Scan to pair</strong>
                   <p>
