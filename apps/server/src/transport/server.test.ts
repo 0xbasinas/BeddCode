@@ -729,6 +729,13 @@ describe('access control', () => {
     expect(viaBrowser.status).toBe(403)
   })
 
+  it('keeps relay settings for the local machine, and says so when a host has none', async () => {
+    const { server } = await boot()
+    const c = await Client.connect(server.port)
+    const res = await c.rpc('host.relay.get', {})
+    expect(res.ok).toBe(false)
+  })
+
   it('lists and revokes devices, and a revoked token stops working', async () => {
     const { server, tokens } = await boot(undefined, { ...defaultGuard(), requireToken: true })
     const { token, device } = tokens.issue('Phone')
@@ -940,9 +947,9 @@ describe('automation', () => {
     expect(started).toMatchObject({ agent: 'fake', mode: 'ask' })
     const childId = started.session_id as string
     // A big call, such as a whole screen of design elements, is not turned away for its size.
-    expect(
-      await mcp.tool('get_status', { session_id: 'x'.repeat(200_000) }),
-    ).not.toMatchObject({ error: expect.stringMatching(/Invalid request/) })
+    expect(await mcp.tool('get_status', { session_id: 'x'.repeat(200_000) })).not.toMatchObject({
+      error: expect.stringMatching(/Invalid request/),
+    })
     expect(automation.agentTools.serversFor(childId)).toHaveLength(1)
 
     const waiting = await mcp.tool('wait_for', { session_id: childId, timeout_seconds: 20 })
@@ -987,7 +994,13 @@ describe('automation', () => {
       })
       return c
         .until((fs) => fs.some((f) => f.t === 'res' && f.id === id))
-        .then(() => c.frames.find((f) => f.t === 'res' && f.id === id) as Extract<ServerFrame, { t: 'res' }>)
+        .then(
+          () =>
+            c.frames.find((f) => f.t === 'res' && f.id === id) as Extract<
+              ServerFrame,
+              { t: 'res' }
+            >,
+        )
     }
     const a1 = await make(first, 'a')
     first.ws.terminate()

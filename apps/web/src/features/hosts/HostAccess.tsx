@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Clock, Monitor, RefreshCw, Trash2 } from 'lucide-react'
-import type { Device, PairingCode, TailnetStatus } from '@beddcode/contracts'
+import type { Device, PairingCode, RelaySettings, TailnetStatus } from '@beddcode/contracts'
 import { hostRequest, useHostStore } from '../../stores/host.ts'
 import { DEFAULT_PORT, LOCAL_HOST_KEY, parseAddress } from '../../stores/hostCatalog.ts'
 import { CopyHostText, HostNote, HostSpinner, useHostMounted } from './HostControls.tsx'
@@ -121,6 +121,7 @@ export function ShareThisComputer({ onClose }: { onClose(): void }) {
           )
         )}
         {error && <HostNote tone="error">{error}</HostNote>}
+        <RelaySetting onChange={() => void generate()} />
         <PairedDevices />
       </div>
       <footer className="hosts-dialog-footer">
@@ -137,6 +138,102 @@ export function ShareThisComputer({ onClose }: { onClose(): void }) {
         </button>
       </footer>
     </>
+  )
+}
+
+const RELAY_STATUS: Record<RelaySettings['status'], string> = {
+  off: 'Off',
+  connecting: 'Connecting…',
+  online: 'Connected',
+  offline: 'Cannot reach the relay, retrying',
+}
+
+/** Lets devices on other networks reach this computer through a relay, set with an ordinary address. */
+function RelaySetting({ onChange }: { onChange(): void }) {
+  const local = useHostStore((s) => s.runtimes[LOCAL_HOST_KEY])
+  const connected = local?.connection === 'connected'
+  const [settings, setSettings] = useState<RelaySettings>()
+  const [value, setValue] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string>()
+  const alive = useHostMounted()
+  const load = useCallback(async () => {
+    try {
+      const next = await hostRequest(LOCAL_HOST_KEY, 'host.relay.get', {})
+      if (alive.current) setSettings(next)
+    } catch {
+      /* An older host has no relay support; the section stays hidden. */
+    }
+  }, [alive])
+  useEffect(() => {
+    if (!connected) return
+    void load()
+    // The connection comes up a moment after it is set.
+    const timer = setInterval(() => void load(), 3000)
+    return () => clearInterval(timer)
+  }, [connected, load, local?.epoch])
+  useEffect(() => {
+    if (settings) setValue((current) => current || (settings.url ?? '').replace(/^wss?:\/\//, ''))
+  }, [settings])
+  const save = async (url: string | null) => {
+    setBusy(true)
+    setError(undefined)
+    try {
+      const next = await hostRequest(LOCAL_HOST_KEY, 'host.relay.set', { url })
+      if (!alive.current) return
+      setSettings(next)
+      if (!url) setValue('')
+      onChange()
+    } catch (err) {
+      if (alive.current) setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      if (alive.current) setBusy(false)
+    }
+  }
+  if (!connected || !settings) return null
+  return (
+    <div className="hosts-field">
+      <div className="hosts-section-title">
+        <h3>Connect from anywhere</h3>
+        <span className="hosts-secondary-copy">{RELAY_STATUS[settings.status]}</span>
+      </div>
+      <p className="hosts-secondary-copy">
+        Paste the address of a relay (like relay.example.com) so your phone can reach this computer
+        on any network. Everything stays encrypted between your devices.
+      </p>
+      <form
+        className="hosts-address-copy"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (value.trim()) void save(value.trim())
+        }}
+      >
+        <input
+          className="hosts-input"
+          value={value}
+          placeholder="relay.example.com"
+          onChange={(e) => setValue(e.target.value)}
+          disabled={busy}
+          spellCheck={false}
+          aria-label="Relay address"
+        />
+        <button className="hosts-button" type="submit" disabled={busy || !value.trim()}>
+          {busy && <HostSpinner />}
+          Save
+        </button>
+        {settings.url && (
+          <button
+            className="hosts-button destructive"
+            type="button"
+            disabled={busy}
+            onClick={() => void save(null)}
+          >
+            Turn off
+          </button>
+        )}
+      </form>
+      {error && <HostNote tone="error">{error}</HostNote>}
+    </div>
   )
 }
 

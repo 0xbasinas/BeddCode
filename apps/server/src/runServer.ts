@@ -4,13 +4,20 @@ import { AcpAgentStore, AcpRegistry, createAcpAdapter } from '@beddcode/provider
 import { createClaudeAdapter } from '@beddcode/provider-claude'
 import { createCodexAdapter } from '@beddcode/provider-codex'
 import { createFakeAdapter, type ProviderAdapter } from '@beddcode/provider-core'
+import type { RelaySettings } from '@beddcode/contracts'
 import { createLogger } from '@beddcode/shared'
 import { AgentCatalog } from './agents/catalog.ts'
 import { PreviewCache } from './agents/previews.ts'
 import { AttachmentStore } from './attachments/store.ts'
 import { PairingManager } from './auth/pairing.ts'
 import { TokenStore } from './auth/tokens.ts'
-import { isLoopbackHost, type ServerConfig } from './config.ts'
+import {
+  isLoopbackHost,
+  normalizeRelayUrl,
+  readConfigFile,
+  writeConfigFile,
+  type ServerConfig,
+} from './config.ts'
 import { dataHome, loadHostId, loadRelayKey } from './hostIdentity.ts'
 import { RelayAgent } from './relay/agent.ts'
 import { newRelayKey } from '@beddcode/client-runtime/relayCrypto'
@@ -100,9 +107,39 @@ export async function runServer(config: ServerConfig): Promise<void> {
   tokens.onRevoke((deviceId) => alerts.forgetDevice(deviceId))
 
   const tailscale = new TailscaleService()
-  const relayKey = config.relayUrl ? loadRelayKey(home, newRelayKey) : undefined
-  const relayRoute =
-    config.relayUrl && relayKey ? buildRelayRoute(config.relayUrl, relayKey) : undefined
+  // The relay can be switched on, changed or off while the host runs (see `relayControl`).
+  let relayUrl = config.relayUrl
+  let relayRoute: string | undefined
+  let relay: RelayAgent | undefined
+  const relaySettings = (): RelaySettings => ({
+    url: relayUrl,
+    status: relay && relay.status !== 'stopped' ? relay.status : 'off',
+  })
+  const relayControl = {
+    get: relaySettings,
+    async set(input: string | null): Promise<RelaySettings> {
+      const next = input === null || input.trim() === '' ? undefined : normalizeRelayUrl(input)
+      writeConfigFile({ ...readConfigFile(), relayUrl: next })
+      relayUrl = next
+      relay?.stop()
+      relay = undefined
+      relayRoute = undefined
+      if (next) startRelay(next)
+      return relaySettings()
+    },
+  }
+  // Devices on other networks reach this host through the relay, which this host dials out to.
+  const startRelay = (url: string) => {
+    const key = loadRelayKey(home, newRelayKey)
+    relayRoute = buildRelayRoute(url, key)
+    relay = new RelayAgent({
+      url,
+      key,
+      attach: (socket) => server.attach(socket, 'other'),
+      log,
+    })
+    relay.start()
+  }
   const server = await startServer({
     port: config.port,
     host: config.host,
@@ -130,6 +167,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
         allowLan: config.guard.allowLan,
       }),
     }),
+    relay: relayControl,
     automation: { schedules, alerts, designs },
     agentTools,
     browser: automation.browser,
@@ -137,17 +175,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     log,
   })
   port = server.port
-  // Devices on other networks reach this host through the relay, which this host dials out to.
-  const relay =
-    config.relayUrl && relayKey
-      ? new RelayAgent({
-          url: config.relayUrl,
-          key: relayKey,
-          attach: (socket) => server.attach(socket, 'other'),
-          log,
-        })
-      : undefined
-  relay?.start()
+  if (relayUrl) startRelay(relayUrl)
   schedules.start()
   log.info(`listening on ${config.host}:${server.port} (data: ${home})`)
   if (!isLoopbackHost(config.host)) {

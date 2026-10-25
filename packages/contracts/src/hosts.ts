@@ -11,6 +11,14 @@ export const PairingCode = z.object({
 })
 export type PairingCode = z.infer<typeof PairingCode>
 
+/** Whether this host is reachable through a relay, and the address it uses. */
+export const RelaySettings = z.object({
+  /** The relay's websocket address (wss://…), unset when no relay is used. */
+  url: z.string().optional(),
+  status: z.enum(['off', 'connecting', 'online', 'offline']),
+})
+export type RelaySettings = z.infer<typeof RelaySettings>
+
 /** A paired device: it can reach this host from outside the machine with its own token. */
 export const Device = z.object({
   id: z.string(),

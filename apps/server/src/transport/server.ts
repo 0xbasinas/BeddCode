@@ -38,6 +38,7 @@ import {
   type AutomationServices,
   type RpcContext,
   type WorkspaceServices,
+  type RelayControl,
 } from './rpc.ts'
 
 function parsePairRequest(body: unknown): { code: string; deviceName: string } | null {
@@ -97,6 +98,8 @@ export interface StartServerOptions {
   tailscale: TailscaleService
   /** Where other devices can reach this host, for pairing links. */
   reachable?: () => Promise<{ hostId: string; name: string; routes: string[]; relay?: string }>
+  /** Reads and changes the relay this host is reachable through. */
+  relay?: RelayControl
   automation: AutomationServices
   /** Answers BeddCode's agent tools for sessions that may use them (loopback only). */
   agentTools?: AgentTools
@@ -189,6 +192,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       tailscale: options.tailscale,
       port: () => listeningPort,
       reachable: options.reachable,
+      relay: options.relay,
     },
     options.automation,
   )
@@ -449,7 +453,11 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
                 }),
               )
           void outcome.then((o) =>
-            send(o.ok ? { t: 'res', id: frame.id, ok: true, result: o.result } : { t: 'res', id: frame.id, ok: false, error: o.error }),
+            send(
+              o.ok
+                ? { t: 'res', id: frame.id, ok: true, result: o.result }
+                : { t: 'res', id: frame.id, ok: false, error: o.error },
+            ),
           )
           break
         }

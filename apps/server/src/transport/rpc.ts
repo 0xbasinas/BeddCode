@@ -1,5 +1,11 @@
 import { statSync } from 'node:fs'
-import { RpcMethods, type RpcMethodName, type RpcParams, type RpcResult } from '@beddcode/contracts'
+import {
+  RpcMethods,
+  type RelaySettings,
+  type RpcMethodName,
+  type RpcParams,
+  type RpcResult,
+} from '@beddcode/contracts'
 import { buildPairLink } from '@beddcode/client-runtime/pairLink'
 import type { PairingManager } from '../auth/pairing.ts'
 import type { PeerClass } from '../auth/guard.ts'
@@ -79,6 +85,13 @@ export interface AccessServices {
   port: () => number
   /** Addresses another device could reach this host on, and who it is, for pairing links. */
   reachable?: () => Promise<{ hostId: string; name: string; routes: string[]; relay?: string }>
+  /** Reads and changes the relay this host is reachable through. */
+  relay?: RelayControl
+}
+
+export interface RelayControl {
+  get(): RelaySettings
+  set(url: string | null): Promise<RelaySettings>
 }
 
 /** What the router knows about the caller. */
@@ -91,6 +104,8 @@ export interface RpcContext {
 /** Managing who may connect is only for someone sitting at this machine. */
 const LOOPBACK_ONLY: ReadonlySet<RpcMethodName> = new Set([
   'host.pair',
+  'host.relay.get',
+  'host.relay.set',
   'devices.list',
   'devices.revoke',
 ])
@@ -120,6 +135,14 @@ export function createRpcRouter(
           relay: where.relay,
         }),
       }
+    },
+    'host.relay.get': async () => {
+      if (!access.relay) throw new Error('This host does not support relays')
+      return access.relay.get()
+    },
+    'host.relay.set': (p) => {
+      if (!access.relay) throw new Error('This host does not support relays')
+      return access.relay.set(p.url)
     },
     'devices.list': async () => access.tokens.list(),
     'devices.revoke': async (p) => {
