@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertCircle, Check, CheckCircle2, ChevronRight, RefreshCw, Server } from 'lucide-react'
 import type { TailnetStatus, TailnetPeer } from '@beddcode/contracts'
 import { addRemoteHost, hostRequest, useHostStore } from '../../stores/host.ts'
+import { pairWithLink, parsePairLink } from '../../stores/hostCatalog.ts'
 import {
   DEFAULT_PORT,
   LOCAL_HOST_KEY,
@@ -84,6 +85,28 @@ export function AddHostFlow({
   const target: Target | undefined =
     picked ?? (typedAddress ? { name: typedAddress.host, addresses: [typedAddress] } : undefined)
   const ready = !!target && code.length === 6
+
+  /** A pairing link (from a QR code or a message) carries the addresses and the code. */
+  const pairFromLink = async (text: string) => {
+    const link = parsePairLink(text)
+    if (!link || inFlight.current) return
+    inFlight.current = true
+    setBusy(true)
+    setError(undefined)
+    try {
+      const entry = await pairWithLink(link, local?.host?.name ?? 'BeddCode')
+      if (!alive.current) return
+      if (entry.key === local?.host?.hostId)
+        throw new Error('That is this computer. Pair with a different machine.')
+      addRemoteHost(entry)
+      setPaired(entry)
+    } catch (err) {
+      if (alive.current) setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      inFlight.current = false
+      if (alive.current) setBusy(false)
+    }
+  }
 
   const pair = async () => {
     if (inFlight.current || !target || !/^\d{6}$/.test(code)) return
@@ -221,6 +244,25 @@ export function AddHostFlow({
         <div className="hosts-flow-heading">
           <h2>Add a computer</h2>
           <p>Pick a host, then enter the code it shows.</p>
+        </div>
+        <div className="hosts-field">
+          <label htmlFor="host-link">Pairing link</label>
+          <input
+            id="host-link"
+            value=""
+            placeholder="Paste a beddcode://pair link to connect at once"
+            autoComplete="off"
+            spellCheck={false}
+            disabled={busy}
+            onChange={() => {}}
+            onPaste={(event) => {
+              const text = event.clipboardData.getData('text')
+              if (parsePairLink(text)) {
+                event.preventDefault()
+                void pairFromLink(text)
+              }
+            }}
+          />
         </div>
         <div className="hosts-field">
           <div className="hosts-section-title">

@@ -1,3 +1,4 @@
+import os from 'node:os'
 import path from 'node:path'
 import { AcpAgentStore, AcpRegistry, createAcpAdapter } from '@beddcode/provider-acp'
 import { createClaudeAdapter } from '@beddcode/provider-claude'
@@ -13,6 +14,7 @@ import { isLoopbackHost, type ServerConfig } from './config.ts'
 import { dataHome, loadHostId } from './hostIdentity.ts'
 import { findWebRoot } from './web/static.ts'
 import { TailscaleService } from './network/tailscale.ts'
+import { reachableRoutes } from './network/reachable.ts'
 import { SessionManager } from './sessions/sessionManager.ts'
 import { recoverInterruptedTurns } from './sessions/recovery.ts'
 import { EventStore } from './store/eventStore.ts'
@@ -94,6 +96,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
   const tokens = new TokenStore(path.join(home, 'auth.json'))
   tokens.onRevoke((deviceId) => alerts.forgetDevice(deviceId))
 
+  const tailscale = new TailscaleService()
   const server = await startServer({
     port: config.port,
     host: config.host,
@@ -109,7 +112,17 @@ export async function runServer(config: ServerConfig): Promise<void> {
     watchers,
     tokens,
     pairing: new PairingManager(),
-    tailscale: new TailscaleService(),
+    tailscale,
+    reachable: async () => ({
+      hostId,
+      name: os.hostname(),
+      routes: await reachableRoutes({
+        tailscale,
+        port,
+        listenHost: config.host,
+        allowLan: config.guard.allowLan,
+      }),
+    }),
     automation: { schedules, alerts, designs },
     agentTools,
     browser: automation.browser,

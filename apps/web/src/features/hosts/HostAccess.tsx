@@ -4,6 +4,7 @@ import type { Device, PairingCode, TailnetStatus } from '@beddcode/contracts'
 import { hostRequest, useHostStore } from '../../stores/host.ts'
 import { DEFAULT_PORT, LOCAL_HOST_KEY, parseAddress } from '../../stores/hostCatalog.ts'
 import { CopyHostText, HostNote, HostSpinner, useHostMounted } from './HostControls.tsx'
+import { QrCode } from './QrCode.tsx'
 
 export function ShareThisComputer({ onClose }: { onClose(): void }) {
   const local = useHostStore((s) => s.runtimes[LOCAL_HOST_KEY])
@@ -64,7 +65,10 @@ export function ShareThisComputer({ onClose }: { onClose(): void }) {
       <div className="hosts-dialog-body">
         <div className="hosts-flow-heading">
           <h2>Let another computer connect</h2>
-          <p>On the other computer, choose Add host and enter this address and code.</p>
+          <p>
+            On your phone or another computer, scan the code below, or choose Add host and enter the
+            address and code.
+          </p>
         </div>
         {address && (
           <div className="hosts-address-copy">
@@ -80,6 +84,19 @@ export function ShareThisComputer({ onClose }: { onClose(): void }) {
           <HostNote icon={<HostSpinner />}>Creating a pairing code…</HostNote>
         ) : code && left > 0 ? (
           <div className="hosts-field">
+            {code.link ? (
+              <div className="hosts-qr">
+                <QrCode text={code.link} label="Pairing QR code" />
+                <div>
+                  <strong>Scan to pair</strong>
+                  <p>
+                    Open your phone&apos;s camera, or BeddCode on another computer, and point it
+                    here. It tries every address this computer has.
+                  </p>
+                  <CopyHostText text={code.link} label="Copy link" />
+                </div>
+              </div>
+            ) : null}
             <output aria-label="One-time pairing code">
               <span className="sr-only">{code.code}</span>
               <span className="hosts-code-cells" aria-hidden="true">

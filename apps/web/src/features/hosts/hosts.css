@@ -769,3 +769,23 @@
     flex-wrap: wrap;
   }
 }
+
+.hosts-qr {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+}
+.hosts-qr strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.hosts-qr p {
+  margin: 4px 0 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}

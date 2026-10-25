@@ -1,5 +1,6 @@
 import { statSync } from 'node:fs'
 import { RpcMethods, type RpcMethodName, type RpcParams, type RpcResult } from '@beddcode/contracts'
+import { buildPairLink } from '@beddcode/client-runtime/pairLink'
 import type { PairingManager } from '../auth/pairing.ts'
 import type { PeerClass } from '../auth/guard.ts'
 import type { TokenStore } from '../auth/tokens.ts'
@@ -76,6 +77,8 @@ export interface AccessServices {
   tailscale: TailscaleService
   /** The port this host listens on, probed on other tailnet machines. */
   port: () => number
+  /** Addresses another device could reach this host on, and who it is, for pairing links. */
+  reachable?: () => Promise<{ hostId: string; name: string; routes: string[]; relay?: string }>
 }
 
 /** What the router knows about the caller. */
@@ -103,7 +106,21 @@ export function createRpcRouter(
   const { git, github, projects, terminals, files } = workspace
   const { schedules, alerts, designs } = automation
   const handlers: Handlers = {
-    'host.pair': async () => access.pairing.create(),
+    'host.pair': async () => {
+      const pair = access.pairing.create()
+      const where = await access.reachable?.().catch(() => undefined)
+      if (!where) return pair
+      return {
+        ...pair,
+        link: buildPairLink({
+          code: pair.code,
+          name: where.name,
+          hostId: where.hostId,
+          routes: where.routes,
+          relay: where.relay,
+        }),
+      }
+    },
     'devices.list': async () => access.tokens.list(),
     'devices.revoke': async (p) => {
       alerts.forgetDevice(p.id)

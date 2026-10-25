@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./hostClient": "./src/hostClient.ts",
+    "./pairLink": "./src/pairLink.ts",
     "./replica": "./src/replica.ts"
   },
   "scripts": {

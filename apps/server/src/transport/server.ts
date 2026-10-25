@@ -95,6 +95,8 @@ export interface StartServerOptions {
   tokens: TokenStore
   pairing: PairingManager
   tailscale: TailscaleService
+  /** Where other devices can reach this host, for pairing links. */
+  reachable?: () => Promise<{ hostId: string; name: string; routes: string[]; relay?: string }>
   automation: AutomationServices
   /** Answers BeddCode's agent tools for sessions that may use them (loopback only). */
   agentTools?: AgentTools
@@ -168,6 +170,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       pairing: options.pairing,
       tailscale: options.tailscale,
       port: () => listeningPort,
+      reachable: options.reachable,
     },
     options.automation,
   )

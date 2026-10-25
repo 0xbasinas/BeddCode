@@ -6,6 +6,8 @@ export const PairingCode = z.object({
   code: z.string().regex(/^\d{6}$/),
   /** Epoch milliseconds after which the code no longer works. */
   expiresAt: z.number().int(),
+  /** The same code with this host's addresses, as a link for a QR code (see pairLink.ts). */
+  link: z.string().optional(),
 })
 export type PairingCode = z.infer<typeof PairingCode>
 
