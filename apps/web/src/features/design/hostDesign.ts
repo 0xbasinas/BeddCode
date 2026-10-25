@@ -51,6 +51,7 @@ export function useHostDesign(hostKey: string) {
   const current = useRef<string | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const saving = useRef(false)
+  const switchRef = useRef<(id: string) => Promise<void>>(async () => {})
 
   const refreshList = useCallback(async () => {
     const { designs } = await hostRequest(hostKey, 'design.list', {})
@@ -147,6 +148,11 @@ export function useHostDesign(hostKey: string) {
         if (frame.t !== 'design.changed') return
         const clientId = useEditorStore.getState().clientId
         void refreshList().catch(() => {})
+        // An agent drawing on another design: follow it, so the user watches the work happen.
+        if (frame.origin === 'agent' && frame.id !== current.current && current.current) {
+          void switchRef.current(frame.id).catch(() => {})
+          return
+        }
         if (frame.id !== current.current || frame.origin === clientId || frame.rev <= rev.current)
           return
         void hostRequest(hostKey, 'design.get', { id: frame.id }).then((design) => {
@@ -184,6 +190,10 @@ export function useHostDesign(hostKey: string) {
     },
     [open, save],
   )
+
+  useEffect(() => {
+    switchRef.current = switchTo
+  }, [switchTo])
 
   return { designs, currentId, sync, create, remove, switchTo }
 }

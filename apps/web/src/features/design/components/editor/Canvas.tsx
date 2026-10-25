@@ -994,12 +994,19 @@ const CanvasElement = React.memo(function CanvasElement({
           PHASE 6 mask semantics: a child with isMask clips all PREVIOUS
           siblings (+ the mask itself) within this parent. */}
       {effectiveChildren && (() => {
-        const renderChild = (child: DesignElement) => (
+        // Frames and groups inside a frame draw their own children too, to any depth.
+        const renderNested = (parent: DesignElement) => {
+          if (!parent.children?.length || (parent.type !== 'frame' && parent.type !== 'group')) return null
+          const kids = parent.type === 'frame' && hasAutoLayout(parent) ? calculateAutoLayout(parent) : parent.children
+          return kids.filter((k) => k.visible).map(renderChild)
+        }
+        const renderChild = (child: DesignElement): React.ReactNode => (
           <g
             key={child.id}
             transform={`translate(${child.x}, ${child.y})${child.rotation ? ` rotate(${child.rotation}, ${child.width / 2}, ${child.height / 2})` : ''}`}
           >
             {renderShape(child, true)}
+            {renderNested(child)}
             {selectedIds.includes(child.id) && (
               <rect
                 x={-1} y={-1}
@@ -1344,6 +1351,20 @@ export function Canvas() {
   // --- P4 refactor: the component now composes focused hooks ---------------
   // viewport: pan / zoom / fit / wheel / space-panning / container size
   const viewport = useCanvasViewport()
+  // Opening a project fits it into view, once the canvas has a size.
+  const fitNonce = useEditorStore((s) => s.fitNonce)
+  const fitDone = React.useRef(0)
+  const canvasWidth = viewport.containerSize.width
+  const fitView = React.useRef(viewport.fitToScreen)
+  fitView.current = viewport.fitToScreen
+  React.useEffect(() => {
+    if (fitNonce === fitDone.current || canvasWidth === 0) return
+    const t = setTimeout(() => {
+      fitDone.current = fitNonce
+      fitView.current()
+    }, 50)
+    return () => clearTimeout(t)
+  }, [fitNonce, canvasWidth])
   const { containerRef, containerSize, screenToCanvas, handleWheel } = viewport
 
   // hitTest: geometry lookups (element / frame / resize-handle under cursor)

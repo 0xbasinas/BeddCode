@@ -120,19 +120,18 @@ export function useCanvasHitTest() {
   const getAbsolutePosition = useCallback(
     (elementId: string): { x: number; y: number } | null => {
       const state = useEditorStore.getState()
-      // Check if element is a child of any frame/group
-      for (const parent of state.elements) {
-        if (parent.children) {
-          const child = parent.children.find(c => c.id === elementId)
-          if (child) {
-            return { x: parent.x + child.x, y: parent.y + child.y }
+      // Walk down from the top level, adding each ancestor's offset (children sit in their parent's space).
+      const walk = (list: DesignElement[], ox: number, oy: number): { x: number; y: number } | null => {
+        for (const el of list) {
+          if (el.id === elementId) return { x: ox + el.x, y: oy + el.y }
+          if (el.children) {
+            const hit = walk(el.children, ox + el.x, oy + el.y)
+            if (hit) return hit
           }
         }
+        return null
       }
-      // Top-level element
-      const el = state.elements.find(e => e.id === elementId)
-      if (el) return { x: el.x, y: el.y }
-      return null
+      return walk(state.elements, 0, 0)
     },
     []
   )

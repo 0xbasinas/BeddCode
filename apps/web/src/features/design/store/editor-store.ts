@@ -625,6 +625,8 @@ interface EditorState {
   syncStatus: 'offline' | 'connecting' | 'live'
   /** Human-readable origin of the last remote change (e.g. 'mcp-server', 'tab-…') */
   lastRemoteOrigin: string | null
+  /** Bumped when a project is opened, so the canvas fits it into view. */
+  fitNonce: number
 
   // Prototype player state (PHASE 2)
   /** Fullscreen prototype playback is active */
@@ -1659,6 +1661,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   clientId: generateClientId(),
   syncStatus: 'offline',
   lastRemoteOrigin: null,
+  fitNonce: 0,
 
   isPreviewing: false,
   previewFrameId: null,
@@ -3344,7 +3347,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   loadHostProject: (project) =>
-    set(() => {
+    set((state) => {
       const normalized = normalizeServerProject(project)
       return {
         elements: normalized.activePageElements,
@@ -3358,6 +3361,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         history: [{ elements: deepCloneElements(normalized.activePageElements), selectedElementIds: [] }],
         historyIndex: 0,
         isDirty: false,
+        fitNonce: state.fitNonce + 1,
       }
     }),
 
