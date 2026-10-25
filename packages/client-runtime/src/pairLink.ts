@@ -1,11 +1,13 @@
 import { PairResult } from '@beddcode/contracts'
 import { pairWithHost, parseAddress, type HostEntry } from './hostCatalog.ts'
-import { pairViaRelay, parseRelayRoute } from './relaySocket.ts'
+import { buildRelayRoute, pairViaRelay, parseRelayRoute } from './relaySocket.ts'
 
 /**
  * Everything another device needs to pair with a host, in one link a QR code can carry:
  * `beddcode://pair?c=123456&n=Desk&h=<hostId>&r=ws://desk:3773/ws&r=ws://192.168.1.4:3773/ws`.
- * The routes are tried in order; `y` is an optional relay route (see relay.ts).
+ * The routes are tried in order. `y` and `k` are the relay's address and the host's key (see
+ * relaySocket.ts); they are two plain values because `+` and `#` do not survive every app that
+ * opens a link.
  */
 export interface PairLink {
   code: string
@@ -17,12 +19,25 @@ export interface PairLink {
 
 const SCHEME = 'beddcode://pair'
 
+/** The `y` and `k` values of a link for this relay route (what to hand a screen that opens it). */
+export function relayLinkParams(route: string): { y: string; k: string } {
+  const relay = parseRelayRoute(route)
+  if (!relay) return { y: '', k: '' }
+  return {
+    y: relay.base.replace(/^wss:\/\//i, ''),
+    k: route.slice(route.lastIndexOf('#k=') + 3),
+  }
+}
+
 export function buildPairLink(link: PairLink): string {
   const parts = [`c=${encodeURIComponent(link.code)}`]
   if (link.name) parts.push(`n=${encodeURIComponent(link.name)}`)
   if (link.hostId) parts.push(`h=${encodeURIComponent(link.hostId)}`)
   for (const route of link.routes) parts.push(`r=${encodeURIComponent(route)}`)
-  if (link.relay) parts.push(`y=${encodeURIComponent(link.relay)}`)
+  if (link.relay && parseRelayRoute(link.relay)) {
+    const { y, k } = relayLinkParams(link.relay)
+    parts.push(`y=${encodeURIComponent(y)}`, `k=${k}`)
+  }
   return `${SCHEME}?${parts.join('&')}`
 }
 
@@ -36,6 +51,8 @@ export function parsePairLink(input: string): PairLink | null {
   if (!text.toLowerCase().startsWith(SCHEME)) return null
   const query = text.slice(SCHEME.length).replace(/^\/?\?/, '')
   const link: PairLink = { code: '', routes: [] }
+  let relayBase: string | undefined
+  let relayKey: string | undefined
   for (const pair of query.split('&')) {
     const eq = pair.indexOf('=')
     if (eq < 1) continue
@@ -59,9 +76,18 @@ export function parsePairLink(input: string): PairLink | null {
         if (WS_ROUTE.test(value)) link.routes.push(value)
         break
       case 'y':
+        // A full relay route (older links), or just the relay's address.
         if (isRelay(value)) link.relay = value
+        else relayBase = /^wss?:\/\//i.test(value) ? value : `wss://${value}`
+        break
+      case 'k':
+        relayKey = value
         break
     }
+  }
+  if (relayBase && relayKey) {
+    const route = buildRelayRoute(relayBase, relayKey)
+    if (isRelay(route)) link.relay = route
   }
   if (!/^\d{6}$/.test(link.code)) return null
   if (link.routes.length === 0 && !link.relay) return null

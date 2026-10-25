@@ -2,6 +2,7 @@ import {
   pairWithHost,
   parseAddress,
   parsePairLink,
+  relayLinkParams,
   wsUrl,
   type Address,
   type HostEntry,
@@ -136,7 +137,7 @@ export default function AddHostScreen() {
                         ...(link.name ? { n: link.name } : {}),
                         ...(link.hostId ? { h: link.hostId } : {}),
                         r: link.routes,
-                        ...(link.relay ? { y: link.relay } : {}),
+                        ...(link.relay ? relayLinkParams(link.relay) : {}),
                       },
                     })
                     return

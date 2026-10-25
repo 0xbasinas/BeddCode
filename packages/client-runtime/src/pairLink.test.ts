@@ -16,6 +16,8 @@ describe('pair links', () => {
     const text = buildPairLink({ ...link, relay })
     expect(text.startsWith('beddcode://pair?')).toBe(true)
     expect(parsePairLink(text)).toEqual({ ...link, relay })
+    // Nothing in it may need `+` or `#`, which some apps rewrite when they open a link.
+    expect(text).not.toMatch(/[+#]|%2B|%23/)
   })
 
   it('rejects other text, bad codes, and links with nowhere to connect', () => {

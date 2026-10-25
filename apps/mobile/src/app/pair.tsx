@@ -1,5 +1,4 @@
 import {
-  buildPairLink,
   pairWithLink,
   parsePairLink,
   type HostEntry,
@@ -32,19 +31,25 @@ export default function PairScreen() {
     h?: string
     r?: string | string[]
     y?: string
+    k?: string
   }>()
   const link: PairLink | null = useMemo(
     () =>
+      // The app opening the link has already split it into parameters; put it back together.
       parsePairLink(
-        buildPairLink({
-          code: one(params.c) ?? '',
-          name: one(params.n),
-          hostId: one(params.h),
-          routes: many(params.r),
-          relay: one(params.y),
-        }),
+        `beddcode://pair?${[
+          ['c', one(params.c)],
+          ['n', one(params.n)],
+          ['h', one(params.h)],
+          ...many(params.r).map((r) => ['r', r] as const),
+          ['y', one(params.y)],
+          ['k', one(params.k)],
+        ]
+          .filter(([, v]) => v !== undefined && v !== '')
+          .map(([k, v]) => `${k}=${encodeURIComponent(v!)}`)
+          .join('&')}`,
       ),
-    [params.c, params.n, params.h, params.r, params.y],
+    [params.c, params.n, params.h, params.r, params.y, params.k],
   )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
