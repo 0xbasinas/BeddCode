@@ -158,7 +158,7 @@ const toolOptions: Partial<Record<ToolType, { label: string; options: { id: stri
 }
 
 export function Toolbar() {
-  const { activeTool, setActiveTool, editorMode, setEditorMode, zoom, setZoom, setPan } = useEditorStore()
+  const { activeTool, setActiveTool, zoom, setZoom, setPan } = useEditorStore()
   // PHASE 8 — view options popup
   const [viewOptionsOpen, setViewOptionsOpen] = useState(false)
   const [openMenuIdx, setOpenMenuIdx] = useState<number | null>(null)
@@ -383,25 +383,6 @@ export function Toolbar() {
             </svg>
           </button>
           {viewOptionsOpen && <ViewOptionsPopup onClose={() => setViewOptionsOpen(false)} />}
-        </div>
-
-        {/* Divider before mode switch */}
-        <div className="w-px h-4 bg-[color:var(--dc-border)] @max-[1180px]:hidden" />
-
-        {/* Mode toggle - Figma tab style */}
-        <div className="flex items-center px-0.5 py-[2px] @max-[1180px]:hidden">
-          {(['design', 'dev'] as EditorMode[]).map((m) => (
-            <button
-              key={m}
-              onClick={() => setEditorMode(m)}
-              className={`
-                px-2 py-1 text-[10px] font-medium rounded-md transition-colors duration-100 capitalize
-                ${editorMode === m ? 'bg-[color:var(--dc-accent)] text-white' : 'text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)] hover:text-white'}
-              `}
-            >
-              {m === 'dev' ? 'Dev' : m.charAt(0).toUpperCase() + m.slice(1)}
-            </button>
-          ))}
         </div>
       </div>
     </>

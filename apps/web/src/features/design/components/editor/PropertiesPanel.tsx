@@ -225,7 +225,7 @@ export function PropertiesPanel() {
   const { elements, selectedElementIds, updateElement, alignElements, distributeElements, pushHistory, addFill, removeFill, updateFill, addStroke, removeStroke, updateStroke, setBlendMode, flipHorizontal, flipVertical, addComponent, detachInstance, resizeFrameWithConstraints, applyTextAutoSize, addTableRow, removeTableRow, addTableColumn, removeTableColumn, resizeTableColumn, resizeTableRow, resizeSelectionToFit } = useEditorStore()
   const [aspectLocked, setAspectLocked] = useState(false)
   const [cornersLinked, setCornersLinked] = useState(true)
-  const [showInspect, setShowInspect] = useState(false)
+  const showInspect = false
 
   const getSelectedElement = useCallback((): DesignElement | null => {
     if (selectedElementIds.length === 0) return null
@@ -412,22 +412,6 @@ export function PropertiesPanel() {
 
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-      {/* Design / Inspect toggle */}
-      <div className="flex items-center gap-px rounded-sm bg-[color:var(--dc-input)] p-px mb-1">
-        <button
-          onClick={() => setShowInspect(false)}
-          className={`flex-1 px-2 py-0.5 text-[10px] font-medium rounded-sm transition-colors duration-100 ${!showInspect ? 'bg-[color:var(--dc-accent)] text-white' : 'text-[color:var(--dc-muted)] hover:text-white'}`}
-        >
-          Design
-        </button>
-        <button
-          onClick={() => setShowInspect(true)}
-          className={`flex-1 px-2 py-0.5 text-[10px] font-medium rounded-sm transition-colors duration-100 ${showInspect ? 'bg-[color:var(--dc-accent)] text-white' : 'text-[color:var(--dc-muted)] hover:text-white'}`}
-        >
-          Inspect
-        </button>
-      </div>
-
       {showInspect ? (
         <div className="space-y-2">
           <pre className="text-[10px] text-[color:var(--dc-text2)] bg-[color:var(--dc-input)] p-2 rounded border border-[color:var(--dc-border)] overflow-x-auto whitespace-pre-wrap font-mono">

@@ -400,8 +400,13 @@
   --dc-zoom: 0.86;
 }
 .design-root > :first-child,
-.design-chrome > * {
+.design-chrome > *,
+[data-radix-popper-content-wrapper] > * {
   zoom: var(--dc-zoom);
+}
+/* Menus open in a portal outside .design-root, so they need the value too. */
+[data-radix-popper-content-wrapper] {
+  --dc-zoom: 0.86;
 }
 
 /* Text on the amber accent: the app's dark ink, not white. */
