@@ -53,7 +53,7 @@ const reply = (res: ServerResponse, status: number, body: unknown) => {
 }
 
 /** Reads a small JSON request body; anything large or not JSON is rejected. */
-function readJson(req: IncomingMessage): Promise<unknown> {
+function readJson(req: IncomingMessage, limit = 4096): Promise<unknown> {
   return new Promise((resolve, reject) => {
     if (!req.headers['content-type']?.startsWith('application/json')) {
       return reject(new Error('content-type'))
@@ -62,7 +62,7 @@ function readJson(req: IncomingMessage): Promise<unknown> {
     const chunks: Buffer[] = []
     req.on('data', (chunk: Buffer) => {
       size += chunk.length
-      if (size > 4096) {
+      if (size > limit) {
         reject(new Error('too large'))
         req.destroy()
       } else chunks.push(chunk)
@@ -211,7 +211,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       )
       if (!sessionId) return reply(res, 401, { error: 'Unknown session key' })
       const tools = options.agentTools
-      void readJson(req)
+      void readJson(req, 8 * 1024 * 1024)
         .then(async (body) => {
           const { method, params } = (body ?? {}) as { method?: unknown; params?: unknown }
           if (typeof method !== 'string') return reply(res, 400, { error: 'Send {method, params}' })

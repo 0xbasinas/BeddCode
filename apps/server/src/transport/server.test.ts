@@ -934,6 +934,10 @@ describe('automation', () => {
     })
     expect(started).toMatchObject({ agent: 'fake', mode: 'ask' })
     const childId = started.session_id as string
+    // A big call, such as a whole screen of design elements, is not turned away for its size.
+    expect(
+      await mcp.tool('get_status', { session_id: 'x'.repeat(200_000) }),
+    ).not.toMatchObject({ error: expect.stringMatching(/Invalid request/) })
     expect(automation.agentTools.serversFor(childId)).toHaveLength(1)
 
     const waiting = await mcp.tool('wait_for', { session_id: childId, timeout_seconds: 20 })
