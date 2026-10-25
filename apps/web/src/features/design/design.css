@@ -65,9 +65,9 @@
   --dc-text2: var(--text-secondary);
   --dc-muted: var(--text-muted);
   --dc-faint: var(--text-faint);
-  --dc-accent: var(--accent);
+  --dc-accent: #d2d2d2; /* neutral grey: the editor does not use the app's orange */
   --dc-accent-hover: color-mix(in oklab, var(--accent) 82%, black);
-  --dc-on-accent: #1a1306;
+  --dc-on-accent: #161616;
   --dc-danger: var(--danger);
   --dc-success: var(--success);
 }
@@ -437,7 +437,7 @@
   min-width: 0;
 }
 .design-agent-toggle.on {
-  color: var(--accent);
+  color: var(--dc-accent);
 }
 .design-agent {
   flex: 0 0 clamp(300px, 28vw, 380px);
@@ -519,7 +519,7 @@
   border-radius: 6px;
   font-size: 12px;
   color: var(--text-muted, #8a8a8a);
-  background: color-mix(in oklab, var(--accent) 12%, transparent);
+  background: color-mix(in oklab, var(--dc-accent) 12%, transparent);
   flex-shrink: 0;
 }
 .design-agent-selection span {
