@@ -35,6 +35,8 @@ export interface HostClientOptions {
   onBrowserCall?(id: string, call: BrowserUseCall): void
   /** An agent wants a picture of a design (only after `offerDesign` said this client can). */
   onDesignRender?(request: Extract<ServerFrame, { t: 'design.render' }>): void
+  /** An agent wants SVG markup turned into design elements (same condition). */
+  onDesignImport?(request: Extract<ServerFrame, { t: 'design.import' }>): void
   /** Inject a socket for tests; defaults to the platform WebSocket. */
   createSocket?(url: string): WebSocket
   backoff?: { minMs: number; maxMs: number }
@@ -290,6 +292,9 @@ export class HostClient {
         break
       case 'design.render':
         this.options.onDesignRender?.(frame)
+        break
+      case 'design.import':
+        this.options.onDesignImport?.(frame)
         break
       case 'res': {
         const p = this.pending.get(frame.id)

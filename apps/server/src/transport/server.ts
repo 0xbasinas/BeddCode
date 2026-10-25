@@ -416,6 +416,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
           break
         case 'design.view':
         case 'design.rendered':
+        case 'design.imported':
           designClient?.frame(frame)
           break
         case 'browser.offer':

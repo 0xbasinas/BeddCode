@@ -69,3 +69,23 @@ export async function renderForAgent(hostKey: string, req: RenderRequest) {
   const url = await renderElementToDataUrl(root, { scale, background: BACKGROUND })
   return { data: url.slice(url.indexOf(',') + 1), mime: 'image/png' }
 }
+
+/** SVG markup an agent wrote, as editable elements (one frame holding the shapes). */
+export async function importSvgForAgent(svg: string, width?: number) {
+  const { importSvgText } = await import('./lib/import/svg-import')
+  const { generateId } = await import('./store/editor-store')
+  let text = svg
+  if (width && width > 0) {
+    // A width on the root sets the scale; the height follows the viewBox.
+    const doc = new DOMParser().parseFromString(svg, 'image/svg+xml')
+    const root = doc.documentElement
+    if (root.tagName.toLowerCase() === 'svg' && root.getAttribute('viewBox')) {
+      root.setAttribute('width', String(width))
+      root.removeAttribute('height')
+      text = new XMLSerializer().serializeToString(root)
+    }
+  }
+  const result = importSvgText(text, (prefix) => generateId(prefix), true)
+  if (result.elements.length === 0) throw new Error('The SVG had no shapes the editor could draw')
+  return result.elements
+}

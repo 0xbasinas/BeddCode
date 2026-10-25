@@ -83,7 +83,7 @@ function baseElement(
 /** Convert an SVG path's `d` into our VectorNetwork via sampled points.
  * We keep the original `d` untouched by storing it as a two-point network
  * when parsing is complex — paths remain fully editable as vector nodes. */
-function pathToVectorNetwork(d: string): VectorNetwork | undefined {
+function pathToVectorNetwork(d: string, scale = 1): VectorNetwork | undefined {
   // Sample the path with a detached SVGPathElement (browser-native parsing).
   const svgNS = 'http://www.w3.org/2000/svg'
   const helper = document.createElementNS(svgNS, 'svg')
@@ -95,15 +95,16 @@ function pathToVectorNetwork(d: string): VectorNetwork | undefined {
   try {
     const len = pathEl.getTotalLength()
     if (!Number.isFinite(len) || len === 0) return undefined
-    const STEP = 8
-    const count = Math.max(2, Math.ceil(len / STEP))
+    // About one pixel of the drawn size between samples, so curves stay smooth at any scale.
+    const STEP = 1 / Math.max(scale, 0.05)
+    const count = Math.min(1000, Math.max(2, Math.ceil(len / STEP)))
     const points: PathPoint[] = []
     for (let i = 0; i <= count; i++) {
       const t = (i / count) * len
       const p = pathEl.getPointAtLength(t)
       // skip near-duplicate points to keep networks light
       const prev = points[points.length - 1]
-      if (!prev || Math.hypot(p.x - prev.x, p.y - prev.y) > 1.5) {
+      if (!prev || Math.hypot(p.x - prev.x, p.y - prev.y) * scale > 0.4) {
         points.push({ x: p.x, y: p.y })
       }
     }
@@ -137,6 +138,15 @@ function gradientMidColor(def: Element | null): string | null {
   return mid.getAttribute('stop-color') || stops[0].getAttribute('stop-color')
 }
 
+/** A presentation attribute as SVG inherits it: from the node, else the nearest ancestor that sets it. */
+function inherited(node: Element, name: string): string | null {
+  for (let n: Element | null = node; n; n = n.parentElement) {
+    const v = n.getAttribute(name)
+    if (v !== null && v !== 'inherit') return v
+  }
+  return null
+}
+
 /** Resolve fill/stroke that may reference a gradient by url(#id). */
 function resolvePaint(
   value: string | null,
@@ -159,9 +169,12 @@ function convertNode(
 ): DesignElement | null {
   const tag = node.tagName.toLowerCase()
   const opacity = inheritedOpacity * opacityOf(node)
-  const fill = resolvePaint(node.getAttribute('fill'), idMap)
-  const stroke = resolvePaint(node.getAttribute('stroke'), idMap)
-  const strokeWidth = num(node, 'stroke-width', stroke !== 'transparent' ? 1 : 0)
+  // Shapes take fill, stroke and stroke-width from their <g> or <svg>, as SVG specifies (the
+  // default fill is black).
+  const fill = resolvePaint(inherited(node, 'fill') ?? '#000000', idMap)
+  const stroke = resolvePaint(inherited(node, 'stroke'), idMap)
+  const strokeWidthAttr = parseFloat(inherited(node, 'stroke-width') ?? '')
+  const strokeWidth = Number.isFinite(strokeWidthAttr) ? strokeWidthAttr : stroke !== 'transparent' ? 1 : 0
 
   const mk = (type: ElementType, name: string, x: number, y: number, w: number, h: number): DesignElement =>
     baseElement(ctx.makeId(type), name, type, x * ctx.scale, y * ctx.scale, w * ctx.scale, h * ctx.scale, fill, stroke, strokeWidth * ctx.scale, opacity)
@@ -195,7 +208,7 @@ function convertNode(
       const w = Math.max(...pts.map((p) => p.x)) - minX
       const h = Math.max(...pts.map((p) => p.y)) - minY
       const el = mk('path', node.id || (tag === 'polygon' ? 'Polygon' : 'Polyline'), minX, minY, w, h)
-      el.pathPoints = pts.map((p) => ({ x: p.x - minX, y: p.y - minY }))
+      el.pathPoints = pts.map((p) => ({ x: (p.x - minX) * ctx.scale, y: (p.y - minY) * ctx.scale }))
       el.pathClosed = tag === 'polygon'
       el.vectorNetwork = pathPointsToVectorNetwork(el.pathPoints, tag === 'polygon')
       return el
@@ -203,7 +216,7 @@ function convertNode(
     case 'path': {
       const d = node.getAttribute('d')
       if (!d) { ctx.stats.skipped++; return null }
-      const network = pathToVectorNetwork(d)
+      const network = pathToVectorNetwork(d, ctx.scale)
       if (!network || network.vertices.length < 2) { ctx.stats.skipped++; return null }
       const xs = network.vertices.map((v) => v.x)
       const ys = network.vertices.map((v) => v.y)
@@ -212,7 +225,11 @@ function convertNode(
       const el = mk('path', node.id || 'Path', minX, minY, w, h)
       el.vectorNetwork = {
         ...network,
-        vertices: network.vertices.map((v) => ({ ...v, x: v.x - minX, y: v.y - minY })),
+        vertices: network.vertices.map((v) => ({
+          ...v,
+          x: (v.x - minX) * ctx.scale,
+          y: (v.y - minY) * ctx.scale,
+        })),
       }
       el.pathClosed = !!network.closed
       return el

@@ -2,6 +2,7 @@ import type { ClientFrame, ServerFrame } from '@beddcode/contracts'
 
 type ViewFrame = Extract<ClientFrame, { t: 'design.view' }>
 type RenderedFrame = Extract<ClientFrame, { t: 'design.rendered' }>
+type ImportedFrame = Extract<ClientFrame, { t: 'design.imported' }>
 
 export interface DesignView {
   designId?: string
@@ -17,6 +18,8 @@ export interface RenderRequest {
 }
 
 export type RenderResult = { ok: true; image: { data: string; mime: string } } | { ok: false; error: string }
+export type ImportResult = { ok: true; elements: unknown[] } | { ok: false; error: string }
+type Answer = RenderResult | ImportResult
 
 const RENDER_TIMEOUT_MS = 20_000
 
@@ -31,7 +34,7 @@ interface Client {
 
 interface Pending {
   clients: Set<number>
-  resolve(result: RenderResult): void
+  resolve(result: Answer): void
   timer: ReturnType<typeof setTimeout>
 }
 
@@ -55,7 +58,7 @@ export class DesignLink {
       at: 0,
     }
     return {
-      frame: (frame: ViewFrame | RenderedFrame) => {
+      frame: (frame: ViewFrame | RenderedFrame | ImportedFrame) => {
         if (frame.t === 'design.view') {
           client.canRender = frame.canRender
           client.view = {
@@ -70,16 +73,19 @@ export class DesignLink {
         const p = this.pending.get(frame.id)
         if (!p || !p.clients.has(client.id)) return
         // A client that could not draw it does not end the wait while another may still answer.
-        if (!frame.image) {
+        const answered = frame.t === 'design.rendered' ? frame.image : frame.elements
+        if (!answered) {
           p.clients.delete(client.id)
           if (p.clients.size > 0) return
         }
         this.pending.delete(frame.id)
         clearTimeout(p.timer)
         p.resolve(
-          frame.image
+          frame.t === 'design.rendered' && frame.image
             ? { ok: true, image: frame.image }
-            : { ok: false, error: frame.error ?? 'The app could not draw this design.' },
+            : frame.t === 'design.imported' && frame.elements
+              ? { ok: true, elements: frame.elements }
+              : { ok: false, error: frame.error ?? 'The app could not do this.' },
         )
       },
       close: () => {
@@ -102,8 +108,12 @@ export class DesignLink {
     return open?.view
   }
 
-  /** Asks the connected apps for a picture; the first to answer wins. */
-  render(request: RenderRequest, timeoutMs = RENDER_TIMEOUT_MS): Promise<RenderResult> {
+  /** Sends a request to every app that can render; the first to answer wins. */
+  private ask(
+    build: (id: string) => ServerFrame,
+    timeoutMs: number,
+    what: string,
+  ): Promise<Answer> {
     const able = [...this.clients.values()].filter((c) => c.canRender)
     if (!able.length)
       return Promise.resolve({
@@ -115,10 +125,21 @@ export class DesignLink {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
-        resolve({ ok: false, error: `The app did not draw the design within ${Math.round(timeoutMs / 1000)} s.` })
+        resolve({ ok: false, error: `The app did not ${what} within ${Math.round(timeoutMs / 1000)} s.` })
       }, timeoutMs)
       this.pending.set(id, { clients: new Set(able.map((c) => c.id)), resolve, timer })
-      for (const c of able) c.send({ t: 'design.render', id, ...request })
+      const frame = build(id)
+      for (const c of able) c.send(frame)
     })
+  }
+
+  /** Asks the connected apps for a picture. */
+  render(request: RenderRequest, timeoutMs = RENDER_TIMEOUT_MS): Promise<RenderResult> {
+    return this.ask((id) => ({ t: 'design.render', id, ...request }), timeoutMs, 'draw the design') as Promise<RenderResult>
+  }
+
+  /** Asks the connected apps to turn SVG markup into design elements. */
+  importSvg(svg: string, width?: number, timeoutMs = RENDER_TIMEOUT_MS): Promise<ImportResult> {
+    return this.ask((id) => ({ t: 'design.import', id, svg, width }), timeoutMs, 'read the SVG') as Promise<ImportResult>
   }
 }

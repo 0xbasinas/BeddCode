@@ -49,6 +49,60 @@ describe('design tools', () => {
     expect(run('design_get_selection').json.selected[0]).toMatchObject({ name: 'Box' })
   })
 
+  it('nudges agents that draw icons from plain shapes', () => {
+    const r = run('design_add', { elements: [{ type: 'ellipse', name: 'Globe icon' }, { type: 'text', textContent: '✕' }] })
+    expect(r.json.hint).toMatch(/design_add_svg/)
+    expect(run('design_add', { elements: [{ type: 'rectangle', name: 'Card' }] }).json.hint).toBeUndefined()
+  })
+
+  it('duplicates elements with fresh ids and moves them between frames', () => {
+    run('design_add', {
+      elements: [
+        { type: 'frame', name: 'List', width: 200, height: 200 },
+        { type: 'frame', name: 'Row', width: 200, height: 40, children: [{ type: 'text', textContent: 'a' }] },
+      ],
+    })
+    const [list, row] = run('design_read').json.elements as { id: string }[]
+    const copies = run('design_duplicate', { id: row!.id, count: 2, dy: 40 }).json.added as string[]
+    expect(copies).toHaveLength(2)
+    const after = run('design_read').json.elements as { id: string; y: number; children: { id: string }[] }[]
+    expect(after.map((e) => e.id)).toEqual([list!.id, row!.id, ...copies])
+    expect(after.slice(2).map((e) => e.y)).toEqual([40, 80])
+    expect(after[2]!.children[0]!.id).not.toBe(after[1]!.children[0]!.id)
+    expect(run('design_move', { id: row!.id, parent: list!.id, x: 0, y: 10 }).error).toBe(false)
+    const moved = run('design_read').json.elements[0]
+    expect(moved.children[0]).toMatchObject({ id: row!.id, y: 10 })
+    expect(run('design_move', { id: list!.id, parent: row!.id }).text).toMatch(/into itself/)
+    expect(run('design_move', { id: row!.id, parent: 'page', index: 0 }).error).toBe(false)
+    expect(run('design_read').json.elements[0].id).toBe(row!.id)
+  })
+
+  it('draws SVG through a connected app as editable elements', async () => {
+    const sent: ServerFrame[] = []
+    const client = link.connect((f) => sent.push(f))
+    client.frame({ t: 'design.view', canRender: true })
+    const pending = tools.callAsync('design_add_svg', {
+      svg: '<svg viewBox="0 0 24 24"><path d="M0 0L24 24" stroke="currentColor"/></svg>',
+      x: 5,
+      y: 6,
+      color: '#ff0000',
+      name: 'Slash',
+      width: 16,
+    })
+    const asked = sent.find((f) => f.t === 'design.import') as Extract<ServerFrame, { t: 'design.import' }>
+    expect(asked.svg).toContain('stroke="#ff0000"')
+    expect(asked.width).toBe(16)
+    client.frame({
+      t: 'design.imported',
+      id: asked.id,
+      elements: [{ id: 'x', type: 'frame', name: 'Imported SVG', x: 0, y: 0, width: 16, height: 16, children: [{ id: 'p', type: 'path', x: 0, y: 0, width: 16, height: 16 }] }],
+    })
+    expect((await pending).isError).toBeUndefined()
+    const el = run('design_read').json.elements[0]
+    expect(el).toMatchObject({ name: 'Slash', x: 5, y: 6, type: 'frame' })
+    expect(el.id).not.toBe('x')
+  })
+
   it('asks a connected app for a picture and returns it', async () => {
     run('design_add', { elements: [{ type: 'rectangle' }] })
     expect((await tools.callAsync('design_screenshot', {})).content[0]).toMatchObject({

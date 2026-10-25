@@ -54,6 +54,13 @@ export const ClientFrame = z.discriminatedUnion('t', [
     pageId: z.string().optional(),
     selection: z.array(z.string()).max(200).optional(),
   }),
+  /** The answer to a `design.import`: the elements the SVG became, or why it did not. */
+  z.object({
+    t: z.literal('design.imported'),
+    id: z.string(),
+    elements: z.array(z.unknown()).max(500).optional(),
+    error: z.string().optional(),
+  }),
   /** The answer to a `design.render`: a picture, or why there is none. */
   z.object({
     t: z.literal('design.rendered'),
@@ -117,6 +124,13 @@ export const ServerFrame = z.discriminatedUnion('t', [
     pageId: z.string().optional(),
     elementId: z.string().optional(),
     scale: z.number().optional(),
+  }),
+  /** An agent wants SVG markup turned into editable elements; only sent to clients that can render. */
+  z.object({
+    t: z.literal('design.import'),
+    id: z.string(),
+    svg: z.string().max(200_000),
+    width: z.number().optional(),
   }),
   z.object({ t: z.literal('browser.call'), id: z.string(), call: BrowserUseCall }),
 ])
