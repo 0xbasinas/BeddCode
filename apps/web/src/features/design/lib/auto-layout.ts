@@ -254,7 +254,8 @@ export function computeAutoLayout(frame: DesignElement): AutoLayoutResult {
       }
       extent = Math.max(extent, isHorizontal ? s.el.height : s.el.width)
     }
-    return extent
+    // Without wrapping the one line spans the frame, so centering and end alignment work.
+    return doWrap ? extent : Math.max(extent, isHorizontal ? innerH : innerW)
   })
 
   // ---------- 6. Position lines along the counter axis ----------
