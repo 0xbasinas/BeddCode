@@ -100,6 +100,8 @@ export const SessionEvent = z.discriminatedUnion('type', [
     agentTools: z.boolean().optional(),
     /** The agent may use the desktop app's browser pane through BeddCode's browser tools. */
     browserTools: z.boolean().optional(),
+    /** The agent may read and draw on the host's design canvases through BeddCode's design tools. */
+    designTools: z.boolean().optional(),
     /** Set when a schedule started this session. */
     schedule: z.object({ id: z.string(), name: z.string() }).optional(),
   }),

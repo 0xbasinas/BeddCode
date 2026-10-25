@@ -8,6 +8,7 @@ import {
   FolderPlus,
   GitBranch,
   Globe,
+  PenTool,
   MessageSquare,
   Monitor,
   Server,
@@ -97,6 +98,7 @@ export function NewSession({
   const [workspace, setWorkspace] = useState<Workspace>({ mode: 'local' })
   const [agentTools, setAgentTools] = useState(false)
   const [browserTools, setBrowserTools] = useState(false)
+  const [designTools, setDesignTools] = useState(false)
   const [repo, setRepo] = useState<RepoState | null | 'loading'>('loading')
   const [commands, setCommands] = useState<SlashCommand[]>([])
   const [preview, setPreview] = useState<{ key: string; data?: AgentPreview; failed?: boolean }>()
@@ -254,6 +256,7 @@ export function NewSession({
       workspace: useWorktree ? { mode: 'worktree', baseBranch: workspace.baseBranch } : undefined,
       agentTools: agentTools || undefined,
       browserTools: browserTools || undefined,
+      designTools: designTools || undefined,
     })
     await prompt(sessionId, value, attachments)
     void navigate({ to: '/session/$sessionId', params: { sessionId } })
@@ -377,6 +380,18 @@ export function NewSession({
                 onClick={() => setBrowserTools((v) => !v)}
               >
                 <Globe size={14} /> <span className="chip-text">Can use browser</span>
+              </button>
+              <button
+                className={`chip-lite agent-tools-chip ${designTools ? 'on' : ''}`}
+                aria-pressed={designTools}
+                title={
+                  designTools
+                    ? 'The agent can read and draw on this host’s design canvases. You see its changes live in the Design screen.'
+                    : 'Let this session’s agent draw on the design canvas'
+                }
+                onClick={() => setDesignTools((v) => !v)}
+              >
+                <PenTool size={14} /> <span className="chip-text">Can design</span>
               </button>
               {repo && repo !== 'loading' && (
                 <WorkspaceChip repo={repo} workspace={workspace} onChange={setWorkspace} />

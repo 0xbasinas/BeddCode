@@ -81,6 +81,13 @@ export const ServerFrame = z.discriminatedUnion('t', [
   /** Sent once the requested replay is complete; later `event` frames are live. */
   z.object({ t: z.literal('caught-up'), seq: z.number().int().nonnegative() }),
   /** An agent's browser tool call for this client to run (only sent to clients that offered). */
+  /** A design canvas was saved or changed (by a client or an agent); fetch it with `design.get`. */
+  z.object({
+    t: z.literal('design.changed'),
+    id: z.string(),
+    rev: z.number().int(),
+    origin: z.string().optional(),
+  }),
   z.object({ t: z.literal('browser.call'), id: z.string(), call: BrowserUseCall }),
 ])
 export type ServerFrame = z.infer<typeof ServerFrame>

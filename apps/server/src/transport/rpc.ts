@@ -15,6 +15,7 @@ import type { FileService } from '../files/files.ts'
 import type { TerminalManager } from '../terminals/manager.ts'
 import type { AlertService } from '../automation/alerts.ts'
 import { previewTrigger } from '../automation/cron.ts'
+import type { DesignStore } from '../design/designStore.ts'
 import type { ScheduleService } from '../automation/schedules.ts'
 
 type Handlers = {
@@ -25,6 +26,7 @@ type Handlers = {
 export interface AutomationServices {
   schedules: ScheduleService
   alerts: AlertService
+  designs: DesignStore
 }
 
 /** Everything that works on a session's folder: git, projects, shells and files. */
@@ -99,7 +101,7 @@ export function createRpcRouter(
   automation: AutomationServices,
 ) {
   const { git, github, projects, terminals, files } = workspace
-  const { schedules, alerts } = automation
+  const { schedules, alerts, designs } = automation
   const handlers: Handlers = {
     'host.pair': async () => access.pairing.create(),
     'devices.list': async () => access.tokens.list(),
@@ -246,6 +248,16 @@ export function createRpcRouter(
       await sessions.approve(p.sessionId, p.requestId, p.optionId)
       return {}
     },
+    'design.list': async () => ({ designs: designs.list() }),
+    'design.get': async (p) => {
+      const design = designs.get(p.id)
+      if (!design) throw new Error(`No design ${p.id}`)
+      return design
+    },
+    'design.create': async (p) => designs.create(p.name),
+    'design.save': async (p) => designs.save(p.id, p.project, p.origin),
+    'design.rename': async (p) => designs.rename(p.id, p.name),
+    'design.delete': async (p) => ({ removed: designs.remove(p.id) }),
     'schedules.list': async () => schedules.list(),
     'schedules.save': async (p) => schedules.saveSchedule(p),
     'schedules.remove': async (p) => ({ removed: schedules.remove(p.id) }),

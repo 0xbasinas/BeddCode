@@ -258,7 +258,7 @@ export class SessionManager {
         model: params.model,
         effort: params.effort,
         config: params.config,
-        mcpServers: this.toolServersFor(sessionId, params.agentTools || params.browserTools),
+        mcpServers: this.toolServersFor(sessionId, params.agentTools || params.browserTools || params.designTools),
       })
     } catch (err) {
       // Do not leave an unused worktree behind when the agent could not start.
@@ -288,6 +288,7 @@ export class SessionManager {
       schedule: origin.schedule,
       agentTools: (params.agentTools && this.deps.agentToolServers !== undefined) || undefined,
       browserTools: (params.browserTools && this.deps.agentToolServers !== undefined) || undefined,
+      designTools: (params.designTools && this.deps.agentToolServers !== undefined) || undefined,
     })
     this.announceModes(sessionId, adapter, instance.id, params.permissionMode)
     void this.pump(sessionId, session)
@@ -817,7 +818,7 @@ export class SessionManager {
       resumeId,
       mcpServers: this.toolServersFor(
         sessionId,
-        created.event.agentTools || created.event.browserTools,
+        created.event.agentTools || created.event.browserTools || created.event.designTools,
       ),
     })
     const live = { session, adapter }

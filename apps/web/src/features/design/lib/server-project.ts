@@ -113,6 +113,20 @@ export function normalizeServerProject(project: any): NormalizedProject {
  * Returns the server timestamp, or null when nothing was pushed (no open
  * server project / request failed — local IndexedDB save still applies).
  */
+/** The project as the host stores it: the active page synced into pages[], plus styles and guides. */
+export function buildProjectPayload(state: any) {
+  return {
+    name: state.fileName,
+    elements: state.elements,
+    pages: state.pages.map((p) => (p.id === state.activePageId ? { ...p, elements: state.elements } : p)),
+    activePageId: state.activePageId,
+    ...(state.guides ? { guides: state.guides } : {}),
+    ...(state.styles ? { styles: state.styles } : {}),
+    ...(state.comments ? { comments: state.comments } : {}),
+    ...(state.flowStartingPoints ? { flowStartingPoints: state.flowStartingPoints } : {}),
+  }
+}
+
 export async function pushProjectToServer(state: {
   currentProjectId: string | null
   clientId: string

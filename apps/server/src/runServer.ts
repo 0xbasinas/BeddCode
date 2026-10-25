@@ -90,7 +90,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     browserImageDir: path.join(attachments.root, 'browser'),
   })
   agentTools = automation.agentTools
-  const { schedules, alerts } = automation
+  const { schedules, alerts, designs } = automation
   const tokens = new TokenStore(path.join(home, 'auth.json'))
   tokens.onRevoke((deviceId) => alerts.forgetDevice(deviceId))
 
@@ -110,7 +110,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     tokens,
     pairing: new PairingManager(),
     tailscale: new TailscaleService(),
-    automation: { schedules, alerts },
+    automation: { schedules, alerts, designs },
     agentTools,
     browser: automation.browser,
     log,

@@ -5578,3 +5578,13 @@ button.agent-tools-chip.on:hover {
   width: min(100%, 420px);
   aspect-ratio: 16 / 10;
 }
+/* A screen that fills the window beside the left rail (Design). */
+.shell-solo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+.shell-solo > .main-stack {
+  flex: 1;
+  min-width: 0;
+}

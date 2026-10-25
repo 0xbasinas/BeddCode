@@ -71,6 +71,8 @@ export function AppShell() {
     )
   }, [preferences.density, preferences.uiFont, preferences.reduceMotion])
   const settings = useLocation({ select: (location) => location.pathname === '/settings' })
+  // Design is a screen of its own: the whole window, no sessions list or side panes.
+  const design = useLocation({ select: (location) => location.pathname === '/design' })
   const navigate = useNavigate()
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -110,6 +112,20 @@ export function AppShell() {
     return (
       <>
         <Outlet />
+        {layers}
+      </>
+    )
+  if (design)
+    return (
+      <>
+        <div className="shell-frame">
+          <LeftRail />
+          <div className="shell shell-solo">
+            <div className="main-stack">
+              <Outlet />
+            </div>
+          </div>
+        </div>
         {layers}
       </>
     )

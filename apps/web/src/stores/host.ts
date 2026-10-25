@@ -92,7 +92,7 @@ export const useHostStore = create<HostsState>(() => ({
 
 const clients = new Map<string, HostClient>()
 
-type LiveFrame = Extract<ServerFrame, { t: 'term.out' | 'term.exit' | 'fs.changed' }>
+type LiveFrame = Extract<ServerFrame, { t: 'term.out' | 'term.exit' | 'fs.changed' | 'design.changed' }>
 const frameListeners = new Map<string, Set<(frame: LiveFrame) => void>>()
 
 /** Terminal output and file-change notifications of one host. Returns the function that unsubscribes. */

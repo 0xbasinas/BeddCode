@@ -10,6 +10,7 @@ import {
 import type { SessionMcpServer } from '@beddcode/provider-core'
 import type { SessionOrigin } from '../sessions/sessionManager.ts'
 import { BROWSER_INSTRUCTIONS, BROWSER_TOOL_DEFINITIONS, type BrowserTools } from './browserUse.ts'
+import { DESIGN_INSTRUCTIONS, DESIGN_TOOL_DEFINITIONS, isDesignToolName, type DesignTools } from '../design/designTools.ts'
 import { digest, transcript, type SessionDigest } from './digest.ts'
 
 /** How deep sessions may nest: a child (1) may start children of its own (2), and those none. */
@@ -186,17 +187,21 @@ export class AgentTools {
     private readonly host: AgentToolsHost,
     private readonly bridge: { file: string; url: () => string; execPath?: string },
     private readonly browser?: BrowserTools,
+    private readonly design?: DesignTools,
   ) {}
 
   /** Which tool sets a session was given when it was created. */
-  private features(sessionId: string): { agents: boolean; browser: boolean } {
+  private features(sessionId: string): { agents: boolean; browser: boolean; design: boolean } {
     const created = this.host.readSession(sessionId).find((e) => e.event.type === 'session.created')
     const event = created?.event.type === 'session.created' ? created.event : undefined
     return {
-      // The server is only given to sessions with one of the two; without the browser flag it
+      // The server is only given to sessions with one of the three; without the other flags it
       // was for the agent tools.
-      agents: event?.agentTools === true || event?.browserTools !== true,
+      agents:
+        event?.agentTools === true ||
+        (event?.browserTools !== true && event?.designTools !== true),
       browser: event?.browserTools === true && this.browser !== undefined,
+      design: event?.designTools === true && this.design !== undefined,
     }
   }
 
@@ -232,7 +237,11 @@ export class AgentTools {
   async handle(sessionId: string, method: string, params: unknown): Promise<unknown> {
     const has = this.features(sessionId)
     if (method === 'instructions')
-      return [has.agents && INSTRUCTIONS, has.browser && BROWSER_INSTRUCTIONS]
+      return [
+        has.agents && INSTRUCTIONS,
+        has.browser && BROWSER_INSTRUCTIONS,
+        has.design && DESIGN_INSTRUCTIONS,
+      ]
         .filter(Boolean)
         .join('\n\n')
     if (method === 'tools/list')
@@ -240,6 +249,7 @@ export class AgentTools {
         tools: [
           ...(has.agents ? TOOL_DEFINITIONS : []),
           ...(has.browser ? BROWSER_TOOL_DEFINITIONS : []),
+          ...(has.design ? DESIGN_TOOL_DEFINITIONS : []),
         ],
       }
     if (method !== 'tools/call') throw new Error(`Unknown method ${method}`)
@@ -252,6 +262,14 @@ export class AgentTools {
           isError: true,
         }
       return this.browser.call(sessionId, name, p.arguments ?? {})
+    }
+    if (isDesignToolName(name)) {
+      if (!has.design || !this.design)
+        return {
+          content: [{ type: 'text', text: 'This session may not use the design canvas.' }],
+          isError: true,
+        }
+      return this.design.call(name, p.arguments ?? {})
     }
     if (!has.agents)
       return {

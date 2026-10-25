@@ -759,6 +759,8 @@ interface EditorState {
   /** PHASE 4: replace the whole document with an imported project file. */
   loadImportedProject: (pages: Page[], fileName: string | null, guides?: unknown[]) => void
   loadServerProject: (projectId: string) => Promise<void>
+  /** Opens a project the host sent: replaces the canvas and clears undo history. */
+  loadHostProject: (project: unknown) => void
   closeServerProject: () => void
 
   // Actions - Live sync (SSE)
@@ -3340,6 +3342,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       console.error('loadServerProject failed:', err)
     }
   },
+
+  loadHostProject: (project) =>
+    set(() => {
+      const normalized = normalizeServerProject(project)
+      return {
+        elements: normalized.activePageElements,
+        pages: normalized.pages,
+        activePageId: normalized.activePageId,
+        fileName: normalized.name,
+        selectedElementIds: [],
+        styles: (normalized.styles || []) as EditorState['styles'],
+        comments: (normalized.comments || []) as EditorState['comments'],
+        flowStartingPoints: (normalized.flowStartingPoints || []) as EditorState['flowStartingPoints'],
+        history: [{ elements: deepCloneElements(normalized.activePageElements), selectedElementIds: [] }],
+        historyIndex: 0,
+        isDirty: false,
+      }
+    }),
 
   closeServerProject: () =>
     set({ currentProjectId: null, syncStatus: 'offline', lastRemoteOrigin: null }),

@@ -18,6 +18,7 @@ import { Device, PairingCode, TailnetStatus } from './hosts.ts'
 import { ConfigOption, SlashCommand } from './events.ts'
 import { PermissionModeOption, ProviderInstance } from './providers.ts'
 import { FileContent, FileEntry, FileMedia, FolderListing, TerminalInfo } from './workspace.ts'
+import { Design, DesignProject, DesignSummary } from './design.ts'
 import { UsageLimits, UsageSummary } from './usage.ts'
 import {
   AlertEvents,
@@ -366,6 +367,8 @@ export const RpcMethods = {
       agentTools: z.boolean().optional(),
       /** Let the agent use the desktop app's browser pane (BeddCode's browser tools). */
       browserTools: z.boolean().optional(),
+      /** Let the agent read and draw on the host's design canvases (BeddCode's design tools). */
+      designTools: z.boolean().optional(),
     }),
     result: z.object({ sessionId: z.string() }),
   },
@@ -588,6 +591,27 @@ export const RpcMethods = {
   },
   'push.unregister': {
     params: z.object({ token: z.string() }),
+    result: z.object({ removed: z.boolean() }),
+  },
+  /** Design canvases kept on the host. Saving tells every other client with a `design.changed` frame. */
+  'design.list': { params: z.object({}), result: z.object({ designs: z.array(DesignSummary) }) },
+  'design.get': { params: z.object({ id: z.string() }), result: Design },
+  'design.create': { params: z.object({ name: z.string().max(120).optional() }), result: Design },
+  'design.save': {
+    params: z.object({
+      id: z.string(),
+      project: DesignProject,
+      /** Names the saving client, so it can ignore the change frame its own save causes. */
+      origin: z.string().max(80).optional(),
+    }),
+    result: DesignSummary,
+  },
+  'design.rename': {
+    params: z.object({ id: z.string(), name: z.string().min(1).max(120) }),
+    result: DesignSummary,
+  },
+  'design.delete': {
+    params: z.object({ id: z.string() }),
     result: z.object({ removed: z.boolean() }),
   },
 } as const

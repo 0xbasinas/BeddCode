@@ -138,6 +138,8 @@ export interface SessionView {
   agentTools?: boolean
   /** The agent may use the desktop app's browser pane. */
   browserTools?: boolean
+  /** The agent may draw on the host's design canvases. */
+  designTools?: boolean
   /** The agent's own per-session settings (model, thinking level, ...). */
   config: ConfigOption[]
   /** The session this one continues, when it was forked. */
@@ -204,6 +206,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       schedule: e.schedule,
       agentTools: e.agentTools,
       browserTools: e.browserTools,
+      designTools: e.designTools,
     }
     return {
       lastSeq: stored.seq,

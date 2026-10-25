@@ -29,7 +29,7 @@ export interface HostClientOptions {
   onEvent(stored: StoredEvent): void
   onCaughtUp?(seq: number): void
   /** Terminal output and file-change notifications: live data that is not part of the event log. */
-  onFrame?(frame: Extract<ServerFrame, { t: 'term.out' | 'term.exit' | 'fs.changed' }>): void
+  onFrame?(frame: Extract<ServerFrame, { t: 'term.out' | 'term.exit' | 'fs.changed' | 'design.changed' }>): void
   onState?(state: ConnectionState, host?: HostInfo): void
   /** An agent's browser tool call to run (only after `offerBrowser` said this client can). */
   onBrowserCall?(id: string, call: BrowserUseCall): void
@@ -266,6 +266,7 @@ export class HostClient {
       case 'term.out':
       case 'term.exit':
       case 'fs.changed':
+      case 'design.changed':
         this.options.onFrame?.(frame)
         break
       case 'browser.call':

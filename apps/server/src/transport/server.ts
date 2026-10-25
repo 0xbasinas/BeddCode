@@ -305,6 +305,10 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     let unsubscribe: (() => void) | null = null
     // Joins the browser broker once it offers (the desktop app does).
     const browserClient = options.browser?.connect(send)
+    // Design canvases saved by anyone, so open editors can refresh.
+    const stopDesigns = options.automation.designs.onChange((c) => {
+      if (authed) send({ t: 'design.changed', ...c })
+    })
     lastSeen.set(ws, Date.now())
     const alive = () => {
       if (lastSeen.has(ws)) lastSeen.set(ws, Date.now())
@@ -324,6 +328,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       terminalDetach.forEach((detach) => detach())
       watching.forEach((release) => release())
       browserClient?.close()
+      stopDesigns()
     })
 
     ws.on('message', (raw) => {
