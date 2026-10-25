@@ -49,6 +49,13 @@ describe('design tools', () => {
     expect(run('design_get_selection').json.selected[0]).toMatchObject({ name: 'Box' })
   })
 
+  it('serves how-to skills on demand', () => {
+    const list = run('design_skill').json.skills.map((k: { name: string }) => k.name)
+    expect(list).toEqual(expect.arrayContaining(['workflow', 'auto-layout', 'icons']))
+    expect(run('design_skill', { name: 'icons' }).text).toMatch(/git-branch/)
+    expect(run('design_skill', { name: 'nope' }).text).toMatch(/Available/)
+  })
+
   it('nudges agents that draw icons from plain shapes', () => {
     const r = run('design_add', { elements: [{ type: 'ellipse', name: 'Globe icon' }, { type: 'text', textContent: '✕' }] })
     expect(r.json.hint).toMatch(/design_add_svg/)

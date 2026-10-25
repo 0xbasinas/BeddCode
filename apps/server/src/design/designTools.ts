@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import type { DesignProject } from '@beddcode/contracts'
 import type { DesignStore } from './designStore.ts'
 import type { DesignLink } from './designLink.ts'
+import { DESIGN_SKILL_NAMES, designSkill } from './designSkills.ts'
 
 export const DESIGN_TOOL_NAMES = [
   'design_list',
@@ -16,6 +17,7 @@ export const DESIGN_TOOL_NAMES = [
   'design_add_svg',
   'design_duplicate',
   'design_move',
+  'design_skill',
 ] as const
 export type DesignToolName = (typeof DESIGN_TOOL_NAMES)[number]
 export const isDesignToolName = (name: string): name is DesignToolName =>
@@ -212,6 +214,14 @@ export const DESIGN_TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'design_skill',
+    description: `Loads a how-to guide for drawing well: ${DESIGN_SKILL_NAMES.join(', ')}. Call it with no name to list them, or with a name to read one (ready-made auto layout rows, an icon library as SVG, UI patterns, the reference-matching loop). Load 'workflow' before your first design, and 'icons' and 'auto-layout' before using them.`,
+    inputSchema: {
+      type: 'object',
+      properties: { name: { type: 'string', description: 'The skill to read; omit to list them.' } },
+    },
+  },
+  {
     name: 'design_get_selection',
     description:
       'What the user has selected in the Design screen right now (id, type, name, position, size and style of each element). When the user says "this", "these" or "the selected card", read this first.',
@@ -276,6 +286,8 @@ export const DESIGN_TOOL_DEFINITIONS = [
 ] as const
 
 export const DESIGN_INSTRUCTIONS = `BeddCode design canvas. You can draw on the design canvases kept on this host; the user has the same canvas open in the Design screen and sees your changes as you make them.
+
+Skills: call design_skill (no name) to list how-to guides, and load 'workflow' before your first design. 'auto-layout', 'icons', 'reference-matching' and 'ui-patterns' hold ready-made structures and an SVG icon library; read them instead of improvising.
 
 Basics
 - design_read first when working on an existing design. Coordinates are in pixels, origin top-left; a child's x and y are relative to its frame or group.
@@ -699,6 +711,8 @@ export class DesignTools {
         )
         return { design: id, moved: elId }
       }
+      case 'design_skill':
+        return designSkill(args.name)
       case 'design_get_selection': {
         const view = this.link?.current()
         const d = view?.designId ? this.designs.get(view.designId) : undefined
