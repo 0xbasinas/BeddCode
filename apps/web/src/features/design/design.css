@@ -474,6 +474,15 @@
   padding: 12px;
   gap: 12px;
 }
+.design-agent-new .composer-wrap {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  align-self: stretch;
+}
+.design-agent-new .footer-bar {
+  margin: 0 12px;
+}
 .design-agent-intro {
   display: flex;
   flex-direction: column;
