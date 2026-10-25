@@ -225,7 +225,7 @@ export function ColorPicker({ color, opacity, onChange, recentColors }: ColorPic
       {/* Color swatch trigger */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-7 h-7 rounded border border-[#555] shrink-0 overflow-hidden hover:ring-2 hover:ring-[#0D99FF]/30 transition-all"
+        className="w-7 h-7 rounded border border-[color:var(--dc-border-strong)] shrink-0 overflow-hidden hover:ring-2 hover:ring-[color:var(--dc-accent)]/30 transition-all"
         style={{ backgroundColor: displayHex }}
         title="Pick color"
       />
@@ -242,7 +242,7 @@ export function ColorPicker({ color, opacity, onChange, recentColors }: ColorPic
             setHexInput(displayHex)
           }
         }}
-        className="w-[72px] h-6 px-1.5 text-[11px] border border-[#555] rounded bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] tabular-nums"
+        className="w-[72px] h-6 px-1.5 text-[11px] border border-[color:var(--dc-border-strong)] rounded bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
       />
 
       {/* Opacity input */}
@@ -250,12 +250,12 @@ export function ColorPicker({ color, opacity, onChange, recentColors }: ColorPic
         type="text"
         value={opacity}
         onChange={(e) => handleOpacityChange(e.target.value)}
-        className="w-[38px] h-6 px-1 text-[11px] border border-[#555] rounded bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums"
+        className="w-[38px] h-6 px-1 text-[11px] border border-[color:var(--dc-border-strong)] rounded bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
       />
 
       {/* Dropdown picker */}
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 bg-[#2C2C2C] rounded-lg shadow-xl border border-[#3C3C3C] p-3 z-[100] w-[230px]">
+        <div className="absolute top-full left-0 mt-1 bg-[color:var(--dc-raised)] rounded-lg shadow-xl border border-[color:var(--dc-hover)] p-3 z-[100] w-[230px]">
           {/* SV Canvas */}
           <div className="relative mb-2">
             <canvas
@@ -304,39 +304,39 @@ export function ColorPicker({ color, opacity, onChange, recentColors }: ColorPic
 
           {/* Opacity slider */}
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-[10px] text-[#888]">Opacity</span>
+            <span className="text-[10px] text-[color:var(--dc-muted)]">Opacity</span>
             <input
               type="range"
               min="0"
               max="100"
               value={opacity}
               onChange={(e) => onChange(color, parseInt(e.target.value))}
-              className="flex-1 h-1 accent-[#0D99FF] cursor-pointer"
+              className="flex-1 h-1 accent-[color:var(--dc-accent)] cursor-pointer"
             />
-            <span className="text-[10px] text-[#999] w-7 text-right tabular-nums">{opacity}%</span>
+            <span className="text-[10px] text-[color:var(--dc-muted)] w-7 text-right tabular-nums">{opacity}%</span>
           </div>
 
           {/* Hex input */}
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-[10px] text-[#888]">HEX</span>
+            <span className="text-[10px] text-[color:var(--dc-muted)]">HEX</span>
             <input
               type="text"
               value={hexInput}
               onChange={(e) => handleHexInputChange(e.target.value)}
-              className="flex-1 h-6 px-1.5 text-[11px] border border-[#555] rounded bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] tabular-nums"
+              className="flex-1 h-6 px-1.5 text-[11px] border border-[color:var(--dc-border-strong)] rounded bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
             />
           </div>
 
           {/* Recent colors */}
           {(localRecentColors.length > 0 || (recentColors && recentColors.length > 0)) && (
             <div className="mb-3">
-              <span className="text-[10px] text-[#888] mb-1 block">Recent</span>
+              <span className="text-[10px] text-[color:var(--dc-muted)] mb-1 block">Recent</span>
               <div className="flex gap-1">
                 {(localRecentColors.length > 0 ? localRecentColors : recentColors || []).map((c) => (
                   <button
                     key={c}
                     onClick={() => selectPresetColor(c)}
-                    className="w-5 h-5 rounded border border-[#555] relative hover:scale-110 transition-transform"
+                    className="w-5 h-5 rounded border border-[color:var(--dc-border-strong)] relative hover:scale-110 transition-transform"
                     style={{ backgroundColor: c }}
                   >
                     {color.toUpperCase() === c.toUpperCase() && (
@@ -354,7 +354,7 @@ export function ColorPicker({ color, opacity, onChange, recentColors }: ColorPic
               <button
                 key={`preset-${idx}-${c}`}
                 onClick={() => selectPresetColor(c)}
-                className="w-[18px] h-[18px] rounded-sm border border-[#555]/50 relative hover:scale-125 transition-transform"
+                className="w-[18px] h-[18px] rounded-sm border border-[color:var(--dc-border-strong)]/50 relative hover:scale-125 transition-transform"
                 style={{ backgroundColor: c }}
               >
                 {color.toUpperCase() === c.toUpperCase() && (

@@ -929,7 +929,7 @@ const CanvasElement = React.memo(function CanvasElement({
         <text
           x={0} y={-6 / safeZoom}
           fontSize={Math.max(10, 11 / safeZoom)}
-          fill="#0D99FF"
+          fill="var(--dc-accent)"
           fontFamily="Inter, system-ui, sans-serif"
           style={{ pointerEvents: 'none' }}
         >
@@ -942,7 +942,7 @@ const CanvasElement = React.memo(function CanvasElement({
         <text
           x={0} y={-6 / safeZoom}
           fontSize={Math.max(10, 11 / safeZoom)}
-          fill="#0D99FF"
+          fill="var(--dc-accent)"
           fontFamily="Inter, system-ui, sans-serif"
           style={{ pointerEvents: 'none' }}
         >
@@ -983,7 +983,7 @@ const CanvasElement = React.memo(function CanvasElement({
           x={0} y={0}
           width={element.width} height={element.height}
           fill="transparent"
-          stroke={isSelected ? '#0D99FF' : 'rgba(255,255,255,0.15)'}
+          stroke={isSelected ? 'var(--dc-accent)' : 'rgba(255,255,255,0.15)'}
           strokeWidth={isSelected ? 1 / safeZoom : 0.5 / safeZoom}
           strokeDasharray={isSelected ? `${4 / safeZoom} ${2 / safeZoom}` : undefined}
           pointerEvents="none"
@@ -1012,7 +1012,7 @@ const CanvasElement = React.memo(function CanvasElement({
                 x={-1} y={-1}
                 width={child.width + 2} height={child.height + 2}
                 fill="none"
-                stroke="#0D99FF"
+                stroke="var(--dc-accent)"
                 strokeWidth={1.5 / safeZoom}
                 strokeDasharray={`${6 / safeZoom} ${3 / safeZoom}`}
                 pointerEvents="none"
@@ -1144,7 +1144,7 @@ const CanvasElement = React.memo(function CanvasElement({
             x={-1} y={-1}
             width={element.width + 2} height={element.height + 2}
             fill="none"
-            stroke="#0D99FF"
+            stroke="var(--dc-accent)"
             strokeWidth={1.5 / safeZoom}
             strokeDasharray={isGroup ? `${6 / safeZoom} ${3 / safeZoom}` : undefined}
             pointerEvents="none"
@@ -1167,7 +1167,7 @@ const CanvasElement = React.memo(function CanvasElement({
             <text
               x={0} y={-16 / safeZoom}
               fontSize={Math.max(8, 9 / safeZoom)}
-              fill="#0D99FF"
+              fill="var(--dc-accent)"
               fontFamily="Inter, system-ui, sans-serif"
               style={{ pointerEvents: 'none' }}
             >
@@ -1443,10 +1443,10 @@ export function Canvas() {
   const drawPreviewEl = isDrawing && drawStart && drawCurrent ? (
     <g>
       {activeTool === 'line' ? (
-        <line x1={drawStart.x} y1={drawStart.y} x2={drawCurrent.x} y2={drawCurrent.y} stroke="#0D99FF" strokeWidth={2 / safeZoom} strokeLinecap="round" />
+        <line x1={drawStart.x} y1={drawStart.y} x2={drawCurrent.x} y2={drawCurrent.y} stroke="var(--dc-accent)" strokeWidth={2 / safeZoom} strokeLinecap="round" />
       ) : activeTool === 'arrow' ? (
         <g>
-          <line x1={drawStart.x} y1={drawStart.y} x2={drawCurrent.x} y2={drawCurrent.y} stroke="#0D99FF" strokeWidth={2 / safeZoom} strokeLinecap="round" />
+          <line x1={drawStart.x} y1={drawStart.y} x2={drawCurrent.x} y2={drawCurrent.y} stroke="var(--dc-accent)" strokeWidth={2 / safeZoom} strokeLinecap="round" />
           <polygon
             points={(() => {
               const dx = drawCurrent.x - drawStart.x
@@ -1455,13 +1455,13 @@ export function Canvas() {
               const headLen = 12 / safeZoom
               return `${drawCurrent.x},${drawCurrent.y} ${drawCurrent.x - headLen * Math.cos(angle - Math.PI / 6)},${drawCurrent.y - headLen * Math.sin(angle - Math.PI / 6)} ${drawCurrent.x - headLen * Math.cos(angle + Math.PI / 6)},${drawCurrent.y - headLen * Math.sin(angle + Math.PI / 6)}`
             })()}
-            fill="#0D99FF"
+            fill="var(--dc-accent)"
           />
         </g>
       ) : activeTool === 'ellipse' ? (
-        <ellipse cx={(drawStart.x + drawCurrent.x) / 2} cy={(drawStart.y + drawCurrent.y) / 2} rx={Math.abs(drawCurrent.x - drawStart.x) / 2} ry={Math.abs(drawCurrent.y - drawStart.y) / 2} fill="rgba(217,217,217,0.3)" stroke="#0D99FF" strokeWidth={1.5 / safeZoom} />
+        <ellipse cx={(drawStart.x + drawCurrent.x) / 2} cy={(drawStart.y + drawCurrent.y) / 2} rx={Math.abs(drawCurrent.x - drawStart.x) / 2} ry={Math.abs(drawCurrent.y - drawStart.y) / 2} fill="rgba(217,217,217,0.3)" stroke="var(--dc-accent)" strokeWidth={1.5 / safeZoom} />
       ) : (
-        <rect x={Math.min(drawStart.x, drawCurrent.x)} y={Math.min(drawStart.y, drawCurrent.y)} width={Math.abs(drawCurrent.x - drawStart.x)} height={Math.abs(drawCurrent.y - drawStart.y)} fill={activeTool === 'frame' ? 'rgba(255,255,255,0.3)' : 'rgba(217,217,217,0.3)'} stroke="#0D99FF" strokeWidth={1.5 / safeZoom} strokeDasharray={`${4 / safeZoom}`} rx={activeTool === 'frame' ? 8 : 0} />
+        <rect x={Math.min(drawStart.x, drawCurrent.x)} y={Math.min(drawStart.y, drawCurrent.y)} width={Math.abs(drawCurrent.x - drawStart.x)} height={Math.abs(drawCurrent.y - drawStart.y)} fill={activeTool === 'frame' ? 'rgba(255,255,255,0.3)' : 'rgba(217,217,217,0.3)'} stroke="var(--dc-accent)" strokeWidth={1.5 / safeZoom} strokeDasharray={`${4 / safeZoom}`} rx={activeTool === 'frame' ? 8 : 0} />
       )}
     </g>
   ) : null
@@ -1476,7 +1476,7 @@ export function Canvas() {
             key={`pen-line-${i}`}
             x1={penPoints[i-1].x} y1={penPoints[i-1].y}
             x2={pt.x} y2={pt.y}
-            stroke="#0D99FF" strokeWidth={1.5 / safeZoom}
+            stroke="var(--dc-accent)" strokeWidth={1.5 / safeZoom}
             strokeDasharray={`${4 / safeZoom} ${3 / safeZoom}`}
             opacity={0.5}
           />
@@ -1488,7 +1488,7 @@ export function Canvas() {
           x1={penPoints[penPoints.length-1].x}
           y1={penPoints[penPoints.length-1].y}
           x2={penCursorPos.x} y2={penCursorPos.y}
-          stroke="#0D99FF" strokeWidth={1 / safeZoom}
+          stroke="var(--dc-accent)" strokeWidth={1 / safeZoom}
           strokeDasharray={`${3 / safeZoom} ${3 / safeZoom}`}
           opacity={0.6}
         />
@@ -1512,7 +1512,7 @@ export function Canvas() {
             return d
           })()}
           fill="none"
-          stroke="#0D99FF"
+          stroke="var(--dc-accent)"
           strokeWidth={1.5 / safeZoom}
           strokeDasharray={penCursorPos ? `${4 / safeZoom} ${3 / safeZoom}` : undefined}
           pointerEvents="none"
@@ -1528,14 +1528,14 @@ export function Canvas() {
             {/* Bezier handle lines and control points */}
             {pt.cx1 !== undefined && pt.cy1 !== undefined && (
               <>
-                <line x1={pt.cx1} y1={pt.cy1} x2={pt.x} y2={pt.y} stroke="#0D99FF" strokeWidth={0.5 / safeZoom} strokeDasharray={`${3 / safeZoom}`} />
-                <circle cx={pt.cx1} cy={pt.cy1} r={2.5 / safeZoom} fill="#FF6B6B" stroke="#0D99FF" strokeWidth={1 / safeZoom} />
+                <line x1={pt.cx1} y1={pt.cy1} x2={pt.x} y2={pt.y} stroke="var(--dc-accent)" strokeWidth={0.5 / safeZoom} strokeDasharray={`${3 / safeZoom}`} />
+                <circle cx={pt.cx1} cy={pt.cy1} r={2.5 / safeZoom} fill="#FF6B6B" stroke="var(--dc-accent)" strokeWidth={1 / safeZoom} />
               </>
             )}
             {pt.cx2 !== undefined && pt.cy2 !== undefined && (
               <>
-                <line x1={pt.cx2} y1={pt.cy2} x2={pt.x} y2={pt.y} stroke="#0D99FF" strokeWidth={0.5 / safeZoom} strokeDasharray={`${3 / safeZoom}`} />
-                <circle cx={pt.cx2} cy={pt.cy2} r={2.5 / safeZoom} fill="#FF6B6B" stroke="#0D99FF" strokeWidth={1 / safeZoom} />
+                <line x1={pt.cx2} y1={pt.cy2} x2={pt.x} y2={pt.y} stroke="var(--dc-accent)" strokeWidth={0.5 / safeZoom} strokeDasharray={`${3 / safeZoom}`} />
+                <circle cx={pt.cx2} cy={pt.cy2} r={2.5 / safeZoom} fill="#FF6B6B" stroke="var(--dc-accent)" strokeWidth={1 / safeZoom} />
               </>
             )}
             {/* Anchor point - Blender style: last point large/active, others small */}
@@ -1543,8 +1543,8 @@ export function Canvas() {
               cx={pt.x}
               cy={pt.y}
               r={anchorRadius}
-              fill={isLast ? '#0D99FF' : 'white'}
-              stroke="#0D99FF"
+              fill={isLast ? 'var(--dc-accent)' : 'white'}
+              stroke="var(--dc-accent)"
               strokeWidth={1.5 / safeZoom}
             />
           </React.Fragment>
@@ -1552,7 +1552,7 @@ export function Canvas() {
       })}
       {/* Close path indicator ring on first point */}
       {penPoints.length >= 3 && (
-        <circle cx={penPoints[0].x} cy={penPoints[0].y} r={7 / safeZoom} fill="none" stroke="#0D99FF" strokeWidth={1.5 / safeZoom} strokeDasharray={`${2 / safeZoom}`} opacity={0.6} />
+        <circle cx={penPoints[0].x} cy={penPoints[0].y} r={7 / safeZoom} fill="none" stroke="var(--dc-accent)" strokeWidth={1.5 / safeZoom} strokeDasharray={`${2 / safeZoom}`} opacity={0.6} />
       )}
     </g>
   ) : null
@@ -1563,7 +1563,7 @@ export function Canvas() {
       <polyline
         points={pencilPoints.map(p => `${p.x},${p.y}`).join(' ')}
         fill="none"
-        stroke="#0D99FF"
+        stroke="var(--dc-accent)"
         strokeWidth={2 / safeZoom}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -1574,9 +1574,9 @@ export function Canvas() {
   // Eyedropper loupe
   const eyedropperEl = activeTool === 'eyedropper' && eyedropperPos ? (
     <g>
-      <circle cx={eyedropperPos.x} cy={eyedropperPos.y} r={20 / safeZoom} fill="none" stroke="#0D99FF" strokeWidth={2 / safeZoom} />
-      <line x1={eyedropperPos.x - 8 / safeZoom} y1={eyedropperPos.y} x2={eyedropperPos.x + 8 / safeZoom} y2={eyedropperPos.y} stroke="#0D99FF" strokeWidth={1 / safeZoom} />
-      <line x1={eyedropperPos.x} y1={eyedropperPos.y - 8 / safeZoom} x2={eyedropperPos.x} y2={eyedropperPos.y + 8 / safeZoom} stroke="#0D99FF" strokeWidth={1 / safeZoom} />
+      <circle cx={eyedropperPos.x} cy={eyedropperPos.y} r={20 / safeZoom} fill="none" stroke="var(--dc-accent)" strokeWidth={2 / safeZoom} />
+      <line x1={eyedropperPos.x - 8 / safeZoom} y1={eyedropperPos.y} x2={eyedropperPos.x + 8 / safeZoom} y2={eyedropperPos.y} stroke="var(--dc-accent)" strokeWidth={1 / safeZoom} />
+      <line x1={eyedropperPos.x} y1={eyedropperPos.y - 8 / safeZoom} x2={eyedropperPos.x} y2={eyedropperPos.y + 8 / safeZoom} stroke="var(--dc-accent)" strokeWidth={1 / safeZoom} />
       {eyedropperColor && (
         <rect x={eyedropperPos.x + 24 / safeZoom} y={eyedropperPos.y - 12 / safeZoom} width={24 / safeZoom} height={24 / safeZoom} fill={eyedropperColor} stroke="#FFFFFF" strokeWidth={1.5 / safeZoom} rx={4 / safeZoom} />
       )}
@@ -1625,7 +1625,7 @@ export function Canvas() {
             const isEditingThis = editingPathId === el.id
             const renderHandle = (cx: number, cy: number, key: string, side: 'start' | 'end') =>
               isSmooth ? (
-                <circle key={key} cx={cx} cy={cy} r={handleSize} fill="white" stroke="#0D99FF" strokeWidth={1 / safeZoom}
+                <circle key={key} cx={cx} cy={cy} r={handleSize} fill="white" stroke="var(--dc-accent)" strokeWidth={1 / safeZoom}
                   style={{ cursor: 'pointer', pointerEvents: 'auto' }}
                   onMouseDown={(e) => isEditingThis && handlePathTangentClick(e, segIdx, side)} />
               ) : (
@@ -1636,7 +1636,7 @@ export function Canvas() {
                   width={handleSize * 2}
                   height={handleSize * 2}
                   fill="white"
-                  stroke="#0D99FF"
+                  stroke="var(--dc-accent)"
                   strokeWidth={1 / safeZoom}
                   style={{ cursor: 'pointer', pointerEvents: 'auto' }}
                   onMouseDown={(e) => isEditingThis && handlePathTangentClick(e, segIdx, side)}
@@ -1646,13 +1646,13 @@ export function Canvas() {
               <React.Fragment key={`seg-${segIdx}`}>
                 {hasTangentStart && (
                   <>
-                    <line x1={tsX} y1={tsY} x2={startAbsX} y2={startAbsY} stroke="#0D99FF" strokeWidth={0.5 / safeZoom} strokeDasharray={`${3 / safeZoom}`} />
+                    <line x1={tsX} y1={tsY} x2={startAbsX} y2={startAbsY} stroke="var(--dc-accent)" strokeWidth={0.5 / safeZoom} strokeDasharray={`${3 / safeZoom}`} />
                     {renderHandle(tsX, tsY, `ts-${segIdx}`, 'start')}
                   </>
                 )}
                 {hasTangentEnd && (
                   <>
-                    <line x1={teX} y1={teY} x2={endAbsX} y2={endAbsY} stroke="#0D99FF" strokeWidth={0.5 / safeZoom} strokeDasharray={`${3 / safeZoom}`} />
+                    <line x1={teX} y1={teY} x2={endAbsX} y2={endAbsY} stroke="var(--dc-accent)" strokeWidth={0.5 / safeZoom} strokeDasharray={`${3 / safeZoom}`} />
                     {renderHandle(teX, teY, `te-${segIdx}`, 'end')}
                   </>
                 )}
@@ -1670,8 +1670,8 @@ export function Canvas() {
                 cx={elX + v.x}
                 cy={elY + v.y}
                 r={anchorR}
-                fill={isSelected ? '#0D99FF' : isLast ? '#0D99FF' : 'white'}
-                stroke="#0D99FF"
+                fill={isSelected ? 'var(--dc-accent)' : isLast ? 'var(--dc-accent)' : 'white'}
+                stroke="var(--dc-accent)"
                 strokeWidth={1.5 / safeZoom}
                 style={{ cursor: 'pointer', pointerEvents: 'auto' }}
                 onMouseDown={(e) => editingPathId === el.id && handlePathAnchorClick(e, i)}
@@ -1684,30 +1684,30 @@ export function Canvas() {
 
     return (
       <g style={{ pointerEvents: 'auto' }}>
-        <line x1={handles.n.x} y1={handles.n.y} x2={handles.rotate.x} y2={handles.rotate.y} stroke="#0D99FF" strokeWidth={1 / safeZoom} />
-        <circle cx={handles.rotate.x} cy={handles.rotate.y} r={5 / safeZoom} fill="white" stroke="#0D99FF" strokeWidth={1.5 / safeZoom} style={{ cursor: 'grab' }} />
+        <line x1={handles.n.x} y1={handles.n.y} x2={handles.rotate.x} y2={handles.rotate.y} stroke="var(--dc-accent)" strokeWidth={1 / safeZoom} />
+        <circle cx={handles.rotate.x} cy={handles.rotate.y} r={5 / safeZoom} fill="white" stroke="var(--dc-accent)" strokeWidth={1.5 / safeZoom} style={{ cursor: 'grab' }} />
         {/* Center alignment guides for text elements */}
         {el.type === 'text' && (
           <>
             <line
               x1={absEl.x + el.width / 2} y1={absEl.y - 8 / safeZoom}
               x2={absEl.x + el.width / 2} y2={absEl.y + el.height + 8 / safeZoom}
-              stroke="#0D99FF" strokeWidth={0.5 / safeZoom} strokeDasharray={`${3 / safeZoom} ${2 / safeZoom}`} opacity={0.5}
+              stroke="var(--dc-accent)" strokeWidth={0.5 / safeZoom} strokeDasharray={`${3 / safeZoom} ${2 / safeZoom}`} opacity={0.5}
             />
             <line
               x1={absEl.x - 8 / safeZoom} y1={absEl.y + el.height / 2}
               x2={absEl.x + el.width + 8 / safeZoom} y2={absEl.y + el.height / 2}
-              stroke="#0D99FF" strokeWidth={0.5 / safeZoom} strokeDasharray={`${3 / safeZoom} ${2 / safeZoom}`} opacity={0.5}
+              stroke="var(--dc-accent)" strokeWidth={0.5 / safeZoom} strokeDasharray={`${3 / safeZoom} ${2 / safeZoom}`} opacity={0.5}
             />
-            <circle cx={absEl.x + el.width / 2} cy={absEl.y + el.height / 2} r={3 / safeZoom} fill="#0D99FF" opacity={0.6} />
+            <circle cx={absEl.x + el.width / 2} cy={absEl.y + el.height / 2} r={3 / safeZoom} fill="var(--dc-accent)" opacity={0.6} />
           </>
         )}
         {/* Use circular handles for path elements, square for others (Figma-style) */}
         {(['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as HandlePosition[]).map((pos) => (
           isPathType ? (
-            <circle key={pos} cx={handles[pos].x} cy={handles[pos].y} r={4 / safeZoom} fill="white" stroke="#0D99FF" strokeWidth={1.5 / safeZoom} style={{ cursor: handleCursors[pos] }} />
+            <circle key={pos} cx={handles[pos].x} cy={handles[pos].y} r={4 / safeZoom} fill="white" stroke="var(--dc-accent)" strokeWidth={1.5 / safeZoom} style={{ cursor: handleCursors[pos] }} />
           ) : (
-            <rect key={pos} x={handles[pos].x - 4 / safeZoom} y={handles[pos].y - 4 / safeZoom} width={8 / safeZoom} height={8 / safeZoom} fill="white" stroke="#0D99FF" strokeWidth={1.5 / safeZoom} rx={0} style={{ cursor: handleCursors[pos] }} />
+            <rect key={pos} x={handles[pos].x - 4 / safeZoom} y={handles[pos].y - 4 / safeZoom} width={8 / safeZoom} height={8 / safeZoom} fill="white" stroke="var(--dc-accent)" strokeWidth={1.5 / safeZoom} rx={0} style={{ cursor: handleCursors[pos] }} />
           )
         ))}
         {pathControlPointsEl}
@@ -1897,12 +1897,12 @@ export function Canvas() {
     const r = 5 / safeZoom
     return (
       <g pointerEvents="none">
-        <rect x={minX} y={minY} width={maxX - minX} height={maxY - minY} fill="none" stroke="#0D99FF" strokeWidth={1.5 / safeZoom} />
+        <rect x={minX} y={minY} width={maxX - minX} height={maxY - minY} fill="none" stroke="var(--dc-accent)" strokeWidth={1.5 / safeZoom} />
         {corners.map(([cx, cy], i) => (
-          <rect key={i} x={cx - r} y={cy - r} width={r * 2} height={r * 2} fill="#FFFFFF" stroke="#0D99FF" strokeWidth={1.5 / safeZoom} />
+          <rect key={i} x={cx - r} y={cy - r} width={r * 2} height={r * 2} fill="#FFFFFF" stroke="var(--dc-accent)" strokeWidth={1.5 / safeZoom} />
         ))}
         {isScaling && (
-          <text x={minX} y={minY - 8 / safeZoom} fontSize={11 / safeZoom} fill="#0D99FF" fontFamily="Inter, system-ui" style={{ pointerEvents: 'none' }}>
+          <text x={minX} y={minY - 8 / safeZoom} fontSize={11 / safeZoom} fill="var(--dc-accent)" fontFamily="Inter, system-ui" style={{ pointerEvents: 'none' }}>
             scale
           </text>
         )}
@@ -2000,7 +2000,7 @@ export function Canvas() {
       <rect
         x={minX - 1} y={minY - 1}
         width={maxX - minX + 2} height={maxY - minY + 2}
-        fill="none" stroke="#0D99FF" strokeWidth={1.5 / safeZoom}
+        fill="none" stroke="var(--dc-accent)" strokeWidth={1.5 / safeZoom}
         strokeDasharray={`${6 / safeZoom} ${3 / safeZoom}`}
         pointerEvents="none"
       />
@@ -2028,7 +2028,7 @@ export function Canvas() {
         if (guide.orientation === 'horizontal') {
           return (
             <g key={guide.id}>
-              <line x1={-10000} y1={pos} x2={10000} y2={pos} stroke="#0D99FF" strokeWidth={1 / safeZoom} strokeDasharray={`${4 / safeZoom} ${2 / safeZoom}`} pointerEvents="none" />
+              <line x1={-10000} y1={pos} x2={10000} y2={pos} stroke="var(--dc-accent)" strokeWidth={1 / safeZoom} strokeDasharray={`${4 / safeZoom} ${2 / safeZoom}`} pointerEvents="none" />
               <line x1={-10000} y1={pos} x2={10000} y2={pos} stroke="transparent" strokeWidth={4 / safeZoom}
                 style={{ cursor: 'ns-resize', pointerEvents: 'auto' }}
                 onMouseDown={(e) => {
@@ -2055,7 +2055,7 @@ export function Canvas() {
         } else {
           return (
             <g key={guide.id}>
-              <line x1={pos} y1={-10000} x2={pos} y2={10000} stroke="#0D99FF" strokeWidth={1 / safeZoom} strokeDasharray={`${4 / safeZoom} ${2 / safeZoom}`} pointerEvents="none" />
+              <line x1={pos} y1={-10000} x2={pos} y2={10000} stroke="var(--dc-accent)" strokeWidth={1 / safeZoom} strokeDasharray={`${4 / safeZoom} ${2 / safeZoom}`} pointerEvents="none" />
               <line x1={pos} y1={-10000} x2={pos} y2={10000} stroke="transparent" strokeWidth={4 / safeZoom}
                 style={{ cursor: 'ew-resize', pointerEvents: 'auto' }}
                 onMouseDown={(e) => {
@@ -2109,7 +2109,7 @@ export function Canvas() {
     <g pointerEvents="none">
       <defs>
         <pattern id="pixelGrid" width={1} height={1} patternUnits="userSpaceOnUse">
-          <path d="M 1 0 L 0 0 0 1" fill="none" stroke="#3C3C3C" strokeWidth={1 / safeZoom} />
+          <path d="M 1 0 L 0 0 0 1" fill="none" stroke="var(--dc-hover)" strokeWidth={1 / safeZoom} />
         </pattern>
       </defs>
       <rect x={viewportBounds.minX} y={viewportBounds.minY} width={viewportBounds.maxX - viewportBounds.minX} height={viewportBounds.maxY - viewportBounds.minY} fill="url(#pixelGrid)" />
@@ -2119,8 +2119,8 @@ export function Canvas() {
   // Origin crosshair
   const originEl = (
     <g opacity={0.3}>
-      <line x1={0} y1={viewportBounds.minY} x2={0} y2={viewportBounds.maxY} stroke="#0D99FF" strokeWidth={0.5 / safeZoom} />
-      <line x1={viewportBounds.minX} y1={0} x2={viewportBounds.maxX} y2={0} stroke="#0D99FF" strokeWidth={0.5 / safeZoom} />
+      <line x1={0} y1={viewportBounds.minY} x2={0} y2={viewportBounds.maxY} stroke="var(--dc-accent)" strokeWidth={0.5 / safeZoom} />
+      <line x1={viewportBounds.minX} y1={0} x2={viewportBounds.maxX} y2={0} stroke="var(--dc-accent)" strokeWidth={0.5 / safeZoom} />
     </g>
   )
 
@@ -2133,7 +2133,7 @@ export function Canvas() {
         x={frame.x - 2 / safeZoom} y={frame.y - 2 / safeZoom}
         width={frame.width + 4 / safeZoom} height={frame.height + 4 / safeZoom}
         fill="rgba(13,153,255,0.05)"
-        stroke="#0D99FF"
+        stroke="var(--dc-accent)"
         strokeWidth={2 / safeZoom}
         strokeDasharray={`${6 / safeZoom} ${3 / safeZoom}`}
         pointerEvents="none"
@@ -2142,7 +2142,7 @@ export function Canvas() {
   })() : null
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-[#1E1E1E] select-none" ref={containerRef} onMouseDown={(e) => { if (e.button === 1) e.preventDefault() }}>
+    <div className="relative w-full h-full overflow-hidden bg-[color:var(--dc-input)] select-none" ref={containerRef} onMouseDown={(e) => { if (e.button === 1) e.preventDefault() }}>
       <Rulers
         containerWidth={containerSize.width}
         containerHeight={containerSize.height}
@@ -2168,7 +2168,7 @@ export function Canvas() {
           <svg
             ref={sceneSvgRef}
             className="w-full h-full canvas-svg-export"
-            style={{ background: '#1E1E1E' }}
+            style={{ background: 'var(--dc-app)' }}
           >
             <g transform={`translate(${centerX}, ${centerY}) scale(${safeZoom})`}>
               {svgDefs}
@@ -2211,7 +2211,7 @@ export function Canvas() {
                   width={Math.abs(rubberBand.endX - rubberBand.startX)}
                   height={Math.abs(rubberBand.endY - rubberBand.startY)}
                   fill="rgba(13,153,255,0.08)"
-                  stroke="#0D99FF"
+                  stroke="var(--dc-accent)"
                   strokeWidth={1 / safeZoom}
                   strokeDasharray={`${4 / safeZoom}`}
                   pointerEvents="none"
@@ -2242,19 +2242,19 @@ export function Canvas() {
 
       {/* PHASE 22 (C20) — version preview banner (HISTORY read-only mode) */}
       {viewingVersion && (
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 bg-[#2C2C2C] rounded-lg px-3 py-1.5 border border-[#0D99FF]/60 shadow-lg">
-          <span className="text-[11px] text-[#DDD]">
-            Viewing version: <span className="text-[#0D99FF]">{viewingVersion.label}</span>
-            <span className="text-[#888]"> (read-only)</span>
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 bg-[color:var(--dc-raised)] rounded-lg px-3 py-1.5 border border-[color:var(--dc-accent)]/60 shadow-lg">
+          <span className="text-[11px] text-[color:var(--dc-text2)]">
+            Viewing version: <span className="text-[color:var(--dc-accent)]">{viewingVersion.label}</span>
+            <span className="text-[color:var(--dc-muted)]"> (read-only)</span>
           </span>
           <button
-            className="h-6 px-2 text-[10px] rounded bg-[#0D99FF] text-white hover:bg-[#0B87E0]"
+            className="h-6 px-2 text-[10px] rounded bg-[color:var(--dc-accent)] text-white hover:bg-[color:var(--dc-accent-hover)]"
             onClick={() => { void useEditorStore.getState().restoreVersion(viewingVersion.id) }}
           >
             Restore this version
           </button>
           <button
-            className="h-6 px-2 text-[10px] rounded border border-[#383838] text-[#CCC] hover:bg-[#3C3C3C]"
+            className="h-6 px-2 text-[10px] rounded border border-[color:var(--dc-border)] text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-hover)]"
             onClick={() => useEditorStore.getState().exitVersionPreview()}
           >
             Back to current
@@ -2264,21 +2264,21 @@ export function Canvas() {
 
       {/* Frame breadcrumb */}
       {currentFrameId && (
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[#2C2C2C] rounded-lg px-3 py-1.5 border border-[#3C3C3C] shadow-lg z-20">
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[color:var(--dc-raised)] rounded-lg px-3 py-1.5 border border-[color:var(--dc-hover)] shadow-lg z-20">
           <button
             onClick={() => exitFrame()}
-            className="text-[11px] text-[#0D99FF] hover:text-[#0B87E0] transition-colors"
+            className="text-[11px] text-[color:var(--dc-accent)] hover:text-[color:var(--dc-accent-hover)] transition-colors"
           >
             ← Back
           </button>
-          <span className="text-[11px] text-[#888]">/</span>
+          <span className="text-[11px] text-[color:var(--dc-muted)]">/</span>
           {useEditorStore.getState().frameBreadcrumb.map((name, i) => (
             <React.Fragment key={i}>
-              {i > 0 && <span className="text-[11px] text-[#888]">/</span>}
-              <span className="text-[11px] text-[#DDD]">{name}</span>
+              {i > 0 && <span className="text-[11px] text-[color:var(--dc-muted)]">/</span>}
+              <span className="text-[11px] text-[color:var(--dc-text2)]">{name}</span>
             </React.Fragment>
           ))}
-          <span className="text-[10px] text-[#666] ml-2">Press Esc to exit</span>
+          <span className="text-[10px] text-[color:var(--dc-faint)] ml-2">Press Esc to exit</span>
         </div>
       )}
 
@@ -2314,25 +2314,25 @@ export function Canvas() {
                 <div key={c.id} className="absolute z-40" style={{ left: pos.left, top: pos.top }} data-testid={`comment-pin-${c.id}`}>
                   <button
                     onClick={(e) => { e.stopPropagation(); st.setActiveCommentId(isOpen ? null : c.id) }}
-                    className={`flex items-center justify-center w-7 h-7 rounded-full border-2 shadow-md transition-transform hover:scale-110 ${c.resolved ? 'bg-[#14AE5C] border-[#0E8A47]' : 'bg-[#0D99FF] border-[#0B87E0]'}`}
+                    className={`flex items-center justify-center w-7 h-7 rounded-full border-2 shadow-md transition-transform hover:scale-110 ${c.resolved ? 'bg-[#14AE5C] border-[#0E8A47]' : 'bg-[color:var(--dc-accent)] border-[color:var(--dc-accent-hover)]'}`}
                     title={c.resolved ? 'Resolved thread' : 'Open thread'}
                   >
                     <span className="text-white text-[11px] font-bold">{unread}</span>
                   </button>
                   {isOpen && (
                     <div
-                      className="absolute left-9 top-0 w-64 rounded-lg bg-[#2C2C2C] border border-[#383838] shadow-xl p-2 z-50"
+                      className="absolute left-9 top-0 w-64 rounded-lg bg-[color:var(--dc-raised)] border border-[color:var(--dc-border)] shadow-xl p-2 z-50"
                       onClick={(e) => e.stopPropagation()}
                       data-testid="comment-thread"
                     >
                       <div className="max-h-40 overflow-y-auto space-y-1.5 mb-2">
                         {c.messages.map((m) => (
-                          <div key={m.id} className="bg-[#1E1E1E] rounded p-1.5">
+                          <div key={m.id} className="bg-[color:var(--dc-input)] rounded p-1.5">
                             <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-semibold text-[#0D99FF]">{m.author}</span>
-                              <span className="text-[9px] text-[#666]">{new Date(m.ts).toLocaleTimeString()}</span>
+                              <span className="text-[10px] font-semibold text-[color:var(--dc-accent)]">{m.author}</span>
+                              <span className="text-[9px] text-[color:var(--dc-faint)]">{new Date(m.ts).toLocaleTimeString()}</span>
                             </div>
-                            <div className="text-[11px] text-[#DDD] break-words">{m.text}</div>
+                            <div className="text-[11px] text-[color:var(--dc-text2)] break-words">{m.text}</div>
                           </div>
                         ))}
                       </div>
@@ -2340,13 +2340,13 @@ export function Canvas() {
                       <div className="flex gap-1 mt-1.5">
                         <button
                           onClick={() => { st.toggleResolveComment(c.id) }}
-                          className={`flex-1 h-6 rounded text-[10px] ${c.resolved ? 'bg-[#14AE5C] text-white' : 'bg-[#1E1E1E] text-[#AAA] hover:bg-[#3C3C3C]'}`}
+                          className={`flex-1 h-6 rounded text-[10px] ${c.resolved ? 'bg-[#14AE5C] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)]'}`}
                         >
                           {c.resolved ? 'Resolved ✓' : 'Resolve'}
                         </button>
                         <button
                           onClick={() => { st.deleteComment(c.id) }}
-                          className="flex-1 h-6 rounded text-[10px] bg-[#1E1E1E] text-[#F44336] hover:bg-[#3C3C3C]"
+                          className="flex-1 h-6 rounded text-[10px] bg-[color:var(--dc-input)] text-[#F44336] hover:bg-[color:var(--dc-hover)]"
                         >
                           Delete
                         </button>
@@ -2358,7 +2358,7 @@ export function Canvas() {
             })}
             {composerPos && (
               <div
-                className="absolute z-40 w-64 rounded-lg bg-[#2C2C2C] border border-[#383838] shadow-xl p-2"
+                className="absolute z-40 w-64 rounded-lg bg-[color:var(--dc-raised)] border border-[color:var(--dc-border)] shadow-xl p-2"
                 style={{ left: toScreen(composerPos.x, composerPos.y).left + 14, top: toScreen(composerPos.x, composerPos.y).top - 14 }}
                 onClick={(e) => e.stopPropagation()}
                 data-testid="comment-composer"
@@ -2412,7 +2412,7 @@ export function Canvas() {
               if (e.key === 'Enter') { e.preventDefault(); done(e.currentTarget) }
               if (e.key === 'Escape') { e.preventDefault(); setEditingTableCell(null) }
             }}
-            className="absolute z-30 bg-white text-black text-[12px] px-1 outline-none border-2 border-[#0D99FF] rounded-sm"
+            className="absolute z-30 bg-white text-black text-[12px] px-1 outline-none border-2 border-[color:var(--dc-accent)] rounded-sm"
             style={{
               left: screenX,
               top: screenY,
@@ -2430,16 +2430,16 @@ export function Canvas() {
 
       {/* Selection info badge (bottom-left, Figma-style) */}
       {selectedElementIds.length > 0 && (
-        <div className="absolute bottom-3 left-3 flex items-center gap-1.5 bg-[#2C2C2C]/90 backdrop-blur-sm rounded-lg border border-[#3C3C3C]/60 px-2 py-1 z-20">
-          <span className="text-[10px] text-[#888] tabular-nums">
+        <div className="absolute bottom-3 left-3 flex items-center gap-1.5 bg-[color:var(--dc-raised)]/90 backdrop-blur-sm rounded-lg border border-[color:var(--dc-hover)]/60 px-2 py-1 z-20">
+          <span className="text-[10px] text-[color:var(--dc-muted)] tabular-nums">
             {selectedElementIds.length} selected
           </span>
         </div>
       )}
 
       {/* Canvas coordinates (bottom-right, Figma-style) */}
-      <div className="absolute bottom-3 right-3 flex items-center gap-2 bg-[#2C2C2C]/90 backdrop-blur-sm rounded-lg border border-[#3C3C3C]/60 px-2 py-1 z-20">
-        <span className="text-[10px] text-[#666] tabular-nums">
+      <div className="absolute bottom-3 right-3 flex items-center gap-2 bg-[color:var(--dc-raised)]/90 backdrop-blur-sm rounded-lg border border-[color:var(--dc-hover)]/60 px-2 py-1 z-20">
+        <span className="text-[10px] text-[color:var(--dc-faint)] tabular-nums">
           Zoom: {Math.round(zoom * 100)}%
         </span>
       </div>
@@ -2463,10 +2463,10 @@ function CommentReplyInput({ commentId }: { commentId: string }) {
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') submit() }}
         placeholder="Reply…"
-        className="flex-1 h-6 px-1.5 text-[11px] rounded bg-[#1E1E1E] border border-[#383838] text-[#DDD] outline-none focus:border-[#0D99FF]"
+        className="flex-1 h-6 px-1.5 text-[11px] rounded bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] text-[color:var(--dc-text2)] outline-none focus:border-[color:var(--dc-accent)]"
         data-testid="comment-reply-input"
       />
-      <button onClick={submit} className="h-6 px-2 rounded bg-[#0D99FF] text-white text-[10px]">Send</button>
+      <button onClick={submit} className="h-6 px-2 rounded bg-[color:var(--dc-accent)] text-white text-[10px]">Send</button>
     </div>
   )
 }
@@ -2506,19 +2506,19 @@ function FlowStartBadges({ toScreen }: { toScreen: (x: number, y: number) => { l
                   if (e.key === 'Enter') { useEditorStore.getState().renameFlowStartingPoint(f.frameId, renaming.value.trim() || f.name); setRenaming(null) }
                   if (e.key === 'Escape') setRenaming(null)
                 }}
-                className="h-5 px-1 text-[10px] rounded border border-[#0D99FF] bg-[#1E1E1E] text-[#DDD] outline-none w-28"
+                className="h-5 px-1 text-[10px] rounded border border-[color:var(--dc-accent)] bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] outline-none w-28"
               />
             ) : (
               <>
                 <span
-                  className="h-5 px-1.5 flex items-center text-[10px] rounded border border-[#0D99FF] bg-[#0D99FF]/20 text-[#7FBBFF] cursor-default"
+                  className="h-5 px-1.5 flex items-center text-[10px] rounded border border-[color:var(--dc-accent)] bg-[color:var(--dc-accent)]/20 text-[#7FBBFF] cursor-default"
                   style={{ fontFamily: 'var(--fig-font-family-mono)' }}
                 >
                   ▶ {f.name}
                 </span>
                 <button
                   onClick={(e) => { e.stopPropagation(); useEditorStore.getState().removeFlowStartingPoint(f.frameId) }}
-                  className="h-5 w-5 flex items-center justify-center text-[10px] rounded border border-[#383838] bg-[#1E1E1E] text-[#F44336] hover:border-[#F44336]"
+                  className="h-5 w-5 flex items-center justify-center text-[10px] rounded border border-[color:var(--dc-border)] bg-[color:var(--dc-input)] text-[#F44336] hover:border-[#F44336]"
                   title="Remove starting point"
                 >✕</button>
               </>
@@ -2549,14 +2549,14 @@ function CommentComposerInput() {
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }}
         placeholder="Add a comment… (Enter to post)"
         rows={2}
-        className="w-full px-1.5 py-1 text-[11px] rounded bg-[#1E1E1E] border border-[#383838] text-[#DDD] outline-none focus:border-[#0D99FF] resize-none"
+        className="w-full px-1.5 py-1 text-[11px] rounded bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] text-[color:var(--dc-text2)] outline-none focus:border-[color:var(--dc-accent)] resize-none"
         data-testid="comment-composer-input"
       />
       <div className="flex gap-1">
         {/* PHASE 19 (T8) — comments emoji picker (source: comments.emojiPicker + insertEmoji) */}
         <EmojiPickerButton onPick={(em) => setText((t) => t + em)} label="🙂" />
-        <button onClick={submit} className="flex-1 h-6 rounded bg-[#0D99FF] text-white text-[10px]" data-testid="comment-post">Post</button>
-        <button onClick={() => useEditorStore.getState().closeComposer()} className="flex-1 h-6 rounded bg-[#1E1E1E] text-[#AAA] text-[10px] hover:bg-[#3C3C3C]">Cancel</button>
+        <button onClick={submit} className="flex-1 h-6 rounded bg-[color:var(--dc-accent)] text-white text-[10px]" data-testid="comment-post">Post</button>
+        <button onClick={() => useEditorStore.getState().closeComposer()} className="flex-1 h-6 rounded bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] text-[10px] hover:bg-[color:var(--dc-hover)]">Cancel</button>
       </div>
     </div>
   )

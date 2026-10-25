@@ -212,43 +212,43 @@ export function Toolbar() {
     <>
       {/* Contextual tool options bar above toolbar - with "more" menu icon */}
       {currentToolOptions && (
-        <div className="absolute bottom-[52px] left-1/2 -translate-x-1/2 z-[101] flex items-center rounded-lg bg-[#2C2C2C] border border-[#383838] px-2 py-1 gap-1.5">
+        <div className="absolute bottom-[52px] left-1/2 -translate-x-1/2 [scale:0.88] origin-bottom z-[101] flex items-center rounded-lg bg-[color:var(--dc-raised)] border border-[color:var(--dc-border)] px-2 py-1 gap-1.5">
           <button
             onClick={() => setToolOptionsMenuOpen(!toolOptionsMenuOpen)}
-            className="flex items-center gap-1 hover:bg-[#3C3C3C] rounded px-1 py-0.5 transition-colors duration-100"
+            className="flex items-center gap-1 hover:bg-[color:var(--dc-hover)] rounded px-1 py-0.5 transition-colors duration-100"
             title="More options"
           >
-            <MoreHorizontal className="w-3.5 h-3.5 text-[#0D99FF]" />
+            <MoreHorizontal className="w-3.5 h-3.5 text-[color:var(--dc-accent)]" />
           </button>
-          <span className="text-[10px] font-semibold text-[#0D99FF] uppercase tracking-wider">
+          <span className="text-[10px] font-semibold text-[color:var(--dc-accent)] uppercase tracking-wider">
             {currentToolOptions.label}
           </span>
-          <div className="w-px h-4 bg-[#383838]" />
+          <div className="w-px h-4 bg-[color:var(--dc-border)]" />
           {currentToolOptions.options.map((opt) => (
             <button
               key={opt.id}
-              className="flex items-center justify-center h-6 px-2 rounded text-[10px] text-[#CCC] hover:bg-[#3C3C3C] hover:text-white transition-colors duration-100"
+              className="flex items-center justify-center h-6 px-2 rounded text-[10px] text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-hover)] hover:text-white transition-colors duration-100"
               title={opt.label}
             >
               {opt.label}
             </button>
           ))}
           {/* Active tool indicator dot */}
-          <div className="w-1.5 h-1.5 rounded-full bg-[#0D99FF] ml-1" />
+          <div className="w-1.5 h-1.5 rounded-full bg-[color:var(--dc-accent)] ml-1" />
           
           {/* More options dropdown for tool-specific settings */}
           {toolOptionsMenuOpen && toolSpecificOptions.length > 0 && (
-            <div className="absolute top-full left-0 mt-1 bg-[#2C2C2C] rounded-md border border-[#383838] p-0.5 min-w-[180px] z-[200] shadow-lg shadow-black/30">
-              <div className="px-2 py-1 text-[9px] font-semibold text-[#555] uppercase tracking-wider">
+            <div className="absolute top-full left-0 mt-1 bg-[color:var(--dc-raised)] rounded-md border border-[color:var(--dc-border)] p-0.5 min-w-[180px] z-[200] shadow-lg shadow-black/30">
+              <div className="px-2 py-1 text-[9px] font-semibold text-[color:var(--dc-border-strong)] uppercase tracking-wider">
                 Tool Options
               </div>
               {toolSpecificOptions.map((opt) => (
                 <button
                   key={opt.id}
                   onClick={() => { opt.onToggle() }}
-                  className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-[11px] text-[#CCC] hover:bg-[#3C3C3C] transition-colors duration-100"
+                  className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-[11px] text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-hover)] transition-colors duration-100"
                 >
-                  <div className={`w-3 h-3 rounded border flex items-center justify-center ${opt.checked ? 'bg-[#0D99FF] border-[#0D99FF]' : 'border-[#666]'}`}>
+                  <div className={`w-3 h-3 rounded border flex items-center justify-center ${opt.checked ? 'bg-[color:var(--dc-accent)] border-[color:var(--dc-accent)]' : 'border-[color:var(--dc-faint)]'}`}>
                     {opt.checked && (
                       <svg className="w-2 h-2 text-white" viewBox="0 0 12 12" fill="none">
                         <path d="M2 6l3 3 5-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -263,11 +263,11 @@ export function Toolbar() {
         </div>
       )}
 
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[100] max-w-[calc(100%-12px)] flex items-center rounded-[13px] bg-fig-surface border border-fig-border overflow-visible" style={{ boxShadow: 'var(--fig-shadow-400)' }} ref={menuRef}>
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 [scale:0.88] origin-bottom z-[100] max-w-[calc(100%-12px)] flex items-center rounded-[13px] bg-fig-surface border border-fig-border overflow-visible" style={{ boxShadow: 'var(--fig-shadow-400)' }} ref={menuRef}>
         {/* Tool groups */}
         {toolGroups.map((group, groupIdx) => (
           <React.Fragment key={groupIdx}>
-            {groupIdx > 0 && <div className="w-px h-4 bg-[#383838]" />}
+            {groupIdx > 0 && <div className="w-px h-4 bg-[color:var(--dc-border)]" />}
             <div className="flex items-center px-[1px] py-[2px] relative gap-[1px]">
               {group.tools.map((tool) => {
                 const Icon = tool.icon
@@ -305,8 +305,8 @@ export function Toolbar() {
 
                   {/* Dropdown menu - appears ABOVE the toolbar (Figma style) */}
                   {openMenuIdx === groupIdx && (
-                    <div className="absolute bottom-full left-0 mb-1 bg-[#2C2C2C] rounded-md border border-[#383838] p-0.5 min-w-[160px] z-[200] shadow-lg shadow-black/30">
-                      <div className="px-2 py-1 text-[9px] font-semibold text-[#555] uppercase tracking-wider">
+                    <div className="absolute bottom-full left-0 mb-1 bg-[color:var(--dc-raised)] rounded-md border border-[color:var(--dc-border)] p-0.5 min-w-[160px] z-[200] shadow-lg shadow-black/30">
+                      <div className="px-2 py-1 text-[9px] font-semibold text-[color:var(--dc-border-strong)] uppercase tracking-wider">
                         More {group.label}
                       </div>
                       {group.moreTools!.map((tool) => {
@@ -317,12 +317,12 @@ export function Toolbar() {
                             key={tool.type}
                             onClick={() => { setActiveTool(tool.type); setOpenMenuIdx(null) }}
                             className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-[11px] transition-colors duration-100 ${
-                              isActive ? 'bg-[#0D99FF]/15 text-[#0D99FF]' : 'text-[#CCC] hover:bg-[#3C3C3C]'
+                              isActive ? 'bg-[color:var(--dc-accent)]/15 text-[color:var(--dc-accent)]' : 'text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-hover)]'
                             }`}
                           >
                             <Icon className="w-3.5 h-3.5" />
                             <span className="flex-1 text-left">{tool.label}</span>
-                            {tool.shortcut && <span className="text-[10px] text-[#555]">{tool.shortcut}</span>}
+                            {tool.shortcut && <span className="text-[10px] text-[color:var(--dc-border-strong)]">{tool.shortcut}</span>}
                           </button>
                         )
                       })}
@@ -335,10 +335,10 @@ export function Toolbar() {
         ))}
 
         {/* Divider before zoom */}
-        <div className="w-px h-4 bg-[#383838] @max-[720px]:hidden" />
+        <div className="w-px h-4 bg-[color:var(--dc-border)] @max-[1180px]:hidden" />
 
         {/* Zoom controls in toolbar */}
-        <div className="flex items-center px-[1px] py-[2px] gap-[1px] @max-[720px]:hidden">
+        <div className="flex items-center px-[1px] py-[2px] gap-[1px] @max-[1180px]:hidden">
           <button
             onClick={() => setZoom(Math.max(0.01, zoom - 0.1))}
             className="flex items-center justify-center w-6 rounded-md text-fig-text-tertiary hover:bg-fig-surface-hover hover:text-white transition-colors duration-100"
@@ -386,17 +386,17 @@ export function Toolbar() {
         </div>
 
         {/* Divider before mode switch */}
-        <div className="w-px h-4 bg-[#383838] @max-[720px]:hidden" />
+        <div className="w-px h-4 bg-[color:var(--dc-border)] @max-[1180px]:hidden" />
 
         {/* Mode toggle - Figma tab style */}
-        <div className="flex items-center px-0.5 py-[2px] @max-[720px]:hidden">
+        <div className="flex items-center px-0.5 py-[2px] @max-[1180px]:hidden">
           {(['design', 'dev'] as EditorMode[]).map((m) => (
             <button
               key={m}
               onClick={() => setEditorMode(m)}
               className={`
                 px-2 py-1 text-[10px] font-medium rounded-md transition-colors duration-100 capitalize
-                ${editorMode === m ? 'bg-[#0D99FF] text-white' : 'text-[#888] hover:bg-[#3C3C3C] hover:text-white'}
+                ${editorMode === m ? 'bg-[color:var(--dc-accent)] text-white' : 'text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)] hover:text-white'}
               `}
             >
               {m === 'dev' ? 'Dev' : m.charAt(0).toUpperCase() + m.slice(1)}

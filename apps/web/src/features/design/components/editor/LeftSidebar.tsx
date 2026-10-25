@@ -137,13 +137,13 @@ export function LeftSidebar() {
   const elementCount = elements.length
 
   return (
-    <div className="h-full bg-[#252525] flex flex-col border-r border-[#383838] select-none">
+    <div className="h-full bg-[color:var(--dc-panel)] flex flex-col border-r border-[color:var(--dc-border)] select-none">
       {/* Tabs */}
-      <div className="flex border-b border-[#383838] shrink-0">
+      <div className="flex border-b border-[color:var(--dc-border)] shrink-0">
         <button
           onClick={() => setLeftTab('file')}
           className={`flex-1 px-3 py-1.5 text-[10px] font-semibold transition-colors duration-100 uppercase tracking-wider ${
-            leftTab === 'file' ? 'text-white border-b-2 border-[#0D99FF]' : 'text-[#888] hover:text-[#CCC]'
+            leftTab === 'file' ? 'text-white border-b-2 border-[color:var(--dc-accent)]' : 'text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)]'
           }`}
         >
           Layers
@@ -151,7 +151,7 @@ export function LeftSidebar() {
         <button
           onClick={() => setLeftTab('assets')}
           className={`flex-1 px-3 py-1.5 text-[10px] font-semibold transition-colors duration-100 uppercase tracking-wider ${
-            leftTab === 'assets' ? 'text-white border-b-2 border-[#0D99FF]' : 'text-[#888] hover:text-[#CCC]'
+            leftTab === 'assets' ? 'text-white border-b-2 border-[color:var(--dc-accent)]' : 'text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)]'
           }`}
         >
           Assets
@@ -162,13 +162,13 @@ export function LeftSidebar() {
       {leftTab === 'file' && (
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Pages section */}
-          <div className="border-b border-[#383838]">
+          <div className="border-b border-[color:var(--dc-border)]">
             <div className="flex items-center justify-between px-2 py-1">
-              <span className="text-[10px] font-semibold text-[#888] uppercase tracking-wider">Pages</span>
+              <span className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">Pages</span>
               <div className="flex items-center gap-1">
-                <span className="text-[9px] text-[#666] tabular-nums">{pages.length}</span>
-                <button onClick={handleAddPage} className="flex items-center justify-center w-4 h-4 rounded hover:bg-[#3C3C3C] transition-colors duration-100" title="Add page">
-                  <Plus className="w-3 h-3 text-[#888]" />
+                <span className="text-[9px] text-[color:var(--dc-faint)] tabular-nums">{pages.length}</span>
+                <button onClick={handleAddPage} className="flex items-center justify-center w-4 h-4 rounded hover:bg-[color:var(--dc-hover)] transition-colors duration-100" title="Add page">
+                  <Plus className="w-3 h-3 text-[color:var(--dc-muted)]" />
                 </button>
               </div>
             </div>
@@ -180,28 +180,28 @@ export function LeftSidebar() {
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, idx)}
                 className={`flex items-center gap-1.5 px-2 py-0.5 cursor-pointer transition-colors duration-100 group ${
-                  page.id === activePageId ? 'bg-[#0D99FF]/15' : 'hover:bg-[#2A2A2A]'
-                } ${dropIdx === idx ? 'border-t border-[#0D99FF]' : ''}`}
+                  page.id === activePageId ? 'bg-[color:var(--dc-accent)]/15' : 'hover:bg-[color:var(--dc-card)]'
+                } ${dropIdx === idx ? 'border-t border-[color:var(--dc-accent)]' : ''}`}
                 onClick={() => handlePageClick(page.id)}
                 onDoubleClick={() => handlePageDoubleClick(page.id, page.name)}
                 onContextMenu={(e) => handleContextMenu(e, page.id)}
               >
-                <div className="w-3 h-3 rounded-sm border border-[#555] flex items-center justify-center shrink-0" style={{ backgroundColor: page.backgroundColor || '#2C2C2C' }}>
-                  <FileText className="w-2 h-2 text-[#888]" />
+                <div className="w-3 h-3 rounded-sm border border-[color:var(--dc-border-strong)] flex items-center justify-center shrink-0" style={{ backgroundColor: page.backgroundColor || 'var(--dc-raised)' }}>
+                  <FileText className="w-2 h-2 text-[color:var(--dc-muted)]" />
                 </div>
                 {renamingPageId === page.id ? (
-                  <input autoFocus value={renameValue} onChange={(e) => setRenameValue(e.target.value)} onBlur={handleRenameSubmit} onKeyDown={(e) => { if (e.key === 'Enter') handleRenameSubmit(); if (e.key === 'Escape') setRenamingPageId(null) }} className="flex-1 h-4 px-1 text-[10px] bg-[#1E1E1E] border border-[#0D99FF] rounded text-[#DDD] outline-none" onClick={(e) => e.stopPropagation()} />
+                  <input autoFocus value={renameValue} onChange={(e) => setRenameValue(e.target.value)} onBlur={handleRenameSubmit} onKeyDown={(e) => { if (e.key === 'Enter') handleRenameSubmit(); if (e.key === 'Escape') setRenamingPageId(null) }} className="flex-1 h-4 px-1 text-[10px] bg-[color:var(--dc-input)] border border-[color:var(--dc-accent)] rounded text-[color:var(--dc-text2)] outline-none" onClick={(e) => e.stopPropagation()} />
                 ) : (
-                  <span className={`text-[11px] flex-1 truncate ${page.id === activePageId ? 'text-white' : 'text-[#CCC]'}`}>{page.name}</span>
+                  <span className={`text-[11px] flex-1 truncate ${page.id === activePageId ? 'text-white' : 'text-[color:var(--dc-text2)]'}`}>{page.name}</span>
                 )}
                 {page.id === activePageId && (
                   <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={(e) => { e.stopPropagation(); duplicatePage(page.id) }} className="w-4 h-4 rounded hover:bg-[#3C3C3C] flex items-center justify-center" title="Duplicate page">
-                      <Copy className="w-2.5 h-2.5 text-[#888]" />
+                    <button onClick={(e) => { e.stopPropagation(); duplicatePage(page.id) }} className="w-4 h-4 rounded hover:bg-[color:var(--dc-hover)] flex items-center justify-center" title="Duplicate page">
+                      <Copy className="w-2.5 h-2.5 text-[color:var(--dc-muted)]" />
                     </button>
                     {pages.length > 1 && (
-                      <button onClick={(e) => { e.stopPropagation(); deletePage(page.id) }} className="w-4 h-4 rounded hover:bg-[#3C3C3C] flex items-center justify-center" title="Delete page">
-                        <Trash2 className="w-2.5 h-2.5 text-[#888]" />
+                      <button onClick={(e) => { e.stopPropagation(); deletePage(page.id) }} className="w-4 h-4 rounded hover:bg-[color:var(--dc-hover)] flex items-center justify-center" title="Delete page">
+                        <Trash2 className="w-2.5 h-2.5 text-[color:var(--dc-muted)]" />
                       </button>
                     )}
                   </div>
@@ -216,8 +216,8 @@ export function LeftSidebar() {
           </div>
           
           {/* Selection count */}
-          <div className="px-2 py-0.5 border-t border-[#383838] shrink-0">
-            <span className="text-[9px] text-[#666]">{elementCount} elements</span>
+          <div className="px-2 py-0.5 border-t border-[color:var(--dc-border)] shrink-0">
+            <span className="text-[9px] text-[color:var(--dc-faint)]">{elementCount} elements</span>
           </div>
         </div>
       )}
@@ -226,48 +226,48 @@ export function LeftSidebar() {
       {leftTab === 'assets' && (
         <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar">
           {/* Search */}
-          <div className="relative p-2 border-b border-[#383838] shrink-0">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#888]" />
-            <input type="text" placeholder="Search assets..." className="w-full h-7 pl-7 pr-2 text-[11px] border border-[#383838] rounded bg-[#1E1E1E] text-[#CCC] focus:outline-none focus:border-[#0D99FF]" />
+          <div className="relative p-2 border-b border-[color:var(--dc-border)] shrink-0">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[color:var(--dc-muted)]" />
+            <input type="text" placeholder="Search assets..." className="w-full h-7 pl-7 pr-2 text-[11px] border border-[color:var(--dc-border)] rounded bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]" />
           </div>
 
           {/* Local components */}
-          <div className="p-3 border-b border-[#383838]">
-            <h3 className="text-[10px] font-semibold text-[#888] uppercase tracking-wider mb-2">Local Components</h3>
+          <div className="p-3 border-b border-[color:var(--dc-border)]">
+            <h3 className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider mb-2">Local Components</h3>
             <ComponentPanel />
           </div>
 
           {/* PHASE 7 — Project styles */}
-          <div className="border-b border-[#383838]">
+          <div className="border-b border-[color:var(--dc-border)]">
             <div className="flex items-center gap-1.5 px-3 py-1.5">
-              <svg width="12" height="12" viewBox="0 0 10 10" className="text-[#888]" fill="currentColor">
+              <svg width="12" height="12" viewBox="0 0 10 10" className="text-[color:var(--dc-muted)]" fill="currentColor">
                 <circle cx="2" cy="2" r="1.15" /><circle cx="8" cy="2" r="1.15" />
                 <circle cx="5" cy="5" r="1.15" /><circle cx="2" cy="8" r="1.15" /><circle cx="8" cy="8" r="1.15" />
               </svg>
-              <h3 className="text-[10px] font-semibold text-[#888] uppercase tracking-wider">Styles</h3>
+              <h3 className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">Styles</h3>
             </div>
             <StylesPanel />
           </div>
 
           {/* UI Templates section */}
-          <div className="border-b border-[#383838]">
+          <div className="border-b border-[color:var(--dc-border)]">
             <div className="flex items-center gap-1.5 px-3 py-1.5">
-              <LayoutTemplate className="w-3.5 h-3.5 text-[#888]" />
-              <h3 className="text-[10px] font-semibold text-[#888] uppercase tracking-wider">UI Templates</h3>
+              <LayoutTemplate className="w-3.5 h-3.5 text-[color:var(--dc-muted)]" />
+              <h3 className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">UI Templates</h3>
             </div>
             <UITemplatesPanel />
           </div>
 
           {/* Document Colors section */}
-          <div className="border-b border-[#383838]">
+          <div className="border-b border-[color:var(--dc-border)]">
             <button 
-              className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-[#2A2A2A] transition-colors"
+              className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-[color:var(--dc-card)] transition-colors"
               onClick={() => setColorsExpanded(!colorsExpanded)}
             >
-              {colorsExpanded ? <ChevronDown className="w-3 h-3 text-[#666]" /> : <ChevronRight className="w-3 h-3 text-[#666]" />}
-              <Palette className="w-3.5 h-3.5 text-[#888]" />
-              <span className="text-[11px] text-[#CCC] flex-1 text-left">Document Colors</span>
-              <span className="text-[10px] text-[#666] tabular-nums">{documentColors.length}</span>
+              {colorsExpanded ? <ChevronDown className="w-3 h-3 text-[color:var(--dc-faint)]" /> : <ChevronRight className="w-3 h-3 text-[color:var(--dc-faint)]" />}
+              <Palette className="w-3.5 h-3.5 text-[color:var(--dc-muted)]" />
+              <span className="text-[11px] text-[color:var(--dc-text2)] flex-1 text-left">Document Colors</span>
+              <span className="text-[10px] text-[color:var(--dc-faint)] tabular-nums">{documentColors.length}</span>
             </button>
             {colorsExpanded && documentColors.length > 0 && (
               <div className="px-3 pb-2">
@@ -275,11 +275,11 @@ export function LeftSidebar() {
                   {documentColors.map(([color, count]) => (
                     <button
                       key={color}
-                      className="w-7 h-7 rounded border border-[#555]/50 hover:scale-110 transition-transform relative group"
+                      className="w-7 h-7 rounded border border-[color:var(--dc-border-strong)]/50 hover:scale-110 transition-transform relative group"
                       style={{ backgroundColor: color }}
                       title={`${color} (${count} uses)`}
                     >
-                      <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-[#333] text-[7px] text-[#AAA] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-[color:var(--dc-border)] text-[7px] text-[color:var(--dc-muted)] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                         {count > 9 ? '9+' : count}
                       </span>
                     </button>
@@ -289,77 +289,77 @@ export function LeftSidebar() {
             )}
             {colorsExpanded && documentColors.length === 0 && (
               <div className="px-3 pb-2">
-                <span className="text-[10px] text-[#555]">No document colors yet</span>
+                <span className="text-[10px] text-[color:var(--dc-border-strong)]">No document colors yet</span>
               </div>
             )}
           </div>
 
           {/* Text Styles section */}
-          <div className="border-b border-[#383838]">
+          <div className="border-b border-[color:var(--dc-border)]">
             <button 
-              className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-[#2A2A2A] transition-colors"
+              className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-[color:var(--dc-card)] transition-colors"
               onClick={() => setTextStylesExpanded(!textStylesExpanded)}
             >
-              {textStylesExpanded ? <ChevronDown className="w-3 h-3 text-[#666]" /> : <ChevronRight className="w-3 h-3 text-[#666]" />}
-              <TypeIcon className="w-3.5 h-3.5 text-[#888]" />
-              <span className="text-[11px] text-[#CCC] flex-1 text-left">Text Styles</span>
-              <span className="text-[10px] text-[#666] tabular-nums">{documentTextStyles.length}</span>
+              {textStylesExpanded ? <ChevronDown className="w-3 h-3 text-[color:var(--dc-faint)]" /> : <ChevronRight className="w-3 h-3 text-[color:var(--dc-faint)]" />}
+              <TypeIcon className="w-3.5 h-3.5 text-[color:var(--dc-muted)]" />
+              <span className="text-[11px] text-[color:var(--dc-text2)] flex-1 text-left">Text Styles</span>
+              <span className="text-[10px] text-[color:var(--dc-faint)] tabular-nums">{documentTextStyles.length}</span>
             </button>
             {textStylesExpanded && documentTextStyles.length > 0 && (
               <div className="px-3 pb-2 space-y-0.5">
                 {documentTextStyles.map((style, i) => (
-                  <div key={i} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-[#2A2A2A] cursor-pointer transition-colors">
-                    <span className="text-[11px] text-[#CCC] flex-1" style={{ fontFamily: style.fontFamily, fontWeight: style.fontWeight }}>
+                  <div key={i} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-[color:var(--dc-card)] cursor-pointer transition-colors">
+                    <span className="text-[11px] text-[color:var(--dc-text2)] flex-1" style={{ fontFamily: style.fontFamily, fontWeight: style.fontWeight }}>
                       {style.fontFamily} {style.fontSize}px
                     </span>
-                    <span className="text-[9px] text-[#555] tabular-nums">{style.count}x</span>
+                    <span className="text-[9px] text-[color:var(--dc-border-strong)] tabular-nums">{style.count}x</span>
                   </div>
                 ))}
               </div>
             )}
             {textStylesExpanded && documentTextStyles.length === 0 && (
               <div className="px-3 pb-2">
-                <span className="text-[10px] text-[#555]">No text styles yet</span>
+                <span className="text-[10px] text-[color:var(--dc-border-strong)]">No text styles yet</span>
               </div>
             )}
           </div>
 
           {/* Effects section */}
-          <div className="border-b border-[#383838]">
+          <div className="border-b border-[color:var(--dc-border)]">
             <button 
-              className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-[#2A2A2A] transition-colors"
+              className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-[color:var(--dc-card)] transition-colors"
               onClick={() => setEffectsExpanded(!effectsExpanded)}
             >
-              {effectsExpanded ? <ChevronDown className="w-3 h-3 text-[#666]" /> : <ChevronRight className="w-3 h-3 text-[#666]" />}
-              <Sparkles className="w-3.5 h-3.5 text-[#888]" />
-              <span className="text-[11px] text-[#CCC] flex-1 text-left">Effects</span>
-              <span className="text-[10px] text-[#666] tabular-nums">0</span>
+              {effectsExpanded ? <ChevronDown className="w-3 h-3 text-[color:var(--dc-faint)]" /> : <ChevronRight className="w-3 h-3 text-[color:var(--dc-faint)]" />}
+              <Sparkles className="w-3.5 h-3.5 text-[color:var(--dc-muted)]" />
+              <span className="text-[11px] text-[color:var(--dc-text2)] flex-1 text-left">Effects</span>
+              <span className="text-[10px] text-[color:var(--dc-faint)] tabular-nums">0</span>
             </button>
           </div>
 
           {/* Fonts section */}
           <div>
             <button 
-              className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-[#2A2A2A] transition-colors"
+              className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-[color:var(--dc-card)] transition-colors"
               onClick={() => setFontsExpanded(!fontsExpanded)}
             >
-              {fontsExpanded ? <ChevronDown className="w-3 h-3 text-[#666]" /> : <ChevronRight className="w-3 h-3 text-[#666]" />}
-              <TypeIcon className="w-3.5 h-3.5 text-[#888]" />
-              <span className="text-[11px] text-[#CCC] flex-1 text-left">Fonts</span>
-              <span className="text-[10px] text-[#666] tabular-nums">{documentFonts.length}</span>
+              {fontsExpanded ? <ChevronDown className="w-3 h-3 text-[color:var(--dc-faint)]" /> : <ChevronRight className="w-3 h-3 text-[color:var(--dc-faint)]" />}
+              <TypeIcon className="w-3.5 h-3.5 text-[color:var(--dc-muted)]" />
+              <span className="text-[11px] text-[color:var(--dc-text2)] flex-1 text-left">Fonts</span>
+              <span className="text-[10px] text-[color:var(--dc-faint)] tabular-nums">{documentFonts.length}</span>
             </button>
             {fontsExpanded && documentFonts.length > 0 && (
               <div className="px-3 pb-2 space-y-0.5">
                 {documentFonts.map(font => (
-                  <div key={font} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-[#2A2A2A] cursor-pointer transition-colors">
-                    <span className="text-[11px] text-[#CCC]" style={{ fontFamily: font }}>{font}</span>
+                  <div key={font} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-[color:var(--dc-card)] cursor-pointer transition-colors">
+                    <span className="text-[11px] text-[color:var(--dc-text2)]" style={{ fontFamily: font }}>{font}</span>
                   </div>
                 ))}
               </div>
             )}
             {fontsExpanded && documentFonts.length === 0 && (
               <div className="px-3 pb-2">
-                <span className="text-[10px] text-[#555]">No fonts used yet</span>
+                <span className="text-[10px] text-[color:var(--dc-border-strong)]">No fonts used yet</span>
               </div>
             )}
           </div>
@@ -369,16 +369,16 @@ export function LeftSidebar() {
       {/* Page context menu */}
       {contextMenu && (
         <div className="fixed inset-0 z-50" onClick={closeContextMenu}>
-          <div className="absolute bg-[#2C2C2C] border border-[#555] rounded-lg shadow-2xl py-1 min-w-[160px]" style={{ left: contextMenu.x, top: contextMenu.y }}>
-            <button onClick={() => { renamePage(contextMenu.pageId, prompt('Rename page:', pages.find(p => p.id === contextMenu.pageId)?.name) || ''); closeContextMenu() }} className="w-full px-3 py-1 text-left text-[11px] text-[#CCC] hover:bg-[#3C3C3C] flex items-center gap-2">
+          <div className="absolute bg-[color:var(--dc-raised)] border border-[color:var(--dc-border-strong)] rounded-lg shadow-2xl py-1 min-w-[160px]" style={{ left: contextMenu.x, top: contextMenu.y }}>
+            <button onClick={() => { renamePage(contextMenu.pageId, prompt('Rename page:', pages.find(p => p.id === contextMenu.pageId)?.name) || ''); closeContextMenu() }} className="w-full px-3 py-1 text-left text-[11px] text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-hover)] flex items-center gap-2">
               Rename
             </button>
-            <button onClick={() => { duplicatePage(contextMenu.pageId); closeContextMenu() }} className="w-full px-3 py-1 text-left text-[11px] text-[#CCC] hover:bg-[#3C3C3C] flex items-center gap-2">
+            <button onClick={() => { duplicatePage(contextMenu.pageId); closeContextMenu() }} className="w-full px-3 py-1 text-left text-[11px] text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-hover)] flex items-center gap-2">
               <Copy className="w-3 h-3" /> Duplicate
             </button>
-            <div className="h-px bg-[#555] my-1" />
+            <div className="h-px bg-[color:var(--dc-border-strong)] my-1" />
             {pages.length > 1 && (
-              <button onClick={() => { deletePage(contextMenu.pageId); closeContextMenu() }} className="w-full px-3 py-1 text-left text-[11px] text-[#F00] hover:bg-[#3C3C3C] flex items-center gap-2">
+              <button onClick={() => { deletePage(contextMenu.pageId); closeContextMenu() }} className="w-full px-3 py-1 text-left text-[11px] text-[#F00] hover:bg-[color:var(--dc-hover)] flex items-center gap-2">
                 <Trash2 className="w-3 h-3" /> Delete
               </button>
             )}

@@ -179,12 +179,12 @@ export function FindReplaceModal() {
   const noResults = query !== '' && hits.length === 0
 
   return (
-    <div className="absolute top-3 right-3 z-50 w-[340px] rounded-lg bg-[#2C2C2C] border border-[#3C3C3C] shadow-xl">
+    <div className="absolute top-3 right-3 z-50 w-[340px] rounded-lg bg-[color:var(--dc-raised)] border border-[color:var(--dc-hover)] shadow-xl">
       {/* header */}
-      <div className="flex items-center justify-between px-3 h-9 border-b border-[#3C3C3C]">
-        <span className="text-[11px] font-medium text-[#DDD]">Find and replace</span>
+      <div className="flex items-center justify-between px-3 h-9 border-b border-[color:var(--dc-hover)]">
+        <span className="text-[11px] font-medium text-[color:var(--dc-text2)]">Find and replace</span>
         <button
-          className="w-5 h-5 flex items-center justify-center rounded text-[#888] hover:text-[#DDD] hover:bg-[#3C3C3C]"
+          className="w-5 h-5 flex items-center justify-center rounded text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-hover)]"
           onClick={() => useEditorStore.getState().setFindReplaceOpen(false)}
           aria-label="Close find and replace"
         >
@@ -204,13 +204,13 @@ export function FindReplaceModal() {
               if (e.key === 'Escape') useEditorStore.getState().setFindReplaceOpen(false)
             }}
             placeholder="Find"
-            className="flex-1 h-7 px-2 text-[11px] rounded bg-[#1E1E1E] border border-[#383838] text-[#DDD] placeholder-[#666] focus:outline-none focus:border-[#0D99FF]"
+            className="flex-1 h-7 px-2 text-[11px] rounded bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] text-[color:var(--dc-text2)] placeholder-[color:var(--dc-faint)] focus:outline-none focus:border-[color:var(--dc-accent)]"
           />
-          <span className="text-[10px] text-[#888] min-w-[52px] text-center tabular-nums">
+          <span className="text-[10px] text-[color:var(--dc-muted)] min-w-[52px] text-center tabular-nums">
             {hits.length > 0 ? `${activeIndex + 1} / ${hits.length}` : '0 / 0'}
           </span>
           <button
-            className="w-7 h-7 flex items-center justify-center rounded text-[#CCC] hover:bg-[#3C3C3C] disabled:text-[#555] disabled:hover:bg-transparent"
+            className="w-7 h-7 flex items-center justify-center rounded text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-hover)] disabled:text-[color:var(--dc-border-strong)] disabled:hover:bg-transparent"
             disabled={hits.length === 0}
             onClick={() => step(-1)}
             aria-label="Previous match"
@@ -219,7 +219,7 @@ export function FindReplaceModal() {
             ↑
           </button>
           <button
-            className="w-7 h-7 flex items-center justify-center rounded text-[#CCC] hover:bg-[#3C3C3C] disabled:text-[#555] disabled:hover:bg-transparent"
+            className="w-7 h-7 flex items-center justify-center rounded text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-hover)] disabled:text-[color:var(--dc-border-strong)] disabled:hover:bg-transparent"
             disabled={hits.length === 0}
             onClick={() => step(1)}
             aria-label="Next match"
@@ -235,17 +235,17 @@ export function FindReplaceModal() {
             value={replacement}
             onChange={(e) => setReplacement(e.target.value)}
             placeholder="Replace with"
-            className="flex-1 h-7 px-2 text-[11px] rounded bg-[#1E1E1E] border border-[#383838] text-[#DDD] placeholder-[#666] focus:outline-none focus:border-[#0D99FF]"
+            className="flex-1 h-7 px-2 text-[11px] rounded bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] text-[color:var(--dc-text2)] placeholder-[color:var(--dc-faint)] focus:outline-none focus:border-[color:var(--dc-accent)]"
           />
           <button
-            className="h-7 px-2.5 text-[10px] rounded bg-[#0D99FF] text-white hover:bg-[#0B87E0] disabled:bg-[#333] disabled:text-[#666]"
+            className="h-7 px-2.5 text-[10px] rounded bg-[color:var(--dc-accent)] text-white hover:bg-[color:var(--dc-accent-hover)] disabled:bg-[color:var(--dc-border)] disabled:text-[color:var(--dc-faint)]"
             disabled={hits.length === 0}
             onClick={replaceCurrent}
           >
             Replace
           </button>
           <button
-            className="h-7 px-2.5 text-[10px] rounded bg-[#0D99FF] text-white hover:bg-[#0B87E0] disabled:bg-[#333] disabled:text-[#666]"
+            className="h-7 px-2.5 text-[10px] rounded bg-[color:var(--dc-accent)] text-white hover:bg-[color:var(--dc-accent-hover)] disabled:bg-[color:var(--dc-border)] disabled:text-[color:var(--dc-faint)]"
             disabled={hits.length === 0}
             onClick={replaceAll}
           >
@@ -258,7 +258,7 @@ export function FindReplaceModal() {
           <select
             value={scope}
             onChange={(e) => { setScope(e.target.value as 'active' | 'all'); setActiveIndex(0) }}
-            className="h-6 px-1 text-[10px] rounded bg-[#1E1E1E] border border-[#383838] text-[#CCC] focus:outline-none focus:border-[#0D99FF]"
+            className="h-6 px-1 text-[10px] rounded bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]"
             title="Search scope (source: ACTIVE_PAGE / ALL_PAGES)"
           >
             <option value="active">This page</option>
@@ -269,12 +269,12 @@ export function FindReplaceModal() {
             ['wholeWord', 'Whole word'],
             ['includeLayerNames', 'Layer names'],
           ] as const).map(([key, label]) => (
-            <label key={key} className="flex items-center gap-1 text-[10px] text-[#AAA] cursor-pointer select-none">
+            <label key={key} className="flex items-center gap-1 text-[10px] text-[color:var(--dc-muted)] cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={opts[key]}
                 onChange={(e) => { setOpts((o) => ({ ...o, [key]: e.target.checked })); setActiveIndex(0) }}
-                className="accent-[#0D99FF] w-3 h-3"
+                className="accent-[color:var(--dc-accent)] w-3 h-3"
               />
               {label}
             </label>
@@ -283,28 +283,28 @@ export function FindReplaceModal() {
 
         {/* no-results line (source: no_results / no_results_on_page) */}
         {noResults && (
-          <div className="text-[10px] text-[#888] pt-0.5">
+          <div className="text-[10px] text-[color:var(--dc-muted)] pt-0.5">
             {scope === 'all' ? 'No results found' : 'No results on this page'}
           </div>
         )}
 
         {/* results list */}
         {hits.length > 0 && (
-          <div className="max-h-52 overflow-y-auto rounded border border-[#383838] divide-y divide-[#333]">
+          <div className="max-h-52 overflow-y-auto rounded border border-[color:var(--dc-border)] divide-y divide-[color:var(--dc-border)]">
             {hits.map((h, i) => (
               <button
                 key={`${h.pageId}:${h.elementId}:${h.field}:${h.start}`}
-                className={`w-full text-left px-2 py-1.5 hover:bg-[#3C3C3C] ${i === activeIndex ? 'bg-[#0D99FF]/15' : ''}`}
+                className={`w-full text-left px-2 py-1.5 hover:bg-[color:var(--dc-hover)] ${i === activeIndex ? 'bg-[color:var(--dc-accent)]/15' : ''}`}
                 onClick={() => { setActiveIndex(i); jumpTo(h) }}
               >
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] px-1 rounded bg-[#1E1E1E] text-[#888] shrink-0">
+                  <span className="text-[9px] px-1 rounded bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] shrink-0">
                     {h.field === 'name' ? 'layer' : 'text'}
                   </span>
-                  <span className="text-[10px] text-[#DDD] truncate">{h.elementName}</span>
-                  {scope === 'all' && <span className="text-[9px] text-[#666] ml-auto shrink-0">{h.pageName}</span>}
+                  <span className="text-[10px] text-[color:var(--dc-text2)] truncate">{h.elementName}</span>
+                  {scope === 'all' && <span className="text-[9px] text-[color:var(--dc-faint)] ml-auto shrink-0">{h.pageName}</span>}
                 </div>
-                <div className="text-[10px] text-[#999] truncate font-mono">…{h.preview}…</div>
+                <div className="text-[10px] text-[color:var(--dc-muted)] truncate font-mono">…{h.preview}…</div>
               </button>
             ))}
           </div>

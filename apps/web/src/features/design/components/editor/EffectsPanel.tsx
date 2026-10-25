@@ -45,21 +45,21 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
       <div className="flex items-center gap-1 mb-2">
         <button
           onClick={() => handleAddShadow('drop-shadow')}
-          className="flex items-center gap-1 h-6 px-2 rounded bg-[#1E1E1E] text-[10px] text-[#888] hover:bg-[#3C3C3C] hover:text-white transition-colors border border-[#383838]"
+          className="flex items-center gap-1 h-6 px-2 rounded bg-[color:var(--dc-input)] text-[10px] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)] hover:text-white transition-colors border border-[color:var(--dc-border)]"
         >
           <Plus className="w-3 h-3" />
           Drop Shadow
         </button>
         <button
           onClick={() => handleAddShadow('inner-shadow')}
-          className="flex items-center gap-1 h-6 px-2 rounded bg-[#1E1E1E] text-[10px] text-[#888] hover:bg-[#3C3C3C] hover:text-white transition-colors border border-[#383838]"
+          className="flex items-center gap-1 h-6 px-2 rounded bg-[color:var(--dc-input)] text-[10px] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)] hover:text-white transition-colors border border-[color:var(--dc-border)]"
         >
           <Plus className="w-3 h-3" />
           Inner Shadow
         </button>
         <button
           onClick={() => handleAddBlur('blur')}
-          className="flex items-center gap-1 h-6 px-2 rounded bg-[#1E1E1E] text-[10px] text-[#888] hover:bg-[#3C3C3C] hover:text-white transition-colors border border-[#383838]"
+          className="flex items-center gap-1 h-6 px-2 rounded bg-[color:var(--dc-input)] text-[10px] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)] hover:text-white transition-colors border border-[color:var(--dc-border)]"
         >
           <Plus className="w-3 h-3" />
           Blur
@@ -68,31 +68,31 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
 
       {/* Effect list */}
       {totalEffects === 0 && (
-        <div className="flex items-center justify-center py-2 text-[11px] text-[#666]">
+        <div className="flex items-center justify-center py-2 text-[11px] text-[color:var(--dc-faint)]">
           No effects
         </div>
       )}
 
       {shadows.map((shadow, i) => (
-        <div key={`shadow-${i}`} className="bg-[#1E1E1E] border border-[#383838] rounded p-2 mb-1.5">
+        <div key={`shadow-${i}`} className="bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] rounded p-2 mb-1.5">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-medium text-[#CCC]">
+            <span className="text-[10px] font-medium text-[color:var(--dc-text2)]">
               {shadow.type === 'drop-shadow' ? 'Drop Shadow' : 'Inner Shadow'}
             </span>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => updateEffect(element.id, i, { visible: !shadow.visible })}
-                className="flex items-center justify-center w-5 h-5 rounded hover:bg-[#3C3C3C]"
+                className="flex items-center justify-center w-5 h-5 rounded hover:bg-[color:var(--dc-hover)]"
               >
                 {shadow.visible ? (
-                  <Eye className="w-3 h-3 text-[#888]" />
+                  <Eye className="w-3 h-3 text-[color:var(--dc-muted)]" />
                 ) : (
                   <EyeOff className="w-3 h-3 text-[#F44336]" />
                 )}
               </button>
               <button
                 onClick={() => { pushHistory(); removeEffect(element.id, i) }}
-                className="flex items-center justify-center w-5 h-5 rounded hover:bg-[#3C3C3C]"
+                className="flex items-center justify-center w-5 h-5 rounded hover:bg-[color:var(--dc-hover)]"
               >
                 <Trash2 className="w-3 h-3 text-[#F44336]" />
               </button>
@@ -101,7 +101,7 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
 
           <div className="grid grid-cols-2 gap-1.5">
             <div className="flex items-center gap-1">
-              <span className="text-[10px] text-[#888] w-4">X</span>
+              <span className="text-[10px] text-[color:var(--dc-muted)] w-4">X</span>
               <input
                 type="text"
                 value={shadow.x}
@@ -109,11 +109,11 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
                   const v = parseInt(e.target.value)
                   if (!isNaN(v)) updateEffect(element.id, i, { x: v })
                 }}
-                className="w-full h-5 px-1 text-[10px] border border-[#555] rounded bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] tabular-nums"
+                className="w-full h-5 px-1 text-[10px] border border-[color:var(--dc-border-strong)] rounded bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
               />
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-[10px] text-[#888] w-4">Y</span>
+              <span className="text-[10px] text-[color:var(--dc-muted)] w-4">Y</span>
               <input
                 type="text"
                 value={shadow.y}
@@ -121,11 +121,11 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
                   const v = parseInt(e.target.value)
                   if (!isNaN(v)) updateEffect(element.id, i, { y: v })
                 }}
-                className="w-full h-5 px-1 text-[10px] border border-[#555] rounded bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] tabular-nums"
+                className="w-full h-5 px-1 text-[10px] border border-[color:var(--dc-border-strong)] rounded bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
               />
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-[10px] text-[#888] w-4">B</span>
+              <span className="text-[10px] text-[color:var(--dc-muted)] w-4">B</span>
               <input
                 type="text"
                 value={shadow.blur}
@@ -133,11 +133,11 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
                   const v = parseInt(e.target.value)
                   if (!isNaN(v) && v >= 0) updateEffect(element.id, i, { blur: v })
                 }}
-                className="w-full h-5 px-1 text-[10px] border border-[#555] rounded bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] tabular-nums"
+                className="w-full h-5 px-1 text-[10px] border border-[color:var(--dc-border-strong)] rounded bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
               />
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-[10px] text-[#888] w-4">S</span>
+              <span className="text-[10px] text-[color:var(--dc-muted)] w-4">S</span>
               <input
                 type="text"
                 value={shadow.spread}
@@ -145,7 +145,7 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
                   const v = parseInt(e.target.value)
                   if (!isNaN(v)) updateEffect(element.id, i, { spread: v })
                 }}
-                className="w-full h-5 px-1 text-[10px] border border-[#555] rounded bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] tabular-nums"
+                className="w-full h-5 px-1 text-[10px] border border-[color:var(--dc-border-strong)] rounded bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
               />
             </div>
           </div>
@@ -161,25 +161,25 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
       ))}
 
       {blurs.map((blur, i) => (
-        <div key={`blur-${i}`} className="bg-[#1E1E1E] border border-[#383838] rounded p-2 mb-1.5">
+        <div key={`blur-${i}`} className="bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] rounded p-2 mb-1.5">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-medium text-[#CCC]">
+            <span className="text-[10px] font-medium text-[color:var(--dc-text2)]">
               {blur.type === 'blur' ? 'Blur' : 'Background Blur'}
             </span>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => updateEffect(element.id, shadows.length + i, { visible: !blur.visible })}
-                className="flex items-center justify-center w-5 h-5 rounded hover:bg-[#3C3C3C]"
+                className="flex items-center justify-center w-5 h-5 rounded hover:bg-[color:var(--dc-hover)]"
               >
                 {blur.visible ? (
-                  <Eye className="w-3 h-3 text-[#888]" />
+                  <Eye className="w-3 h-3 text-[color:var(--dc-muted)]" />
                 ) : (
                   <EyeOff className="w-3 h-3 text-[#F44336]" />
                 )}
               </button>
               <button
                 onClick={() => { pushHistory(); removeEffect(element.id, shadows.length + i) }}
-                className="flex items-center justify-center w-5 h-5 rounded hover:bg-[#3C3C3C]"
+                className="flex items-center justify-center w-5 h-5 rounded hover:bg-[color:var(--dc-hover)]"
               >
                 <Trash2 className="w-3 h-3 text-[#F44336]" />
               </button>
@@ -187,14 +187,14 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
           </div>
 
           <div className="flex items-center gap-1">
-            <span className="text-[10px] text-[#888] w-8">Radius</span>
+            <span className="text-[10px] text-[color:var(--dc-muted)] w-8">Radius</span>
             <input
               type="range"
               min="0"
               max="50"
               value={blur.radius}
               onChange={(e) => updateEffect(element.id, shadows.length + i, { radius: parseInt(e.target.value) })}
-              className="flex-1 h-1 accent-[#0D99FF] cursor-pointer"
+              className="flex-1 h-1 accent-[color:var(--dc-accent)] cursor-pointer"
             />
             <input
               type="text"
@@ -203,7 +203,7 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
                 const v = parseInt(e.target.value)
                 if (!isNaN(v) && v >= 0) updateEffect(element.id, shadows.length + i, { radius: v })
               }}
-              className="w-8 h-5 px-1 text-[10px] border border-[#555] rounded bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums"
+              className="w-8 h-5 px-1 text-[10px] border border-[color:var(--dc-border-strong)] rounded bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
             />
           </div>
         </div>

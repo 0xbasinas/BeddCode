@@ -270,12 +270,12 @@ function LayerItem({
     <div
       className={`flex items-center h-[28px] cursor-pointer group text-[11px] relative select-none ${
         isSelected
-          ? 'bg-[#0D99FF]/15 text-white'
+          ? 'bg-[color:var(--dc-accent)]/15 text-white'
           : isHovered
-            ? 'bg-[#2A2A2A] text-[#DDD]'
+            ? 'bg-[color:var(--dc-card)] text-[color:var(--dc-text2)]'
             : isDragOver
-              ? 'bg-[#0D99FF]/10'
-              : 'text-[#CCC]'
+              ? 'bg-[color:var(--dc-accent)]/10'
+              : 'text-[color:var(--dc-text2)]'
       } ${!element.visible ? 'opacity-50' : ''}`}
       style={{
         paddingLeft: `${depth * 14 + 4}px`,
@@ -298,11 +298,11 @@ function LayerItem({
       {hasChildren ? (
         <button
           onClick={toggleExpand}
-          className="flex items-center justify-center w-3.5 h-3.5 shrink-0 mr-px rounded-sm transition-colors duration-100 hover:bg-[#3C3C3C]"
+          className="flex items-center justify-center w-3.5 h-3.5 shrink-0 mr-px rounded-sm transition-colors duration-100 hover:bg-[color:var(--dc-hover)]"
         >
           {isExpanded
-            ? <ChevronDown className="w-2.5 h-2.5 text-[#888]" />
-            : <ChevronRight className="w-2.5 h-2.5 text-[#888]" />
+            ? <ChevronDown className="w-2.5 h-2.5 text-[color:var(--dc-muted)]" />
+            : <ChevronRight className="w-2.5 h-2.5 text-[color:var(--dc-muted)]" />
           }
         </button>
       ) : (
@@ -329,17 +329,17 @@ function LayerItem({
           onChange={(e) => setRenameValue(e.target.value)}
           onBlur={handleRename}
           onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setIsRenaming(false); e.stopPropagation() }}
-          className="flex-1 h-4 px-1 text-[10px] bg-[#1E1E1E] border border-[#0D99FF] rounded text-[#DDD] outline-none min-w-0"
+          className="flex-1 h-4 px-1 text-[10px] bg-[color:var(--dc-input)] border border-[color:var(--dc-accent)] rounded text-[color:var(--dc-text2)] outline-none min-w-0"
           onClick={(e) => e.stopPropagation()}
         />
       ) : (
         <span
           className={`truncate flex-1 text-[11px] leading-none ${
             !element.visible
-              ? 'text-[#555] line-through'
+              ? 'text-[color:var(--dc-border-strong)] line-through'
               : isSelected
                 ? 'text-white'
-                : 'text-[#CCC]'
+                : 'text-[color:var(--dc-text2)]'
           }`}
         >
           {element.name}
@@ -348,14 +348,14 @@ function LayerItem({
 
       {/* Child count badge */}
       {hasChildren && !isRenaming && (
-        <span className="text-[9px] text-[#555] mr-0.5 shrink-0 tabular-nums font-medium leading-none">
+        <span className="text-[9px] text-[color:var(--dc-border-strong)] mr-0.5 shrink-0 tabular-nums font-medium leading-none">
           {childCount}
         </span>
       )}
 
       {/* Type label for Frame/Group */}
       {((element.type === 'frame' || element.type === 'group' || element.type === 'section')) && !hasChildren && !isRenaming && (
-        <span className="text-[8px] text-[#555] mr-0.5 shrink-0 leading-none">
+        <span className="text-[8px] text-[color:var(--dc-border-strong)] mr-0.5 shrink-0 leading-none">
           {typeLabels[element.type] || ''}
         </span>
       )}
@@ -369,7 +369,7 @@ function LayerItem({
       >
         {element.locked
           ? <Lock className="w-2.5 h-2.5 text-[#F44336]" />
-          : <Unlock className="w-2.5 h-2.5 text-[#666]" />
+          : <Unlock className="w-2.5 h-2.5 text-[color:var(--dc-faint)]" />
         }
       </button>
 
@@ -381,7 +381,7 @@ function LayerItem({
         }`}
       >
         {element.visible
-          ? <Eye className="w-2.5 h-2.5 text-[#666]" />
+          ? <Eye className="w-2.5 h-2.5 text-[color:var(--dc-faint)]" />
           : <EyeOff className="w-2.5 h-2.5 text-[#F44336]" />
         }
       </button>
@@ -394,42 +394,42 @@ function LayerItem({
         <ContextMenuTrigger asChild>
           {rowContent}
         </ContextMenuTrigger>
-        <ContextMenuContent className="bg-[#2C2C2C] border-[#3C3C3C] text-[#CCC] min-w-[180px]">
-          <ContextMenuItem className="hover:bg-[#3C3C3C] focus:bg-[#3C3C3C] text-[11px] h-6" onClick={() => onContextMenuAction('duplicate', element.id)}>
+        <ContextMenuContent className="bg-[color:var(--dc-raised)] border-[color:var(--dc-hover)] text-[color:var(--dc-text2)] min-w-[180px]">
+          <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)] text-[11px] h-6" onClick={() => onContextMenuAction('duplicate', element.id)}>
             Duplicate <ContextMenuShortcut>⌘D</ContextMenuShortcut>
           </ContextMenuItem>
-          <ContextMenuItem className="hover:bg-[#3C3C3C] focus:bg-[#3C3C3C] text-[11px] h-6" onClick={() => { onContextMenuAction('rename', element.id); setIsRenaming(true) }}>
+          <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)] text-[11px] h-6" onClick={() => { onContextMenuAction('rename', element.id); setIsRenaming(true) }}>
             Rename
           </ContextMenuItem>
-          <ContextMenuSeparator className="bg-[#3C3C3C]" />
-          <ContextMenuItem className="hover:bg-[#3C3C3C] focus:bg-[#3C3C3C] text-[11px] h-6" onClick={() => onContextMenuAction('bring-forward', element.id)}>
+          <ContextMenuSeparator className="bg-[color:var(--dc-hover)]" />
+          <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)] text-[11px] h-6" onClick={() => onContextMenuAction('bring-forward', element.id)}>
             Bring Forward <ContextMenuShortcut>⌘]</ContextMenuShortcut>
           </ContextMenuItem>
-          <ContextMenuItem className="hover:bg-[#3C3C3C] focus:bg-[#3C3C3C] text-[11px] h-6" onClick={() => onContextMenuAction('send-backward', element.id)}>
+          <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)] text-[11px] h-6" onClick={() => onContextMenuAction('send-backward', element.id)}>
             Send Backward <ContextMenuShortcut>⌘[</ContextMenuShortcut>
           </ContextMenuItem>
-          <ContextMenuItem className="hover:bg-[#3C3C3C] focus:bg-[#3C3C3C] text-[11px] h-6" onClick={() => onContextMenuAction('bring-to-front', element.id)}>
+          <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)] text-[11px] h-6" onClick={() => onContextMenuAction('bring-to-front', element.id)}>
             Bring to Front
           </ContextMenuItem>
-          <ContextMenuItem className="hover:bg-[#3C3C3C] focus:bg-[#3C3C3C] text-[11px] h-6" onClick={() => onContextMenuAction('send-to-back', element.id)}>
+          <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)] text-[11px] h-6" onClick={() => onContextMenuAction('send-to-back', element.id)}>
             Send to Back
           </ContextMenuItem>
-          <ContextMenuSeparator className="bg-[#3C3C3C]" />
-          <ContextMenuItem className="hover:bg-[#3C3C3C] focus:bg-[#3C3C3C] text-[11px] h-6" onClick={() => onContextMenuAction('select-all-same', element.id)}>
+          <ContextMenuSeparator className="bg-[color:var(--dc-hover)]" />
+          <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)] text-[11px] h-6" onClick={() => onContextMenuAction('select-all-same', element.id)}>
             Select All Same Type
           </ContextMenuItem>
           {!element.isComponent && (
-            <ContextMenuItem className="hover:bg-[#3C3C3C] focus:bg-[#3C3C3C] text-[11px] h-6" onClick={() => onContextMenuAction('make-component', element.id)}>
+            <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)] text-[11px] h-6" onClick={() => onContextMenuAction('make-component', element.id)}>
               Make Component <ContextMenuShortcut>⌥⌘K</ContextMenuShortcut>
             </ContextMenuItem>
           )}
           {element.isComponent && (
-            <ContextMenuItem className="hover:bg-[#3C3C3C] focus:bg-[#3C3C3C] text-[11px] h-6" onClick={() => onContextMenuAction('create-instance', element.id)}>
+            <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)] text-[11px] h-6" onClick={() => onContextMenuAction('create-instance', element.id)}>
               Create Instance
             </ContextMenuItem>
           )}
-          <ContextMenuSeparator className="bg-[#3C3C3C]" />
-          <ContextMenuItem className="hover:bg-[#3C3C3C] focus:bg-[#3C3C3C] text-[11px] h-6 text-[#F44336]" onClick={() => onContextMenuAction('delete', element.id)}>
+          <ContextMenuSeparator className="bg-[color:var(--dc-hover)]" />
+          <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)] text-[11px] h-6 text-[#F44336]" onClick={() => onContextMenuAction('delete', element.id)}>
             Delete <ContextMenuShortcut>⌫</ContextMenuShortcut>
           </ContextMenuItem>
         </ContextMenuContent>
@@ -508,30 +508,30 @@ export function LayerPanel() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-2 h-5 border-b border-[#383838] shrink-0">
-        <span className="text-[10px] font-semibold text-[#888] uppercase tracking-wider">Layers</span>
-        <span className="text-[9px] text-[#555] tabular-nums">{totalLayers}</span>
+      <div className="flex items-center justify-between px-2 h-5 border-b border-[color:var(--dc-border)] shrink-0">
+        <span className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">Layers</span>
+        <span className="text-[9px] text-[color:var(--dc-border-strong)] tabular-nums">{totalLayers}</span>
       </div>
 
       {/* Search/Filter bar - single compact row */}
-      <div className="px-1 py-0.5 border-b border-[#383838] shrink-0">
+      <div className="px-1 py-0.5 border-b border-[color:var(--dc-border)] shrink-0">
         <div className="flex items-center gap-0.5">
-          <div className="flex items-center flex-1 h-[18px] px-1 bg-[#1E1E1E] border border-[#383838] rounded-sm">
-            <Search className="w-2 h-2 text-[#555] shrink-0 mr-0.5" />
+          <div className="flex items-center flex-1 h-[18px] px-1 bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] rounded-sm">
+            <Search className="w-2 h-2 text-[color:var(--dc-border-strong)] shrink-0 mr-0.5" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Filter"
-              className="flex-1 text-[10px] bg-transparent text-[#CCC] placeholder-[#444] focus:outline-none min-w-0"
+              className="flex-1 text-[10px] bg-transparent text-[color:var(--dc-text2)] placeholder-[color:var(--dc-border-strong)] focus:outline-none min-w-0"
             />
           </div>
-          <div className="flex items-center h-[18px] pl-1 pr-0.5 bg-[#1E1E1E] border border-[#383838] rounded-sm">
-            <Filter className="w-2 h-2 text-[#555] shrink-0 mr-0.5" />
+          <div className="flex items-center h-[18px] pl-1 pr-0.5 bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] rounded-sm">
+            <Filter className="w-2 h-2 text-[color:var(--dc-border-strong)] shrink-0 mr-0.5" />
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
-              className="text-[9px] bg-transparent text-[#CCC] focus:outline-none appearance-none cursor-pointer"
+              className="text-[9px] bg-transparent text-[color:var(--dc-text2)] focus:outline-none appearance-none cursor-pointer"
             >
               {filterTypes.map(ft => (
                 <option key={ft.value} value={ft.value}>{ft.label}</option>

@@ -114,7 +114,7 @@ export function Rulers({ containerWidth, containerHeight, zoom, panX, panY }: Ru
     <>
       {/* Horizontal ruler */}
       <div
-        className="absolute top-0 left-6 right-0 bg-[#2A2A2A] border-b border-[#383838] z-30 cursor-crosshair overflow-hidden select-none"
+        className="absolute top-0 left-6 right-0 bg-[color:var(--dc-card)] border-b border-[color:var(--dc-border)] z-30 cursor-crosshair overflow-hidden select-none"
         style={{ height: RULER_SIZE }}
         onMouseDown={(e) => handleRulerMouseDown('horizontal', e)}
       >
@@ -158,7 +158,7 @@ export function Rulers({ containerWidth, containerHeight, zoom, panX, panY }: Ru
 
       {/* Vertical ruler */}
       <div
-        className="absolute top-6 left-0 bottom-0 bg-[#2A2A2A] border-r border-[#383838] z-30 cursor-crosshair overflow-hidden select-none"
+        className="absolute top-6 left-0 bottom-0 bg-[color:var(--dc-card)] border-r border-[color:var(--dc-border)] z-30 cursor-crosshair overflow-hidden select-none"
         style={{ width: RULER_SIZE }}
         onMouseDown={(e) => handleRulerMouseDown('vertical', e)}
       >
@@ -203,11 +203,11 @@ export function Rulers({ containerWidth, containerHeight, zoom, panX, panY }: Ru
 
       {/* Corner square with unit label */}
       <div
-        className="absolute top-0 left-0 bg-[#2A2A2A] border-r border-b border-[#383838] z-40 flex items-center justify-center"
+        className="absolute top-0 left-0 bg-[color:var(--dc-card)] border-r border-b border-[color:var(--dc-border)] z-40 flex items-center justify-center"
         style={{ width: RULER_SIZE, height: RULER_SIZE }}
         title={`Ruler unit: ${unit} (DPI 72)`}
       >
-        <span className="text-[8px] text-[#888] uppercase">{unit}</span>
+        <span className="text-[8px] text-[color:var(--dc-muted)] uppercase">{unit}</span>
       </div>
     </>
   )

@@ -128,7 +128,7 @@ export function InlineTextEditor({
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
       onInput={handleInput}
-      className="absolute outline-none border-2 border-[#0D99FF] rounded-sm overflow-hidden whitespace-pre-wrap break-words"
+      className="absolute outline-none border-2 border-[color:var(--dc-accent)] rounded-sm overflow-hidden whitespace-pre-wrap break-words"
       style={{
         left: pos.left,
         top: pos.top,

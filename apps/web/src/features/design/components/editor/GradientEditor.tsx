@@ -56,7 +56,7 @@ export function GradientEditor({ angle, stops, onChange }: GradientEditorProps) 
       {/* Gradient preview bar */}
       <div
         ref={barRef}
-        className="h-4 rounded border border-[#555] cursor-crosshair relative"
+        className="h-4 rounded border border-[color:var(--dc-border-strong)] cursor-crosshair relative"
         style={{ background: gradientCSS }}
         onClick={handleAddStop}
       >
@@ -65,7 +65,7 @@ export function GradientEditor({ angle, stops, onChange }: GradientEditorProps) 
           <div
             key={i}
             className={`absolute top-full w-3 h-3 -ml-1.5 mt-0.5 cursor-grab border-2 rounded-sm ${
-              i === activeStop ? 'border-white' : 'border-[#888]'
+              i === activeStop ? 'border-white' : 'border-[color:var(--dc-muted)]'
             }`}
             style={{
               left: `${stop.offset * 100}%`,
@@ -107,38 +107,38 @@ export function GradientEditor({ angle, stops, onChange }: GradientEditorProps) 
 
       {/* Angle control */}
       <div className="flex items-center gap-2">
-        <span className="text-[10px] text-[#888] w-8">Angle</span>
+        <span className="text-[10px] text-[color:var(--dc-muted)] w-8">Angle</span>
         <input
           type="range"
           min="0"
           max="359"
           value={angle}
           onChange={handleAngleChange}
-          className="flex-1 h-1 accent-[#0D99FF] cursor-pointer"
+          className="flex-1 h-1 accent-[color:var(--dc-accent)] cursor-pointer"
         />
         <input
           type="text"
           value={angle}
           onChange={handleAngleChange}
-          className="w-8 h-5 px-1 text-[10px] border border-[#555] rounded bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums"
+          className="w-8 h-5 px-1 text-[10px] border border-[color:var(--dc-border-strong)] rounded bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
         />
       </div>
 
       {/* Active stop controls */}
       {stops[activeStop] && (
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-[#888] w-8">Color</span>
+          <span className="text-[10px] text-[color:var(--dc-muted)] w-8">Color</span>
           <input
             type="color"
             value={stops[activeStop].color}
             onChange={(e) => handleStopColorChange(activeStop, e.target.value)}
-            className="w-6 h-5 rounded border border-[#555] cursor-pointer bg-transparent"
+            className="w-6 h-5 rounded border border-[color:var(--dc-border-strong)] cursor-pointer bg-transparent"
           />
           <input
             type="text"
             value={stops[activeStop].color}
             onChange={(e) => handleStopColorChange(activeStop, e.target.value)}
-            className="w-16 h-5 px-1 text-[10px] border border-[#555] rounded bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF]"
+            className="w-16 h-5 px-1 text-[10px] border border-[color:var(--dc-border-strong)] rounded bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]"
           />
           <button
             onClick={() => handleRemoveStop(activeStop)}

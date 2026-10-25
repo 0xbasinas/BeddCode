@@ -71,10 +71,10 @@ function StyleMenuButton({ elementId, slot, kind }: { elementId: string; slot: S
     <div className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center justify-center w-5 h-5 rounded hover:bg-[#3C3C3C] transition-colors"
+        className="flex items-center justify-center w-5 h-5 rounded hover:bg-[color:var(--dc-hover)] transition-colors"
         title="Styles"
       >
-        <svg width="10" height="10" viewBox="0 0 10 10" fill={attached ? '#0D99FF' : 'currentColor'} className="text-[#888]">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill={attached ? 'var(--dc-accent)' : 'currentColor'} className="text-[color:var(--dc-muted)]">
           <circle cx="2" cy="2" r="1.15" /><circle cx="8" cy="2" r="1.15" />
           <circle cx="5" cy="5" r="1.15" /><circle cx="2" cy="8" r="1.15" /><circle cx="8" cy="8" r="1.15" />
         </svg>
@@ -82,36 +82,36 @@ function StyleMenuButton({ elementId, slot, kind }: { elementId: string; slot: S
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-6 z-50 w-44 py-1 rounded-lg bg-[#2C2C2C] border border-[#3C3C3C] shadow-lg max-h-64 overflow-auto">
+          <div className="absolute right-0 top-6 z-50 w-44 py-1 rounded-lg bg-[color:var(--dc-raised)] border border-[color:var(--dc-hover)] shadow-lg max-h-64 overflow-auto">
             <button
-              className="w-full text-left px-2.5 py-1.5 text-[11px] text-[#DDD] hover:bg-[#0D99FF]/20 flex items-center gap-1.5"
+              className="w-full text-left px-2.5 py-1.5 text-[11px] text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-accent)]/20 flex items-center gap-1.5"
               onClick={() => {
                 createStyleFromElement(elementId, slot, `${kind === 'paint' ? 'Paint' : kind === 'text' ? 'Text' : 'Effect'} style ${styles.length + 1}`)
                 setOpen(false)
               }}
             >
-              <span className="text-[#0D99FF]">＋</span> Create style
+              <span className="text-[color:var(--dc-accent)]">＋</span> Create style
             </button>
             {attached && (
               <button
-                className="w-full text-left px-2.5 py-1.5 text-[11px] text-[#DDD] hover:bg-[#0D99FF]/20"
+                className="w-full text-left px-2.5 py-1.5 text-[11px] text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-accent)]/20"
                 onClick={() => { detachStyleFromSelection(attached.id); setOpen(false) }}
               >
                 Detach “{attached.name}”
               </button>
             )}
-            {list.length > 0 && <div className="h-px bg-[#3C3C3C] my-1" />}
+            {list.length > 0 && <div className="h-px bg-[color:var(--dc-hover)] my-1" />}
             {list.map((s) => (
               <button
                 key={s.id}
-                className={`w-full text-left px-2.5 py-1.5 text-[11px] hover:bg-[#0D99FF]/20 flex items-center gap-1.5 ${s.id === attachedId ? 'text-[#0D99FF]' : 'text-[#DDD]'}`}
+                className={`w-full text-left px-2.5 py-1.5 text-[11px] hover:bg-[color:var(--dc-accent)]/20 flex items-center gap-1.5 ${s.id === attachedId ? 'text-[color:var(--dc-accent)]' : 'text-[color:var(--dc-text2)]'}`}
                 onClick={() => {
                   // apply to selection via store (works for multi-select too)
                   applyStyleToSelection(s.id)
                   setOpen(false)
                 }}
               >
-                <span className="w-3 h-3 rounded-[2px] border border-[#555] shrink-0" style={{
+                <span className="w-3 h-3 rounded-[2px] border border-[color:var(--dc-border-strong)] shrink-0" style={{
                   background: s.kind === 'paint'
                     ? (s.paint?.type === 'solid' ? s.paint.color : s.paint?.type === 'image' ? '#777' : `linear-gradient(135deg, ${(s.paint?.gradientStops || []).map((st) => st.color).join(', ')})`)
                     : s.kind === 'text' ? (s.text?.textColor || '#FFF') : 'repeating-linear-gradient(45deg,#444,#444 2px,#888 2px,#888 4px)',
@@ -151,7 +151,7 @@ function PropertyInput({ label, value, onChange, onBlur, className = '' }: { lab
 
   return (
     <div className={`flex items-center gap-1 ${className}`}>
-      <span className="text-[10px] text-[#888] w-3.5 shrink-0 text-right">{label}</span>
+      <span className="text-[10px] text-[color:var(--dc-muted)] w-3.5 shrink-0 text-right">{label}</span>
       <input
         type="text"
         value={display}
@@ -162,7 +162,7 @@ function PropertyInput({ label, value, onChange, onBlur, className = '' }: { lab
         }}
         onFocus={() => setDraft(String(value))}
         onBlur={commitDraft}
-        className="w-full h-6 px-1 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] tabular-nums transition-colors duration-100"
+        className="w-full h-6 px-1 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums transition-colors duration-100"
         onKeyDown={(e) => {
           if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             e.preventDefault()
@@ -191,9 +191,9 @@ function SectionHeader({ title, action, collapsible, defaultOpen = true }: { tit
     <div className="flex items-center justify-between mb-1 cursor-pointer select-none" onClick={collapsible ? () => setIsOpen(!isOpen) : undefined}>
       <div className="flex items-center gap-1">
         {collapsible && (
-          <ChevronDown className={`w-2.5 h-2.5 text-[#888] transition-transform ${isOpen ? '' : '-rotate-90'}`} />
+          <ChevronDown className={`w-2.5 h-2.5 text-[color:var(--dc-muted)] transition-transform ${isOpen ? '' : '-rotate-90'}`} />
         )}
-        <span className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">{title}</span>
+        <span className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">{title}</span>
       </div>
       {action}
     </div>
@@ -201,7 +201,7 @@ function SectionHeader({ title, action, collapsible, defaultOpen = true }: { tit
 }
 
 function SectionDivider() {
-  return <div className="border-t border-[#383838] my-2" />
+  return <div className="border-t border-[color:var(--dc-border)] my-2" />
 }
 
 const BLEND_MODES = [
@@ -263,7 +263,7 @@ export function PropertiesPanel() {
     return (
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="text-center">
-          <div className="w-12 h-12 rounded-xl bg-[#2C2C2C] flex items-center justify-center mx-auto mb-3">
+          <div className="w-12 h-12 rounded-xl bg-[color:var(--dc-raised)] flex items-center justify-center mx-auto mb-3">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
               <rect x="2" y="2" width="7" height="7" rx="1" stroke="#666" strokeWidth="1.5"/>
               <rect x="11" y="2" width="7" height="7" rx="1" stroke="#666" strokeWidth="1.5"/>
@@ -271,8 +271,8 @@ export function PropertiesPanel() {
               <rect x="11" y="11" width="7" height="7" rx="1" stroke="#666" strokeWidth="1.5"/>
             </svg>
           </div>
-          <p className="text-[11px] text-[#888]">Select an element to edit</p>
-          <p className="text-[10px] text-[#666] mt-1">{selectedElementIds.length > 1 ? `${selectedElementIds.length} elements selected` : 'No selection'}</p>
+          <p className="text-[11px] text-[color:var(--dc-muted)]">Select an element to edit</p>
+          <p className="text-[10px] text-[color:var(--dc-faint)] mt-1">{selectedElementIds.length > 1 ? `${selectedElementIds.length} elements selected` : 'No selection'}</p>
         </div>
       </div>
     )
@@ -413,16 +413,16 @@ export function PropertiesPanel() {
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
       {/* Design / Inspect toggle */}
-      <div className="flex items-center gap-px rounded-sm bg-[#1E1E1E] p-px mb-1">
+      <div className="flex items-center gap-px rounded-sm bg-[color:var(--dc-input)] p-px mb-1">
         <button
           onClick={() => setShowInspect(false)}
-          className={`flex-1 px-2 py-0.5 text-[10px] font-medium rounded-sm transition-colors duration-100 ${!showInspect ? 'bg-[#0D99FF] text-white' : 'text-[#888] hover:text-white'}`}
+          className={`flex-1 px-2 py-0.5 text-[10px] font-medium rounded-sm transition-colors duration-100 ${!showInspect ? 'bg-[color:var(--dc-accent)] text-white' : 'text-[color:var(--dc-muted)] hover:text-white'}`}
         >
           Design
         </button>
         <button
           onClick={() => setShowInspect(true)}
-          className={`flex-1 px-2 py-0.5 text-[10px] font-medium rounded-sm transition-colors duration-100 ${showInspect ? 'bg-[#0D99FF] text-white' : 'text-[#888] hover:text-white'}`}
+          className={`flex-1 px-2 py-0.5 text-[10px] font-medium rounded-sm transition-colors duration-100 ${showInspect ? 'bg-[color:var(--dc-accent)] text-white' : 'text-[color:var(--dc-muted)] hover:text-white'}`}
         >
           Inspect
         </button>
@@ -430,7 +430,7 @@ export function PropertiesPanel() {
 
       {showInspect ? (
         <div className="space-y-2">
-          <pre className="text-[10px] text-[#CCC] bg-[#1E1E1E] p-2 rounded border border-[#383838] overflow-x-auto whitespace-pre-wrap font-mono">
+          <pre className="text-[10px] text-[color:var(--dc-text2)] bg-[color:var(--dc-input)] p-2 rounded border border-[color:var(--dc-border)] overflow-x-auto whitespace-pre-wrap font-mono">
             {generateCSS()}
           </pre>
         </div>
@@ -466,7 +466,7 @@ export function PropertiesPanel() {
                   ◇ Detach
                 </button>
               )}
-              <span className="text-[10px] text-[#666]">{element.name}</span>
+              <span className="text-[10px] text-[color:var(--dc-faint)]">{element.name}</span>
             </div>
           </div>
 
@@ -490,8 +490,8 @@ export function PropertiesPanel() {
                   <PropertyInput label="W" value={Math.round(element.width)} onChange={(v) => handleDimensionChange('width', v)} onBlur={pushHistory} />
                   <PropertyInput label="H" value={Math.round(element.height)} onChange={(v) => handleDimensionChange('height', v)} onBlur={pushHistory} />
                 </div>
-                <button onClick={() => setAspectLocked(!aspectLocked)} className="flex items-center justify-center w-6 h-6 rounded hover:bg-[#3C3C3C] transition-colors shrink-0" title={aspectLocked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}>
-                  {aspectLocked ? <Link2 className="w-3 h-3 text-[#0D99FF]" /> : <Link2Off className="w-3 h-3 text-[#888]" />}
+                <button onClick={() => setAspectLocked(!aspectLocked)} className="flex items-center justify-center w-6 h-6 rounded hover:bg-[color:var(--dc-hover)] transition-colors shrink-0" title={aspectLocked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}>
+                  {aspectLocked ? <Link2 className="w-3 h-3 text-[color:var(--dc-accent)]" /> : <Link2Off className="w-3 h-3 text-[color:var(--dc-muted)]" />}
                 </button>
                 {/* PHASE 23 (F8) — resize to fit (source: resize-to-fit button in
                     the 530 transform panel, figma_app ×20). Containers fit to
@@ -499,7 +499,7 @@ export function PropertiesPanel() {
                 {(element.type === 'text' || (element.children && element.children.length > 0)) && (
                   <button
                     onClick={() => { pushHistory(); resizeSelectionToFit() }}
-                    className="flex items-center justify-center h-6 px-1.5 rounded text-[9px] text-[#BBB] hover:bg-[#3C3C3C] hover:text-[#DDD] transition-colors shrink-0"
+                    className="flex items-center justify-center h-6 px-1.5 rounded text-[9px] text-[#BBB] hover:bg-[color:var(--dc-hover)] hover:text-[color:var(--dc-text2)] transition-colors shrink-0"
                     title="Resize to fit"
                   >
                     Fit
@@ -529,7 +529,7 @@ export function PropertiesPanel() {
                     updateElement(element.id, { width: preset.width, height: preset.height, name: preset.name })
                   }
                 }}
-                className="w-full h-6 px-1 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF]"
+                className="w-full h-6 px-1 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]"
                 value=""
               >
                 <option value="">Select preset...</option>
@@ -551,7 +551,7 @@ export function PropertiesPanel() {
           {/* Alignment */}
           <div>
             <SectionHeader title="Alignment" />
-            <div className="flex items-center gap-0.5 rounded bg-[#1E1E1E] p-0.5">
+            <div className="flex items-center gap-0.5 rounded bg-[color:var(--dc-input)] p-0.5">
               {[
                 { icon: AlignStartHorizontal, label: 'Left', align: 'left' },
                 { icon: AlignCenterHorizontal, label: 'Center H', align: 'center-h' },
@@ -564,11 +564,11 @@ export function PropertiesPanel() {
               ].map(({ icon: Icon, label, align, action }, i) => (
                 <button
                   key={i}
-                  className="flex items-center justify-center w-6 h-6 rounded hover:bg-[#3C3C3C] transition-colors"
+                  className="flex items-center justify-center w-6 h-6 rounded hover:bg-[color:var(--dc-hover)] transition-colors"
                   title={label}
                   onClick={() => align ? handleAlign(align) : action?.()}
                 >
-                  <Icon className="w-3 h-3 text-[#888]" />
+                  <Icon className="w-3 h-3 text-[color:var(--dc-muted)]" />
                 </button>
               ))}
             </div>
@@ -581,17 +581,17 @@ export function PropertiesPanel() {
             <SectionHeader title="Appearance" />
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-[#888] w-14 shrink-0">Opacity</span>
-                <input type="range" min="0" max="100" value={element.opacity} onChange={(e) => handleOpacityChange(e.target.value)} onMouseUp={pushHistory} onTouchEnd={pushHistory} className="flex-1 h-1 accent-[#0D99FF] cursor-pointer" />
-                <input type="text" value={element.opacity} onChange={(e) => handleOpacityChange(e.target.value)} onBlur={pushHistory} className="w-10 h-6 px-1 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums" />
+                <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Opacity</span>
+                <input type="range" min="0" max="100" value={element.opacity} onChange={(e) => handleOpacityChange(e.target.value)} onMouseUp={pushHistory} onTouchEnd={pushHistory} className="flex-1 h-1 accent-[color:var(--dc-accent)] cursor-pointer" />
+                <input type="text" value={element.opacity} onChange={(e) => handleOpacityChange(e.target.value)} onBlur={pushHistory} className="w-10 h-6 px-1 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums" />
               </div>
               {/* Blend Mode */}
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-[#888] w-14 shrink-0">Blend</span>
+                <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Blend</span>
                 <select
                   value={element.blendMode || 'normal'}
                   onChange={(e) => { pushHistory(); setBlendMode(element.id, e.target.value) }}
-                  className="flex-1 h-6 px-1 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF]"
+                  className="flex-1 h-6 px-1 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]"
                 >
                   {BLEND_MODES.map(mode => (
                     <option key={mode} value={mode}>{mode.charAt(0).toUpperCase() + mode.slice(1)}</option>
@@ -600,12 +600,12 @@ export function PropertiesPanel() {
               </div>
               {/* Flip buttons */}
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-[#888] w-14 shrink-0">Flip</span>
+                <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Flip</span>
                 <div className="flex gap-0.5">
-                  <button onClick={() => { pushHistory(); flipHorizontal(element.id) }} className={`flex items-center justify-center h-6 px-2 rounded text-[10px] transition-colors ${element.flipH ? 'bg-[#0D99FF] text-white' : 'bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C]'}`}>
+                  <button onClick={() => { pushHistory(); flipHorizontal(element.id) }} className={`flex items-center justify-center h-6 px-2 rounded text-[10px] transition-colors ${element.flipH ? 'bg-[color:var(--dc-accent)] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)]'}`}>
                     <FlipHorizontal2 className="w-3 h-3" />
                   </button>
-                  <button onClick={() => { pushHistory(); flipVertical(element.id) }} className={`flex items-center justify-center h-6 px-2 rounded text-[10px] transition-colors ${element.flipV ? 'bg-[#0D99FF] text-white' : 'bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C]'}`}>
+                  <button onClick={() => { pushHistory(); flipVertical(element.id) }} className={`flex items-center justify-center h-6 px-2 rounded text-[10px] transition-colors ${element.flipV ? 'bg-[color:var(--dc-accent)] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)]'}`}>
                     <FlipVertical2 className="w-3 h-3" />
                   </button>
                 </div>
@@ -625,16 +625,16 @@ export function PropertiesPanel() {
                     <StyleMenuButton elementId={element.id} slot="fill" kind="paint" />
                     <button
                       onClick={() => addFill(element.id, { type: 'solid', color: '#D9D9D9', opacity: 100 })}
-                      className="flex items-center justify-center w-5 h-5 rounded hover:bg-[#3C3C3C] transition-colors"
+                      className="flex items-center justify-center w-5 h-5 rounded hover:bg-[color:var(--dc-hover)] transition-colors"
                       title="Add solid fill"
                     >
-                      <Plus className="w-3 h-3 text-[#888]" />
+                      <Plus className="w-3 h-3 text-[color:var(--dc-muted)]" />
                     </button>
                   </div>
                 }
               />
               {/* Default fill */}
-              <div className="flex items-center gap-2 p-1.5 rounded bg-[#1E1E1E] border border-[#383838] mb-1">
+              <div className="flex items-center gap-2 p-1.5 rounded bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] mb-1">
                 <ColorPicker
                   color={element.fill === 'transparent' ? '#FFFFFF' : element.fill}
                   opacity={element.opacity}
@@ -658,15 +658,15 @@ export function PropertiesPanel() {
                     <StyleMenuButton elementId={element.id} slot="stroke" kind="paint" />
                     <button
                       onClick={() => addStroke(element.id, { color: '#000000', width: 1, style: 'solid', opacity: 100, align: 'center' })}
-                      className="flex items-center justify-center w-5 h-5 rounded hover:bg-[#3C3C3C] transition-colors"
+                      className="flex items-center justify-center w-5 h-5 rounded hover:bg-[color:var(--dc-hover)] transition-colors"
                       title="Add stroke"
                     >
-                      <Plus className="w-3 h-3 text-[#888]" />
+                      <Plus className="w-3 h-3 text-[color:var(--dc-muted)]" />
                     </button>
                   </div>
                 }
               />
-              <div className="flex items-center gap-2 p-1.5 rounded bg-[#1E1E1E] border border-[#383838] mb-1">
+              <div className="flex items-center gap-2 p-1.5 rounded bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] mb-1">
                 <ColorPicker
                   color={element.stroke === 'transparent' ? '#000000' : element.stroke}
                   opacity={element.opacity}
@@ -681,16 +681,16 @@ export function PropertiesPanel() {
                       if (!isNaN(num) && num >= 0) updateElement(element.id, { strokeWidth: num })
                     }}
                     onBlur={pushHistory}
-                    className="w-10 h-6 px-1 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums"
+                    className="w-10 h-6 px-1 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
                   />
                 </div>
               </div>
               {/* Stroke style */}
               <div className="flex items-center gap-1 mt-1 mb-1">
-                <span className="text-[10px] text-[#888] w-14 shrink-0">Style</span>
+                <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Style</span>
                 <div className="flex gap-0.5">
                   {(['solid', 'dashed', 'dotted'] as const).map((style) => (
-                    <button key={style} onClick={() => updateElement(element.id, { strokeStyle: style })} className={`flex items-center justify-center h-6 px-2 rounded text-[10px] transition-colors ${element.strokeStyle === style ? 'bg-[#0D99FF] text-white' : 'bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C]'}`}>
+                    <button key={style} onClick={() => updateElement(element.id, { strokeStyle: style })} className={`flex items-center justify-center h-6 px-2 rounded text-[10px] transition-colors ${element.strokeStyle === style ? 'bg-[color:var(--dc-accent)] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)]'}`}>
                       {style.charAt(0).toUpperCase() + style.slice(1)}
                     </button>
                   ))}
@@ -698,10 +698,10 @@ export function PropertiesPanel() {
               </div>
               {/* Stroke alignment */}
               <div className="flex items-center gap-1 mb-1">
-                <span className="text-[10px] text-[#888] w-14 shrink-0">Align</span>
+                <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Align</span>
                 <div className="flex gap-0.5">
                   {(['inside', 'center', 'outside'] as const).map((align) => (
-                    <button key={align} onClick={() => updateElement(element.id, { strokeAlign: align })} className={`flex items-center justify-center h-6 px-2 rounded text-[10px] transition-colors ${(element.strokeAlign || 'center') === align ? 'bg-[#0D99FF] text-white' : 'bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C]'}`}>
+                    <button key={align} onClick={() => updateElement(element.id, { strokeAlign: align })} className={`flex items-center justify-center h-6 px-2 rounded text-[10px] transition-colors ${(element.strokeAlign || 'center') === align ? 'bg-[color:var(--dc-accent)] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)]'}`}>
                       {align.charAt(0).toUpperCase() + align.slice(1)}
                     </button>
                   ))}
@@ -727,8 +727,8 @@ export function PropertiesPanel() {
                     <PropertyInput label="↘" value={element.cornerRadiusBR || 0} onChange={(v) => { const num = parseInt(v); if (!isNaN(num) && num >= 0) updateElement(element.id, { cornerRadiusBR: num }) }} />
                   </div>
                 </div>
-                <button onClick={() => setCornersLinked(!cornersLinked)} className="flex items-center justify-center w-6 h-6 rounded hover:bg-[#3C3C3C] transition-colors shrink-0" title={cornersLinked ? 'Unlink corners' : 'Link corners'}>
-                  {cornersLinked ? <Link2 className="w-3 h-3 text-[#0D99FF]" /> : <Link2Off className="w-3 h-3 text-[#888]" />}
+                <button onClick={() => setCornersLinked(!cornersLinked)} className="flex items-center justify-center w-6 h-6 rounded hover:bg-[color:var(--dc-hover)] transition-colors shrink-0" title={cornersLinked ? 'Unlink corners' : 'Link corners'}>
+                  {cornersLinked ? <Link2 className="w-3 h-3 text-[color:var(--dc-accent)]" /> : <Link2Off className="w-3 h-3 text-[color:var(--dc-muted)]" />}
                 </button>
               </div>
               {cornersLinked && (
@@ -739,7 +739,7 @@ export function PropertiesPanel() {
               {/* PHASE 16 — corner smoothing (source: cornerSmoothing 9 refs) */}
               {(element.type === 'rectangle' || element.type === 'frame') && (
                 <div className="flex items-center gap-2 mt-1.5" data-testid="corner-smoothing">
-                  <span className="text-[10px] text-[#888] w-14 shrink-0">Smoothing</span>
+                  <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Smoothing</span>
                   <input
                     type="range"
                     min={0}
@@ -748,9 +748,9 @@ export function PropertiesPanel() {
                     onChange={(e) => updateElement(element.id, { cornerSmoothing: parseInt(e.target.value) })}
                     onMouseUp={pushHistory}
                     onTouchEnd={pushHistory}
-                    className="flex-1 h-1 accent-[#0D99FF] cursor-pointer"
+                    className="flex-1 h-1 accent-[color:var(--dc-accent)] cursor-pointer"
                   />
-                  <span className="text-[10px] text-[#DDD] w-8 text-right tabular-nums">{element.cornerSmoothing || 0}%</span>
+                  <span className="text-[10px] text-[color:var(--dc-text2)] w-8 text-right tabular-nums">{element.cornerSmoothing || 0}%</span>
                 </div>
               )}
             </div>
@@ -763,8 +763,8 @@ export function PropertiesPanel() {
               <div className="space-y-2">
                 {/* Font family */}
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#888] w-14 shrink-0">Font</span>
-                  <select value={element.fontFamily || 'Inter'} onChange={(e) => { pushHistory(); handleTextChange('fontFamily', e.target.value) }} className="flex-1 h-6 px-1 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF]">
+                  <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Font</span>
+                  <select value={element.fontFamily || 'Inter'} onChange={(e) => { pushHistory(); handleTextChange('fontFamily', e.target.value) }} className="flex-1 h-6 px-1 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]">
                     <option value="Inter">Inter</option>
                     <option value="Roboto">Roboto</option>
                     <option value="Open Sans">Open Sans</option>
@@ -796,7 +796,7 @@ export function PropertiesPanel() {
                 {/* Font size + Weight */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-[#888] w-4 shrink-0 text-right">Sz</span>
+                    <span className="text-[10px] text-[color:var(--dc-muted)] w-4 shrink-0 text-right">Sz</span>
                     <input
                       type="text"
                       value={element.fontSize || 18}
@@ -813,12 +813,12 @@ export function PropertiesPanel() {
                           handleTextChange('fontSize', e.key === 'ArrowUp' ? current + delta : current - delta)
                         }
                       }}
-                      className="w-full h-6 px-1.5 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] tabular-nums"
+                      className="w-full h-6 px-1.5 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
                     />
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-[#888] w-4 shrink-0 text-right">Wt</span>
-                    <select value={element.fontWeight || 400} onChange={(e) => { pushHistory(); handleTextChange('fontWeight', parseInt(e.target.value)) }} className="w-full h-6 px-1 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF]">
+                    <span className="text-[10px] text-[color:var(--dc-muted)] w-4 shrink-0 text-right">Wt</span>
+                    <select value={element.fontWeight || 400} onChange={(e) => { pushHistory(); handleTextChange('fontWeight', parseInt(e.target.value)) }} className="w-full h-6 px-1 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]">
                       <option value={100}>Thin (100)</option>
                       <option value={200}>Extra Light (200)</option>
                       <option value={300}>Light (300)</option>
@@ -833,25 +833,25 @@ export function PropertiesPanel() {
                 </div>
                 {/* Style toggles: Bold, Italic, Underline, Strikethrough (PHASE 10) */}
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#888] w-14 shrink-0">Style</span>
+                  <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Style</span>
                   <div className="flex gap-0.5">
                     <button
                       onClick={() => { pushHistory(); handleTextChange('fontWeight', element.fontWeight === 700 ? 400 : 700) }}
-                      className={`flex items-center justify-center h-6 w-7 rounded transition-colors ${element.fontWeight === 700 ? 'bg-[#0D99FF] text-white' : 'bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C]'}`}
+                      className={`flex items-center justify-center h-6 w-7 rounded transition-colors ${element.fontWeight === 700 ? 'bg-[color:var(--dc-accent)] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)]'}`}
                       title="Bold"
                     >
                       <Bold className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => { pushHistory(); handleTextChange('fontStyle', element.fontStyle === 'italic' ? 'normal' : 'italic') }}
-                      className={`flex items-center justify-center h-6 w-7 rounded transition-colors ${element.fontStyle === 'italic' ? 'bg-[#0D99FF] text-white' : 'bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C]'}`}
+                      className={`flex items-center justify-center h-6 w-7 rounded transition-colors ${element.fontStyle === 'italic' ? 'bg-[color:var(--dc-accent)] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)]'}`}
                       title="Italic"
                     >
                       <Italic className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => { pushHistory(); handleTextChange('textDecoration', element.textDecoration === 'underline' ? 'none' : 'underline') }}
-                      className={`flex items-center justify-center h-6 w-7 rounded transition-colors ${element.textDecoration === 'underline' ? 'bg-[#0D99FF] text-white' : 'bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C]'}`}
+                      className={`flex items-center justify-center h-6 w-7 rounded transition-colors ${element.textDecoration === 'underline' ? 'bg-[color:var(--dc-accent)] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)]'}`}
                       title="Underline"
                     >
                       <Underline className="w-3.5 h-3.5" />
@@ -859,7 +859,7 @@ export function PropertiesPanel() {
                     {/* PHASE 10 — strikethrough */}
                     <button
                       onClick={() => { pushHistory(); handleTextChange('textDecoration', element.textDecoration === 'strikethrough' ? 'none' : 'strikethrough') }}
-                      className={`flex items-center justify-center h-6 w-7 rounded transition-colors font-semibold text-[13px] ${element.textDecoration === 'strikethrough' ? 'bg-[#0D99FF] text-white' : 'bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C]'}`}
+                      className={`flex items-center justify-center h-6 w-7 rounded transition-colors font-semibold text-[13px] ${element.textDecoration === 'strikethrough' ? 'bg-[color:var(--dc-accent)] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)]'}`}
                       title="Strikethrough"
                     >
                       <span style={{ textDecoration: 'line-through' }}>S</span>
@@ -869,11 +869,11 @@ export function PropertiesPanel() {
                 {/* PHASE 10 — auto-resize + case */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-[#888] w-8 shrink-0" title="Auto resize">Auto</span>
+                    <span className="text-[10px] text-[color:var(--dc-muted)] w-8 shrink-0" title="Auto resize">Auto</span>
                     <select
                       value={element.textAutoResize || 'fixed'}
                       onChange={(e) => { pushHistory(); updateElement(element.id, { textAutoResize: e.target.value as 'fixed' | 'hug' | 'grow' }); applyTextAutoSize(element.id) }}
-                      className="w-full h-6 px-1 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF]"
+                      className="w-full h-6 px-1 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]"
                       title="Text auto resize — Fixed / Hug contents / Grow with wrapping"
                     >
                       <option value="fixed">Fixed</option>
@@ -882,11 +882,11 @@ export function PropertiesPanel() {
                     </select>
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-[#888] w-8 shrink-0">Case</span>
+                    <span className="text-[10px] text-[color:var(--dc-muted)] w-8 shrink-0">Case</span>
                     <select
                       value={element.textCase || 'original'}
                       onChange={(e) => { pushHistory(); updateElement(element.id, { textCase: e.target.value as 'original' | 'upper' | 'lower' | 'title' }) }}
-                      className="w-full h-6 px-1 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF]"
+                      className="w-full h-6 px-1 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]"
                       title="Letter case"
                     >
                       <option value="original">Aa</option>
@@ -898,7 +898,7 @@ export function PropertiesPanel() {
                 </div>
                 {/* Text alignment with icons */}
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#888] w-14 shrink-0">Align</span>
+                  <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Align</span>
                   <div className="flex gap-0.5">
                     {([
                       { align: 'left' as const, Icon: AlignLeft },
@@ -909,7 +909,7 @@ export function PropertiesPanel() {
                       <button
                         key={align}
                         onClick={() => { pushHistory(); handleTextChange('textAlign', align) }}
-                        className={`flex items-center justify-center h-6 w-7 rounded transition-colors ${element.textAlign === align ? 'bg-[#0D99FF] text-white' : 'bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C]'}`}
+                        className={`flex items-center justify-center h-6 w-7 rounded transition-colors ${element.textAlign === align ? 'bg-[color:var(--dc-accent)] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)]'}`}
                         title={align.charAt(0).toUpperCase() + align.slice(1)}
                       >
                         <Icon className="w-3.5 h-3.5" />
@@ -919,7 +919,7 @@ export function PropertiesPanel() {
                 </div>
                 {/* PHASE 13: vertical alignment inside the text box (top/middle/bottom) */}
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#888] w-14 shrink-0">V-Align</span>
+                  <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">V-Align</span>
                   <div className="flex gap-0.5">
                     {([
                       { v: 'top' as const, Icon: AlignStartVertical },
@@ -929,7 +929,7 @@ export function PropertiesPanel() {
                       <button
                         key={v}
                         onClick={() => { pushHistory(); handleTextChange('textAlignVertical', v) }}
-                        className={`flex items-center justify-center h-6 w-7 rounded transition-colors ${(element.textAlignVertical || 'middle') === v ? 'bg-[#0D99FF] text-white' : 'bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C]'}`}
+                        className={`flex items-center justify-center h-6 w-7 rounded transition-colors ${(element.textAlignVertical || 'middle') === v ? 'bg-[color:var(--dc-accent)] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)]'}`}
                         title={`Vertical: ${v}`}
                         data-testid={`valign-${v}`}
                       >
@@ -940,7 +940,7 @@ export function PropertiesPanel() {
                 </div>
                 {/* PHASE 13: lists — ordered / unordered + indent (source: ordered 12 / unordered 6) */}
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#888] w-14 shrink-0">List</span>
+                  <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">List</span>
                   <div className="flex gap-0.5">
                     {([
                       { t: 'none' as const, label: '—', title: 'No list' },
@@ -950,7 +950,7 @@ export function PropertiesPanel() {
                       <button
                         key={t}
                         onClick={() => { pushHistory(); handleTextChange('listType', t) }}
-                        className={`flex items-center justify-center h-6 w-8 rounded text-[11px] transition-colors ${(element.listType || 'none') === t ? 'bg-[#0D99FF] text-white' : 'bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C]'}`}
+                        className={`flex items-center justify-center h-6 w-8 rounded text-[11px] transition-colors ${(element.listType || 'none') === t ? 'bg-[color:var(--dc-accent)] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)]'}`}
                         title={title}
                         data-testid={`list-${t}`}
                       >
@@ -960,13 +960,13 @@ export function PropertiesPanel() {
                   </div>
                   {(element.listType || 'none') !== 'none' && (
                     <div className="flex items-center gap-1 flex-1">
-                      <span className="text-[10px] text-[#888]">Indent</span>
+                      <span className="text-[10px] text-[color:var(--dc-muted)]">Indent</span>
                       <input
                         type="text"
                         value={element.listIndent ?? 16}
                         onChange={(e) => { const num = parseInt(e.target.value); if (!isNaN(num) && num >= 0) handleTextChange('listIndent', num) }}
                         onBlur={pushHistory}
-                        className="w-12 h-6 px-1.5 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] tabular-nums"
+                        className="w-12 h-6 px-1.5 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
                         title="List indent (px)"
                       />
                     </div>
@@ -979,21 +979,21 @@ export function PropertiesPanel() {
                 </div>
                 {/* Text color */}
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#888] w-14 shrink-0">Color</span>
+                  <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Color</span>
                   <div className="flex-1">
                     <ColorPicker color={element.textColor || '#000000'} opacity={element.opacity} onChange={(color) => { pushHistory(); handleTextChange('textColor', color) }} />
                   </div>
                 </div>
                 {/* Content */}
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#888] w-14 shrink-0">Content</span>
-                  <textarea value={element.textContent || ''} onChange={(e) => handleTextChange('textContent', e.target.value)} className="flex-1 h-12 px-1.5 py-1 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] resize-none" rows={2} />
+                  <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Content</span>
+                  <textarea value={element.textContent || ''} onChange={(e) => handleTextChange('textContent', e.target.value)} className="flex-1 h-12 px-1.5 py-1 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] resize-none" rows={2} />
                   {/* PHASE 19 (T8) — insert emoji at end of content */}
                   <EmojiPickerButton onPick={(em) => handleTextChange('textContent', (element.textContent || '') + em)} />
                 </div>
                 {/* PHASE 19 (T6) — On path: target picker + offset */}
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#888] w-14 shrink-0">On path</span>
+                  <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">On path</span>
                   <select
                     value={element.onPathId || ''}
                     onChange={(e) => {
@@ -1001,7 +1001,7 @@ export function PropertiesPanel() {
                       const v = e.target.value
                       updateElement(element.id, v ? { onPathId: v, pathOffset: element.pathOffset ?? 0 } : { onPathId: undefined })
                     }}
-                    className="flex-1 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF]"
+                    className="flex-1 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]"
                   >
                     <option value="">— box layout —</option>
                     {getAllElements(elements)
@@ -1016,12 +1016,12 @@ export function PropertiesPanel() {
                         type="number" step={0.05} min={0} max={1}
                         value={element.pathOffset ?? 0}
                         onChange={(e) => { const n = parseFloat(e.target.value); if (!isNaN(n)) updateElement(element.id, { pathOffset: Math.min(1, Math.max(0, n)) }) }}
-                        className="w-12 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums"
+                        className="w-12 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
                         title="Offset along path (0–1)"
                       />
                       <button
                         onClick={() => { pushHistory(); updateElement(element.id, { onPathId: undefined }) }}
-                        className="h-5 px-1.5 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#AAA] hover:text-[#FFF] hover:border-[#F44336]"
+                        className="h-5 px-1.5 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:text-[#FFF] hover:border-[#F44336]"
                       >✕</button>
                     </>
                   )}
@@ -1029,7 +1029,7 @@ export function PropertiesPanel() {
                 {/* PHASE 19 (T7) — Link runs editor */}
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-[#888] w-14 shrink-0">Links</span>
+                    <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Links</span>
                     <button
                       onClick={() => {
                         pushHistory()
@@ -1038,14 +1038,14 @@ export function PropertiesPanel() {
                         links.push({ start: 0, end: Math.max(1, content.length), url: 'https://' })
                         updateElement(element.id, { links })
                       }}
-                      className="h-5 px-2 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#AAA] hover:text-[#FFF] hover:border-[#0D99FF]"
+                      className="h-5 px-2 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:text-[#FFF] hover:border-[color:var(--dc-accent)]"
                     >+ Link</button>
                   </div>
                   {(element.links || []).map((lk: { start: number; end: number; url: string }, li: number) => (
                     <div key={li} className="flex items-center gap-1">
-                      <input type="number" min={0} value={lk.start} onChange={(e) => { const links = [...(element.links || [])]; links[li] = { ...lk, start: Math.max(0, parseInt(e.target.value) || 0) }; updateElement(element.id, { links }) }} className="w-10 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center" title="start char" />
-                      <input type="number" min={0} value={lk.end} onChange={(e) => { const links = [...(element.links || [])]; links[li] = { ...lk, end: Math.max(0, parseInt(e.target.value) || 0) }; updateElement(element.id, { links }) }} className="w-10 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center" title="end char" />
-                      <input type="text" value={lk.url} onChange={(e) => { const links = [...(element.links || [])]; links[li] = { ...lk, url: e.target.value }; updateElement(element.id, { links }) }} className="flex-1 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD]" placeholder="https://…" />
+                      <input type="number" min={0} value={lk.start} onChange={(e) => { const links = [...(element.links || [])]; links[li] = { ...lk, start: Math.max(0, parseInt(e.target.value) || 0) }; updateElement(element.id, { links }) }} className="w-10 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center" title="start char" />
+                      <input type="number" min={0} value={lk.end} onChange={(e) => { const links = [...(element.links || [])]; links[li] = { ...lk, end: Math.max(0, parseInt(e.target.value) || 0) }; updateElement(element.id, { links }) }} className="w-10 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center" title="end char" />
+                      <input type="text" value={lk.url} onChange={(e) => { const links = [...(element.links || [])]; links[li] = { ...lk, url: e.target.value }; updateElement(element.id, { links }) }} className="flex-1 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)]" placeholder="https://…" />
                       <button onClick={() => { const links = (element.links || []).filter((_, i) => i !== li); updateElement(element.id, { links }) }} className="text-[#F44336] text-[10px] px-1">✕</button>
                     </div>
                   ))}
@@ -1059,10 +1059,10 @@ export function PropertiesPanel() {
               Effective during playback when the containing frame scrolls. */}
           {element.type !== 'frame' && element.type !== 'group' && (
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-[#888] w-14 shrink-0">Fixed</span>
+              <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Fixed</span>
               <button
                 onClick={() => { pushHistory(); updateElement(element.id, element.scrollBehavior === 'FIXED_WHEN_CHILD_OF_SCROLLING_FRAME' ? { scrollBehavior: 'SCROLLS' } : { scrollBehavior: 'FIXED_WHEN_CHILD_OF_SCROLLING_FRAME' }) }}
-                className={`h-5 px-2 text-[10px] rounded-sm border ${element.scrollBehavior === 'FIXED_WHEN_CHILD_OF_SCROLLING_FRAME' ? 'bg-[#0D99FF]/20 border-[#0D99FF] text-[#7FBBFF]' : 'bg-[#1E1E1E] border-[#383838] text-[#999] hover:border-[#0D99FF]'}`}
+                className={`h-5 px-2 text-[10px] rounded-sm border ${element.scrollBehavior === 'FIXED_WHEN_CHILD_OF_SCROLLING_FRAME' ? 'bg-[color:var(--dc-accent)]/20 border-[color:var(--dc-accent)] text-[#7FBBFF]' : 'bg-[color:var(--dc-input)] border-[color:var(--dc-border)] text-[color:var(--dc-muted)] hover:border-[color:var(--dc-accent)]'}`}
                 title="Fixed when parent frame scrolls (stays pinned during playback)"
               >
                 {element.scrollBehavior === 'FIXED_WHEN_CHILD_OF_SCROLLING_FRAME' ? 'Fixed when scrolling ✓' : 'Scrolls with frame'}
@@ -1077,40 +1077,40 @@ export function PropertiesPanel() {
               <SectionHeader title="Arc" />
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#888] w-14 shrink-0">Start</span>
+                  <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Start</span>
                   <input type="range" min={-360} max={360} step={1} value={element.arc?.start ?? 0}
                     onChange={(e) => updateElement(element.id, { arc: { start: parseFloat(e.target.value), sweep: element.arc?.sweep ?? 90, innerRatio: element.arc?.innerRatio ?? 0 } })}
-                    className="flex-1 h-1 accent-[#0D99FF] cursor-pointer" />
+                    className="flex-1 h-1 accent-[color:var(--dc-accent)] cursor-pointer" />
                   <input type="text" value={element.arc?.start ?? 0}
                     onChange={(e) => { const n = parseFloat(e.target.value); if (!isNaN(n)) updateElement(element.id, { arc: { start: n, sweep: element.arc?.sweep ?? 90, innerRatio: element.arc?.innerRatio ?? 0 } }) }}
-                    className="w-10 h-6 px-1 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums" title="Start angle (deg)" />
+                    className="w-10 h-6 px-1 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums" title="Start angle (deg)" />
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#888] w-14 shrink-0">Sweep</span>
+                  <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Sweep</span>
                   <input type="range" min={-360} max={720} step={1} value={element.arc?.sweep ?? 90}
                     onChange={(e) => updateElement(element.id, { arc: { start: element.arc?.start ?? 0, sweep: parseFloat(e.target.value), innerRatio: element.arc?.innerRatio ?? 0 } })}
-                    className="flex-1 h-1 accent-[#0D99FF] cursor-pointer" />
+                    className="flex-1 h-1 accent-[color:var(--dc-accent)] cursor-pointer" />
                   <input type="text" value={element.arc?.sweep ?? 90}
                     onChange={(e) => { const n = parseFloat(e.target.value); if (!isNaN(n)) updateElement(element.id, { arc: { start: element.arc?.start ?? 0, sweep: n, innerRatio: element.arc?.innerRatio ?? 0 } }) }}
-                    className="w-10 h-6 px-1 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums" title="Sweep (deg; ±360+ = full)" />
+                    className="w-10 h-6 px-1 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums" title="Sweep (deg; ±360+ = full)" />
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#888] w-14 shrink-0">Ratio</span>
+                  <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Ratio</span>
                   <input type="range" min={0} max={100} value={Math.round((element.arc?.innerRatio ?? 0) * 100)}
                     onChange={(e) => updateElement(element.id, { arc: { start: element.arc?.start ?? 0, sweep: element.arc?.sweep ?? 90, innerRatio: parseFloat(e.target.value) / 100 } })}
-                    className="flex-1 h-1 accent-[#0D99FF] cursor-pointer" />
+                    className="flex-1 h-1 accent-[color:var(--dc-accent)] cursor-pointer" />
                   <input type="text" value={Math.round((element.arc?.innerRatio ?? 0) * 100)}
                     onChange={(e) => { const n = parseInt(e.target.value); if (!isNaN(n) && n >= 0 && n <= 100) updateElement(element.id, { arc: { start: element.arc?.start ?? 0, sweep: element.arc?.sweep ?? 90, innerRatio: n / 100 } }) }}
-                    className="w-10 h-6 px-1 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums" title="Inner radius ratio 0–100% (0 = pie, >0 = donut)" />
+                    className="w-10 h-6 px-1 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums" title="Inner radius ratio 0–100% (0 = pie, >0 = donut)" />
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => updateElement(element.id, { arc: { start: 0, sweep: 360, innerRatio: 0 } })}
-                    className="h-5 px-2 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#AAA] hover:text-[#FFF] hover:border-[#0D99FF]"
+                    className="h-5 px-2 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:text-[#FFF] hover:border-[color:var(--dc-accent)]"
                   >
                     Full ellipse
                   </button>
-                  <span className="text-[9px] text-[#666]">{element.arc ? `renders as ${Math.abs(element.arc.sweep) >= 360 && element.arc.innerRatio > 0 ? 'donut' : 'pie/arc'}` : 'no arc'}</span>
+                  <span className="text-[9px] text-[color:var(--dc-faint)]">{element.arc ? `renders as ${Math.abs(element.arc.sweep) >= 360 && element.arc.innerRatio > 0 ? 'donut' : 'pie/arc'}` : 'no arc'}</span>
                 </div>
               </div>
             </div>
@@ -1122,15 +1122,15 @@ export function PropertiesPanel() {
               <SectionHeader title={isStar ? 'Star' : 'Polygon'} />
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#888] w-14 shrink-0">Sides</span>
-                  <input type="range" min="3" max="12" value={element.sides || (isPolygon ? 6 : 5)} onChange={(e) => updateElement(element.id, { sides: parseInt(e.target.value) })} className="flex-1 h-1 accent-[#0D99FF] cursor-pointer" />
-                  <input type="text" value={element.sides || (isPolygon ? 6 : 5)} onChange={(e) => { const num = parseInt(e.target.value); if (!isNaN(num) && num >= 3 && num <= 12) updateElement(element.id, { sides: num }) }} className="w-8 h-6 px-1 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums" />
+                  <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Sides</span>
+                  <input type="range" min="3" max="12" value={element.sides || (isPolygon ? 6 : 5)} onChange={(e) => updateElement(element.id, { sides: parseInt(e.target.value) })} className="flex-1 h-1 accent-[color:var(--dc-accent)] cursor-pointer" />
+                  <input type="text" value={element.sides || (isPolygon ? 6 : 5)} onChange={(e) => { const num = parseInt(e.target.value); if (!isNaN(num) && num >= 3 && num <= 12) updateElement(element.id, { sides: num }) }} className="w-8 h-6 px-1 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums" />
                 </div>
                 {isStar && (
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-[#888] w-14 shrink-0">Inner R</span>
-                    <input type="range" min="10" max="90" value={element.innerRadius || 40} onChange={(e) => updateElement(element.id, { innerRadius: parseInt(e.target.value) })} className="flex-1 h-1 accent-[#0D99FF] cursor-pointer" />
-                    <input type="text" value={element.innerRadius || 40} onChange={(e) => { const num = parseInt(e.target.value); if (!isNaN(num) && num >= 10 && num <= 90) updateElement(element.id, { innerRadius: num }) }} className="w-8 h-6 px-1 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums" />
+                    <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Inner R</span>
+                    <input type="range" min="10" max="90" value={element.innerRadius || 40} onChange={(e) => updateElement(element.id, { innerRadius: parseInt(e.target.value) })} className="flex-1 h-1 accent-[color:var(--dc-accent)] cursor-pointer" />
+                    <input type="text" value={element.innerRadius || 40} onChange={(e) => { const num = parseInt(e.target.value); if (!isNaN(num) && num >= 10 && num <= 90) updateElement(element.id, { innerRadius: num }) }} className="w-8 h-6 px-1 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums" />
                   </div>
                 )}
               </div>
@@ -1143,13 +1143,13 @@ export function PropertiesPanel() {
               <SectionHeader title="Arrow" />
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#888] w-14 shrink-0">Head</span>
+                  <span className="text-[10px] text-[color:var(--dc-muted)] w-14 shrink-0">Head</span>
                   <div className="flex gap-0.5">
                     {(['none', 'arrow', 'circle', 'diamond'] as const).map((style) => (
                       <button
                         key={style}
                         onClick={() => updateElement(element.id, { arrowHeadStyle: style })}
-                        className={`flex items-center justify-center h-6 px-2 rounded text-[10px] transition-colors ${(element.arrowHeadStyle || 'arrow') === style ? 'bg-[#0D99FF] text-white' : 'bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C]'}`}
+                        className={`flex items-center justify-center h-6 px-2 rounded text-[10px] transition-colors ${(element.arrowHeadStyle || 'arrow') === style ? 'bg-[color:var(--dc-accent)] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)]'}`}
                         title={style.charAt(0).toUpperCase() + style.slice(1)}
                       >
                         {style === 'arrow' ? '→' : style === 'circle' ? '●' : style === 'diamond' ? '◆' : '—'}
@@ -1168,7 +1168,7 @@ export function PropertiesPanel() {
                 title="Auto Layout"
                 action={
                   <button
-                    className="flex items-center gap-1 h-6 px-2 rounded bg-[#0D99FF] text-white text-[10px] font-medium hover:bg-[#0B87E0] transition-colors"
+                    className="flex items-center gap-1 h-6 px-2 rounded bg-[color:var(--dc-accent)] text-white text-[10px] font-medium hover:bg-[color:var(--dc-accent-hover)] transition-colors"
                     onClick={() => {
                       if (!element.autoLayout) {
                         // PHASE 12: Figma default — hug × hug (Shift+A behavior)
@@ -1190,7 +1190,7 @@ export function PropertiesPanel() {
                   <button
                     title={title}
                     onClick={() => { pushHistory(); onClick() }}
-                    className={`flex items-center justify-center w-6 h-6 rounded transition-colors ${active ? 'bg-[#0D99FF] text-white' : 'bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C] hover:text-[#CCC]'}`}
+                    className={`flex items-center justify-center w-6 h-6 rounded transition-colors ${active ? 'bg-[color:var(--dc-accent)] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)] hover:text-[color:var(--dc-text2)]'}`}
                   >{children}</button>
                 )
                 const isH = al.direction === 'horizontal'
@@ -1228,25 +1228,25 @@ export function PropertiesPanel() {
                       <span className="text-[8px] font-mono leading-none">⇕</span>)}
                     <div className="flex-1" />
                     {/* Gap (itemSpacing) */}
-                    <span className="text-[10px] text-[#888]">Gap</span>
+                    <span className="text-[10px] text-[color:var(--dc-muted)]">Gap</span>
                     <input
                       type="text"
                       data-testid="al-gap"
                       value={al.gap}
                       onChange={(e) => { const num = parseInt(e.target.value); if (!isNaN(num)) setAL({ gap: num }) }}
-                      className="w-12 h-6 px-1.5 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] tabular-nums"
+                      className="w-12 h-6 px-1.5 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
                     />
                   </div>
 
                   {/* Wrap controls: counter gap + line alignment (source: counterAxisSpacing / counterAxisAlignContent) */}
                   {al.wrap && (
                     <div className="flex items-center gap-1" data-testid="al-wrap-row">
-                      <span className="text-[10px] text-[#888]">Row gap</span>
+                      <span className="text-[10px] text-[color:var(--dc-muted)]">Row gap</span>
                       <input
                         type="text"
                         value={al.counterAxisGap ?? 10}
                         onChange={(e) => { const num = parseInt(e.target.value); if (!isNaN(num)) setAL({ counterAxisGap: num }) }}
-                        className="w-12 h-6 px-1.5 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] tabular-nums"
+                        className="w-12 h-6 px-1.5 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
                       />
                       <div className="flex-1" />
                       {(['start', 'center', 'end', 'space-between'] as const).map((m) => (
@@ -1254,7 +1254,7 @@ export function PropertiesPanel() {
                           key={m}
                           title={`Wrap lines: ${m}`}
                           onClick={() => { pushHistory(); setAL({ counterAxisAlignContent: m }) }}
-                          className={`h-6 px-1.5 rounded text-[9px] transition-colors ${(al.counterAxisAlignContent || 'start') === m ? 'bg-[#0D99FF] text-white' : 'bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C]'}`}
+                          className={`h-6 px-1.5 rounded text-[9px] transition-colors ${(al.counterAxisAlignContent || 'start') === m ? 'bg-[color:var(--dc-accent)] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)]'}`}
                         >{m === 'space-between' ? 'sp-bet' : m}</button>
                       ))}
                     </div>
@@ -1262,7 +1262,7 @@ export function PropertiesPanel() {
 
                   {/* Padding */}
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-[#888] w-11 shrink-0">Padding</span>
+                    <span className="text-[10px] text-[color:var(--dc-muted)] w-11 shrink-0">Padding</span>
                     <div className="grid grid-cols-2 gap-1 flex-1">
                       <PropertyInput label="T" value={al.paddingTop} onChange={(v) => { const num = parseInt(v); if (!isNaN(num)) setAL({ paddingTop: num }) }} />
                       <PropertyInput label="R" value={al.paddingRight} onChange={(v) => { const num = parseInt(v); if (!isNaN(num)) setAL({ paddingRight: num }) }} />
@@ -1273,23 +1273,23 @@ export function PropertiesPanel() {
 
                   {/* Frame sizing (source: primaryAxisSizingMode / counterAxisSizingMode FIXED/HUG/FILL) */}
                   <div className="flex items-center gap-2" data-testid="al-sizing-row">
-                    <span className="text-[10px] text-[#888] w-11 shrink-0">Size</span>
+                    <span className="text-[10px] text-[color:var(--dc-muted)] w-11 shrink-0">Size</span>
                     <div className="flex items-center gap-1 flex-1">
-                      <span className="text-[10px] text-[#888]">{isH ? 'W' : 'H'}</span>
+                      <span className="text-[10px] text-[color:var(--dc-muted)]">{isH ? 'W' : 'H'}</span>
                       <select
                         value={(isH ? al.primaryAxisSizing : al.counterAxisSizing) || 'fixed'}
                         onChange={(e) => { pushHistory(); setAL(isH ? { primaryAxisSizing: e.target.value as AutoLayout['primaryAxisSizing'] } : { counterAxisSizing: e.target.value as AutoLayout['counterAxisSizing'] }) }}
-                        className="flex-1 h-6 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] capitalize"
+                        className="flex-1 h-6 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] capitalize"
                       >
                         <option value="fixed">Fixed</option>
                         <option value="hug">Hug</option>
                         <option value="fill">Fill</option>
                       </select>
-                      <span className="text-[10px] text-[#888]">{isH ? 'H' : 'W'}</span>
+                      <span className="text-[10px] text-[color:var(--dc-muted)]">{isH ? 'H' : 'W'}</span>
                       <select
                         value={(isH ? al.counterAxisSizing : al.primaryAxisSizing) || 'fixed'}
                         onChange={(e) => { pushHistory(); setAL(isH ? { counterAxisSizing: e.target.value as AutoLayout['counterAxisSizing'] } : { primaryAxisSizing: e.target.value as AutoLayout['primaryAxisSizing'] }) }}
-                        className="flex-1 h-6 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] capitalize"
+                        className="flex-1 h-6 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] capitalize"
                       >
                         <option value="fixed">Fixed</option>
                         <option value="hug">Hug</option>
@@ -1306,10 +1306,10 @@ export function PropertiesPanel() {
           {/* Clip Content */}
           {(isFrame || isGroup) && (
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-[#888]">Clip Content</span>
+              <span className="text-[10px] text-[color:var(--dc-muted)]">Clip Content</span>
               <button
                 onClick={() => updateElement(element.id, { clipContent: !element.clipContent })}
-                className={`relative w-8 h-4 rounded-full transition-colors ${element.clipContent ? 'bg-[#0D99FF]' : 'bg-[#555]'}`}
+                className={`relative w-8 h-4 rounded-full transition-colors ${element.clipContent ? 'bg-[color:var(--dc-accent)]' : 'bg-[color:var(--dc-border-strong)]'}`}
               >
                 <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${element.clipContent ? 'left-4' : 'left-0.5'}`} />
               </button>
@@ -1333,7 +1333,7 @@ export function PropertiesPanel() {
             <SectionHeader title="Constraints" />
             <div className="flex items-start gap-3">
               {/* Visual 9-box picker: columns = horizontal, rows = vertical */}
-              <div className="grid grid-cols-3 gap-[2px] p-1 rounded bg-[#1E1E1E] border border-[#383838] shrink-0" data-testid="constraints-9box">
+              <div className="grid grid-cols-3 gap-[2px] p-1 rounded bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] shrink-0" data-testid="constraints-9box">
                 {([
                   { h: 'left', v: 'top' }, { h: 'center', v: 'top' }, { h: 'right', v: 'top' },
                   { h: 'left', v: 'center' }, { h: 'center', v: 'center' }, { h: 'right', v: 'center' },
@@ -1347,7 +1347,7 @@ export function PropertiesPanel() {
                   return (
                     <button
                       key={`${h}-${v}`}
-                      className={`w-4.5 h-4.5 w-[18px] h-[18px] rounded-[2px] flex items-center justify-center transition-colors ${active ? 'bg-[#0D99FF]/25' : 'hover:bg-[#2C2C2C]'}`}
+                      className={`w-4.5 h-4.5 w-[18px] h-[18px] rounded-[2px] flex items-center justify-center transition-colors ${active ? 'bg-[color:var(--dc-accent)]/25' : 'hover:bg-[color:var(--dc-raised)]'}`}
                       style={{ width: 18, height: 18 }}
                       title={`Horizontal: ${h}, Vertical: ${v}`}
                       onClick={() => updateElement(element.id, {
@@ -1357,14 +1357,14 @@ export function PropertiesPanel() {
                     >
                       <svg width="12" height="12" viewBox="0 0 12 12">
                         {/* horizontal pin */}
-                        {h === 'left' && <line x1="1" y1="6" x2="5" y2="6" stroke={active ? '#0D99FF' : '#777'} strokeWidth="1.2" />}
-                        {h === 'center' && <circle cx="6" cy="6" r="1.6" fill={active ? '#0D99FF' : '#777'} />}
-                        {h === 'right' && <line x1="7" y1="6" x2="11" y2="6" stroke={active ? '#0D99FF' : '#777'} strokeWidth="1.2" />}
+                        {h === 'left' && <line x1="1" y1="6" x2="5" y2="6" stroke={active ? 'var(--dc-accent)' : '#777'} strokeWidth="1.2" />}
+                        {h === 'center' && <circle cx="6" cy="6" r="1.6" fill={active ? 'var(--dc-accent)' : '#777'} />}
+                        {h === 'right' && <line x1="7" y1="6" x2="11" y2="6" stroke={active ? 'var(--dc-accent)' : '#777'} strokeWidth="1.2" />}
                         {/* vertical pin */}
-                        {v === 'top' && <line x1="6" y1="1" x2="6" y2="5" stroke={active ? '#0D99FF' : '#777'} strokeWidth="1.2" />}
-                        {v === 'center' && h !== 'center' && <circle cx="6" cy="6" r="1.6" fill={active ? '#0D99FF' : '#777'} />}
-                        {v === 'bottom' && <line x1="6" y1="7" x2="6" y2="11" stroke={active ? '#0D99FF' : '#777'} strokeWidth="1.2" />}
-                        {edgeH && edgeV && <circle cx={h === 'left' ? 1.5 : 10.5} cy={v === 'top' ? 1.5 : 10.5} r="1.1" fill={active ? '#0D99FF' : '#777'} />}
+                        {v === 'top' && <line x1="6" y1="1" x2="6" y2="5" stroke={active ? 'var(--dc-accent)' : '#777'} strokeWidth="1.2" />}
+                        {v === 'center' && h !== 'center' && <circle cx="6" cy="6" r="1.6" fill={active ? 'var(--dc-accent)' : '#777'} />}
+                        {v === 'bottom' && <line x1="6" y1="7" x2="6" y2="11" stroke={active ? 'var(--dc-accent)' : '#777'} strokeWidth="1.2" />}
+                        {edgeH && edgeV && <circle cx={h === 'left' ? 1.5 : 10.5} cy={v === 'top' ? 1.5 : 10.5} r="1.1" fill={active ? 'var(--dc-accent)' : '#777'} />}
                       </svg>
                     </button>
                   )
@@ -1375,18 +1375,18 @@ export function PropertiesPanel() {
                 <select
                   value={element.constraints?.horizontal || 'left'}
                   onChange={(e) => updateElement(element.id, { constraints: { ...element.constraints, horizontal: e.target.value }, constraintsEdited: true } as any)}
-                  className="w-full h-6 px-1 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF]"
+                  className="w-full h-6 px-1 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]"
                 >
                   <option value="left">Left</option><option value="right">Right</option><option value="center">Center</option><option value="left-right">Left &amp; Right</option>
                 </select>
                 <select
                   value={element.constraints?.vertical || 'top'}
                   onChange={(e) => updateElement(element.id, { constraints: { ...element.constraints, vertical: e.target.value }, constraintsEdited: true } as any)}
-                  className="w-full h-6 px-1 text-[11px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF]"
+                  className="w-full h-6 px-1 text-[11px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]"
                 >
                   <option value="top">Top</option><option value="bottom">Bottom</option><option value="center">Center</option><option value="top-bottom">Top &amp; Bottom</option>
                 </select>
-                <div className="text-[9px] text-[#666] leading-3">
+                <div className="text-[9px] text-[color:var(--dc-faint)] leading-3">
                   {element.constraintsEdited ? 'Manual' : 'Auto-inferred from position'}
                 </div>
               </div>
@@ -1400,22 +1400,22 @@ export function PropertiesPanel() {
             <div data-testid="table-controls">
               <SectionHeader title="Table" />
               <div className="flex items-center gap-1 mb-2">
-                <span className="text-[10px] text-[#888] w-10 shrink-0">Rows</span>
-                <span className="text-[11px] text-[#DDD] tabular-nums w-6">{element.tableData.rowHeights.length}</span>
-                <button onClick={() => { pushHistory(); addTableRow(element.id) }} className="h-6 px-2 rounded bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C] text-[10px]" data-testid="add-row">+ Row</button>
-                <button onClick={() => { pushHistory(); removeTableRow(element.id) }} className="h-6 px-2 rounded bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C] text-[10px]" data-testid="del-row">− Row</button>
+                <span className="text-[10px] text-[color:var(--dc-muted)] w-10 shrink-0">Rows</span>
+                <span className="text-[11px] text-[color:var(--dc-text2)] tabular-nums w-6">{element.tableData.rowHeights.length}</span>
+                <button onClick={() => { pushHistory(); addTableRow(element.id) }} className="h-6 px-2 rounded bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)] text-[10px]" data-testid="add-row">+ Row</button>
+                <button onClick={() => { pushHistory(); removeTableRow(element.id) }} className="h-6 px-2 rounded bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)] text-[10px]" data-testid="del-row">− Row</button>
               </div>
               <div className="flex items-center gap-1 mb-2">
-                <span className="text-[10px] text-[#888] w-10 shrink-0">Cols</span>
-                <span className="text-[11px] text-[#DDD] tabular-nums w-6">{element.tableData.colWidths.length}</span>
-                <button onClick={() => { pushHistory(); addTableColumn(element.id) }} className="h-6 px-2 rounded bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C] text-[10px]" data-testid="add-col">+ Col</button>
-                <button onClick={() => { pushHistory(); removeTableColumn(element.id) }} className="h-6 px-2 rounded bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C] text-[10px]" data-testid="del-col">− Col</button>
+                <span className="text-[10px] text-[color:var(--dc-muted)] w-10 shrink-0">Cols</span>
+                <span className="text-[11px] text-[color:var(--dc-text2)] tabular-nums w-6">{element.tableData.colWidths.length}</span>
+                <button onClick={() => { pushHistory(); addTableColumn(element.id) }} className="h-6 px-2 rounded bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)] text-[10px]" data-testid="add-col">+ Col</button>
+                <button onClick={() => { pushHistory(); removeTableColumn(element.id) }} className="h-6 px-2 rounded bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)] text-[10px]" data-testid="del-col">− Col</button>
               </div>
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] text-[#888] w-10 shrink-0">Header</span>
+                <span className="text-[10px] text-[color:var(--dc-muted)] w-10 shrink-0">Header</span>
                 <button
                   onClick={() => { pushHistory(); updateElement(element.id, { tableData: { ...element.tableData!, headerRow: !element.tableData!.headerRow } }) }}
-                  className={`relative w-8 h-4 rounded-full transition-colors ${element.tableData.headerRow ? 'bg-[#0D99FF]' : 'bg-[#555]'}`}
+                  className={`relative w-8 h-4 rounded-full transition-colors ${element.tableData.headerRow ? 'bg-[color:var(--dc-accent)]' : 'bg-[color:var(--dc-border-strong)]'}`}
                 >
                   <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${element.tableData.headerRow ? 'left-4' : 'left-0.5'}`} />
                 </button>
@@ -1425,12 +1425,12 @@ export function PropertiesPanel() {
                 <div className="flex flex-wrap gap-1">
                   {element.tableData.colWidths.map((w, i) => (
                     <label key={`cw-${i}`} className="flex items-center gap-1">
-                      <span className="text-[9px] text-[#666]">C{i + 1}</span>
+                      <span className="text-[9px] text-[color:var(--dc-faint)]">C{i + 1}</span>
                       <input
                         type="text"
                         value={w}
                         onChange={(e) => { const n = parseInt(e.target.value); if (!isNaN(n)) resizeTableColumn(element.id, i, n) }}
-                        className="w-11 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] tabular-nums"
+                        className="w-11 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
                       />
                     </label>
                   ))}
@@ -1438,18 +1438,18 @@ export function PropertiesPanel() {
                 <div className="flex flex-wrap gap-1">
                   {element.tableData.rowHeights.map((h, i) => (
                     <label key={`rh-${i}`} className="flex items-center gap-1">
-                      <span className="text-[9px] text-[#666]">R{i + 1}</span>
+                      <span className="text-[9px] text-[color:var(--dc-faint)]">R{i + 1}</span>
                       <input
                         type="text"
                         value={h}
                         onChange={(e) => { const n = parseInt(e.target.value); if (!isNaN(n)) resizeTableRow(element.id, i, n) }}
-                        className="w-11 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] tabular-nums"
+                        className="w-11 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
                       />
                     </label>
                   ))}
                 </div>
               </div>
-              <div className="text-[9px] text-[#666] mt-1">Double-click a cell on canvas to edit its text</div>
+              <div className="text-[9px] text-[color:var(--dc-faint)] mt-1">Double-click a cell on canvas to edit its text</div>
             </div>
           )}
 
@@ -1464,21 +1464,21 @@ export function PropertiesPanel() {
           <div data-testid="layout-sizing">
             <SectionHeader title="Layout Sizing" />
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-[#888] w-6 shrink-0">W</span>
+              <span className="text-[10px] text-[color:var(--dc-muted)] w-6 shrink-0">W</span>
               <select
                 value={element.layoutSizingH || 'fixed'}
                 onChange={(e) => { pushHistory(); updateElement(element.id, { layoutSizingH: e.target.value as 'fixed' | 'hug' | 'fill' }) }}
-                className="flex-1 h-6 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] capitalize"
+                className="flex-1 h-6 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] capitalize"
               >
                 <option value="fixed">Fixed</option>
                 <option value="hug">Hug</option>
                 <option value="fill">Fill{isH ? ' (main axis)' : ''}</option>
               </select>
-              <span className="text-[10px] text-[#888] w-6 shrink-0 text-right">H</span>
+              <span className="text-[10px] text-[color:var(--dc-muted)] w-6 shrink-0 text-right">H</span>
               <select
                 value={element.layoutSizingV || 'fixed'}
                 onChange={(e) => { pushHistory(); updateElement(element.id, { layoutSizingV: e.target.value as 'fixed' | 'hug' | 'fill' }) }}
-                className="flex-1 h-6 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF] capitalize"
+                className="flex-1 h-6 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] capitalize"
               >
                 <option value="fixed">Fixed</option>
                 <option value="hug">Hug</option>
@@ -1487,7 +1487,7 @@ export function PropertiesPanel() {
               <button
                 title="Absolute position (excluded from auto layout flow)"
                 onClick={() => { pushHistory(); updateElement(element.id, { layoutPositioning: element.layoutPositioning === 'absolute' ? 'auto' : 'absolute' }) }}
-                className={`flex items-center justify-center w-6 h-6 rounded transition-colors shrink-0 ${element.layoutPositioning === 'absolute' ? 'bg-[#0D99FF] text-white' : 'bg-[#1E1E1E] text-[#888] hover:bg-[#3C3C3C]'}`}
+                className={`flex items-center justify-center w-6 h-6 rounded transition-colors shrink-0 ${element.layoutPositioning === 'absolute' ? 'bg-[color:var(--dc-accent)] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)]'}`}
               >
                 <Pin className="w-3 h-3" />
               </button>
@@ -1500,7 +1500,7 @@ export function PropertiesPanel() {
               <PropertyInput label="Max H" value={element.maxHeight ?? ''} onChange={(v) => updateElement(element.id, { maxHeight: v === '' ? undefined : parseInt(v) || 0 })} />
             </div>
             {element.layoutPositioning === 'absolute' && (
-              <div className="text-[9px] text-[#0D99FF] mt-1">Absolute — x/y are manual</div>
+              <div className="text-[9px] text-[color:var(--dc-accent)] mt-1">Absolute — x/y are manual</div>
             )}
           </div>
             )
@@ -1533,12 +1533,12 @@ function FillLayerItem({ elementId, fill, index }: { elementId: string; fill: Fi
   const [showGradient, setShowGradient] = useState(false)
 
   return (
-    <div className="p-1.5 rounded bg-[#1E1E1E] border border-[#383838] mb-1">
+    <div className="p-1.5 rounded bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] mb-1">
       <div className="flex items-center gap-2">
         <select
           value={fill.type}
           onChange={(e) => updateFill(elementId, index, { type: e.target.value as FillStyle['type'] })}
-          className="h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#2C2C2C] text-[#DDD] focus:outline-none focus:border-[#0D99FF]"
+          className="h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-raised)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]"
         >
           <option value="solid">Solid</option>
           <option value="linear-gradient">Linear</option>
@@ -1553,18 +1553,18 @@ function FillLayerItem({ elementId, fill, index }: { elementId: string; fill: Fi
             type="color"
             value={fill.color}
             onChange={(e) => updateFill(elementId, index, { color: e.target.value })}
-            className="w-6 h-5 rounded border border-[#555] cursor-pointer bg-transparent"
+            className="w-6 h-5 rounded border border-[color:var(--dc-border-strong)] cursor-pointer bg-transparent"
           />
         ) : fill.type === 'pattern' ? (
           <span
-            className="w-6 h-5 rounded border border-[#555] overflow-hidden"
+            className="w-6 h-5 rounded border border-[color:var(--dc-border-strong)] overflow-hidden"
             style={{ background: fill.imageUrl ? `url(${fill.imageUrl}) center/cover` : 'repeating-linear-gradient(45deg, #333 0 4px, #222 4px 8px)' }}
             title="Pattern fill"
           />
         ) : (
           <button
             onClick={() => setShowGradient(!showGradient)}
-            className="w-6 h-5 rounded border border-[#555] overflow-hidden"
+            className="w-6 h-5 rounded border border-[color:var(--dc-border-strong)] overflow-hidden"
             style={{ background: gradientPreviewCSS(fill.type, fill.gradientStops && fill.gradientStops.length >= 2 ? fill.gradientStops : [{ offset: 0, color: fill.color, opacity: 1 }, { offset: 1, color: (fill.gradientStops || [])[1]?.color || '#000', opacity: 1 }], fill.gradientAngle || 0) }}
           />
         )}
@@ -1587,7 +1587,7 @@ function FillLayerItem({ elementId, fill, index }: { elementId: string; fill: Fi
           <select
             value={fill.scaleMode || 'fill'}
             onChange={(e) => updateFill(elementId, index, { scaleMode: e.target.value as 'fill' | 'fit' | 'crop' })}
-            className="flex-1 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF]"
+            className="flex-1 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]"
             title="Image fill mode"
           >
             <option value="fill">Fill</option>
@@ -1600,21 +1600,21 @@ function FillLayerItem({ elementId, fill, index }: { elementId: string; fill: Fi
                 type="number" step={0.1} min={0.1}
                 value={fill.scale ?? 1}
                 onChange={(e) => { const n = parseFloat(e.target.value); if (!isNaN(n) && n > 0) updateFill(elementId, index, { scale: n }) }}
-                className="w-11 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums"
+                className="w-11 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
                 title="Crop scale"
               />
               <input
                 type="number" step={1}
                 value={fill.offsetX || 0}
                 onChange={(e) => { const n = parseFloat(e.target.value); if (!isNaN(n)) updateFill(elementId, index, { offsetX: n }) }}
-                className="w-11 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums"
+                className="w-11 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
                 title="Crop offset X"
               />
               <input
                 type="number" step={1}
                 value={fill.offsetY || 0}
                 onChange={(e) => { const n = parseFloat(e.target.value); if (!isNaN(n)) updateFill(elementId, index, { offsetY: n }) }}
-                className="w-11 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums"
+                className="w-11 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
                 title="Crop offset Y"
               />
             </div>
@@ -1627,25 +1627,25 @@ function FillLayerItem({ elementId, fill, index }: { elementId: string; fill: Fi
       {fill.type === 'pattern' && (
         <div className="mt-1.5 space-y-1">
           <div className="flex items-center gap-1">
-            <span className="text-[9px] text-[#888] w-8 shrink-0">URL</span>
+            <span className="text-[9px] text-[color:var(--dc-muted)] w-8 shrink-0">URL</span>
             <input
               type="text"
               value={fill.imageUrl || ''}
               placeholder="https://… or data:image/…"
               onChange={(e) => updateFill(elementId, index, { imageUrl: e.target.value })}
-              className="flex-1 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF]"
+              className="flex-1 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]"
             />
           </div>
           <div className="flex items-center gap-1">
-            <span className="text-[9px] text-[#888] w-8 shrink-0">Tile</span>
+            <span className="text-[9px] text-[color:var(--dc-muted)] w-8 shrink-0">Tile</span>
             <input
               type="number" step={0.1} min={0.1}
               value={fill.patternScale ?? 1}
               onChange={(e) => { const n = parseFloat(e.target.value); if (!isNaN(n) && n > 0) updateFill(elementId, index, { patternScale: n }) }}
-              className="w-12 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums"
+              className="w-12 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
               title="Tile scale (× natural image size)"
             />
-            <span className="text-[9px] text-[#666]">
+            <span className="text-[9px] text-[color:var(--dc-faint)]">
               {fill.patternW && fill.patternH
                 ? `${Math.round(fill.patternW * (fill.patternScale ?? 1))}×${Math.round(fill.patternH * (fill.patternScale ?? 1))}px`
                 : fill.imageUrl ? 'measuring…' : 'no image'}
@@ -1684,10 +1684,10 @@ function StrokeLayerItem({ elementId, stroke, index }: { elementId: string; stro
   const { removeStroke, updateStroke, pushHistory } = useEditorStore()
 
   return (
-    <div className="p-1.5 rounded bg-[#1E1E1E] border border-[#383838] mb-1">
+    <div className="p-1.5 rounded bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] mb-1">
       <div className="flex items-center gap-2">
-        <input type="color" value={stroke.color} onChange={(e) => updateStroke(elementId, index, { color: e.target.value })} className="w-6 h-5 rounded border border-[#555] cursor-pointer bg-transparent" />
-        <input type="text" value={stroke.width} onChange={(e) => { const num = parseFloat(e.target.value); if (!isNaN(num) && num >= 0) updateStroke(elementId, index, { width: num }) }} className="w-10 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#2C2C2C] text-[#DDD] focus:outline-none focus:border-[#0D99FF] tabular-nums" />
+        <input type="color" value={stroke.color} onChange={(e) => updateStroke(elementId, index, { color: e.target.value })} className="w-6 h-5 rounded border border-[color:var(--dc-border-strong)] cursor-pointer bg-transparent" />
+        <input type="text" value={stroke.width} onChange={(e) => { const num = parseFloat(e.target.value); if (!isNaN(num) && num >= 0) updateStroke(elementId, index, { width: num }) }} className="w-10 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-raised)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums" />
         <button onClick={() => { pushHistory(); removeStroke(elementId, index) }} className="ml-auto">
           <Trash2 className="w-3 h-3 text-[#F44336]" />
         </button>

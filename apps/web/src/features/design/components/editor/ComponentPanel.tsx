@@ -114,29 +114,29 @@ export function ComponentPanel() {
   }
 
   const renderPropDefEditor = () => (
-    <div className="space-y-1.5 p-2 bg-[#1E1E1E] rounded border border-[#383838]">
-      <input autoFocus value={editPropName} onChange={e => setEditPropName(e.target.value)} placeholder="Property name" className="w-full h-6 px-2 text-[10px] bg-[#2C2C2C] border border-[#555] rounded text-[#CCC] outline-none focus:border-[#0D99FF]" />
-      <select value={editPropType} onChange={e => setEditPropType(e.target.value as ComponentPropertyType)} className="w-full h-6 px-1 text-[10px] bg-[#2C2C2C] border border-[#555] rounded text-[#CCC] outline-none">
+    <div className="space-y-1.5 p-2 bg-[color:var(--dc-input)] rounded border border-[color:var(--dc-border)]">
+      <input autoFocus value={editPropName} onChange={e => setEditPropName(e.target.value)} placeholder="Property name" className="w-full h-6 px-2 text-[10px] bg-[color:var(--dc-raised)] border border-[color:var(--dc-border-strong)] rounded text-[color:var(--dc-text2)] outline-none focus:border-[color:var(--dc-accent)]" />
+      <select value={editPropType} onChange={e => setEditPropType(e.target.value as ComponentPropertyType)} className="w-full h-6 px-1 text-[10px] bg-[color:var(--dc-raised)] border border-[color:var(--dc-border-strong)] rounded text-[color:var(--dc-text2)] outline-none">
         <option value="BOOLEAN">Boolean</option>
         <option value="TEXT">Text</option>
         <option value="NUMBER">Number</option>
         <option value="VARIANT">Variant</option>
       </select>
-      <input value={editPropDefault} onChange={e => setEditPropDefault(e.target.value)} placeholder={editPropType === 'BOOLEAN' ? 'true/false' : 'Default value'} className="w-full h-6 px-2 text-[10px] bg-[#2C2C2C] border border-[#555] rounded text-[#CCC] outline-none focus:border-[#0D99FF]" />
+      <input value={editPropDefault} onChange={e => setEditPropDefault(e.target.value)} placeholder={editPropType === 'BOOLEAN' ? 'true/false' : 'Default value'} className="w-full h-6 px-2 text-[10px] bg-[color:var(--dc-raised)] border border-[color:var(--dc-border-strong)] rounded text-[color:var(--dc-text2)] outline-none focus:border-[color:var(--dc-accent)]" />
       <div className="flex gap-1">
-        <button onClick={handleAddPropDef} className="flex-1 h-5 rounded bg-[#0D99FF] text-white text-[10px] font-medium hover:bg-[#0B87E0] transition-colors">Add</button>
-        <button onClick={() => setEditingProp(null)} className="h-5 w-5 rounded bg-[#3C3C3C] text-[#888] hover:text-white flex items-center justify-center"><X className="w-3 h-3" /></button>
+        <button onClick={handleAddPropDef} className="flex-1 h-5 rounded bg-[color:var(--dc-accent)] text-white text-[10px] font-medium hover:bg-[color:var(--dc-accent-hover)] transition-colors">Add</button>
+        <button onClick={() => setEditingProp(null)} className="h-5 w-5 rounded bg-[color:var(--dc-hover)] text-[color:var(--dc-muted)] hover:text-white flex items-center justify-center"><X className="w-3 h-3" /></button>
       </div>
     </div>
   )
 
   const renderVariantPropEditor = () => (
-    <div className="space-y-1.5 p-2 bg-[#1E1E1E] rounded border border-[#383838]">
-      <input autoFocus value={editVariantPropName} onChange={e => setEditVariantPropName(e.target.value)} placeholder="Property name" className="w-full h-6 px-2 text-[10px] bg-[#2C2C2C] border border-[#555] rounded text-[#CCC] outline-none focus:border-[#0D99FF]" />
-      <input value={editVariantPropValues} onChange={e => setEditVariantPropValues(e.target.value)} placeholder="Values (comma-separated)" className="w-full h-6 px-2 text-[10px] bg-[#2C2C2C] border border-[#555] rounded text-[#CCC] outline-none focus:border-[#0D99FF]" />
+    <div className="space-y-1.5 p-2 bg-[color:var(--dc-input)] rounded border border-[color:var(--dc-border)]">
+      <input autoFocus value={editVariantPropName} onChange={e => setEditVariantPropName(e.target.value)} placeholder="Property name" className="w-full h-6 px-2 text-[10px] bg-[color:var(--dc-raised)] border border-[color:var(--dc-border-strong)] rounded text-[color:var(--dc-text2)] outline-none focus:border-[color:var(--dc-accent)]" />
+      <input value={editVariantPropValues} onChange={e => setEditVariantPropValues(e.target.value)} placeholder="Values (comma-separated)" className="w-full h-6 px-2 text-[10px] bg-[color:var(--dc-raised)] border border-[color:var(--dc-border-strong)] rounded text-[color:var(--dc-text2)] outline-none focus:border-[color:var(--dc-accent)]" />
       <div className="flex gap-1">
         <button onClick={handleAddVariantProp} className="flex-1 h-5 rounded bg-[#A259FF] text-white text-[10px] font-medium hover:bg-[#8B3FE0] transition-colors">Add</button>
-        <button onClick={() => setEditingVariantProp(null)} className="h-5 w-5 rounded bg-[#3C3C3C] text-[#888] hover:text-white flex items-center justify-center"><X className="w-3 h-3" /></button>
+        <button onClick={() => setEditingVariantProp(null)} className="h-5 w-5 rounded bg-[color:var(--dc-hover)] text-[color:var(--dc-muted)] hover:text-white flex items-center justify-center"><X className="w-3 h-3" /></button>
       </div>
     </div>
   )
@@ -147,28 +147,28 @@ export function ComponentPanel() {
     if (!defs || Object.keys(defs).length === 0) return null
     return (
       <div className="space-y-1">
-        <h5 className="text-[9px] font-semibold text-[#666] uppercase tracking-wider">Properties</h5>
+        <h5 className="text-[9px] font-semibold text-[color:var(--dc-faint)] uppercase tracking-wider">Properties</h5>
         {Object.entries(defs).map(([name, def]) => {
           const currentVal = currentValues?.[name] ?? def.defaultValue
           return (
             <div key={name} className="flex items-center gap-1.5">
-              <span className="text-[10px] text-[#888] w-16 truncate">{name}</span>
+              <span className="text-[10px] text-[color:var(--dc-muted)] w-16 truncate">{name}</span>
               {def.type === 'BOOLEAN' && (
-                <select value={String(currentVal)} onChange={e => selectedId && handlePropValueChange(selectedId, name, e.target.value === 'true')} className="flex-1 h-5 px-1 text-[10px] bg-[#2C2C2C] border border-[#555] rounded text-[#CCC] outline-none">
+                <select value={String(currentVal)} onChange={e => selectedId && handlePropValueChange(selectedId, name, e.target.value === 'true')} className="flex-1 h-5 px-1 text-[10px] bg-[color:var(--dc-raised)] border border-[color:var(--dc-border-strong)] rounded text-[color:var(--dc-text2)] outline-none">
                   <option value="true">True</option>
                   <option value="false">False</option>
                 </select>
               )}
               {def.type === 'TEXT' && (
-                <input value={String(currentVal ?? '')} onChange={e => selectedId && handlePropValueChange(selectedId, name, e.target.value)} className="flex-1 h-5 px-1 text-[10px] bg-[#2C2C2C] border border-[#555] rounded text-[#CCC] outline-none focus:border-[#0D99FF]" />
+                <input value={String(currentVal ?? '')} onChange={e => selectedId && handlePropValueChange(selectedId, name, e.target.value)} className="flex-1 h-5 px-1 text-[10px] bg-[color:var(--dc-raised)] border border-[color:var(--dc-border-strong)] rounded text-[color:var(--dc-text2)] outline-none focus:border-[color:var(--dc-accent)]" />
               )}
               {def.type === 'NUMBER' && (
-                <input type="number" value={Number(currentVal ?? 0)} onChange={e => selectedId && handlePropValueChange(selectedId, name, Number(e.target.value))} className="flex-1 h-5 px-1 text-[10px] bg-[#2C2C2C] border border-[#555] rounded text-[#CCC] outline-none focus:border-[#0D99FF]" />
+                <input type="number" value={Number(currentVal ?? 0)} onChange={e => selectedId && handlePropValueChange(selectedId, name, Number(e.target.value))} className="flex-1 h-5 px-1 text-[10px] bg-[color:var(--dc-raised)] border border-[color:var(--dc-border-strong)] rounded text-[color:var(--dc-text2)] outline-none focus:border-[color:var(--dc-accent)]" />
               )}
               {def.type === 'VARIANT' && (
                 <div className="flex-1 flex gap-0.5">
                   {def.variantOptions?.map(opt => (
-                    <button key={opt} onClick={() => selectedId && handlePropValueChange(selectedId, name, opt)} className={`px-1.5 h-5 text-[9px] rounded ${currentVal === opt ? 'bg-[#A259FF] text-white' : 'bg-[#2C2C2C] text-[#888] hover:text-[#CCC]'} transition-colors`}>{opt}</button>
+                    <button key={opt} onClick={() => selectedId && handlePropValueChange(selectedId, name, opt)} className={`px-1.5 h-5 text-[9px] rounded ${currentVal === opt ? 'bg-[#A259FF] text-white' : 'bg-[color:var(--dc-raised)] text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)]'} transition-colors`}>{opt}</button>
                   ))}
                 </div>
               )}
@@ -188,14 +188,14 @@ export function ComponentPanel() {
       <div className="space-y-1">
         {variantPropDefs.map(([name, def]) => (
           <div key={name} className="flex items-center gap-1.5">
-            <span className="text-[10px] text-[#888] w-16 truncate">{name}</span>
+            <span className="text-[10px] text-[color:var(--dc-muted)] w-16 truncate">{name}</span>
             <div className="flex-1 flex gap-0.5 flex-wrap">
               {def.variantOptions?.map(opt => (
                 <button key={opt} onClick={() => {
                   // Find variant child with this property value
                   const variant = componentSet.children?.find((c: any) => c.variantProperties?.[name] === opt)
                   if (variant) handleCreateInstance(variant.id)
-                }} className="px-1.5 h-5 text-[9px] rounded bg-[#2C2C2C] text-[#888] hover:text-[#CCC] hover:bg-[#3C3C3C] transition-colors">{opt}</button>
+                }} className="px-1.5 h-5 text-[9px] rounded bg-[color:var(--dc-raised)] text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-hover)] transition-colors">{opt}</button>
               ))}
             </div>
           </div>
@@ -208,7 +208,7 @@ export function ComponentPanel() {
     <div className="space-y-3">
       {/* Make component button */}
       {selectedElement && !selectedElement.isComponent && !selectedElement.isComponentSet && !selectedElement.componentId && (
-        <button onClick={handleMakeComponent} className="flex items-center gap-1.5 w-full h-7 px-2 rounded bg-[#0D99FF] text-white text-[11px] font-medium hover:bg-[#0B87E0] transition-colors">
+        <button onClick={handleMakeComponent} className="flex items-center gap-1.5 w-full h-7 px-2 rounded bg-[color:var(--dc-accent)] text-white text-[11px] font-medium hover:bg-[color:var(--dc-accent-hover)] transition-colors">
           <Component className="w-3.5 h-3.5" />
           Make Component
         </button>
@@ -225,13 +225,13 @@ export function ComponentPanel() {
       {/* Instance actions */}
       {selectedElement?.componentId && (
         <div className="flex gap-1">
-          <button onClick={handleResetOverrides} className="flex items-center gap-1 flex-1 h-6 px-2 rounded bg-[#1E1E1E] text-[10px] text-[#888] hover:bg-[#3C3C3C] hover:text-white transition-colors border border-[#383838]">
+          <button onClick={handleResetOverrides} className="flex items-center gap-1 flex-1 h-6 px-2 rounded bg-[color:var(--dc-input)] text-[10px] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)] hover:text-white transition-colors border border-[color:var(--dc-border)]">
             <Link2 className="w-3 h-3" /> Reset
           </button>
-          <button onClick={handleDetachInstance} className="flex items-center gap-1 flex-1 h-6 px-2 rounded bg-[#1E1E1E] text-[10px] text-[#888] hover:bg-[#3C3C3C] hover:text-white transition-colors border border-[#383838]">
+          <button onClick={handleDetachInstance} className="flex items-center gap-1 flex-1 h-6 px-2 rounded bg-[color:var(--dc-input)] text-[10px] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)] hover:text-white transition-colors border border-[color:var(--dc-border)]">
             <Unlink className="w-3 h-3" /> Detach
           </button>
-          <button onClick={() => handleSwapInstance(selectedElement.id)} className="flex items-center gap-1 flex-1 h-6 px-2 rounded bg-[#1E1E1E] text-[10px] text-[#888] hover:bg-[#3C3C3C] hover:text-white transition-colors border border-[#383838]">
+          <button onClick={() => handleSwapInstance(selectedElement.id)} className="flex items-center gap-1 flex-1 h-6 px-2 rounded bg-[color:var(--dc-input)] text-[10px] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)] hover:text-white transition-colors border border-[color:var(--dc-border)]">
             <ArrowUpDown className="w-3 h-3" /> Swap
           </button>
         </div>
@@ -252,16 +252,16 @@ export function ComponentPanel() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <h4 className="text-[10px] font-semibold text-[#A259FF] uppercase tracking-wider">Variant Properties</h4>
-            <button onClick={() => { setEditingVariantProp('new'); setEditVariantPropName(''); setEditVariantPropValues('') }} className="w-4 h-4 rounded hover:bg-[#3C3C3C] flex items-center justify-center">
-              <Plus className="w-3 h-3 text-[#888]" />
+            <button onClick={() => { setEditingVariantProp('new'); setEditVariantPropName(''); setEditVariantPropValues('') }} className="w-4 h-4 rounded hover:bg-[color:var(--dc-hover)] flex items-center justify-center">
+              <Plus className="w-3 h-3 text-[color:var(--dc-muted)]" />
             </button>
           </div>
           {editingVariantProp && renderVariantPropEditor()}
           {selectedElement.variantGroupProperties && Object.entries(selectedElement.variantGroupProperties).map(([name, prop]: [string, VariantGroupProperty]) => (
             <div key={name} className="flex items-center gap-1.5">
-              <span className="text-[10px] text-[#888] w-16 truncate">{name}</span>
-              <span className="text-[10px] text-[#CCC]">{prop.values.join(', ')}</span>
-              <button onClick={() => { setDefaultVariant(selectedElement.id, prop.values[0]) }} className="ml-auto text-[9px] text-[#666] hover:text-[#CCC]">Default</button>
+              <span className="text-[10px] text-[color:var(--dc-muted)] w-16 truncate">{name}</span>
+              <span className="text-[10px] text-[color:var(--dc-text2)]">{prop.values.join(', ')}</span>
+              <button onClick={() => { setDefaultVariant(selectedElement.id, prop.values[0]) }} className="ml-auto text-[9px] text-[color:var(--dc-faint)] hover:text-[color:var(--dc-text2)]">Default</button>
             </div>
           ))}
         </div>
@@ -285,11 +285,11 @@ export function ComponentPanel() {
           </div>
           <div className="space-y-1 max-h-32 overflow-y-auto">
             {selectedElement.children.map((variant: any) => (
-              <div key={variant.id} className={`flex items-center gap-1.5 px-2 py-1 rounded cursor-pointer ${selectedElement.defaultVariant === variant.id ? 'bg-[#A259FF]/10' : 'hover:bg-[#2A2A2A]'}`} onClick={() => handleCreateInstance(variant.id)}>
+              <div key={variant.id} className={`flex items-center gap-1.5 px-2 py-1 rounded cursor-pointer ${selectedElement.defaultVariant === variant.id ? 'bg-[#A259FF]/10' : 'hover:bg-[color:var(--dc-card)]'}`} onClick={() => handleCreateInstance(variant.id)}>
                 <Component className="w-3 h-3 text-[#A259FF]" />
-                <span className="text-[10px] text-[#CCC] flex-1 truncate">{variant.name}</span>
+                <span className="text-[10px] text-[color:var(--dc-text2)] flex-1 truncate">{variant.name}</span>
                 {variant.variantProperties && Object.entries(variant.variantProperties).map(([k, v]) => (
-                  <span key={k} className="text-[8px] text-[#666]">{k}:{String(v)}</span>
+                  <span key={k} className="text-[8px] text-[color:var(--dc-faint)]">{k}:{String(v)}</span>
                 ))}
                 {selectedElement.defaultVariant === variant.id && <span className="text-[8px] text-[#A259FF]">Default</span>}
               </div>
@@ -302,19 +302,19 @@ export function ComponentPanel() {
       {selectedElement?.isComponent && !selectedElement.isComponentSet && (
         <div>
           <div className="flex items-center justify-between">
-            <h4 className="text-[10px] font-semibold text-[#888] uppercase tracking-wider">Properties</h4>
-            <button onClick={() => { setEditingProp('new'); setEditPropName(''); setEditPropType('BOOLEAN'); setEditPropDefault('true') }} className="w-4 h-4 rounded hover:bg-[#3C3C3C] flex items-center justify-center">
-              <Plus className="w-3 h-3 text-[#888]" />
+            <h4 className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">Properties</h4>
+            <button onClick={() => { setEditingProp('new'); setEditPropName(''); setEditPropType('BOOLEAN'); setEditPropDefault('true') }} className="w-4 h-4 rounded hover:bg-[color:var(--dc-hover)] flex items-center justify-center">
+              <Plus className="w-3 h-3 text-[color:var(--dc-muted)]" />
             </button>
           </div>
           {editingProp && renderPropDefEditor()}
           {selectedElement.componentPropertyDefinitions && Object.entries(selectedElement.componentPropertyDefinitions).map(([name, def]) => (
             <div key={name} className="flex items-center gap-1.5 px-1 py-0.5 group">
-              <span className="text-[10px] text-[#888] w-16 truncate">{name}</span>
-              <span className="text-[9px] text-[#666]">{def.type}</span>
-              <span className="text-[9px] text-[#555] ml-auto">={String(def.defaultValue).slice(0, 12)}</span>
-              <button onClick={() => { deleteComponentPropertyDefinition(selectedElement.id, name); pushHistory() }} className="w-3 h-3 opacity-0 group-hover:opacity-100 hover:bg-[#3C3C3C] rounded flex items-center justify-center">
-                <Trash2 className="w-2.5 h-2.5 text-[#888]" />
+              <span className="text-[10px] text-[color:var(--dc-muted)] w-16 truncate">{name}</span>
+              <span className="text-[9px] text-[color:var(--dc-faint)]">{def.type}</span>
+              <span className="text-[9px] text-[color:var(--dc-border-strong)] ml-auto">={String(def.defaultValue).slice(0, 12)}</span>
+              <button onClick={() => { deleteComponentPropertyDefinition(selectedElement.id, name); pushHistory() }} className="w-3 h-3 opacity-0 group-hover:opacity-100 hover:bg-[color:var(--dc-hover)] rounded flex items-center justify-center">
+                <Trash2 className="w-2.5 h-2.5 text-[color:var(--dc-muted)]" />
               </button>
             </div>
           ))}
@@ -323,31 +323,31 @@ export function ComponentPanel() {
 
       {/* Component list */}
       <div>
-        <h4 className="text-[10px] font-semibold text-[#888] uppercase tracking-wider mb-1.5">
+        <h4 className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider mb-1.5">
           Components ({components.length})
         </h4>
         {components.length === 0 ? (
-          <div className="text-[11px] text-[#666] px-2 py-1">
+          <div className="text-[11px] text-[color:var(--dc-faint)] px-2 py-1">
             No components yet. Select an element and click "Make Component".
           </div>
         ) : (
           <div className="space-y-0.5 max-h-48 overflow-y-auto">
             {components.map(comp => (
               <div key={comp.id} className="group">
-                <div className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[#2A2A2A] cursor-pointer" onClick={() => handleCreateInstance(comp.id)}>
+                <div className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[color:var(--dc-card)] cursor-pointer" onClick={() => handleCreateInstance(comp.id)}>
                   <Component className={`w-3.5 h-3.5 ${comp.isComponentSet ? 'text-[#A259FF]' : 'text-[#A259FF]'}`} />
-                  <span className="text-[11px] text-[#CCC] flex-1 truncate">{comp.name}</span>
-                  <Copy className="w-3 h-3 text-[#888] opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <span className="text-[11px] text-[color:var(--dc-text2)] flex-1 truncate">{comp.name}</span>
+                  <Copy className="w-3 h-3 text-[color:var(--dc-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
                 {/* Show variants inline for component sets */}
                 {comp.isComponentSet && comp.children && (
                   <div className="ml-4 space-y-0.5">
                     {comp.children.map((variant: any) => (
-                      <div key={variant.id} className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-[#2A2A2A] cursor-pointer" onClick={() => handleCreateInstance(variant.id)}>
+                      <div key={variant.id} className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-[color:var(--dc-card)] cursor-pointer" onClick={() => handleCreateInstance(variant.id)}>
                         <Component className="w-3 h-3 text-[#A259FF] opacity-60" />
-                        <span className="text-[10px] text-[#999] flex-1 truncate">{variant.name}</span>
+                        <span className="text-[10px] text-[color:var(--dc-muted)] flex-1 truncate">{variant.name}</span>
                         {variant.variantProperties && Object.values(variant.variantProperties).filter(Boolean).map((v: any) => (
-                          <span key={v} className="text-[8px] text-[#666] bg-[#2A2A2A] px-1 rounded">{v}</span>
+                          <span key={v} className="text-[8px] text-[color:var(--dc-faint)] bg-[color:var(--dc-card)] px-1 rounded">{v}</span>
                         ))}
                       </div>
                     ))}
@@ -369,14 +369,14 @@ export function ComponentPanel() {
       {/* Instances list */}
       {instances.length > 0 && (
         <div>
-          <h4 className="text-[10px] font-semibold text-[#888] uppercase tracking-wider mb-1.5">
+          <h4 className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider mb-1.5">
             Instances ({instances.length})
           </h4>
           <div className="space-y-0.5 max-h-32 overflow-y-auto">
             {instances.map(inst => (
-              <div key={inst.id} className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer ${selectedId === inst.id ? 'bg-[#0D99FF]/15' : 'hover:bg-[#2A2A2A]'}`}>
+              <div key={inst.id} className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer ${selectedId === inst.id ? 'bg-[color:var(--dc-accent)]/15' : 'hover:bg-[color:var(--dc-card)]'}`}>
                 <Component className="w-3.5 h-3.5 text-[#A259FF] opacity-50" />
-                <span className="text-[11px] text-[#CCC] flex-1 truncate">{inst.name}</span>
+                <span className="text-[11px] text-[color:var(--dc-text2)] flex-1 truncate">{inst.name}</span>
                 <Link2 className="w-3 h-3 text-[#A259FF]" />
               </div>
             ))}

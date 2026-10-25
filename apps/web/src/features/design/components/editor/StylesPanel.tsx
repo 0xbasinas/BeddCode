@@ -34,12 +34,12 @@ function StyleRow({ style }: { style: ProjectStyle }) {
 
   return (
     <div
-      className="group flex items-center gap-2 px-2 h-7 rounded hover:bg-[#2C2C2C] cursor-pointer"
+      className="group flex items-center gap-2 px-2 h-7 rounded hover:bg-[color:var(--dc-raised)] cursor-pointer"
       onClick={() => applyStyleToSelection(style.id)}
       title={`${STYLE_KIND_LABEL[style.kind]} — click to apply to selection`}
     >
       <span
-        className="w-3.5 h-3.5 rounded-[2px] border border-[#555] shrink-0 flex items-center justify-center text-[9px] text-[#DDD]"
+        className="w-3.5 h-3.5 rounded-[2px] border border-[color:var(--dc-border-strong)] shrink-0 flex items-center justify-center text-[9px] text-[color:var(--dc-text2)]"
         style={{ background: styleSwatchStyle(style) }}
       >
         {style.kind !== 'paint' ? kindIcon : ''}
@@ -47,7 +47,7 @@ function StyleRow({ style }: { style: ProjectStyle }) {
       {editingName ? (
         <input
           autoFocus
-          className="flex-1 min-w-0 h-5 px-1 text-[11px] bg-[#1E1E1E] border border-[#0D99FF] rounded text-[#DDD] focus:outline-none"
+          className="flex-1 min-w-0 h-5 px-1 text-[11px] bg-[color:var(--dc-input)] border border-[color:var(--dc-accent)] rounded text-[color:var(--dc-text2)] focus:outline-none"
           value={nameDraft}
           onChange={(e) => setNameDraft(e.target.value)}
           onBlur={() => { setEditingName(false); if (nameDraft.trim()) renameStyle(style.id, nameDraft.trim()) }}
@@ -59,20 +59,20 @@ function StyleRow({ style }: { style: ProjectStyle }) {
         />
       ) : (
         <span
-          className="flex-1 min-w-0 truncate text-[11px] text-[#DDD]"
+          className="flex-1 min-w-0 truncate text-[11px] text-[color:var(--dc-text2)]"
           onDoubleClick={(e) => { e.stopPropagation(); setEditingName(true); setNameDraft(style.name) }}
         >
           {style.name}
         </span>
       )}
       {usage > 0 && (
-        <span className="text-[9px] text-[#888] tabular-nums shrink-0" title={`${usage} usage${usage === 1 ? '' : 's'}`}>
+        <span className="text-[9px] text-[color:var(--dc-muted)] tabular-nums shrink-0" title={`${usage} usage${usage === 1 ? '' : 's'}`}>
           {usage}
         </span>
       )}
       {attachedToSelection && (
         <button
-          className="w-4 h-4 shrink-0 hidden group-hover:flex items-center justify-center text-[#888] hover:text-[#FFA116]"
+          className="w-4 h-4 shrink-0 hidden group-hover:flex items-center justify-center text-[color:var(--dc-muted)] hover:text-[#FFA116]"
           title="Detach from selection"
           onClick={(e) => { e.stopPropagation(); detachStyleFromSelection(style.id) }}
         >
@@ -83,7 +83,7 @@ function StyleRow({ style }: { style: ProjectStyle }) {
         </button>
       )}
       <button
-        className="w-4 h-4 shrink-0 hidden group-hover:flex items-center justify-center text-[#888] hover:text-[#F24822]"
+        className="w-4 h-4 shrink-0 hidden group-hover:flex items-center justify-center text-[color:var(--dc-muted)] hover:text-[#F24822]"
         title="Delete style (references detach, values stay)"
         onClick={(e) => { e.stopPropagation(); deleteStyle(style.id) }}
       >
@@ -111,7 +111,7 @@ export function StylesPanel() {
 
   if (styles.length === 0) {
     return (
-      <div className="px-3 py-4 text-[10px] leading-4 text-[#666]">
+      <div className="px-3 py-4 text-[10px] leading-4 text-[color:var(--dc-faint)]">
         No styles yet. Select an element and use the style menu (four dots) next to
         Fill, Stroke, Text or Effects in the design panel to create one.
       </div>
@@ -132,7 +132,7 @@ export function StylesPanel() {
         if (list.length === 0) return null
         return (
           <div key={kind}>
-            <div className="px-2 pt-1 pb-0.5 text-[9px] font-medium uppercase tracking-wide text-[#666]">{label}</div>
+            <div className="px-2 pt-1 pb-0.5 text-[9px] font-medium uppercase tracking-wide text-[color:var(--dc-faint)]">{label}</div>
             {list.map((s) => (
               <StyleRow key={s.id} style={s} />
             ))}

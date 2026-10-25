@@ -35,22 +35,22 @@ function GridRow({ frameId, grid }: { frameId: string; grid: LayoutGrid }) {
   }
 
   return (
-    <div className="flex flex-col gap-1 p-1.5 rounded bg-[#1E1E1E] border border-[#383838]">
+    <div className="flex flex-col gap-1 p-1.5 rounded bg-[color:var(--dc-input)] border border-[color:var(--dc-border)]">
       <div className="flex items-center gap-1.5">
         {/* visibility */}
         <button
-          className={`w-4 h-4 flex items-center justify-center rounded text-[10px] ${grid.visible ? 'text-[#DDD]' : 'text-[#555]'}`}
+          className={`w-4 h-4 flex items-center justify-center rounded text-[10px] ${grid.visible ? 'text-[color:var(--dc-text2)]' : 'text-[color:var(--dc-border-strong)]'}`}
           onClick={() => upd({ visible: !grid.visible })}
           title={grid.visible ? 'Hide grid' : 'Show grid'}
         >
           {grid.visible ? '◉' : '○'}
         </button>
         {/* pattern icon */}
-        <span className="w-4 h-4 flex items-center justify-center text-[#888]" title={grid.pattern}>
+        <span className="w-4 h-4 flex items-center justify-center text-[color:var(--dc-muted)]" title={grid.pattern}>
           {grid.pattern === 'columns' ? '▥' : grid.pattern === 'rows' ? '▤' : '▦'}
         </span>
         {/* color */}
-        <label className="relative w-4 h-4 rounded-[2px] border border-[#555] cursor-pointer shrink-0" style={{ background: grid.color }} title="Grid color">
+        <label className="relative w-4 h-4 rounded-[2px] border border-[color:var(--dc-border-strong)] cursor-pointer shrink-0" style={{ background: grid.color }} title="Grid color">
           <input
             type="color"
             className="absolute inset-0 opacity-0 cursor-pointer"
@@ -61,12 +61,12 @@ function GridRow({ frameId, grid }: { frameId: string; grid: LayoutGrid }) {
 
         {grid.pattern === 'grid' ? (
           <div className="flex items-center gap-1 flex-1">
-            <span className="text-[10px] text-[#888]">Size</span>
+            <span className="text-[10px] text-[color:var(--dc-muted)]">Size</span>
             <input
               type="number" min={1} step={1}
               value={grid.size ?? 8}
               onChange={(e) => upd({ size: num(e.target.value) ?? 8 })}
-              className="w-12 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums"
+              className="w-12 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
             />
           </div>
         ) : (
@@ -74,7 +74,7 @@ function GridRow({ frameId, grid }: { frameId: string; grid: LayoutGrid }) {
             <select
               value={grid.type || 'stretch'}
               onChange={(e) => upd({ type: e.target.value as GridLayoutType })}
-              className="flex-1 min-w-0 h-5 px-0.5 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF]"
+              className="flex-1 min-w-0 h-5 px-0.5 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]"
               title="Grid type"
             >
               {GRID_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -83,7 +83,7 @@ function GridRow({ frameId, grid }: { frameId: string; grid: LayoutGrid }) {
         )}
         {/* remove */}
         <button
-          className="w-4 h-4 flex items-center justify-center rounded text-[#888] hover:text-[#F24822]"
+          className="w-4 h-4 flex items-center justify-center rounded text-[color:var(--dc-muted)] hover:text-[#F24822]"
           onClick={() => removeLayoutGrid(frameId, grid.id)}
           title="Remove grid"
         >
@@ -95,38 +95,38 @@ function GridRow({ frameId, grid }: { frameId: string; grid: LayoutGrid }) {
 
       {grid.pattern !== 'grid' && (
         <div className="flex items-center gap-1 pl-6">
-          <span className="text-[10px] text-[#888] w-8">Count</span>
+          <span className="text-[10px] text-[color:var(--dc-muted)] w-8">Count</span>
           <input
             type="number" min={1} max={100} step={1}
             value={grid.count ?? 12}
             onChange={(e) => upd({ count: Math.max(1, Math.round(num(e.target.value) ?? 12)) })}
-            className="w-11 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums"
+            className="w-11 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
           />
-          <span className="text-[10px] text-[#888] w-9 pl-1">Gutter</span>
+          <span className="text-[10px] text-[color:var(--dc-muted)] w-9 pl-1">Gutter</span>
           <input
             type="number" min={0} step={1}
             value={grid.gutter ?? 16}
             onChange={(e) => upd({ gutter: Math.max(0, num(e.target.value) ?? 16) })}
-            className="w-11 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums"
+            className="w-11 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
           />
-          <span className="text-[10px] text-[#888] w-9 pl-1">Margin</span>
+          <span className="text-[10px] text-[color:var(--dc-muted)] w-9 pl-1">Margin</span>
           <input
             type="number" min={0} step={1}
             value={grid.margin ?? 32}
             onChange={(e) => upd({ margin: Math.max(0, num(e.target.value) ?? 32) })}
-            className="w-11 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums"
+            className="w-11 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
           />
         </div>
       )}
 
       {grid.pattern !== 'grid' && (grid.type === 'min' || grid.type === 'max') && (
         <div className="flex items-center gap-1 pl-6">
-          <span className="text-[10px] text-[#888]">Track</span>
+          <span className="text-[10px] text-[color:var(--dc-muted)]">Track</span>
           <input
             type="number" min={1} step={1}
             value={grid.sectionSize ?? 60}
             onChange={(e) => upd({ sectionSize: Math.max(1, num(e.target.value) ?? 60) })}
-            className="w-11 h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] text-center focus:outline-none focus:border-[#0D99FF] tabular-nums"
+            className="w-11 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
             title="Fixed track size for Min/Max"
           />
         </div>
@@ -149,19 +149,19 @@ export function LayoutGridsPanel({ element }: { element: DesignElement }) {
       <div className="flex items-center gap-1">
         <button
           onClick={() => addLayoutGrid(element.id, 'columns')}
-          className="flex-1 h-6 text-[10px] rounded bg-[#1E1E1E] border border-[#383838] text-[#CCC] hover:border-[#0D99FF] hover:text-white transition-colors"
+          className="flex-1 h-6 text-[10px] rounded bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] text-[color:var(--dc-text2)] hover:border-[color:var(--dc-accent)] hover:text-white transition-colors"
         >
           + Columns
         </button>
         <button
           onClick={() => addLayoutGrid(element.id, 'rows')}
-          className="flex-1 h-6 text-[10px] rounded bg-[#1E1E1E] border border-[#383838] text-[#CCC] hover:border-[#0D99FF] hover:text-white transition-colors"
+          className="flex-1 h-6 text-[10px] rounded bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] text-[color:var(--dc-text2)] hover:border-[color:var(--dc-accent)] hover:text-white transition-colors"
         >
           + Rows
         </button>
         <button
           onClick={() => addLayoutGrid(element.id, 'grid')}
-          className="flex-1 h-6 text-[10px] rounded bg-[#1E1E1E] border border-[#383838] text-[#CCC] hover:border-[#0D99FF] hover:text-white transition-colors"
+          className="flex-1 h-6 text-[10px] rounded bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] text-[color:var(--dc-text2)] hover:border-[color:var(--dc-accent)] hover:text-white transition-colors"
         >
           + Grid
         </button>

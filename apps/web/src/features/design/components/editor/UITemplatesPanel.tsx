@@ -890,16 +890,16 @@ export function UITemplatesPanel() {
         return (
           <div key={category} className="mb-1">
             <button
-              className="flex items-center gap-1.5 w-full px-2 py-1.5 hover:bg-[#2A2A2A] rounded transition-colors"
+              className="flex items-center gap-1.5 w-full px-2 py-1.5 hover:bg-[color:var(--dc-card)] rounded transition-colors"
               onClick={() => toggleCategory(category)}
             >
               {isExpanded ? (
-                <ChevronRight className="w-3 h-3 text-[#666] rotate-90 transition-transform" />
+                <ChevronRight className="w-3 h-3 text-[color:var(--dc-faint)] rotate-90 transition-transform" />
               ) : (
-                <ChevronRight className="w-3 h-3 text-[#666] transition-transform" />
+                <ChevronRight className="w-3 h-3 text-[color:var(--dc-faint)] transition-transform" />
               )}
-              <span className="text-[10px] font-semibold text-[#888] uppercase tracking-wider">{category}</span>
-              <span className="text-[9px] text-[#555] ml-auto">{templates.length}</span>
+              <span className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">{category}</span>
+              <span className="text-[9px] text-[color:var(--dc-border-strong)] ml-auto">{templates.length}</span>
             </button>
 
             {isExpanded && (
@@ -908,7 +908,7 @@ export function UITemplatesPanel() {
                   <button
                     key={template.id}
                     onClick={() => handleTemplateClick(template)}
-                    className="flex flex-col items-center gap-1.5 p-2 rounded-md bg-[#1E1E1E] border border-[#383838] hover:border-[#0D99FF]/50 hover:bg-[#2A2A2A] transition-all group cursor-pointer"
+                    className="flex flex-col items-center gap-1.5 p-2 rounded-md bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] hover:border-[color:var(--dc-accent)]/50 hover:bg-[color:var(--dc-card)] transition-all group cursor-pointer"
                     title={`Add ${template.name} template`}
                   >
                     {/* Preview thumbnail */}
@@ -925,7 +925,7 @@ export function UITemplatesPanel() {
                       />
                     </div>
                     {/* Name */}
-                    <span className="text-[10px] text-[#AAA] group-hover:text-white transition-colors truncate w-full text-center">
+                    <span className="text-[10px] text-[color:var(--dc-muted)] group-hover:text-white transition-colors truncate w-full text-center">
                       {template.name}
                     </span>
                   </button>

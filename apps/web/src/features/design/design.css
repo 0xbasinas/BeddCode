@@ -49,73 +49,67 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-.design-root {
-  --radius: 0.625rem;
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+/* The editor takes its look from the app: these aliases are resolved at :root, where the app's own
+   tokens live (inside .design-root the shadcn names below would shadow them). */
+:root {
+  --dc-app: var(--bg-app);
+  --dc-panel: var(--bg-panel);
+  --dc-raised: var(--bg-raised);
+  --dc-input: var(--bg-input);
+  --dc-hover: var(--bg-hover);
+  --dc-active: var(--bg-active);
+  --dc-card: var(--bg-card);
+  --dc-border: var(--border);
+  --dc-border-strong: var(--border-strong);
+  --dc-text: var(--text);
+  --dc-text2: var(--text-secondary);
+  --dc-muted: var(--text-muted);
+  --dc-faint: var(--text-faint);
+  --dc-accent: var(--accent);
+  --dc-accent-hover: color-mix(in oklab, var(--accent) 82%, black);
+  --dc-on-accent: #1a1306;
+  --dc-danger: var(--danger);
+  --dc-success: var(--success);
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+/* Menus open in a portal, outside .design-root, so they get the same names. */
+.design-root,
+[data-radix-popper-content-wrapper] {
+  --radius: 0.5rem;
+  --background: var(--dc-panel);
+  --foreground: var(--dc-text);
+  --card: var(--dc-raised);
+  --card-foreground: var(--dc-text);
+  --popover: var(--dc-raised);
+  --popover-foreground: var(--dc-text);
+  --primary: var(--dc-accent);
+  --primary-foreground: var(--dc-on-accent);
+  --secondary: var(--dc-hover);
+  --secondary-foreground: var(--dc-text);
+  --muted: var(--dc-hover);
+  --muted-foreground: var(--dc-muted);
+  --accent: var(--dc-hover);
+  --accent-foreground: var(--dc-text);
+  --destructive: var(--dc-danger);
+  --border: var(--dc-border);
+  --input: var(--dc-border);
+  --ring: var(--dc-accent);
+  /* the editor's own surface names (bg-fig-surface and friends) */
+  --color-fig-surface: var(--dc-raised);
+  --color-fig-surface-panel: var(--dc-panel);
+  --color-fig-surface-canvas: var(--dc-app);
+  --color-fig-surface-hover: var(--dc-hover);
+  --color-fig-surface-active: var(--dc-accent);
+  --color-fig-border: var(--dc-border);
+  --color-fig-border-strong: var(--dc-border-strong);
+  --color-fig-text-primary: var(--dc-text);
+  --color-fig-text-secondary: var(--dc-text2);
+  --color-fig-text-tertiary: var(--dc-muted);
+  --color-fig-text-disabled: var(--dc-faint);
+  --color-fig-text-faint: var(--dc-faint);
+  --color-fig-accent: var(--dc-accent);
+  --color-fig-accent-hover: var(--dc-accent-hover);
+  --color-fig-selection: var(--dc-accent);
 }
 
 @layer base {
@@ -398,4 +392,32 @@
 .design-editor {
   flex: 1;
   min-height: 0;
+}
+
+/* A smaller desktop-sized chrome: the bars and sidebars shrink, the canvas keeps real pixels so
+   pointer maths stay exact. */
+.design-root {
+  --dc-zoom: 0.86;
+}
+.design-root > :first-child,
+.design-chrome > * {
+  zoom: var(--dc-zoom);
+}
+
+/* Text on the amber accent: the app's dark ink, not white. */
+.design-root [class~="bg-[color:var(--dc-accent)]"].text-white {
+  color: var(--dc-on-accent);
+}
+.design-root [class~="bg-[color:var(--dc-accent)]"] svg {
+  color: inherit;
+}
+
+/* The app resets every <button> outside any layer, which would beat the editor's utilities (bg-*,
+   text-*, border-*) on all of its buttons. Inside the editor, hand those properties back to the
+   layers below. */
+.design-root button,
+[data-radix-popper-content-wrapper] button {
+  background: revert-layer;
+  color: revert-layer;
+  border: revert-layer;
 }

@@ -32,17 +32,17 @@ export function EmojiPickerButton({ onPick, label = '🙂' }: { onPick: (emoji: 
       <button
         type="button"
         onClick={() => { setOpen(!open); setQ('') }}
-        className="w-6 h-6 rounded border border-[#383838] bg-[#1E1E1E] text-[13px] leading-none hover:border-[#0D99FF] shrink-0"
+        className="w-6 h-6 rounded border border-[color:var(--dc-border)] bg-[color:var(--dc-input)] text-[13px] leading-none hover:border-[color:var(--dc-accent)] shrink-0"
         title="Insert emoji"
       >{label}</button>
       {open && (
-        <div className="absolute right-0 top-7 z-50 w-56 rounded border border-[#3C3C3C] bg-[#2C2C2C] p-1.5 shadow-xl">
+        <div className="absolute right-0 top-7 z-50 w-56 rounded border border-[color:var(--dc-hover)] bg-[color:var(--dc-raised)] p-1.5 shadow-xl">
           <input
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search…"
-            className="mb-1 w-full h-5 px-1 text-[10px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF]"
+            className="mb-1 w-full h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]"
           />
           {!q.trim() && (
             <div className="flex gap-0.5 mb-1 flex-wrap">
@@ -51,7 +51,7 @@ export function EmojiPickerButton({ onPick, label = '🙂' }: { onPick: (emoji: 
                   key={c.name}
                   type="button"
                   onClick={() => setCat(i)}
-                  className={`h-4 px-1.5 text-[9px] rounded-sm ${i === cat ? 'bg-[#0D99FF] text-white' : 'bg-[#1E1E1E] text-[#999] hover:text-[#DDD]'}`}
+                  className={`h-4 px-1.5 text-[9px] rounded-sm ${i === cat ? 'bg-[color:var(--dc-accent)] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)]'}`}
                 >{c.name}</button>
               ))}
             </div>
@@ -62,7 +62,7 @@ export function EmojiPickerButton({ onPick, label = '🙂' }: { onPick: (emoji: 
                 key={i}
                 type="button"
                 onClick={() => { onPick(em); setOpen(false) }}
-                className="h-6 w-6 text-[15px] leading-none rounded hover:bg-[#3C3C3C]"
+                className="h-6 w-6 text-[15px] leading-none rounded hover:bg-[color:var(--dc-hover)]"
               >{em}</button>
             ))}
           </div>

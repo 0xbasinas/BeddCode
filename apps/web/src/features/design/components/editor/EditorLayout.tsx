@@ -12,11 +12,11 @@ import { ShortcutsModal } from './ShortcutsModal'
 export function EditorLayout() {
   const { leftSidebarVisible, rightSidebarVisible } = useEditorStore()
   return (
-    <div className="design-root @container h-full w-full flex flex-col overflow-hidden bg-[#1E1E1E]">
+    <div className="design-root @container h-full w-full flex flex-col overflow-hidden bg-[color:var(--dc-app)]">
       <TopBar />
       <div className="flex-1 flex overflow-hidden relative min-h-0">
         {leftSidebarVisible && (
-          <div className="w-[clamp(180px,22cqw,241px)] @max-[640px]:hidden shrink-0 overflow-hidden border-r border-[#383838]">
+          <div className="design-chrome w-[clamp(170px,20cqw,220px)] @max-[640px]:hidden shrink-0 overflow-hidden border-r border-[color:var(--dc-border)]">
             <LeftSidebar />
           </div>
         )}
@@ -27,7 +27,7 @@ export function EditorLayout() {
           <ShortcutsModal />
         </div>
         {rightSidebarVisible && (
-          <div className="w-[clamp(220px,28cqw,320px)] @max-[900px]:hidden shrink-0 overflow-hidden border-l border-[#383838]">
+          <div className="design-chrome w-[clamp(200px,24cqw,272px)] @max-[900px]:hidden shrink-0 overflow-hidden border-l border-[color:var(--dc-border)]">
             <RightSidebar />
           </div>
         )}

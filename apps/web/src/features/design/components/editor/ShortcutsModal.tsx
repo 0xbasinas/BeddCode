@@ -136,14 +136,14 @@ export function ShortcutsModal() {
       onClick={() => useEditorStore.getState().setShortcutsOpen(false)}
     >
       <div
-        className="w-[560px] max-h-[80%] flex flex-col rounded-lg bg-[#2C2C2C] border border-[#3C3C3C] shadow-2xl"
+        className="w-[560px] max-h-[80%] flex flex-col rounded-lg bg-[color:var(--dc-raised)] border border-[color:var(--dc-hover)] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* header */}
-        <div className="flex items-center justify-between px-4 h-11 border-b border-[#3C3C3C]">
-          <span className="text-[13px] font-medium text-[#DDD]">Keyboard shortcuts</span>
+        <div className="flex items-center justify-between px-4 h-11 border-b border-[color:var(--dc-hover)]">
+          <span className="text-[13px] font-medium text-[color:var(--dc-text2)]">Keyboard shortcuts</span>
           <button
-            className="w-6 h-6 flex items-center justify-center rounded text-[#888] hover:text-[#DDD] hover:bg-[#3C3C3C]"
+            className="w-6 h-6 flex items-center justify-center rounded text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-hover)]"
             onClick={() => useEditorStore.getState().setShortcutsOpen(false)}
             aria-label="Close keyboard shortcuts"
           >
@@ -152,14 +152,14 @@ export function ShortcutsModal() {
         </div>
 
         {/* search */}
-        <div className="px-4 py-2 border-b border-[#3C3C3C]">
+        <div className="px-4 py-2 border-b border-[color:var(--dc-hover)]">
           <input
             autoFocus
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search shortcuts…"
-            className="w-full h-7 px-2 text-[12px] border border-[#383838] rounded-sm bg-[#1E1E1E] text-[#DDD] focus:outline-none focus:border-[#0D99FF]"
+            className="w-full h-7 px-2 text-[12px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]"
             onKeyDown={(e) => {
               if (e.key === 'Escape') useEditorStore.getState().setShortcutsOpen(false)
             }}
@@ -170,14 +170,14 @@ export function ShortcutsModal() {
         <div className="overflow-y-auto px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-4">
           {filtered.map((g) => (
             <div key={g.group}>
-              <div className="text-[10px] font-semibold text-[#999] uppercase tracking-wider mb-1.5">
+              <div className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider mb-1.5">
                 {g.group}
               </div>
               <div className="space-y-0.5">
                 {g.rows.map((r) => (
                   <div key={r.label} className="flex items-center justify-between gap-3">
                     <span className="text-[11px] text-[#BBB] truncate">{r.label}</span>
-                    <span className="text-[10px] text-[#888] shrink-0 font-mono border border-[#383838] rounded px-1 py-px bg-[#1E1E1E]">
+                    <span className="text-[10px] text-[color:var(--dc-muted)] shrink-0 font-mono border border-[color:var(--dc-border)] rounded px-1 py-px bg-[color:var(--dc-input)]">
                       {r.keys}
                     </span>
                   </div>
@@ -186,7 +186,7 @@ export function ShortcutsModal() {
             </div>
           ))}
           {filtered.length === 0 && (
-            <div className="col-span-2 text-center text-[11px] text-[#888] py-6">
+            <div className="col-span-2 text-center text-[11px] text-[color:var(--dc-muted)] py-6">
               No shortcuts match “{query}”.
             </div>
           )}

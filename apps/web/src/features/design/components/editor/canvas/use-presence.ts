@@ -20,7 +20,7 @@ const VIEWPORT_THROTTLE_MS = 400
 const HEARTBEAT_MS = 4000
 
 const PRESENCE_COLORS = [
-  '#0D99FF', '#F24E1E', '#A259FF', '#1ABCFE',
+  'var(--dc-accent)', '#F24E1E', '#A259FF', '#1ABCFE',
   '#0ACF83', '#FF7262', '#FFC700', '#EF5DA8',
 ]
 

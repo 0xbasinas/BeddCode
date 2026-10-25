@@ -16,13 +16,13 @@ export function RightSidebar() {
   const components = elements.filter(el => el.isComponent)
 
   return (
-    <div className="h-full bg-[#252525] flex flex-col border-l border-[#383838] select-none">
+    <div className="h-full bg-[color:var(--dc-panel)] flex flex-col border-l border-[color:var(--dc-border)] select-none">
       {/* Tabs */}
-      <div className="flex border-b border-[#383838] shrink-0">
+      <div className="flex border-b border-[color:var(--dc-border)] shrink-0">
         <button
           onClick={() => setRightTab('design')}
           className={`flex-1 px-3 py-1.5 text-[10px] font-semibold transition-colors duration-100 uppercase tracking-wider ${
-            rightTab === 'design' ? 'text-white border-b-2 border-[#0D99FF]' : 'text-[#888] hover:text-[#CCC]'
+            rightTab === 'design' ? 'text-white border-b-2 border-[color:var(--dc-accent)]' : 'text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)]'
           }`}
         >
           Design
@@ -30,7 +30,7 @@ export function RightSidebar() {
         <button
           onClick={() => setRightTab('inspect')}
           className={`flex-1 px-3 py-1.5 text-[10px] font-semibold transition-colors duration-100 uppercase tracking-wider ${
-            rightTab === 'inspect' ? 'text-white border-b-2 border-[#0D99FF]' : 'text-[#888] hover:text-[#CCC]'
+            rightTab === 'inspect' ? 'text-white border-b-2 border-[color:var(--dc-accent)]' : 'text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)]'
           }`}
         >
           Inspect
@@ -52,8 +52,8 @@ export function RightSidebar() {
           ) : (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
-                <MousePointer2 className="w-5 h-5 text-[#666] mx-auto mb-1.5" />
-                <p className="text-[10px] text-[#888]">Select an element to inspect</p>
+                <MousePointer2 className="w-5 h-5 text-[color:var(--dc-faint)] mx-auto mb-1.5" />
+                <p className="text-[10px] text-[color:var(--dc-muted)]">Select an element to inspect</p>
               </div>
             </div>
           )}
@@ -397,21 +397,21 @@ function InspectPanel({ element }: { element: any }) {
       {/* Element header */}
       <div className="flex items-center gap-2">
         <span className="text-[11px] font-semibold text-white">{element.type.charAt(0).toUpperCase() + element.type.slice(1)}</span>
-        <span className="text-[10px] text-[#666]">{element.name}</span>
+        <span className="text-[10px] text-[color:var(--dc-faint)]">{element.name}</span>
       </div>
 
       {/* Layout Section */}
-      <div className="border border-[#383838] rounded-md overflow-hidden">
+      <div className="border border-[color:var(--dc-border)] rounded-md overflow-hidden">
         <button
-          className="flex items-center gap-1.5 w-full px-2.5 py-1.5 bg-[#2A2A2A] hover:bg-[#333] transition-colors"
+          className="flex items-center gap-1.5 w-full px-2.5 py-1.5 bg-[color:var(--dc-card)] hover:bg-[color:var(--dc-border)] transition-colors"
           onClick={() => setLayoutExpanded(!layoutExpanded)}
         >
           {layoutExpanded ? (
-            <ChevronDown className="w-3 h-3 text-[#888]" />
+            <ChevronDown className="w-3 h-3 text-[color:var(--dc-muted)]" />
           ) : (
-            <ChevronRight className="w-3 h-3 text-[#888]" />
+            <ChevronRight className="w-3 h-3 text-[color:var(--dc-muted)]" />
           )}
-          <span className="text-[10px] font-semibold text-[#AAA] uppercase tracking-wider">Layout</span>
+          <span className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">Layout</span>
         </button>
         {layoutExpanded && (
           <div className="p-2.5">
@@ -445,7 +445,7 @@ function InspectPanel({ element }: { element: any }) {
                 <LayoutField label="Opacity" value={element.opacity} unit="%" />
               )}
               {element.blendMode && element.blendMode !== 'normal' && (
-                <span className="text-[10px] text-[#888]">Blend: <span className="text-[#CCC]">{element.blendMode}</span></span>
+                <span className="text-[10px] text-[color:var(--dc-muted)]">Blend: <span className="text-[color:var(--dc-text2)]">{element.blendMode}</span></span>
               )}
             </div>
           </div>
@@ -454,40 +454,40 @@ function InspectPanel({ element }: { element: any }) {
 
       {/* Colors Section */}
       {elementColors.length > 0 && (
-        <div className="border border-[#383838] rounded-md overflow-hidden">
+        <div className="border border-[color:var(--dc-border)] rounded-md overflow-hidden">
           <button
-            className="flex items-center gap-1.5 w-full px-2.5 py-1.5 bg-[#2A2A2A] hover:bg-[#333] transition-colors"
+            className="flex items-center gap-1.5 w-full px-2.5 py-1.5 bg-[color:var(--dc-card)] hover:bg-[color:var(--dc-border)] transition-colors"
             onClick={() => setColorsExpanded(!colorsExpanded)}
           >
             {colorsExpanded ? (
-              <ChevronDown className="w-3 h-3 text-[#888]" />
+              <ChevronDown className="w-3 h-3 text-[color:var(--dc-muted)]" />
             ) : (
-              <ChevronRight className="w-3 h-3 text-[#888]" />
+              <ChevronRight className="w-3 h-3 text-[color:var(--dc-muted)]" />
             )}
-            <span className="text-[10px] font-semibold text-[#AAA] uppercase tracking-wider">Colors</span>
-            <span className="text-[9px] text-[#555] ml-auto">{elementColors.length}</span>
+            <span className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">Colors</span>
+            <span className="text-[9px] text-[color:var(--dc-border-strong)] ml-auto">{elementColors.length}</span>
           </button>
           {colorsExpanded && (
             <div className="p-2.5 space-y-1">
               {elementColors.map((item, i) => (
                 <button
                   key={i}
-                  className="flex items-center gap-2 w-full px-1.5 py-1 rounded hover:bg-[#333] transition-colors group"
+                  className="flex items-center gap-2 w-full px-1.5 py-1 rounded hover:bg-[color:var(--dc-border)] transition-colors group"
                   onClick={() => copy(item.color.toUpperCase(), `color-${i}`)}
                   title="Click to copy hex value"
                 >
                   <div
-                    className="w-5 h-5 rounded border border-[#555]/50 shrink-0"
+                    className="w-5 h-5 rounded border border-[color:var(--dc-border-strong)]/50 shrink-0"
                     style={{ backgroundColor: item.color }}
                   />
-                  <span className="text-[10px] text-[#888] w-14 text-left shrink-0">{item.label}</span>
-                  <span className="text-[11px] text-[#CCC] font-mono flex-1 text-left">
+                  <span className="text-[10px] text-[color:var(--dc-muted)] w-14 text-left shrink-0">{item.label}</span>
+                  <span className="text-[11px] text-[color:var(--dc-text2)] font-mono flex-1 text-left">
                     {item.color.toUpperCase()}
                   </span>
                   {copiedId === `color-${i}` ? (
                     <Check className="w-3 h-3 text-[#4CAF50] shrink-0" />
                   ) : (
-                    <Copy className="w-3 h-3 text-[#555] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                    <Copy className="w-3 h-3 text-[color:var(--dc-border-strong)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                   )}
                 </button>
               ))}
@@ -498,17 +498,17 @@ function InspectPanel({ element }: { element: any }) {
 
       {/* Typography Section (for text elements) */}
       {element.type === 'text' && (
-        <div className="border border-[#383838] rounded-md overflow-hidden">
+        <div className="border border-[color:var(--dc-border)] rounded-md overflow-hidden">
           <button
-            className="flex items-center gap-1.5 w-full px-2.5 py-1.5 bg-[#2A2A2A] hover:bg-[#333] transition-colors"
+            className="flex items-center gap-1.5 w-full px-2.5 py-1.5 bg-[color:var(--dc-card)] hover:bg-[color:var(--dc-border)] transition-colors"
             onClick={() => setTypographyExpanded(!typographyExpanded)}
           >
             {typographyExpanded ? (
-              <ChevronDown className="w-3 h-3 text-[#888]" />
+              <ChevronDown className="w-3 h-3 text-[color:var(--dc-muted)]" />
             ) : (
-              <ChevronRight className="w-3 h-3 text-[#888]" />
+              <ChevronRight className="w-3 h-3 text-[color:var(--dc-muted)]" />
             )}
-            <span className="text-[10px] font-semibold text-[#AAA] uppercase tracking-wider">Typography</span>
+            <span className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">Typography</span>
           </button>
           {typographyExpanded && (
             <div className="p-2.5 space-y-1">
@@ -537,9 +537,9 @@ function InspectPanel({ element }: { element: any }) {
                 <TypographyRow label="Decoration" value={element.textDecoration} onCopy={() => copy(element.textDecoration, 'text-decoration')} copied={copiedId === 'text-decoration'} />
               )}
               {element.textContent && (
-                <div className="pt-1 border-t border-[#383838]">
-                  <span className="text-[10px] text-[#666] block mb-0.5">Content</span>
-                  <span className="text-[11px] text-[#CCC] break-all">&quot;{element.textContent}&quot;</span>
+                <div className="pt-1 border-t border-[color:var(--dc-border)]">
+                  <span className="text-[10px] text-[color:var(--dc-faint)] block mb-0.5">Content</span>
+                  <span className="text-[11px] text-[color:var(--dc-text2)] break-all">&quot;{element.textContent}&quot;</span>
                 </div>
               )}
             </div>
@@ -548,17 +548,17 @@ function InspectPanel({ element }: { element: any }) {
       )}
 
       {/* Code Section */}
-      <div className="border border-[#383838] rounded-md overflow-hidden">
+      <div className="border border-[color:var(--dc-border)] rounded-md overflow-hidden">
         <button
-          className="flex items-center gap-1.5 w-full px-2.5 py-1.5 bg-[#2A2A2A] hover:bg-[#333] transition-colors"
+          className="flex items-center gap-1.5 w-full px-2.5 py-1.5 bg-[color:var(--dc-card)] hover:bg-[color:var(--dc-border)] transition-colors"
           onClick={() => setCodeExpanded(!codeExpanded)}
         >
           {codeExpanded ? (
-            <ChevronDown className="w-3 h-3 text-[#888]" />
+            <ChevronDown className="w-3 h-3 text-[color:var(--dc-muted)]" />
           ) : (
-            <ChevronRight className="w-3 h-3 text-[#888]" />
+            <ChevronRight className="w-3 h-3 text-[color:var(--dc-muted)]" />
           )}
-          <span className="text-[10px] font-semibold text-[#AAA] uppercase tracking-wider">Code</span>
+          <span className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">Code</span>
         </button>
         {codeExpanded && (
           <div className="p-2.5">
@@ -570,8 +570,8 @@ function InspectPanel({ element }: { element: any }) {
                   onClick={() => setCodeTab(tab)}
                   className={`px-2 py-1 text-[10px] font-semibold rounded transition-colors ${
                     codeTab === tab
-                      ? 'bg-[#0D99FF] text-white'
-                      : 'bg-[#1E1E1E] text-[#888] hover:text-[#CCC] border border-[#383838]'
+                      ? 'bg-[color:var(--dc-accent)] text-white'
+                      : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)] border border-[color:var(--dc-border)]'
                   }`}
                 >
                   {tab === 'css' ? 'CSS' : tab === 'swiftui' ? 'SwiftUI' : 'Android'}
@@ -581,12 +581,12 @@ function InspectPanel({ element }: { element: any }) {
 
             {/* Code block */}
             <div className="relative">
-              <pre className="text-[10px] text-[#CCC] bg-[#1A1A1A] p-2.5 rounded border border-[#333] overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto custom-scrollbar">
+              <pre className="text-[10px] text-[color:var(--dc-text2)] bg-[color:var(--dc-app)] p-2.5 rounded border border-[color:var(--dc-border)] overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto custom-scrollbar">
                 {codeOutput}
               </pre>
               <button
                 onClick={() => copy(codeOutput, `code-${codeTab}`)}
-                className="absolute top-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded bg-[#333] hover:bg-[#444] text-[#AAA] hover:text-white transition-colors"
+                className="absolute top-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded bg-[color:var(--dc-border)] hover:bg-[color:var(--dc-border-strong)] text-[color:var(--dc-muted)] hover:text-white transition-colors"
                 title={`Copy ${codeLanguage} code`}
               >
                 {copiedId === `code-${codeTab}` ? (
@@ -615,10 +615,10 @@ function InspectPanel({ element }: { element: any }) {
 
 function LayoutField({ label, value, unit }: { label: string; value: number; unit: string }) {
   return (
-    <div className="flex items-center gap-1 px-1.5 py-0.5 bg-[#1E1E1E] rounded">
-      <span className="text-[9px] font-semibold text-[#0D99FF] w-3 shrink-0">{label}</span>
-      <span className="text-[11px] text-[#CCC] tabular-nums flex-1">{value}</span>
-      <span className="text-[9px] text-[#555]">{unit}</span>
+    <div className="flex items-center gap-1 px-1.5 py-0.5 bg-[color:var(--dc-input)] rounded">
+      <span className="text-[9px] font-semibold text-[color:var(--dc-accent)] w-3 shrink-0">{label}</span>
+      <span className="text-[11px] text-[color:var(--dc-text2)] tabular-nums flex-1">{value}</span>
+      <span className="text-[9px] text-[color:var(--dc-border-strong)]">{unit}</span>
     </div>
   )
 }
@@ -626,16 +626,16 @@ function LayoutField({ label, value, unit }: { label: string; value: number; uni
 function TypographyRow({ label, value, onCopy, copied }: { label: string; value: string; onCopy: () => void; copied: boolean }) {
   return (
     <button
-      className="flex items-center gap-2 w-full px-1.5 py-0.5 rounded hover:bg-[#333] transition-colors group"
+      className="flex items-center gap-2 w-full px-1.5 py-0.5 rounded hover:bg-[color:var(--dc-border)] transition-colors group"
       onClick={onCopy}
       title="Click to copy"
     >
-      <span className="text-[10px] text-[#888] w-20 text-left shrink-0">{label}</span>
-      <span className="text-[11px] text-[#CCC] flex-1 text-left font-mono">{value}</span>
+      <span className="text-[10px] text-[color:var(--dc-muted)] w-20 text-left shrink-0">{label}</span>
+      <span className="text-[11px] text-[color:var(--dc-text2)] flex-1 text-left font-mono">{value}</span>
       {copied ? (
         <Check className="w-3 h-3 text-[#4CAF50] shrink-0" />
       ) : (
-        <Copy className="w-3 h-3 text-[#555] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+        <Copy className="w-3 h-3 text-[color:var(--dc-border-strong)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
       )}
     </button>
   )

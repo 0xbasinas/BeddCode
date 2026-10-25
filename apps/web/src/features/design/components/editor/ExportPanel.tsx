@@ -16,7 +16,7 @@ interface ExportPanelProps {
 }
 
 const selectCls =
-  'h-6 px-1 text-[10px] border border-[#555] rounded bg-[#2C2C2C] text-[#DDD] focus:outline-none focus:border-[#0D99FF]'
+  'h-6 px-1 text-[10px] border border-[color:var(--dc-border-strong)] rounded bg-[color:var(--dc-raised)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]'
 
 /** Formats that support lossy quality control. */
 function supportsQuality(format: string): boolean {
@@ -61,7 +61,7 @@ export function ExportPanel({ element }: ExportPanelProps) {
   return (
     <div>
       {exportSettings.map((setting, i) => (
-        <div key={i} className="mb-1.5 bg-[#1E1E1E] border border-[#383838] rounded p-1.5 space-y-1">
+        <div key={i} className="mb-1.5 bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] rounded p-1.5 space-y-1">
           <div className="flex items-center gap-1.5">
             <select
               value={setting.format}
@@ -90,7 +90,7 @@ export function ExportPanel({ element }: ExportPanelProps) {
             <button
               onClick={() => handleExport(setting, i)}
               disabled={busyIndex === i}
-              className="flex items-center justify-center h-6 px-2 rounded bg-[#0D99FF] text-white text-[10px] hover:bg-[#0B87E0] disabled:opacity-50 transition-colors ml-auto"
+              className="flex items-center justify-center h-6 px-2 rounded bg-[color:var(--dc-accent)] text-white text-[10px] hover:bg-[color:var(--dc-accent-hover)] disabled:opacity-50 transition-colors ml-auto"
               title={`Export as ${setting.format}`}
             >
               <Download className="w-3 h-3" />
@@ -98,7 +98,7 @@ export function ExportPanel({ element }: ExportPanelProps) {
 
             <button
               onClick={() => { pushHistory(); removeExportSetting(element.id, i) }}
-              className="flex items-center justify-center w-5 h-5 rounded hover:bg-[#3C3C3C]"
+              className="flex items-center justify-center w-5 h-5 rounded hover:bg-[color:var(--dc-hover)]"
               title="Remove export setting"
             >
               <Trash2 className="w-3 h-3 text-[#F24822]" />
@@ -107,7 +107,7 @@ export function ExportPanel({ element }: ExportPanelProps) {
 
           {supportsQuality(setting.format) && (
             <div className="flex items-center gap-1.5">
-              <span className="text-[9px] text-[#888] w-12 shrink-0">Quality</span>
+              <span className="text-[9px] text-[color:var(--dc-muted)] w-12 shrink-0">Quality</span>
               <input
                 type="range"
                 min={0.1}
@@ -115,10 +115,10 @@ export function ExportPanel({ element }: ExportPanelProps) {
                 step={0.02}
                 value={setting.quality ?? 0.92}
                 onChange={(e) => setSetting(i, { quality: Number(e.target.value) })}
-                className="flex-1 h-1 accent-[#0D99FF]"
+                className="flex-1 h-1 accent-[color:var(--dc-accent)]"
               />
               <span
-                className="text-[9px] text-[#AAA] w-7 text-right tabular-nums"
+                className="text-[9px] text-[color:var(--dc-muted)] w-7 text-right tabular-nums"
                 style={{ fontFamily: 'var(--fig-font-family-mono)' }}
               >
                 {Math.round((setting.quality ?? 0.92) * 100)}%
@@ -127,7 +127,7 @@ export function ExportPanel({ element }: ExportPanelProps) {
           )}
 
           <div
-            className="text-[8px] text-[#666] tabular-nums"
+            className="text-[8px] text-[color:var(--dc-faint)] tabular-nums"
             style={{ fontFamily: 'var(--fig-font-family-mono)' }}
           >
             {element.name}
@@ -139,7 +139,7 @@ export function ExportPanel({ element }: ExportPanelProps) {
 
       <button
         onClick={handleAddExport}
-        className="flex items-center gap-1 h-6 px-2 rounded bg-[#1E1E1E] text-[10px] text-[#888] hover:bg-[#3C3C3C] hover:text-white transition-colors border border-[#383838] w-full justify-center"
+        className="flex items-center gap-1 h-6 px-2 rounded bg-[color:var(--dc-input)] text-[10px] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)] hover:text-white transition-colors border border-[color:var(--dc-border)] w-full justify-center"
       >
         <Plus className="w-3 h-3" />
         Add Export
