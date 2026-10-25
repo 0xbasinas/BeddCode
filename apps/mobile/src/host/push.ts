@@ -3,13 +3,29 @@ import { DEFAULT_ALERT_EVENTS, type AlertEvents } from '@beddcode/contracts'
 import { sessionOfAlert } from '@beddcode/client-runtime'
 import Constants from 'expo-constants'
 import * as Device from 'expo-device'
-import * as Notifications from 'expo-notifications'
+import type * as NotificationsModule from 'expo-notifications'
 import { router } from 'expo-router'
 import { Platform } from 'react-native'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
 import { hostRequest, useHostStore } from './store'
+
+type Notifications = typeof NotificationsModule
+
+let loaded: Notifications | null | undefined
+
+/** The notifications module, or null where this app has no native part for it (Expo Go on Android). */
+function notifications(): Notifications | null {
+  if (loaded === undefined) {
+    try {
+      loaded = require('expo-notifications') as Notifications
+    } catch {
+      loaded = null
+    }
+  }
+  return loaded
+}
 
 /** The Android channel the host's alerts arrive on (it names it in each push). */
 export const ALERT_CHANNEL = 'alerts'
@@ -41,6 +57,8 @@ export const hostAlertPrefs = (hosts: PushState['hosts'], hostKey: string): Host
 /** Why this build cannot get a push token, in words, or undefined when it can try. */
 export function pushUnavailableReason(): string | undefined {
   if (Platform.OS === 'web') return 'Push alerts work in the phone app, not on the web.'
+  if (!notifications())
+    return 'Push alerts need the BeddCode app itself; Expo Go does not include them.'
   if (!Device.isDevice) return 'Push alerts need a real phone, not an emulator.'
   if (!projectId())
     return 'This build has no Expo project id (EAS_PROJECT_ID), so it cannot get a push token. Use an ntfy topic on the host instead.'
@@ -59,6 +77,7 @@ export function pushToken(): Promise<string> {
   token ??= (async () => {
     const reason = pushUnavailableReason()
     if (reason) throw new Error(reason)
+    const Notifications = notifications()!
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync(ALERT_CHANNEL, {
         name: 'Agent alerts',
@@ -109,7 +128,8 @@ let wired = false
  * cold start), and re-registers with each host as it connects so the host's copy stays current.
  */
 export function startPush() {
-  if (wired || Platform.OS === 'web') return
+  const Notifications = notifications()
+  if (wired || Platform.OS === 'web' || !Notifications) return
   wired = true
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -119,7 +139,7 @@ export function startPush() {
       shouldSetBadge: false,
     }),
   })
-  const open = (response: Notifications.NotificationResponse | null) => {
+  const open = (response: NotificationsModule.NotificationResponse | null) => {
     const id = sessionOfAlert(response?.notification.request.content.data)
     if (id) router.push({ pathname: '/session/[id]', params: { id } })
   }
