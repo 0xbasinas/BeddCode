@@ -15,6 +15,7 @@ import {
   CaretDown,
   CaretRight,
   Checks,
+  ClockCounterClockwise,
   FolderSimple,
   FolderSimplePlus,
   Gear,
@@ -238,6 +239,19 @@ export default function SessionsScreen() {
             accessibilityLabel="Search"
           >
             <Icon icon={searching ? X : MagnifyingGlass} size={20} />
+          </Pressable>
+          <Pressable
+            hitSlop={8}
+            onPress={() =>
+              router.push({
+                // Typed routes learn the new screen the next time Expo starts.
+                pathname: '/history' as '/new',
+                params: selectedHost === 'all' ? {} : { host: selectedHost },
+              })
+            }
+            accessibilityLabel="Resume an earlier conversation"
+          >
+            <Icon icon={ClockCounterClockwise} size={20} />
           </Pressable>
           <Pressable
             hitSlop={8}

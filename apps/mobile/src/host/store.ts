@@ -376,6 +376,16 @@ export async function createSession(
   return sessionId
 }
 
+/** Brings a conversation stored by the agent's own CLI in as a session. */
+export async function importSession(
+  hostKey: string,
+  options: RpcParams<'sessions.import'>,
+): Promise<string> {
+  const { sessionId } = await hostRequest(hostKey, 'sessions.import', options)
+  createdOn.set(sessionId, hostKey)
+  return sessionId
+}
+
 /** Requests on a session go to the host that owns it. */
 function sessionRequest<M extends RpcMethodName>(
   sessionId: string,
