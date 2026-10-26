@@ -5654,3 +5654,87 @@ button.agent-tools-chip.on:hover {
 .show-earlier:hover {
   color: var(--text);
 }
+
+/* Message navigator: a rail of ticks at the thread's edge that opens into a list of your messages */
+.thread {
+  position: relative;
+}
+.message-nav {
+  position: absolute;
+  right: calc(8px * var(--ui-scale));
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  display: flex;
+  justify-content: flex-end;
+}
+.message-nav-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: calc(9px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale));
+}
+.message-nav-tick {
+  display: block;
+  width: calc(10px * var(--ui-scale));
+  height: 2px;
+  border-radius: 2px;
+  background: var(--border-strong);
+  flex: none;
+}
+.message-nav-tick[data-active='true'] {
+  width: calc(14px * var(--ui-scale));
+  background: var(--text);
+}
+.message-nav-list {
+  display: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: calc(2px * var(--ui-scale));
+  max-height: 60vh;
+  width: calc(220px * var(--ui-scale));
+  overflow-y: auto;
+  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: calc(14px * var(--ui-scale));
+  background: var(--bg-panel);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  scrollbar-width: thin;
+}
+.message-nav.open .message-nav-list {
+  display: flex;
+}
+.message-nav.open .message-nav-rail {
+  display: none;
+}
+.message-nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: calc(10px * var(--ui-scale));
+  width: 100%;
+  padding: calc(5px * var(--ui-scale)) 0;
+  color: var(--text-muted);
+  font-size: calc(13px * var(--ui-scale));
+  text-align: right;
+}
+.message-nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.message-nav-row:hover {
+  color: var(--text);
+}
+.message-nav-row:hover .message-nav-tick {
+  background: var(--text);
+}
+.message-nav-row[data-active='true'] {
+  color: var(--text);
+}
+.message-nav-row[data-active='true'] .message-nav-tick {
+  width: calc(14px * var(--ui-scale));
+  background: var(--text);
+}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   ChevronDown,
   ChevronUp,
@@ -40,6 +40,7 @@ export function Transcript({
   changes,
   sessionId,
   hostKey,
+  jumpTo,
 }: {
   items: Item[]
   cwd: string
@@ -55,6 +56,8 @@ export function Transcript({
   onFork?(turnNo: number): void | Promise<void>
   /** Turns that have finished; a fork can only end after one of them. */
   completedTurns?: number
+  /** Draws this message if it is among the earlier, undrawn ones (a new `n` asks again). */
+  jumpTo?: { id: string; n: number }
   /** A turn the user stopped; its fork button stays visible instead of waiting for a hover. */
   stoppedTurn?: number
 }) {
@@ -68,6 +71,15 @@ export function Transcript({
   if (view.id !== sessionId) {
     from = Math.max(0, blocks.length - FIRST_BLOCKS)
     setWindow({ id: sessionId, from })
+  }
+  const jumped = useRef(jumpTo?.n)
+  if (jumpTo && jumped.current !== jumpTo.n) {
+    jumped.current = jumpTo.n
+    const target = blocks.findIndex((b) => b.kind === 'item' && b.item.id === jumpTo.id)
+    if (target >= 0 && target < from) {
+      from = Math.max(0, target - 2)
+      setWindow({ id: sessionId, from })
+    }
   }
   const showEarlier = () => setWindow({ id: sessionId, from: Math.max(0, from - MORE_BLOCKS) })
   const latestChanges = items.findLast((i) => i.kind === 'changes')?.id
@@ -215,7 +227,7 @@ function ItemView({
   switch (item.kind) {
     case 'message':
       return item.role === 'user' ? (
-        <div className="msg user">
+        <div className="msg user" data-msg-id={item.id}>
           {item.attachments && item.attachments.length > 0 && (
             <div className="chips">
               {item.attachments.map((a) => (

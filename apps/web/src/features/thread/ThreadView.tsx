@@ -47,6 +47,7 @@ import { ChildAgentsBar, StartedByBanner } from './AgentToolCard.tsx'
 import { endedByDecline, handoffPrompt, sessionChanges } from '@beddcode/client-runtime'
 import { setHandoff } from '../../stores/handoff.ts'
 import { useFollowEnd } from './useFollowEnd.ts'
+import { MessageNav } from './MessageNav.tsx'
 import { folderId, useFiles } from '../files/filesStore.ts'
 import { useUiStore } from '../../stores/ui.ts'
 import { EnvironmentButton, SessionChip } from './SessionPanel.tsx'
@@ -73,6 +74,12 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
   const [actionError, setActionError] = useState<string>()
   const scroller = useRef<HTMLDivElement>(null)
   useFollowEnd(scroller, session?.items)
+  const [jump, setJump] = useState<{ id: string; n: number }>()
+  useEffect(() => {
+    if (!jump) return
+    const node = scroller.current?.querySelector(`[data-msg-id="${CSS.escape(jump.id)}"]`)
+    node?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [jump])
 
   // The agent's browser tool calls go to the window showing its session.
   useEffect(() => {
@@ -300,12 +307,20 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             onApprove={(requestId, optionId) => approve(sessionId, requestId, optionId)}
             onAnswer={(requestId, answers) => answerQuestion(sessionId, requestId, answers)}
             onFork={canFork ? (turnNo) => fork(turnNo) : undefined}
+            jumpTo={jump}
             completedTurns={session.completedTurns}
-            stoppedTurn={session.lastTurnReason === 'cancelled' ? session.completedTurns : undefined}
+            stoppedTurn={
+              session.lastTurnReason === 'cancelled' ? session.completedTurns : undefined
+            }
             changes={{ hostKey, sessionId, idle: !busy, worktree: Boolean(session?.worktree) }}
           />
         </div>
       </div>
+      <MessageNav
+        items={session.items}
+        scroller={scroller}
+        onJump={(id) => setJump((j) => ({ id, n: (j?.n ?? 0) + 1 }))}
+      />
       {actionError && (
         <p className="thread-action-error" role="alert">
           {actionError}
