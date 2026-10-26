@@ -30,10 +30,16 @@ export function RemoteStatusBanner() {
   if (!down || !late) return null
   const names = down.split('|')
   return (
-    <div className="host-banner" role="status">
+    <div
+      className="host-banner compact"
+      role="status"
+      title="Messages you send now go out as soon as the connection is back."
+    >
       <div>
         <strong>
-          {names.length === 1 ? `Reconnecting to ${names[0]}…` : `Reconnecting to ${names.length} hosts…`}
+          {names.length === 1
+            ? `Reconnecting to ${names[0]}…`
+            : `Reconnecting to ${names.length} hosts…`}
         </strong>
         <div className="host-banner-detail">
           Messages you send now go out as soon as the connection is back.

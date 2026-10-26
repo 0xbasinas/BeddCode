@@ -4314,13 +4314,12 @@ button.tcall-row:hover .tcall-chevron,
 .host-banner {
   position: fixed;
   z-index: 30;
-  left: 50%;
-  bottom: calc(18px * var(--ui-scale));
-  transform: translateX(-50%);
+  right: calc(14px * var(--ui-scale));
+  top: calc(44px * var(--ui-scale));
   display: flex;
   align-items: center;
   gap: calc(16px * var(--ui-scale));
-  max-width: min(calc(560px * var(--ui-scale)), calc(100vw - 32px));
+  max-width: min(calc(420px * var(--ui-scale)), calc(100vw - 32px));
   padding: calc(10px * var(--ui-scale)) calc(14px * var(--ui-scale));
   border: 1px solid var(--border-strong);
   border-radius: calc(10px * var(--ui-scale));
@@ -4343,6 +4342,16 @@ button.tcall-row:hover .tcall-chevron,
   white-space: pre-wrap;
   color: var(--text-muted);
   font: calc(11px * var(--ui-scale)) / 1.5 var(--font-mono);
+}
+/* A single line in the corner, so it never sits over the composer. */
+.host-banner.compact {
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(6px * var(--ui-scale))
+    calc(12px * var(--ui-scale));
+  gap: calc(10px * var(--ui-scale));
+  opacity: 0.95;
+}
+.host-banner.compact .host-banner-detail {
+  display: none;
 }
 .host-banner-detail {
   margin-top: calc(2px * var(--ui-scale));
