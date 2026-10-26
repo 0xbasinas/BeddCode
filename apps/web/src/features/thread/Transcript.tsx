@@ -24,6 +24,10 @@ import { TurnChangesCard } from './TurnChanges.tsx'
 
 type Item = TranscriptItem
 
+/** A long thread draws only its latest blocks at first; earlier ones are added on request. */
+const FIRST_BLOCKS = 80
+const MORE_BLOCKS = 120
+
 export function Transcript({
   items,
   cwd,
@@ -55,6 +59,17 @@ export function Transcript({
   stoppedTurn?: number
 }) {
   const blocks = buildBlocks(items)
+  // Where drawing starts. It stays put as the thread grows, so rows already on screen keep their place.
+  const [view, setWindow] = useState({
+    id: sessionId,
+    from: Math.max(0, blocks.length - FIRST_BLOCKS),
+  })
+  let from = view.from
+  if (view.id !== sessionId) {
+    from = Math.max(0, blocks.length - FIRST_BLOCKS)
+    setWindow({ id: sessionId, from })
+  }
+  const showEarlier = () => setWindow({ id: sessionId, from: Math.max(0, from - MORE_BLOCKS) })
   const latestChanges = items.findLast((i) => i.kind === 'changes')?.id
   // "Fork from here" goes at the end of each turn: after its last reply or, when the turn was
   // stopped mid-work, after the tool calls that ran before the stop.
@@ -62,7 +77,8 @@ export function Transcript({
   {
     let segment: { turnNo?: number; last: number } = { last: -1 }
     const close = () => {
-      if (segment.turnNo !== undefined && segment.last >= 0) forkAnchor.set(segment.turnNo, segment.last)
+      if (segment.turnNo !== undefined && segment.last >= 0)
+        forkAnchor.set(segment.turnNo, segment.last)
       segment = { last: -1 }
     }
     blocks.forEach((b, i) => {
@@ -92,7 +108,13 @@ export function Transcript({
     turnNo <= completedTurns
   return (
     <>
+      {from > 0 && (
+        <button className="show-earlier" onClick={showEarlier}>
+          Show earlier ({from})
+        </button>
+      )}
       {blocks.map((block, index) => {
+        if (index < from) return null
         if (block.kind === 'edits')
           return (
             <EditedFilesCard key={block.id} files={block.files} cwd={cwd} onOpenFile={onOpenFile} />
@@ -153,7 +175,9 @@ export function Transcript({
             if (!plainTool(next) || next?.kind !== 'item' || next.item.kind !== 'tool') break
             tools.push(next.item)
           }
-          const stopTurn = [...forkAnchor].find(([, at]) => at >= index && at < index + tools.length)?.[0]
+          const stopTurn = [...forkAnchor].find(
+            ([, at]) => at >= index && at < index + tools.length,
+          )?.[0]
           const group = <ToolGroup key={block.item.id} tools={tools} />
           return forkable(stopTurn, index + tools.length - 1) ? (
             <div key={block.item.id} className="has-fork">

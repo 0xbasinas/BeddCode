@@ -5641,3 +5641,16 @@ button.agent-tools-chip.on:hover {
 :root:has(.window-island) .design-bar {
   padding-right: calc(var(--island-w) + var(--gap) * 2);
 }
+
+.show-earlier {
+  display: block;
+  margin: 0 auto 12px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.show-earlier:hover {
+  color: var(--text);
+}
