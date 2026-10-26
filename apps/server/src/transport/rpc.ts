@@ -283,6 +283,10 @@ export function createRpcRouter(
       sessions.setDone(p.sessionId, p.done)
       return {}
     },
+    'sessions.delete': async (p) => {
+      await sessions.delete(p.sessionId)
+      return {}
+    },
     'sessions.rename': async (p) => {
       sessions.rename(p.sessionId, p.title)
       return {}

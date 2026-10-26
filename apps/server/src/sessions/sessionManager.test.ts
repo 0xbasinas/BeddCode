@@ -115,6 +115,15 @@ describe('SessionManager', () => {
     })
     expect(() => manager.setDone('missing', true)).toThrow('Unknown session')
   })
+  it('deletes a session: its events leave the log and only the deletion remains', async () => {
+    const { store, manager } = setup({ resume: true })
+    const { sessionId } = await manager.create({ instanceId: 'stub' })
+    const other = await manager.create({ instanceId: 'stub' })
+    await manager.delete(sessionId)
+    expect(store.readSession(sessionId).map((e) => e.event.type)).toEqual(['session.deleted'])
+    expect(store.readSession(other.sessionId).length).toBeGreaterThan(0)
+    await expect(manager.delete(sessionId)).rejects.toThrow('Unknown session')
+  })
   it('refuses to start a session on a provider that is not ready', async () => {
     const { manager } = setup({ resume: true, status: 'needs-sign-in' })
     await expect(manager.create({ instanceId: 'stub' })).rejects.toThrow('not ready')

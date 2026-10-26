@@ -440,6 +440,10 @@ export async function interrupt(sessionId: string) {
 }
 
 /** Moves a session into the Done section, or back out of it. */
+export async function deleteSession(sessionId: string) {
+  await sessionRequest(sessionId, 'sessions.delete', { sessionId })
+}
+
 export async function setSessionDone(sessionId: string, done: boolean) {
   await sessionRequest(sessionId, 'sessions.setDone', { sessionId, done })
 }

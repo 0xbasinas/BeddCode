@@ -127,6 +127,18 @@ export class EventStore {
     return rows.map((r) => ({ seq: r.seq, event: SessionEvent.parse(JSON.parse(r.payload)) }))
   }
 
+  /** Removes a session's events before `beforeSeq`; the log keeps its numbers, with a gap. */
+  purgeSession(sessionId: string, beforeSeq: number): void {
+    this.db.prepare('DELETE FROM events WHERE session_id = ? AND seq < ?').run(sessionId, beforeSeq)
+    for (const slot of [...this.snapshots.keys()]) {
+      if (
+        slot.startsWith(`${sessionId}
+`)
+      )
+        this.snapshots.delete(slot)
+    }
+  }
+
   /** Every usage report made at or after `since`, oldest first. */
   usageSince(since: number): Extract<SessionEvent, { type: 'session.usage' }>[] {
     const rows = this.db

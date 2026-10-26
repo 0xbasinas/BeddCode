@@ -25,13 +25,14 @@ import {
   NotePencil,
   Plus,
   SortDescending,
+  Trash,
   ArrowUUpLeft,
   X,
 } from 'phosphor-react-native'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native'
+import { Alert, FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native'
 
-import { setSessionDone, useAllSessions, useHostStore } from '@/host/store'
+import { deleteSession, setSessionDone, useAllSessions, useHostStore } from '@/host/store'
 import { usePrefs } from '@/host/prefs'
 import { colors, fonts, radius } from '@/theme/tokens'
 import { Diffstat } from '@/ui/Diffstat'
@@ -206,6 +207,25 @@ export default function SessionsScreen() {
         icon: action.kind === 'restore' ? ArrowUUpLeft : Checks,
         disabled: action.kind === 'busy',
         onSelect: () => void setSessionDone(session.id, action.kind === 'file'),
+      },
+      {
+        id: 'delete',
+        label: 'Delete',
+        hint: 'Removes the conversation. Your folder and files stay.',
+        icon: Trash,
+        danger: true,
+        onSelect: () =>
+          Alert.alert('Delete this conversation?', session.title, [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Delete',
+              style: 'destructive',
+              onPress: () =>
+                void deleteSession(session.id).catch((err: unknown) =>
+                  Alert.alert('Could not delete', err instanceof Error ? err.message : String(err)),
+                ),
+            },
+          ]),
       },
     ]
   }

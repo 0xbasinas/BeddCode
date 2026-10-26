@@ -572,6 +572,10 @@ export async function setSessionDone(sessionId: string, done: boolean) {
   await sessionRequest(sessionId, 'sessions.setDone', { sessionId, done })
 }
 
+export async function deleteSession(sessionId: string) {
+  await sessionRequest(sessionId, 'sessions.delete', { sessionId })
+}
+
 export async function setSessionPinned(sessionId: string, pinned: boolean) {
   await sessionRequest(sessionId, 'sessions.setPinned', { sessionId, pinned })
 }

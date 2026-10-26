@@ -14,7 +14,14 @@ import {
   PrFilter,
   PrAction,
 } from './git.ts'
-import { Device, MetricPlatform, MetricRecord, PairingCode, RelaySettings, TailnetStatus } from './hosts.ts'
+import {
+  Device,
+  MetricPlatform,
+  MetricRecord,
+  PairingCode,
+  RelaySettings,
+  TailnetStatus,
+} from './hosts.ts'
 import { ConfigOption, SlashCommand } from './events.ts'
 import { PermissionModeOption, ProviderInstance } from './providers.ts'
 import { FileContent, FileEntry, FileMedia, FolderListing, TerminalInfo } from './workspace.ts'
@@ -534,6 +541,11 @@ export const RpcMethods = {
   /** Moves a session into the sidebar's Done section, or back out of it. */
   'sessions.setDone': {
     params: z.object({ sessionId: z.string(), done: z.boolean() }),
+    result: z.object({}),
+  },
+  /** Removes a session and its history from the host. The folder and any worktree are kept. */
+  'sessions.delete': {
+    params: z.object({ sessionId: z.string() }),
     result: z.object({}),
   },
   /** Pins a session to the top of the sidebar, or unpins it. */

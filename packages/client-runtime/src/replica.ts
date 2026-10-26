@@ -215,6 +215,15 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     }
   }
 
+  if (e.type === 'session.deleted') {
+    const { [e.sessionId]: _gone, ...sessions } = state.sessions
+    return {
+      lastSeq: stored.seq,
+      order: state.order.filter((id) => id !== e.sessionId),
+      sessions,
+    }
+  }
+
   const current = state.sessions[e.sessionId]
   if (!current) return { ...state, lastSeq: stored.seq }
 

@@ -22,6 +22,7 @@ import {
   History,
   Pin,
   PinOff,
+  Trash2,
   X,
 } from 'lucide-react'
 import {
@@ -41,6 +42,7 @@ import { Dropdown } from '../../ui/Dropdown.tsx'
 import {
   reconnectHostNow,
   setSessionDone,
+  deleteSession,
   setSessionPinned,
   useAllSessions,
   useHostStore,
@@ -323,6 +325,21 @@ ${s.projectless ? 'no-project' : s.projectPath}`
         label: session.pinned ? 'Unpin' : 'Pin to top',
         icon: session.pinned ? <PinOff size={15} /> : <Pin size={15} />,
         onSelect: () => void setSessionPinned(session.id, !session.pinned),
+      },
+      {
+        id: 'delete',
+        label: 'Delete',
+        hint: 'Removes the conversation. Your folder and files stay.',
+        icon: <Trash2 size={15} />,
+        onSelect: () => {
+          if (!window.confirm(`Delete "${session.title}"? This cannot be undone.`)) return
+          void deleteSession(session.id).then(
+            () => {
+              if (openId === session.id) void navigate({ to: '/' })
+            },
+            (err: unknown) => window.alert(err instanceof Error ? err.message : String(err)),
+          )
+        },
       },
     ]
   }

@@ -110,6 +110,8 @@ export const SessionEvent = z.discriminatedUnion('type', [
   Base.extend({ type: z.literal('session.renamed'), title: z.string().trim().min(1).max(120) }),
   /** The user moved the session to, or back out of, the sidebar's Done section. */
   Base.extend({ type: z.literal('session.done'), done: z.boolean() }),
+  /** The user deleted the session; devices drop it. Its earlier events are removed from the log. */
+  Base.extend({ type: z.literal('session.deleted') }),
   /** The user pinned the session to the top of the sidebar, or unpinned it. */
   Base.extend({ type: z.literal('session.pinned'), pinned: z.boolean() }),
   /** The model and reasoning effort in use changed (set by the user during the session). */

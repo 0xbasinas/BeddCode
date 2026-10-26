@@ -656,6 +656,23 @@ export class SessionManager {
     this.deps.store.append({ type: 'session.done', sessionId, at: Date.now(), done })
   }
 
+  /**
+   * Removes a session: the agent stops, devices are told to drop it, and its events leave the log.
+   * The folder and any worktree stay where they are.
+   */
+  async delete(sessionId: string): Promise<void> {
+    if (!this.createdEvent(sessionId)) throw new Error(`Unknown session: ${sessionId}`)
+    const live = this.live.get(sessionId)
+    if (live) {
+      this.live.delete(sessionId)
+      this.dropAsks(sessionId)
+      await live.session.close().catch(() => undefined)
+    }
+    this.turns.delete(sessionId)
+    const { seq } = this.deps.store.append({ type: 'session.deleted', sessionId, at: Date.now() })
+    this.deps.store.purgeSession(sessionId, seq)
+  }
+
   /** Deletes the worktree a session was started in. The session's branch and history are kept. */
   async removeWorktree(sessionId: string): Promise<boolean> {
     const created = this.createdEvent(sessionId)
