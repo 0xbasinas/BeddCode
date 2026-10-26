@@ -1,7 +1,9 @@
 name: Release
 
 # Pushing a tag such as v0.2.0 builds the installers on each operating system and attaches them to a
-# draft GitHub release, which the apps' updaters read once it is published.
+# draft GitHub release, which the apps' updaters read once it is published. "Run workflow" builds the
+# same installers without publishing them to a version, and replaces the desktop-dev prerelease with
+# them, so the link to the latest build never changes.
 on:
   push:
     tags: ['v*']
@@ -35,11 +37,39 @@ jobs:
       # is built on its own system. Linux builds on a fixed Ubuntu release, not "latest", so the glibc the
       # packages need does not change under us. Set CSC_LINK and CSC_KEY_PASSWORD (repository secrets) to sign
       # the Windows installer; unsigned builds still work but Windows warns on first run.
-      - run: pnpm --filter @beddcode/desktop ${{ matrix.target }} --publish always
+      - run: pnpm --filter @beddcode/desktop ${{ matrix.target }} --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v5
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+          if-no-files-found: error
+
+  # A manual run replaces the desktop-dev prerelease, recreated so its tag moves to the built commit.
+  rolling:
+    name: Publish desktop-dev
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    needs: installers
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: installers-*
+          path: installers
+          merge-multiple: true
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -lh installers
+          gh release delete desktop-dev --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true
+          gh release create desktop-dev installers/* --repo "$GITHUB_REPOSITORY" --prerelease             --target "$GITHUB_SHA" --title desktop-dev             --notes "Built from $GITHUB_SHA by run $GITHUB_RUN_NUMBER. Replaced by the next manual run."
 
   # The host alone, for machines with no desktop (see scripts/install-host.sh). It is built on the
   # same Ubuntu release as the Linux installer, because the terminal library is native.
