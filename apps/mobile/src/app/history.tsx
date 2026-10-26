@@ -94,7 +94,7 @@ export default function HistoryScreen() {
               data={list ?? []}
               keyExtractor={(i) => i.id}
               ListEmptyComponent={
-                error ? null : (
+                error ? undefined : (
                   <View style={styles.empty}>
                     <Muted>Nothing to resume yet.</Muted>
                   </View>
