@@ -55,6 +55,22 @@ function makeClient(onEvent: (e: StoredEvent) => void) {
 }
 
 describe('HostClient', () => {
+  it('measures how long the connection and the catch-up took', () => {
+    const client = makeClient(() => {})
+    client.start()
+    const socket = FakeSocket.instances[0]!
+    socket.open()
+    socket.receive(welcome)
+    socket.receive({ t: 'event', stored: ev(1) })
+    socket.receive({ t: 'event', stored: ev(2) })
+    socket.receive({ t: 'caught-up', seq: 2 })
+    const byName = Object.fromEntries(client.perf.recent.map((r) => [r.name, r]))
+    expect(byName['connect.ms']?.tags).toEqual({ route: 'direct' })
+    expect(byName['replay.events']).toMatchObject({ value: 2, tags: { resume: 'cold' } })
+    expect(byName['replay.kb']!.value).toBeGreaterThan(0)
+    expect(byName['replay.ms']).toBeDefined()
+  })
+
   it.each([false, true])(
     'tries another route when stalled, socket open=%s, ignoring late frames',
     (opened) => {

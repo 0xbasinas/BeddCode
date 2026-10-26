@@ -10,6 +10,13 @@ import {
   route,
   sameSecret,
 } from '../src/protocol.ts'
+import {
+  MAX_BODY_BYTES,
+  RETENTION_DAYS,
+  summarize,
+  validateBatch,
+  type Batch,
+} from '../src/metrics.ts'
 
 /**
  * The BeddCode relay on Cloudflare: one Durable Object per room, where a host and the devices
@@ -19,6 +26,7 @@ import {
  */
 export interface Env {
   ROOMS: DurableObjectNamespace<Room>
+  METRICS: DurableObjectNamespace<Metrics>
   /** Optional (`wrangler secret put RELAY_PASSWORD`): without it, only your own hosts can open rooms. */
   RELAY_PASSWORD?: string
 }
@@ -27,6 +35,8 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname === '/health') return new Response('ok')
+    if (url.pathname === '/metrics' || url.pathname === '/metrics/summary')
+      return metricsRequest(request, url, env)
     const target = route(url.pathname)
     if (!target || request.headers.get('Upgrade') !== 'websocket')
       return new Response('Not found', { status: 404 })
@@ -39,6 +49,36 @@ export default {
     return env.ROOMS.get(env.ROOMS.idFromName(target.room)).fetch(request)
   },
 } satisfies ExportedHandler<Env>
+
+/**
+ * Speed measurements from your own apps. Only reachable with the relay password, and switched off
+ * (503) while there is none, so nobody else can read or fill it.
+ */
+async function metricsRequest(request: Request, url: URL, env: Env): Promise<Response> {
+  if (!env.RELAY_PASSWORD) return new Response('Set RELAY_PASSWORD to use metrics', { status: 503 })
+  if (!hostAllowed(env.RELAY_PASSWORD, request.headers.get('Authorization')))
+    return new Response('Unauthorized', { status: 401 })
+  const store = env.METRICS.get(env.METRICS.idFromName('main'))
+  if (url.pathname === '/metrics/summary' && request.method === 'GET') {
+    const days = Math.min(RETENTION_DAYS, Math.max(1, Number(url.searchParams.get('days')) || 7))
+    return Response.json(await store.summary(days))
+  }
+  if (url.pathname === '/metrics' && request.method === 'POST') {
+    const text = await request.text()
+    if (text.length > MAX_BODY_BYTES) return new Response('Too large', { status: 413 })
+    let body: unknown
+    try {
+      body = JSON.parse(text)
+    } catch {
+      return new Response('Bad request', { status: 400 })
+    }
+    const batch = validateBatch(body)
+    if (!batch) return new Response('Bad request', { status: 400 })
+    const stored = await store.ingest(batch)
+    return stored ? new Response(null, { status: 204 }) : new Response('Full', { status: 429 })
+  }
+  return new Response('Not found', { status: 404 })
+}
 
 interface HostState {
   claimed: boolean
@@ -160,5 +200,60 @@ export class Room extends DurableObject<Env> {
 
   override async webSocketError(ws: WebSocket): Promise<void> {
     await this.webSocketClose(ws, 1011, 'error')
+  }
+}
+
+const MAX_SAMPLES = 300_000
+
+/** Where the measurements live: one small SQLite database inside a Durable Object. */
+export class Metrics extends DurableObject<Env> {
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env)
+    ctx.storage.sql.exec(
+      `CREATE TABLE IF NOT EXISTS samples (
+         t INTEGER NOT NULL, host TEXT NOT NULL, platform TEXT NOT NULL,
+         name TEXT NOT NULL, value REAL NOT NULL, route TEXT, tags TEXT)`,
+    )
+    ctx.storage.sql.exec('CREATE INDEX IF NOT EXISTS samples_t ON samples (t)')
+  }
+
+  /** False when the store is full, so a runaway client cannot fill it. */
+  async ingest(batch: Batch): Promise<boolean> {
+    const sql = this.ctx.storage.sql
+    const count = sql.exec('SELECT COUNT(*) AS n FROM samples').one().n as number
+    if (count + batch.records.length > MAX_SAMPLES) return false
+    this.ctx.storage.transactionSync(() => {
+      for (const r of batch.records)
+        sql.exec(
+          'INSERT INTO samples (t, host, platform, name, value, route, tags) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          r.t,
+          batch.host,
+          batch.platform,
+          r.name,
+          r.value,
+          r.tags?.route ?? null,
+          r.tags ? JSON.stringify(r.tags) : null,
+        )
+    })
+    // Old samples are dropped once a day.
+    if ((await this.ctx.storage.getAlarm()) === null)
+      await this.ctx.storage.setAlarm(Date.now() + 24 * 3600_000)
+    return true
+  }
+
+  async summary(days: number) {
+    const since = Date.now() - days * 24 * 3600_000
+    const rows = this.ctx.storage.sql
+      .exec('SELECT name, platform, route, value FROM samples WHERE t >= ?', since)
+      .toArray() as { name: string; platform: string; route: string | null; value: number }[]
+    return { days, samples: rows.length, rows: summarize(rows) }
+  }
+
+  override async alarm(): Promise<void> {
+    this.ctx.storage.sql.exec(
+      'DELETE FROM samples WHERE t < ?',
+      Date.now() - RETENTION_DAYS * 24 * 3600_000,
+    )
+    await this.ctx.storage.setAlarm(Date.now() + 24 * 3600_000)
   }
 }

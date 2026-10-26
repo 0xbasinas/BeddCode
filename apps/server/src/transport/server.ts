@@ -38,6 +38,7 @@ import {
   type AutomationServices,
   type RpcContext,
   type WorkspaceServices,
+  type AccessServices,
   type RelayControl,
 } from './rpc.ts'
 
@@ -100,6 +101,9 @@ export interface StartServerOptions {
   reachable?: () => Promise<{ hostId: string; name: string; routes: string[]; relay?: string }>
   /** Reads and changes the relay this host is reachable through. */
   relay?: RelayControl
+  telemetry?: AccessServices['telemetry']
+  /** Takes the host's own measurements (see Telemetry.record). */
+  telemetryRecorder?: (name: string, value: number, tags?: Record<string, string>) => void
   automation: AutomationServices
   /** Answers BeddCode's agent tools for sessions that may use them (loopback only). */
   agentTools?: AgentTools
@@ -193,6 +197,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       port: () => listeningPort,
       reachable: options.reachable,
       relay: options.relay,
+      telemetry: options.telemetry,
     },
     options.automation,
   )
@@ -509,12 +514,15 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
           break
         case 'subscribe': {
           unsubscribe?.()
+          const replayStart = performance.now()
+          let replayed = 0
           // Replay and attach the live listener in one synchronous step: appends are synchronous,
           // so no event can slip between the last replayed row and the first live one.
           let cursor = frame.afterSeq
           for (;;) {
             const batch = store.readAfter(cursor, REPLAY_BATCH)
             for (const stored of batch) send({ t: 'event', stored })
+            replayed += batch.length
             if (batch.length < REPLAY_BATCH) {
               cursor = batch.at(-1)?.seq ?? cursor
               break
@@ -522,6 +530,9 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
             cursor = batch.at(-1)!.seq
           }
           send({ t: 'caught-up', seq: cursor })
+          const resume = frame.afterSeq === 0 ? 'cold' : 'warm'
+          options.telemetryRecorder?.('host.replay.ms', performance.now() - replayStart, { resume })
+          options.telemetryRecorder?.('host.replay.events', replayed, { resume })
           unsubscribe = store.subscribe((stored) => send({ t: 'event', stored }))
           break
         }

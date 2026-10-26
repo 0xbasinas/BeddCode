@@ -80,6 +80,11 @@ export const SPECS: CommandSpec[] = [
     flags: ['--name'],
   },
   { name: 'config', desc: "The host's settings", sub: ['get', 'set', 'unset'] },
+  {
+    name: 'metrics',
+    desc: 'Speed measurements your relay has collected',
+    flags: ['--days', '--json'],
+  },
   { name: 'status', desc: 'Is the host running?', flags: [PORT] },
   { name: 'open', desc: 'Start the desktop app', flags: [PORT] },
   { name: 'pair', desc: 'Print a one-time pairing code', flags: [PORT] },

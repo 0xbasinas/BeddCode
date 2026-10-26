@@ -12,6 +12,8 @@ export interface ServerConfig {
   relayUrl?: string
   /** The password the relay asks of hosts, when its owner set one. */
   relayPassword?: string
+  /** Upload anonymous speed measurements to the relay. */
+  telemetry?: boolean
 }
 
 /** Settings kept in `<data dir>/config.json` (see `beddcode config`); flags and variables win. */
@@ -23,6 +25,7 @@ export interface ConfigFile {
   allowedOrigins?: string[]
   relayUrl?: string
   relayPassword?: string
+  telemetry?: boolean
 }
 
 export const configPath = () => path.join(dataHome(), 'config.json')
@@ -103,6 +106,9 @@ export function parseServeArgs(
   if (relayUrl) config.relayUrl = relayUrl
   const relayPassword = env.BEDDCODE_RELAY_PASSWORD ?? file.relayPassword
   if (relayPassword) config.relayPassword = relayPassword
+  const telemetry =
+    env.BEDDCODE_TELEMETRY !== undefined ? truthy(env.BEDDCODE_TELEMETRY) : file.telemetry
+  if (telemetry !== undefined) config.telemetry = telemetry
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!
@@ -132,6 +138,9 @@ export function parseServeArgs(
         break
       case '--relay-password':
         config.relayPassword = value()
+        break
+      case '--telemetry':
+        config.telemetry = true
         break
       default:
         throw new Error(`Unknown option: ${arg}`)

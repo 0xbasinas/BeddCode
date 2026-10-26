@@ -171,13 +171,14 @@ function RelaySetting({ onChange }: { onChange(): void }) {
   useEffect(() => {
     if (settings) setValue((current) => current || (settings.url ?? '').replace(/^wss?:\/\//, ''))
   }, [settings])
-  const save = async (url: string | null, newPassword?: string) => {
+  const save = async (url: string | null, newPassword?: string, telemetry?: boolean) => {
     setBusy(true)
     setError(undefined)
     try {
       const next = await hostRequest(LOCAL_HOST_KEY, 'host.relay.set', {
         url,
         ...(newPassword !== undefined ? { password: newPassword } : {}),
+        ...(telemetry !== undefined ? { telemetry } : {}),
       })
       if (!alive.current) return
       setSettings(next)
@@ -265,6 +266,20 @@ function RelaySetting({ onChange }: { onChange(): void }) {
           </button>
         )}
       </form>
+      {settings.url && settings.passwordSet && (
+        <label className="hosts-check">
+          <input
+            type="checkbox"
+            checked={settings.telemetry}
+            disabled={busy}
+            onChange={(e) => void save(settings.url ?? null, undefined, e.target.checked)}
+          />
+          <span>
+            Keep anonymous speed measurements on my relay. Only timings and counts, never your code,
+            messages or file names. See them with <code>beddcode metrics</code>.
+          </span>
+        </label>
+      )}
       {error && <HostNote tone="error">{error}</HostNote>}
     </div>
   )

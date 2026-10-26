@@ -17,6 +17,11 @@ afterEach(async () => {
   for (const fn of cleanup.splice(0).reverse()) await fn()
 })
 
+/** When the relay under test asks hosts for a password (RELAY_TEST_PASSWORD), hosts present it. */
+const hostOptions = process.env.RELAY_TEST_PASSWORD
+  ? { headers: { authorization: `Bearer ${process.env.RELAY_TEST_PASSWORD}` } }
+  : undefined
+
 /** Set RELAY_TEST_PORT to run these against an already-running relay (e.g. `wrangler dev`). */
 async function boot(): Promise<RunningRelay> {
   if (process.env.RELAY_TEST_PORT)
@@ -34,7 +39,7 @@ const closed = (ws: WebSocket) =>
 
 /** A minimal host: claims its room and answers each device with the same handshake the server's agent uses. */
 async function fakeHost(port: number, route: ReturnType<typeof parseRelayRoute> & object) {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/host/${route.room}`)
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/host/${route.room}`, hostOptions)
   cleanup.push(() => ws.terminate())
   await opened(ws)
   ws.send(JSON.stringify({ t: 'host', auth: route.auth }))
@@ -133,7 +138,7 @@ describe('relay', () => {
     const route = parseRelayRoute(buildRelayRoute(`ws://127.0.0.1:${relay.port}`, key))!
     await fakeHost(relay.port, route)
 
-    const squatter = new WebSocket(`ws://127.0.0.1:${relay.port}/host/${route.room}`)
+    const squatter = new WebSocket(`ws://127.0.0.1:${relay.port}/host/${route.room}`, hostOptions)
     cleanup.push(() => squatter.terminate())
     await opened(squatter)
     squatter.send(JSON.stringify({ t: 'host', auth: 'not-the-owner' }))
@@ -166,7 +171,7 @@ describe('relay', () => {
     const key = newRelayKey()
     const route = parseRelayRoute(buildRelayRoute(`ws://127.0.0.1:${relay.port}`, key))!
 
-    const stranger = new WebSocket(`ws://127.0.0.1:${relay.port}/host/${route.room}`)
+    const stranger = new WebSocket(`ws://127.0.0.1:${relay.port}/host/${route.room}`, hostOptions)
     cleanup.push(() => stranger.terminate())
     const refused = await new Promise<string>((resolve) => {
       stranger.once('unexpected-response', (_req, res) => resolve(String(res.statusCode)))
@@ -195,7 +200,7 @@ describe('relay', () => {
 
     const key = newRelayKey()
     const route = parseRelayRoute(buildRelayRoute(`ws://127.0.0.1:${relay.port}`, key))!
-    const host = new WebSocket(`ws://127.0.0.1:${relay.port}/host/${route.room}`)
+    const host = new WebSocket(`ws://127.0.0.1:${relay.port}/host/${route.room}`, hostOptions)
     cleanup.push(() => host.terminate())
     await opened(host)
     host.send('not json')

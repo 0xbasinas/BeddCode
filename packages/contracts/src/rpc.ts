@@ -14,7 +14,7 @@ import {
   PrFilter,
   PrAction,
 } from './git.ts'
-import { Device, PairingCode, RelaySettings, TailnetStatus } from './hosts.ts'
+import { Device, MetricPlatform, MetricRecord, PairingCode, RelaySettings, TailnetStatus } from './hosts.ts'
 import { ConfigOption, SlashCommand } from './events.ts'
 import { PermissionModeOption, ProviderInstance } from './providers.ts'
 import { FileContent, FileEntry, FileMedia, FolderListing, TerminalInfo } from './workspace.ts'
@@ -288,8 +288,21 @@ export const RpcMethods = {
       url: z.string().nullable(),
       /** The relay's password: leave out to keep the current one, empty or null to remove it. */
       password: z.string().nullable().optional(),
+      /** Upload anonymous speed measurements to the relay. Leave out to keep it as it is. */
+      telemetry: z.boolean().optional(),
     }),
     result: RelaySettings,
+  },
+  /**
+   * Speed measurements from a client. The host passes them to the relay when the user turned that
+   * on; `accepted: false` tells the client to stop sending.
+   */
+  'telemetry.report': {
+    params: z.object({
+      platform: MetricPlatform,
+      records: z.array(MetricRecord).max(200),
+    }),
+    result: z.object({ accepted: z.boolean() }),
   },
   /** Paired devices, and removal of one (its token stops working). Loopback connections only. */
   'devices.list': { params: z.object({}), result: z.array(Device) },

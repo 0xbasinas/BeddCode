@@ -28,6 +28,7 @@ This machine
   pair                Print a one-time code to pair another device with this host
   hosts               Machines this command can talk to (hosts add <address> <code>, hosts rm <name>)
   config              The host's settings: port, host, allowLan, requireToken, allowedOrigins (get, set, unset)
+  metrics             Speed measurements collected on your relay (--days 1-30, --json)
   logs                Show the host's log (-n <lines>, -f to follow, --level warn|error)
   doctor              Check git, agent CLIs, GitHub, Tailscale and the host, and say how to fix them
   report              Write doctor output, versions and the recent log to a file for a bug report (--print, --out <file>); secrets removed

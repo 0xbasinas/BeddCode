@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { create } from 'zustand'
 import {
   HostClient,
+  startTelemetry,
   applyEvent,
   retryWhileCurrent,
   emptyReplica,
@@ -91,8 +92,13 @@ export const useHostStore = create<HostsState>(() => ({
 }))
 
 const clients = new Map<string, HostClient>()
+/** Stops sending a host's speed measurements (see startTelemetry). */
+const telemetryStops = new Map<string, () => void>()
 
-type LiveFrame = Extract<ServerFrame, { t: 'term.out' | 'term.exit' | 'fs.changed' | 'design.changed' }>
+type LiveFrame = Extract<
+  ServerFrame,
+  { t: 'term.out' | 'term.exit' | 'fs.changed' | 'design.changed' }
+>
 const frameListeners = new Map<string, Set<(frame: LiveFrame) => void>>()
 
 /** Terminal output and file-change notifications of one host. Returns the function that unsubscribes. */
@@ -172,6 +178,7 @@ function loadHostLists(hostKey: string, client: HostClient) {
 
 function startHost(entry: HostEntry) {
   clients.get(entry.key)?.stop()
+  telemetryStops.get(entry.key)?.()
   patchRuntime(entry.key, () => emptyRuntime())
 
   const queue: StoredEvent[] = []
@@ -254,6 +261,10 @@ function startHost(entry: HostEntry) {
     },
   })
   clients.set(entry.key, client)
+  telemetryStops.set(
+    entry.key,
+    startTelemetry(client, navigator.userAgent.includes('Electron') ? 'desktop' : 'web'),
+  )
   client.offerBrowser(browserOffer())
   client.offerDesign({ canRender: true, ...designViews.get(entry.key) })
   client.start()
@@ -325,6 +336,8 @@ export function removeRemoteHost(hostKey: string) {
   if (hostKey === LOCAL_HOST_KEY) return
   clients.get(hostKey)?.stop()
   clients.delete(hostKey)
+  telemetryStops.get(hostKey)?.()
+  telemetryStops.delete(hostKey)
   frameListeners.delete(hostKey)
   const entries = useHostStore.getState().entries.filter((e) => e.key !== hostKey)
   useHostStore.setState((s) => {

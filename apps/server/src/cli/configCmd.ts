@@ -22,6 +22,10 @@ export const SETTINGS: Record<keyof ConfigFile, { kind: Kind; help: string }> = 
   },
   requireToken: { kind: 'boolean', help: "Ask for a paired device's token even from this machine" },
   allowedOrigins: { kind: 'list', help: 'Web page origins allowed to connect (comma separated)' },
+  telemetry: {
+    kind: 'boolean',
+    help: 'Upload anonymous speed measurements to your relay (see `beddcode metrics`)',
+  },
   relayPassword: { kind: 'string', help: 'The password your relay asks of hosts, if you set one' },
   relayUrl: {
     kind: 'string',

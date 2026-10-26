@@ -3,6 +3,7 @@ import { AppState } from 'react-native'
 import { create } from 'zustand'
 import {
   HostClient,
+  startTelemetry,
   applyEvent,
   retryWhileCurrent,
   emptyReplica,
@@ -68,8 +69,13 @@ export const useHostStore = create<HostsState>(() => ({
 }))
 
 const clients = new Map<string, HostClient>()
+/** Stops sending a host's speed measurements (see startTelemetry). */
+const telemetryStops = new Map<string, () => void>()
 
-type LiveFrame = Extract<ServerFrame, { t: 'term.out' | 'term.exit' | 'fs.changed' | 'design.changed' }>
+type LiveFrame = Extract<
+  ServerFrame,
+  { t: 'term.out' | 'term.exit' | 'fs.changed' | 'design.changed' }
+>
 const frameListeners = new Map<string, Set<(frame: LiveFrame) => void>>()
 
 /** Terminal output and file-change notifications of one host. Returns the function that unsubscribes. */
@@ -78,6 +84,16 @@ export function onHostFrame(hostKey: string, listener: (frame: LiveFrame) => voi
   frameListeners.set(hostKey, set)
   set.add(listener)
   return () => set.delete(listener)
+}
+
+/** Records a speed measurement against a host (sent to it when its owner turned that on). */
+export function recordMetric(
+  hostKey: string,
+  name: string,
+  value: number,
+  tags?: Record<string, string | number | boolean>,
+) {
+  clients.get(hostKey)?.perf.record(name, value, tags)
 }
 
 /** Sends a frame to a host; false when not connected (nothing was sent). */
@@ -142,6 +158,7 @@ function loadHostLists(hostKey: string, client: HostClient) {
 
 function startHost(entry: HostEntry) {
   clients.get(entry.key)?.stop()
+  telemetryStops.get(entry.key)?.()
   patchRuntime(entry.key, () => emptyRuntime())
 
   const queue: StoredEvent[] = []
@@ -184,6 +201,7 @@ function startHost(entry: HostEntry) {
     },
   })
   clients.set(entry.key, client)
+  telemetryStops.set(entry.key, startTelemetry(client, 'mobile'))
   client.start()
 }
 
@@ -227,6 +245,8 @@ export function addRemoteHost(entry: HostEntry) {
 export function removeRemoteHost(hostKey: string) {
   clients.get(hostKey)?.stop()
   clients.delete(hostKey)
+  telemetryStops.get(hostKey)?.()
+  telemetryStops.delete(hostKey)
   frameListeners.delete(hostKey)
   const entries = useHostStore.getState().entries.filter((e) => e.key !== hostKey)
   useHostStore.setState((s) => {

@@ -820,3 +820,19 @@
 .hosts-peek-button:active {
   color: var(--text);
 }
+
+.hosts-check {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(8px * var(--ui-scale));
+  color: var(--hosts-muted);
+  font-size: calc(12px * var(--ui-scale));
+  line-height: 1.5;
+}
+.hosts-check input {
+  margin-top: calc(3px * var(--ui-scale));
+  accent-color: var(--accent);
+}
+.hosts-check code {
+  color: var(--text);
+}

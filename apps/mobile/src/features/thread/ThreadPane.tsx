@@ -1,6 +1,7 @@
 import { doneMenuAction, effortLabel, endedByDecline, folderName } from '@beddcode/client-runtime'
 import { Checks, DotsThree, Stop as StopIcon, ArrowUUpLeft } from 'phosphor-react-native'
-import { useState } from 'react'
+import { now } from '@beddcode/client-runtime'
+import { useRef, useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 
 import { Composer } from '@/features/composer/Composer'
@@ -11,6 +12,7 @@ import {
   dequeue,
   interrupt,
   prompt,
+  recordMetric,
   setMode,
   setSessionDone,
   setSessionModel,
@@ -40,6 +42,7 @@ export function ThreadPane({
 }) {
   const session = useSession(sessionId)
   const hostKey = useSessionHostKey(sessionId)
+  const openedAt = useRef(now())
   const runtime = useRuntime(hostKey)
   const [menu, setMenu] = useState(false)
   const [modeMenu, setModeMenu] = useState(false)
@@ -133,6 +136,13 @@ export function ThreadPane({
       />
       <View style={{ flex: 1 }}>
         <Transcript
+          onFirstLayout={() =>
+            hostKey &&
+            recordMetric(hostKey, 'thread.open.ms', now() - openedAt.current, {
+              rows:
+                session.items.length < 50 ? 'lt50' : session.items.length < 500 ? 'lt500' : 'many',
+            })
+          }
           session={session}
           cwd={session.cwd}
           hostKey={hostKey}

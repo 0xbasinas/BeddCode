@@ -318,6 +318,7 @@ export function Transcript({
   header,
   footer,
   hostKey,
+  onFirstLayout,
 }: {
   session: SessionView
   cwd: string
@@ -327,9 +328,12 @@ export function Transcript({
   onAnswer(requestId: string, answers?: Record<string, string[]>): Promise<void>
   header?: React.ReactElement
   footer?: React.ReactElement
+  /** Called once, when the first rows of the thread have been laid out. */
+  onFirstLayout?(): void
 }) {
   const data = useMemo(() => entries(session.items), [session.items])
   const list = useRef<FlatList<Entry>>(null)
+  const laidOut = useRef(false)
   const stick = useRef(true)
 
   return (
@@ -347,6 +351,10 @@ export function Transcript({
       }}
       scrollEventThrottle={64}
       onContentSizeChange={(_width, height) => {
+        if (!laidOut.current && height > 0) {
+          laidOut.current = true
+          onFirstLayout?.()
+        }
         // Offsets past the end are clamped, so this lands on the last row even before it is measured.
         if (stick.current) list.current?.scrollToOffset({ offset: height, animated: false })
       }}

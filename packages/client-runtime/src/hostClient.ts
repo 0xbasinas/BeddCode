@@ -9,6 +9,7 @@ import {
   type RpcResult,
   type StoredEvent,
 } from '@beddcode/contracts'
+import { Recorder, now } from './perf.ts'
 import { RelaySocket, isRelayRoute } from './relaySocket.ts'
 
 /** `denied`: the host refused our token. It will not help to retry; the device has to be paired again. */
@@ -30,7 +31,9 @@ export interface HostClientOptions {
   onEvent(stored: StoredEvent): void
   onCaughtUp?(seq: number): void
   /** Terminal output and file-change notifications: live data that is not part of the event log. */
-  onFrame?(frame: Extract<ServerFrame, { t: 'term.out' | 'term.exit' | 'fs.changed' | 'design.changed' }>): void
+  onFrame?(
+    frame: Extract<ServerFrame, { t: 'term.out' | 'term.exit' | 'fs.changed' | 'design.changed' }>,
+  ): void
   onState?(state: ConnectionState, host?: HostInfo): void
   /** An agent's browser tool call to run (only after `offerBrowser` said this client can). */
   onBrowserCall?(id: string, call: BrowserUseCall): void
@@ -76,6 +79,10 @@ export class HostClient {
   private ws: WebSocket | null = null
   private state: ConnectionState = 'connecting'
   private lastSeq: number
+  /** Measurements of this connection (connect and replay times), see perf.ts. */
+  readonly perf = new Recorder()
+  private connectStartedAt = 0
+  private replay: { start: number; events: number; bytes: number; cold: boolean } | null = null
   private attempt = 0
   private route = 0
   private nextId = 1
@@ -186,10 +193,13 @@ export class HostClient {
             this.waiting.delete(wake)
             attempt()
           }
-          const giveUp = setTimeout(() => {
-            this.waiting.delete(wake)
-            reject(new Error('not connected'))
-          }, Math.min(waitMs, deadline - Date.now()))
+          const giveUp = setTimeout(
+            () => {
+              this.waiting.delete(wake)
+              reject(new Error('not connected'))
+            },
+            Math.min(waitMs, deadline - Date.now()),
+          )
           this.waiting.add(wake)
           return
         }
@@ -267,6 +277,7 @@ export class HostClient {
         (isRelayRoute(url) ? new RelaySocket(url) : new WebSocket(url)) as unknown as WebSocket)
     const ws = create(this.activeUrl)
     this.ws = ws
+    this.connectStartedAt = now()
     let welcomed = false
     const disconnected = () => {
       if (this.ws !== ws) return
@@ -292,6 +303,7 @@ export class HostClient {
     }
     ws.onmessage = (msg) => {
       if (this.ws !== ws) return
+      if (this.replay && typeof msg.data === 'string') this.replay.bytes += msg.data.length
       let frame: ServerFrame
       try {
         frame = ServerFrame.parse(JSON.parse(String(msg.data)))
@@ -333,6 +345,11 @@ export class HostClient {
       case 'welcome':
         this.attempt = 0
         this.setState('connected', frame.host)
+        {
+          const route = isRelayRoute(this.activeUrl) ? 'relay' : 'direct'
+          this.perf.record('connect.ms', now() - this.connectStartedAt, { route })
+          this.replay = { start: now(), events: 0, bytes: 0, cold: this.lastSeq === 0 }
+        }
         ws.send(JSON.stringify({ t: 'subscribe', afterSeq: this.lastSeq }))
         if (this.browserOffer) ws.send(JSON.stringify(this.browserOffer))
         if (this.designView) ws.send(JSON.stringify(this.designView))
@@ -348,12 +365,24 @@ export class HostClient {
         this.probeTimer = null
         break
       case 'event':
+        if (this.replay) this.replay.events++
         if (frame.stored.seq > this.lastSeq) {
           this.lastSeq = frame.stored.seq
           this.options.onEvent(frame.stored)
         }
         break
       case 'caught-up':
+        if (this.replay) {
+          const { start, events, bytes, cold } = this.replay
+          const tags = {
+            route: isRelayRoute(this.activeUrl) ? 'relay' : 'direct',
+            resume: cold ? 'cold' : 'warm',
+          }
+          this.perf.record('replay.ms', now() - start, tags)
+          this.perf.record('replay.events', events, tags)
+          this.perf.record('replay.kb', bytes / 1024, tags)
+          this.replay = null
+        }
         this.options.onCaughtUp?.(frame.seq)
         break
       case 'term.out':

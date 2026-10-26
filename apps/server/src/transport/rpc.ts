@@ -1,6 +1,8 @@
 import { statSync } from 'node:fs'
 import {
   RpcMethods,
+  type MetricPlatform,
+  type MetricRecord,
   type RelaySettings,
   type RpcMethodName,
   type RpcParams,
@@ -87,11 +89,13 @@ export interface AccessServices {
   reachable?: () => Promise<{ hostId: string; name: string; routes: string[]; relay?: string }>
   /** Reads and changes the relay this host is reachable through. */
   relay?: RelayControl
+  /** Where apps' speed measurements go (kept only while the owner has uploads switched on). */
+  telemetry?: { report(platform: MetricPlatform, records: MetricRecord[]): boolean }
 }
 
 export interface RelayControl {
   get(): RelaySettings
-  set(url: string | null, password?: string | null): Promise<RelaySettings>
+  set(url: string | null, password?: string | null, telemetry?: boolean): Promise<RelaySettings>
 }
 
 /** What the router knows about the caller. */
@@ -142,8 +146,11 @@ export function createRpcRouter(
     },
     'host.relay.set': (p) => {
       if (!access.relay) throw new Error('This host does not support relays')
-      return access.relay.set(p.url, p.password)
+      return access.relay.set(p.url, p.password, p.telemetry)
     },
+    'telemetry.report': async (p) => ({
+      accepted: access.telemetry?.report(p.platform, p.records) ?? false,
+    }),
     'devices.list': async () => access.tokens.list(),
     'devices.revoke': async (p) => {
       alerts.forgetDevice(p.id)

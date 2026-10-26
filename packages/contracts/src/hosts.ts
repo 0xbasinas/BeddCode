@@ -17,9 +17,30 @@ export const RelaySettings = z.object({
   url: z.string().optional(),
   /** Whether this host presents a password to the relay (the password itself is never sent back). */
   passwordSet: z.boolean(),
+  /** Whether anonymous speed measurements are uploaded to the relay (see telemetry.report). */
+  telemetry: z.boolean(),
   status: z.enum(['off', 'connecting', 'online', 'offline']),
 })
 export type RelaySettings = z.infer<typeof RelaySettings>
+
+/**
+ * One measurement: a number and a few short labels, never content. Names and labels are
+ * restricted to a small alphabet on purpose, so nothing like a prompt or a path can be sent.
+ */
+export const MetricRecord = z.object({
+  /** When it was taken, epoch ms. */
+  t: z.number().int().nonnegative(),
+  name: z.string().regex(/^[a-z0-9_.]{1,48}$/),
+  value: z.number().finite(),
+  tags: z
+    .record(z.string().regex(/^[a-z0-9_]{1,24}$/), z.string().regex(/^[A-Za-z0-9_.:-]{0,40}$/))
+    .refine((tags) => Object.keys(tags).length <= 6, 'at most 6 tags')
+    .optional(),
+})
+export type MetricRecord = z.infer<typeof MetricRecord>
+
+export const MetricPlatform = z.enum(['web', 'desktop', 'mobile'])
+export type MetricPlatform = z.infer<typeof MetricPlatform>
 
 /** A paired device: it can reach this host from outside the machine with its own token. */
 export const Device = z.object({
