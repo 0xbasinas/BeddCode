@@ -18,7 +18,12 @@ import type {
   UsageLimits,
   UsageSummary,
 } from '@beddcode/contracts'
-import type { ProviderAdapter, ProviderSession, SessionMcpServer } from '@beddcode/provider-core'
+import type {
+  HistoryTurn,
+  ProviderAdapter,
+  ProviderSession,
+  SessionMcpServer,
+} from '@beddcode/provider-core'
 import type { Logger } from '@beddcode/shared'
 import { PreviewSeeds, type PreviewCache } from '../agents/previews.ts'
 import type { AttachmentStore } from '../attachments/store.ts'
@@ -258,7 +263,10 @@ export class SessionManager {
         model: params.model,
         effort: params.effort,
         config: params.config,
-        mcpServers: this.toolServersFor(sessionId, params.agentTools || params.browserTools || params.designTools),
+        mcpServers: this.toolServersFor(
+          sessionId,
+          params.agentTools || params.browserTools || params.designTools,
+        ),
       })
     } catch (err) {
       // Do not leave an unused worktree behind when the agent could not start.
@@ -1113,13 +1121,19 @@ export class SessionManager {
   }
 
   /** Writes stored exchanges into the log the way a live conversation would have. */
-  private appendTurns(sessionId: string, turns: { user: string; assistant: string }[], at: number) {
+  private appendTurns(sessionId: string, turns: HistoryTurn[], at: number) {
     turns.forEach((turn, index) => {
       const turnId = `turn-${index + 1}`
       const base = { sessionId, at, turnId }
       this.deps.store.append({ ...base, type: 'message.delta', role: 'user', text: turn.user })
       this.deps.store.append({ ...base, type: 'turn.started' })
-      if (turn.assistant) {
+      if (turn.events?.length) {
+        // Tool ids only have to be unique within a turn where they came from.
+        for (const event of turn.events) {
+          const toolId = 'toolId' in event ? { toolId: `${turnId}:${event.toolId}` } : {}
+          this.deps.store.append({ ...event, ...toolId, ...base } as SessionEvent)
+        }
+      } else if (turn.assistant) {
         this.deps.store.append({
           ...base,
           type: 'message.delta',

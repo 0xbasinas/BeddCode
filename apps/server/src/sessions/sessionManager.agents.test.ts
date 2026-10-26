@@ -223,6 +223,45 @@ describe('history, import and fork', () => {
     await waitFor(() => turnsDone(sessionId) === 3, 'the resumed turn')
   })
 
+  it('imports the tool calls of a stored conversation, in order, with ids that cannot collide', async () => {
+    const tool = (n: number) => [
+      { type: 'tool.started', toolId: 'item-1', kind: 'command', title: `Running ${n}` },
+      { type: 'tool.completed', toolId: 'item-1', ok: true, output: 'fine' },
+    ]
+    const stored = [
+      {
+        id: 'old-2',
+        title: 'Tools',
+        turns: [
+          { user: 'a', assistant: 'x', events: tool(1) },
+          {
+            user: 'b',
+            assistant: 'y',
+            events: [...tool(2), { type: 'message.delta', role: 'assistant', text: 'y' }],
+          },
+        ],
+      },
+    ] as never
+    const { manager, events, dir } = setup({ advanced: true, history: stored })
+    const { sessionId } = await manager.importSession({
+      instanceId: 'fake',
+      providerSessionId: 'old-2',
+      cwd: dir,
+    })
+    const log = events(sessionId)
+    const ids = log.flatMap((e) => (e.type === 'tool.started' ? [e.toolId] : []))
+    expect(ids).toEqual(['turn-1:item-1', 'turn-2:item-1'])
+    const kinds = log.filter((e) => e.turnId === 'turn-2').map((e) => e.type)
+    expect(kinds).toEqual([
+      'message.delta',
+      'turn.started',
+      'tool.started',
+      'tool.completed',
+      'message.delta',
+      'turn.completed',
+    ])
+  })
+
   it('forks a session, keeping only the turns asked for', async () => {
     const { manager, events, dir, waitFor, turnsDone } = setup({ advanced: true })
     const { sessionId } = await manager.create({

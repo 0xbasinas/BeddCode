@@ -5,7 +5,10 @@ import type {
   SDKSessionInfo,
   SessionMessage,
 } from '@anthropic-ai/claude-agent-sdk'
+import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { SessionEvent } from '@beddcode/contracts'
 import type { HistoryItem, HistoryTurn } from '@beddcode/provider-core'
+import { ClaudeEventMapper } from './mapper.ts'
 
 /** The parts of the SDK that read Claude's own stored conversations; injected in tests. */
 export interface ClaudeHistorySdk {
@@ -48,14 +51,25 @@ function isInjected(text: string): boolean {
   )
 }
 
+/** The events of a stored exchange worth showing again; usage and turn bookkeeping are not. */
+const KEPT = new Set<SessionEvent['type']>([
+  'message.delta',
+  'tool.started',
+  'tool.completed',
+  'diff',
+  'plan.updated',
+])
+
 export interface GroupedTurn extends HistoryTurn {
   /** The last stored message of this turn, which a fork can end at. */
   lastUuid: string
 }
 
 /** Splits a transcript into exchanges: each starts with something the user typed. */
-export function groupTurns(messages: SessionMessage[]): GroupedTurn[] {
+export function groupTurns(messages: SessionMessage[], cwd?: string): GroupedTurn[] {
   const turns: GroupedTurn[] = []
+  // The live mapper turns stored messages into the same message, tool and edit events.
+  const mapper = new ClaudeEventMapper('history', { cwd })
   for (const m of messages) {
     // Subagents and system rows are not part of the visible conversation.
     if (m.parent_tool_use_id !== null || m.parent_agent_id) continue
@@ -63,13 +77,18 @@ export function groupTurns(messages: SessionMessage[]): GroupedTurn[] {
       const text = typedText(m.message)
       if (isInjected(text)) continue
       if (text.trim()) {
-        turns.push({ user: text, assistant: '', lastUuid: m.uuid })
+        turns.push({ user: text, assistant: '', events: [], lastUuid: m.uuid })
         continue
       }
     }
     const current = turns.at(-1)
     if (!current) continue
     current.lastUuid = m.uuid
+    if (m.type === 'assistant' || m.type === 'user') {
+      for (const event of mapper.map(m as unknown as SDKMessage)) {
+        if (KEPT.has(event.type)) current.events!.push(event)
+      }
+    }
     if (m.type === 'assistant') {
       const said = spokenText(m.message)
       if (said) current.assistant = current.assistant ? `${current.assistant}\n\n${said}` : said
@@ -94,7 +113,11 @@ export function createClaudeHistory(sdk: ClaudeHistorySdk) {
 
     async read(sessionId: string, cwd?: string): Promise<HistoryTurn[]> {
       const messages = await sdk.getSessionMessages(sessionId, { dir: cwd })
-      return groupTurns(messages).map(({ user, assistant }) => ({ user, assistant }))
+      return groupTurns(messages, cwd).map(({ user, assistant, events }) => ({
+        user,
+        assistant,
+        events,
+      }))
     },
 
     async fork(sessionId: string, cwd: string, throughTurn?: number): Promise<string> {

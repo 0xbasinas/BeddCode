@@ -1,6 +1,7 @@
-import type { SlashCommand } from '@beddcode/contracts'
+import type { SessionEvent, SlashCommand } from '@beddcode/contracts'
 import type { HistoryItem, HistoryTurn } from '@beddcode/provider-core'
 import { JsonRpcClient, type Logger, type Transport } from '@beddcode/shared'
+import { CodexEventMapper } from './mapper.ts'
 
 type Obj = Record<string, unknown>
 
@@ -63,6 +64,25 @@ export function turnText(turn: { items?: Obj[] }): HistoryTurn {
   return { user, assistant }
 }
 
+/** Everything the agent did in a stored turn, through the mapper that handles it live. */
+export function turnEvents(turn: { items?: Obj[] }, cwd: string): SessionEvent[] {
+  const mapper = new CodexEventMapper('history', cwd)
+  const kept = new Set<SessionEvent['type']>([
+    'message.delta',
+    'tool.started',
+    'tool.completed',
+    'diff',
+  ])
+  const events: SessionEvent[] = []
+  for (const item of turn.items ?? []) {
+    if (item.type === 'userMessage') continue
+    for (const method of ['item/started', 'item/completed']) {
+      for (const event of mapper.map(method, { item })) if (kept.has(event.type)) events.push(event)
+    }
+  }
+  return events
+}
+
 export function createCodexHistory(run: WithAppServer) {
   const readTurns = async (threadId: string, cwd?: string) =>
     run(async (rpc) => {
@@ -93,7 +113,9 @@ export function createCodexHistory(run: WithAppServer) {
     },
 
     async read(threadId: string, cwd?: string): Promise<HistoryTurn[]> {
-      return (await readTurns(threadId, cwd)).map(turnText).filter((t) => t.user || t.assistant)
+      return (await readTurns(threadId, cwd))
+        .map((turn) => ({ ...turnText(turn), events: turnEvents(turn, cwd ?? '') }))
+        .filter((t) => t.user || t.assistant || t.events.length > 0)
     },
 
     async fork(threadId: string, cwd: string, throughTurn?: number): Promise<string> {

@@ -387,10 +387,24 @@ describe('history', () => {
   ]
 
   it('groups a transcript into exchanges, skipping tool results, subagents and command echoes', () => {
-    expect(groupTurns(transcript)).toEqual([
+    const turns = groupTurns(transcript)
+    expect(turns.map(({ user, assistant, lastUuid }) => ({ user, assistant, lastUuid }))).toEqual([
       { user: 'why does it fail?', assistant: 'Let me look.\n\nAn off-by-one.', lastUuid: 'a2' },
       { user: 'fix it', assistant: 'Done.', lastUuid: 'a3' },
     ])
+  })
+
+  it('keeps what the agent did, in order, for an imported session', () => {
+    const [first, second] = groupTurns(transcript)
+    expect(first!.events!.map((e) => e.type)).toEqual([
+      'message.delta',
+      'tool.started',
+      'tool.completed',
+      'message.delta',
+    ])
+    expect(first!.events![1]).toMatchObject({ toolId: 't', kind: 'read' })
+    expect(first!.events![2]).toMatchObject({ toolId: 't', ok: true, output: 'file text' })
+    expect(second!.events!.map((e) => e.type)).toEqual(['message.delta'])
   })
 
   it('lists, reads and forks through the SDK', async () => {
