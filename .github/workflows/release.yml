@@ -69,7 +69,9 @@ jobs:
         run: |
           ls -lh installers
           gh release delete desktop-dev --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true
-          gh release create desktop-dev installers/* --repo "$GITHUB_REPOSITORY" --prerelease             --target "$GITHUB_SHA" --title desktop-dev             --notes "Built from $GITHUB_SHA by run $GITHUB_RUN_NUMBER. Replaced by the next manual run."
+          gh release create desktop-dev installers/* --repo "$GITHUB_REPOSITORY" --prerelease \
+            --target "$GITHUB_SHA" --title desktop-dev \
+            --notes "Built from $GITHUB_SHA by run $GITHUB_RUN_NUMBER. Replaced by the next manual run."
 
   # The host alone, for machines with no desktop (see scripts/install-host.sh). It is built on the
   # same Ubuntu release as the Linux installer, because the terminal library is native.
