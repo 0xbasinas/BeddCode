@@ -9,6 +9,7 @@ import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { SessionEvent } from '@beddcode/contracts'
 import type { HistoryItem, HistoryTurn } from '@beddcode/provider-core'
 import { ClaudeEventMapper } from './mapper.ts'
+import { findTranscript, readTranscript } from './transcriptFile.ts'
 
 /** The parts of the SDK that read Claude's own stored conversations; injected in tests. */
 export interface ClaudeHistorySdk {
@@ -97,7 +98,22 @@ export function groupTurns(messages: SessionMessage[], cwd?: string): GroupedTur
   return turns
 }
 
-export function createClaudeHistory(sdk: ClaudeHistorySdk) {
+/** Reads a whole conversation from its file, or nothing when it cannot be found or read. */
+export type ReadWhole = (sessionId: string) => Promise<SessionMessage[] | undefined>
+
+const readWholeFromDisk: ReadWhole = async (sessionId) => {
+  try {
+    const file = findTranscript(sessionId)
+    return file ? await readTranscript(file) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export function createClaudeHistory(
+  sdk: ClaudeHistorySdk,
+  readWhole: ReadWhole = readWholeFromDisk,
+) {
   return {
     async list(cwd?: string): Promise<HistoryItem[]> {
       const sessions = await sdk.listSessions({ dir: cwd, limit: 50 })
@@ -112,7 +128,9 @@ export function createClaudeHistory(sdk: ClaudeHistorySdk) {
     },
 
     async read(sessionId: string, cwd?: string): Promise<HistoryTurn[]> {
-      const messages = await sdk.getSessionMessages(sessionId, { dir: cwd })
+      // The file holds what came before a compaction; the SDK's view starts at the last one.
+      const messages =
+        (await readWhole(sessionId)) ?? (await sdk.getSessionMessages(sessionId, { dir: cwd }))
       return groupTurns(messages, cwd).map(({ user, assistant, events }) => ({
         user,
         assistant,

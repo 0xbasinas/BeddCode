@@ -417,7 +417,7 @@ describe('history', () => {
       getSessionMessages: async () => transcript,
       forkSession,
     }
-    const history = createClaudeHistory(sdk)
+    const history = createClaudeHistory(sdk, async () => undefined)
     expect((await history.list('/w')).map((h) => [h.id, h.title])).toEqual([
       ['new', 'Renamed'],
       ['old', 'Older'],
