@@ -67,6 +67,8 @@ export interface SummaryRow {
   platform: string
   /** The `route` label (direct or relay) when the measurement has one. */
   route: string
+  /** The `resume` label (cold or warm start) when the measurement has one. */
+  resume: string
   count: number
   p50: number
   p95: number
@@ -76,16 +78,23 @@ export interface SummaryRow {
 
 /** Groups samples by name, platform and route, with the figures worth looking at. */
 export function summarize(
-  rows: { name: string; platform: string; route: string | null; value: number }[],
+  rows: {
+    name: string
+    platform: string
+    route: string | null
+    resume?: string | null
+    value: number
+  }[],
 ): SummaryRow[] {
   const groups = new Map<string, { head: Omit<SummaryRow, 'count'>; values: number[] }>()
   for (const r of rows) {
     const route = r.route ?? ''
-    const key = `${r.name}\n${r.platform}\n${route}`
+    const resume = r.resume ?? ''
+    const key = `${r.name}\n${r.platform}\n${route}\n${resume}`
     let g = groups.get(key)
     if (!g) {
       g = {
-        head: { name: r.name, platform: r.platform, route, p50: 0, p95: 0, max: 0, avg: 0 },
+        head: { name: r.name, platform: r.platform, route, resume, p50: 0, p95: 0, max: 0, avg: 0 },
         values: [],
       }
       groups.set(key, g)
@@ -106,4 +115,56 @@ export function summarize(
       }
     })
     .sort((a, b) => a.name.localeCompare(b.name) || a.platform.localeCompare(b.platform))
+}
+
+export interface DailyPoint {
+  /** The UTC day, YYYY-MM-DD. */
+  day: string
+  name: string
+  platform: string
+  route: string
+  resume: string
+  count: number
+  p50: number
+  p95: number
+}
+
+/** The same figures per UTC day, for drawing a trend. */
+export function dailySeries(
+  rows: {
+    t: number
+    name: string
+    platform: string
+    route: string | null
+    resume?: string | null
+    value: number
+  }[],
+): DailyPoint[] {
+  const groups = new Map<
+    string,
+    { head: Omit<DailyPoint, 'count' | 'p50' | 'p95'>; values: number[] }
+  >()
+  for (const r of rows) {
+    const day = new Date(r.t).toISOString().slice(0, 10)
+    const route = r.route ?? ''
+    const resume = r.resume ?? ''
+    const key = `${day}\n${r.name}\n${r.platform}\n${route}\n${resume}`
+    let g = groups.get(key)
+    if (!g) {
+      g = { head: { day, name: r.name, platform: r.platform, route, resume }, values: [] }
+      groups.set(key, g)
+    }
+    g.values.push(r.value)
+  }
+  return [...groups.values()]
+    .map(({ head, values }) => {
+      const sorted = values.sort((a, b) => a - b)
+      return {
+        ...head,
+        count: sorted.length,
+        p50: percentile(sorted, 0.5),
+        p95: percentile(sorted, 0.95),
+      }
+    })
+    .sort((a, b) => a.day.localeCompare(b.day))
 }

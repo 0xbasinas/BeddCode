@@ -10,9 +10,12 @@ import {
   route,
   sameSecret,
 } from '../src/protocol.ts'
+import { DASHBOARD_HTML } from './dashboard.ts'
+import { Limiter } from '../src/limiter.ts'
 import {
   MAX_BODY_BYTES,
   RETENTION_DAYS,
+  dailySeries,
   summarize,
   validateBatch,
   type Batch,
@@ -35,17 +38,36 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname === '/health') return new Response('ok')
+    if (url.pathname === '/metrics/dashboard') {
+      const wait = await guard(env).admit(caller(request))
+      if (wait) return tooMany(wait)
+      return new Response(DASHBOARD_HTML, {
+        headers: {
+          'content-type': 'text/html; charset=utf-8',
+          'cache-control': 'no-store',
+          'referrer-policy': 'no-referrer',
+          'x-content-type-options': 'nosniff',
+          'content-security-policy':
+            "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'",
+        },
+      })
+    }
     if (url.pathname === '/metrics' || url.pathname === '/metrics/summary')
       return metricsRequest(request, url, env)
     const target = route(url.pathname)
     if (!target || request.headers.get('Upgrade') !== 'websocket')
       return new Response('Not found', { status: 404 })
     // Refused here, before any room exists, so strangers cost nothing.
-    if (
-      target.role === 'host' &&
-      !hostAllowed(env.RELAY_PASSWORD, request.headers.get('Authorization'))
-    )
-      return new Response('Unauthorized', { status: 401 })
+    if (target.role === 'host') {
+      const who = caller(request)
+      const wait = await guard(env).admit(who)
+      if (wait) return tooMany(wait)
+      if (!hostAllowed(env.RELAY_PASSWORD, request.headers.get('Authorization'))) {
+        await guard(env).reject(who)
+        return new Response('Unauthorized', { status: 401 })
+      }
+      await guard(env).accept(who)
+    }
     return env.ROOMS.get(env.ROOMS.idFromName(target.room)).fetch(request)
   },
 } satisfies ExportedHandler<Env>
@@ -56,8 +78,14 @@ export default {
  */
 async function metricsRequest(request: Request, url: URL, env: Env): Promise<Response> {
   if (!env.RELAY_PASSWORD) return new Response('Set RELAY_PASSWORD to use metrics', { status: 503 })
-  if (!hostAllowed(env.RELAY_PASSWORD, request.headers.get('Authorization')))
+  const who = caller(request)
+  const wait = await guard(env).admit(who)
+  if (wait) return tooMany(wait)
+  if (!hostAllowed(env.RELAY_PASSWORD, request.headers.get('Authorization'))) {
+    await guard(env).reject(who)
     return new Response('Unauthorized', { status: 401 })
+  }
+  await guard(env).accept(who)
   const store = env.METRICS.get(env.METRICS.idFromName('main'))
   if (url.pathname === '/metrics/summary' && request.method === 'GET') {
     const days = Math.min(RETENTION_DAYS, Math.max(1, Number(url.searchParams.get('days')) || 7))
@@ -79,6 +107,14 @@ async function metricsRequest(request: Request, url: URL, env: Env): Promise<Res
   }
   return new Response('Not found', { status: 404 })
 }
+
+const guard = (env: Env) => env.METRICS.get(env.METRICS.idFromName('guard'))
+const caller = (request: Request) => request.headers.get('CF-Connecting-IP') ?? 'unknown'
+const tooMany = (seconds: number) =>
+  new Response('Too many attempts. Try again later.', {
+    status: 429,
+    headers: { 'retry-after': String(seconds) },
+  })
 
 interface HostState {
   claimed: boolean
@@ -207,6 +243,21 @@ const MAX_SAMPLES = 300_000
 
 /** Where the measurements live: one small SQLite database inside a Durable Object. */
 export class Metrics extends DurableObject<Env> {
+  private readonly limiter = new Limiter()
+
+  /** Seconds the caller must wait, or 0. Every request to the relay's private doors counts. */
+  async admit(who: string): Promise<number> {
+    return this.limiter.check(who)
+  }
+
+  async reject(who: string): Promise<void> {
+    this.limiter.fail(who)
+  }
+
+  async accept(who: string): Promise<void> {
+    this.limiter.succeed(who)
+  }
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
     ctx.storage.sql.exec(
@@ -244,9 +295,19 @@ export class Metrics extends DurableObject<Env> {
   async summary(days: number) {
     const since = Date.now() - days * 24 * 3600_000
     const rows = this.ctx.storage.sql
-      .exec('SELECT name, platform, route, value FROM samples WHERE t >= ?', since)
-      .toArray() as { name: string; platform: string; route: string | null; value: number }[]
-    return { days, samples: rows.length, rows: summarize(rows) }
+      .exec(
+        "SELECT t, name, platform, route, json_extract(tags, '$.resume') AS resume, value FROM samples WHERE t >= ?",
+        since,
+      )
+      .toArray() as {
+      t: number
+      name: string
+      platform: string
+      route: string | null
+      resume: string | null
+      value: number
+    }[]
+    return { days, samples: rows.length, rows: summarize(rows), daily: dailySeries(rows) }
   }
 
   override async alarm(): Promise<void> {

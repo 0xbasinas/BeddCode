@@ -7,6 +7,7 @@ interface Row {
   name: string
   platform: string
   route: string
+  resume?: string
   count: number
   p50: number
   p95: number
@@ -26,11 +27,12 @@ const fmt = (n: number) => (n >= 100 ? Math.round(n) : Math.round(n * 10) / 10).
 export function formatSummary(summary: MetricsSummary): string {
   if (summary.rows.length === 0)
     return `No measurements in the last ${summary.days} day${summary.days === 1 ? '' : 's'}. Turn them on under Connect from anywhere in the desktop app, then use BeddCode for a bit.\n`
-  const header = ['measurement', 'platform', 'route', 'count', 'p50', 'p95', 'max']
+  const header = ['measurement', 'platform', 'route', 'start', 'count', 'p50', 'p95', 'max']
   const lines = summary.rows.map((r) => [
     r.name,
     r.platform,
     r.route || '-',
+    r.resume || '-',
     String(r.count),
     fmt(r.p50),
     fmt(r.p95),

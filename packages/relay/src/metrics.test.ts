@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { percentile, summarize, validateBatch } from './metrics.ts'
+import { dailySeries, percentile, summarize, validateBatch } from './metrics.ts'
 
 const ok = {
   host: 'abc123',
@@ -31,6 +31,24 @@ describe('validateBatch', () => {
 })
 
 describe('summarize', () => {
+  it('splits cold from warm starts and groups by day', () => {
+    const day = Date.UTC(2026, 9, 25, 12)
+    const base = { name: 'replay.ms', platform: 'mobile', route: 'relay' }
+    const rows = [
+      { ...base, t: day, resume: 'cold', value: 3000 },
+      { ...base, t: day, resume: 'warm', value: 200 },
+      { ...base, t: day + 86_400_000, resume: 'warm', value: 300 },
+    ]
+    expect(
+      summarize(rows)
+        .map((r) => r.resume)
+        .sort(),
+    ).toEqual(['cold', 'warm'])
+    const daily = dailySeries(rows)
+    expect(daily.map((d) => d.day)).toEqual(['2026-10-25', '2026-10-25', '2026-10-26'])
+    expect(daily.find((d) => d.resume === 'cold')).toMatchObject({ count: 1, p50: 3000 })
+  })
+
   it('computes percentiles per name, platform and route', () => {
     expect(percentile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 0.5)).toBe(5)
     expect(percentile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 0.95)).toBe(10)

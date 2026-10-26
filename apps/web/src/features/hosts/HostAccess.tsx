@@ -276,7 +276,15 @@ function RelaySetting({ onChange }: { onChange(): void }) {
           />
           <span>
             Keep anonymous speed measurements on my relay. Only timings and counts, never your code,
-            messages or file names. See them with <code>beddcode metrics</code>.
+            messages or file names. See them with <code>beddcode metrics</code>, or{' '}
+            <a
+              href={`${settings.url.replace(/^ws/, 'http')}/metrics/dashboard`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              open the dashboard
+            </a>
+            .
           </span>
         </label>
       )}

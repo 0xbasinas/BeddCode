@@ -29,7 +29,7 @@ describe('metrics', () => {
   it('prints a table and says what the figures are', () => {
     const text = formatSummary(summary)
     expect(text).toContain('replay.ms')
-    expect(text).toMatch(/mobile\s+relay\s+3\s+840\s+1200\s+1300/)
+    expect(text).toMatch(/mobile\s+relay\s+-\s+3\s+840\s+1200\s+1300/)
     expect(formatSummary({ days: 1, samples: 0, rows: [] })).toContain('No measurements')
   })
 
