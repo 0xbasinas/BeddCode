@@ -4314,8 +4314,8 @@ button.tcall-row:hover .tcall-chevron,
 .host-banner {
   position: fixed;
   z-index: 30;
-  right: calc(14px * var(--ui-scale));
-  top: calc(44px * var(--ui-scale));
+  left: calc(14px * var(--ui-scale));
+  bottom: calc(14px * var(--ui-scale));
   display: flex;
   align-items: center;
   gap: calc(16px * var(--ui-scale));
@@ -4343,7 +4343,7 @@ button.tcall-row:hover .tcall-chevron,
   color: var(--text-muted);
   font: calc(11px * var(--ui-scale)) / 1.5 var(--font-mono);
 }
-/* A single line in the corner, so it never sits over the composer. */
+/* A single line in the bottom-left corner, clear of the composer and the window buttons. */
 .host-banner.compact {
   padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(6px * var(--ui-scale))
     calc(12px * var(--ui-scale));
