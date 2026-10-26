@@ -8,6 +8,7 @@ import {
   toolDuration,
   toolLabel,
   toolPhase,
+  splitStreamingMarkdown,
   totalChanges,
   type EditedFile,
   type SessionView,
@@ -27,12 +28,14 @@ import {
   Wrench,
   X,
 } from 'phosphor-react-native'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ActivityIndicator, FlatList, Platform, Pressable, StyleSheet, View } from 'react-native'
 import Markdown from '@ronradtke/react-native-markdown-display'
 
 import { colors, fonts, radius } from '@/theme/tokens'
 import { Diffstat } from '@/ui/Diffstat'
+import { FadeIn } from '@/ui/FadeIn'
+import { animateLayout } from '@/ui/layoutAnimation'
 import { PatchView } from '@/ui/PatchView'
 import { Icon } from '@/ui/Icon'
 import { Faint, Muted, Text } from '@/ui/Text'
@@ -143,7 +146,13 @@ function ToolRow({ tool, now }: { tool: Tool; now: number }) {
   const failed = phase === 'failed'
   return (
     <View>
-      <Pressable style={styles.toolRow} onPress={() => setOpen((v) => !v)}>
+      <Pressable
+        style={styles.toolRow}
+        onPress={() => {
+          animateLayout()
+          setOpen((v) => !v)
+        }}
+      >
         <Icon icon={TOOL_ICONS[tool.toolKind]} size={15} color={colors.faint} />
         <Text
           size={12.5}
@@ -213,7 +222,13 @@ function ToolGroup({ tools }: { tools: Tool[] }) {
   return (
     <View style={{ gap: 2 }}>
       {tools.length > 3 ? (
-        <Pressable style={styles.summary} onPress={() => setOpen((v) => !v)}>
+        <Pressable
+          style={styles.summary}
+          onPress={() => {
+            animateLayout()
+            setOpen((v) => !v)
+          }}
+        >
           <Icon icon={open ? CaretDown : CaretRight} size={12} color={colors.faint} />
           <Faint size={12.5}>{summarizeTools(tools)}</Faint>
         </Pressable>
@@ -240,7 +255,13 @@ function EditsCard({ files, cwd }: { files: EditedFile[]; cwd: string }) {
   const total = totalChanges(files)
   return (
     <View style={styles.card}>
-      <Pressable style={styles.cardHead} onPress={() => setOpen((v) => !v)}>
+      <Pressable
+        style={styles.cardHead}
+        onPress={() => {
+          animateLayout()
+          setOpen((v) => !v)
+        }}
+      >
         <Icon icon={PencilSimpleLine} size={18} />
         <View style={{ flex: 1 }}>
           <Text size={13.5}>
@@ -255,7 +276,10 @@ function EditsCard({ files, cwd }: { files: EditedFile[]; cwd: string }) {
           <View key={f.path} style={styles.fileBlock}>
             <Pressable
               style={styles.fileRow}
-              onPress={() => setExpanded(expanded === f.path ? undefined : f.path)}
+              onPress={() => {
+                animateLayout()
+                setExpanded(expanded === f.path ? undefined : f.path)
+              }}
             >
               <Text size={13} numberOfLines={1} style={{ flex: 1 }}>
                 {relativePath(f.path, cwd)}
@@ -278,7 +302,13 @@ function ChangesCard({ item }: { item: ChangesItem }) {
   const removed = item.files.reduce((n, f) => n + f.removed, 0)
   return (
     <View style={[styles.card, item.reverted ? { opacity: 0.7 } : null]}>
-      <Pressable style={styles.cardHead} onPress={() => setOpen((v) => !v)}>
+      <Pressable
+        style={styles.cardHead}
+        onPress={() => {
+          animateLayout()
+          setOpen((v) => !v)
+        }}
+      >
         <Icon icon={PencilSimpleLine} size={18} />
         <View style={{ flex: 1 }}>
           <Text size={13.5}>
@@ -309,6 +339,126 @@ function ChangesCard({ item }: { item: ChangesItem }) {
   )
 }
 
+/** How many rows are drawn at first; earlier ones are added as the reader scrolls up to them. */
+const FIRST_ROWS = 40
+const MORE_ROWS = 40
+
+/** Same row, same content: nothing to draw again (the entries are rebuilt on every event). */
+function sameEntry(a: Entry, b: Entry): boolean {
+  if (a.kind !== b.kind || a.id !== b.id) return false
+  if (a.kind === 'item' && b.kind === 'item') return a.item === b.item
+  if (a.kind === 'agent-tool' && b.kind === 'agent-tool') return a.tool === b.tool
+  if (a.kind === 'tools' && b.kind === 'tools')
+    return a.tools.length === b.tools.length && a.tools.every((t, i) => t === b.tools[i])
+  if (a.kind === 'edits' && b.kind === 'edits')
+    return (
+      a.files.length === b.files.length &&
+      a.files.every((f, i) => {
+        const g = b.files[i]!
+        return (
+          f.path === g.path && f.added === g.added && f.removed === g.removed && f.patch === g.patch
+        )
+      })
+    )
+  return false
+}
+
+interface RowProps {
+  entry: Entry
+  cwd: string
+  sessionId: string
+  hostKey?: string
+  onApprove(requestId: string, optionId: string): Promise<void>
+  onAnswer(requestId: string, answers?: Record<string, string[]>): Promise<void>
+  /** Appeared after the thread was first shown, so it eases in. */
+  fresh: boolean
+  /** The message still being written: its settled paragraphs are drawn once, only the end again. */
+  live?: boolean
+}
+
+const StreamingText = memo(function StreamingText({ text }: { text: string }) {
+  const [head, tail] = splitStreamingMarkdown(text)
+  return (
+    <>
+      {head ? <SettledMarkdown>{head}</SettledMarkdown> : null}
+      <Markdown style={markdownStyles}>{tail}</Markdown>
+    </>
+  )
+})
+
+const SettledMarkdown = memo(function SettledMarkdown({ children }: { children: string }) {
+  return <Markdown style={markdownStyles}>{children}</Markdown>
+})
+
+/** Rows that have already eased in, so scrolling back to one does not play it again. */
+const played = new Set<string>()
+
+const Row = memo(
+  function Row({ entry, cwd, sessionId, hostKey, onApprove, onAnswer, fresh, live }: RowProps) {
+    const body = (() => {
+      if (entry.kind === 'tools') return <ToolGroup tools={entry.tools} />
+      if (entry.kind === 'agent-tool')
+        return <AgentToolCard tool={entry.tool} parentId={sessionId} hostKey={hostKey} />
+      if (entry.kind === 'edits') return <EditsCard files={entry.files} cwd={cwd} />
+      const item = entry.item
+      switch (item.kind) {
+        case 'message':
+          return item.role === 'user' ? (
+            <View style={styles.userBubble}>
+              <Text size={14} color={colors.textSecondary} style={{ lineHeight: 21 }} selectable>
+                {item.text}
+              </Text>
+              {item.attachments?.map((a) => (
+                <Faint key={a.path} size={11.5}>
+                  📎 {a.name}
+                </Faint>
+              ))}
+            </View>
+          ) : live ? (
+            <StreamingText text={item.text} />
+          ) : (
+            <Markdown style={markdownStyles}>{item.text}</Markdown>
+          )
+        case 'approval':
+          return <ApprovalCard item={item} cwd={cwd} onApprove={onApprove} />
+        case 'question':
+          return <QuestionCard item={item} onAnswer={onAnswer} />
+        case 'notice':
+          return (
+            <Muted size={12.5} style={{ textAlign: 'center' }}>
+              {item.message}
+            </Muted>
+          )
+        case 'changes':
+          return <ChangesCard item={item} />
+        case 'error':
+          return (
+            <View style={styles.errorBox}>
+              <Text size={13} color={colors.danger} selectable>
+                {item.message}
+              </Text>
+            </View>
+          )
+        default:
+          return null
+      }
+    })()
+    useEffect(() => {
+      played.add(`${sessionId}:${entry.id}`)
+    }, [sessionId, entry.id])
+    return <FadeIn enabled={fresh && !played.has(`${sessionId}:${entry.id}`)}>{body}</FadeIn>
+  },
+  (a, b) =>
+    a.fresh === b.fresh &&
+    a.live === b.live &&
+    a.cwd === b.cwd &&
+    a.sessionId === b.sessionId &&
+    a.hostKey === b.hostKey &&
+    a.onApprove === b.onApprove &&
+    a.onAnswer === b.onAnswer &&
+    sameEntry(a.entry, b.entry),
+)
+
 /** The conversation: what you asked, what the agent said and did, and anything it waits on. */
 export function Transcript({
   session,
@@ -318,6 +468,7 @@ export function Transcript({
   header,
   footer,
   hostKey,
+  onFirstLayout,
 }: {
   session: SessionView
   cwd: string
@@ -327,75 +478,94 @@ export function Transcript({
   onAnswer(requestId: string, answers?: Record<string, string[]>): Promise<void>
   header?: React.ReactElement
   footer?: React.ReactElement
+  /** Called once, when the first rows of the thread have been laid out. */
+  onFirstLayout?(): void
 }) {
-  const data = useMemo(() => entries(session.items), [session.items])
+  const all = useMemo(() => entries(session.items), [session.items])
   const list = useRef<FlatList<Entry>>(null)
+  const laidOut = useRef(false)
   const stick = useRef(true)
+  // A long thread draws only its latest rows first, so it opens at once, at the bottom.
+  const [shown, setShown] = useState(FIRST_ROWS)
+  const hidden = Math.max(0, all.length - shown)
+  const data = useMemo(() => (hidden ? all.slice(hidden) : all), [all, hidden])
+  const showEarlier = useCallback(() => setShown((n) => n + MORE_ROWS), [])
+
+  // The handlers come in as fresh closures on every render; rows see steady ones.
+  const approveRef = useRef(onApprove)
+  const answerRef = useRef(onAnswer)
+  approveRef.current = onApprove
+  answerRef.current = onAnswer
+  const approve = useCallback((r: string, o: string) => approveRef.current(r, o), [])
+  const answer = useCallback(
+    (r: string, a?: Record<string, string[]>) => answerRef.current(r, a),
+    [],
+  )
+
+  // Rows that turn up after the thread was first shown ease in; the rest are simply there.
+  const seen = useRef<Set<string> | null>(null)
+  const fresh = useRef<Set<string>>(new Set())
+  useMemo(() => {
+    if (seen.current && laidOut.current) {
+      // Once fresh, a row stays marked so its wrapper never changes shape under it.
+      for (const e of all) if (!seen.current.has(e.id)) fresh.current.add(e.id)
+    }
+    seen.current = new Set(all.map((e) => e.id))
+  }, [all])
+
+  const earlier =
+    hidden > 0 ? (
+      <Pressable style={styles.earlier} onPress={showEarlier}>
+        <Faint size={12.5}>Show earlier ({hidden})</Faint>
+      </Pressable>
+    ) : null
 
   return (
     <FlatList
       ref={list}
       data={data}
       keyExtractor={(e) => e.id}
-      ListHeaderComponent={header}
+      ListHeaderComponent={
+        <>
+          {earlier}
+          {hidden === 0 ? header : null}
+        </>
+      }
       ListFooterComponent={footer}
       contentContainerStyle={styles.list}
       keyboardShouldPersistTaps="handled"
+      initialNumToRender={14}
+      windowSize={9}
+      maxToRenderPerBatch={8}
+      removeClippedSubviews={Platform.OS === 'android'}
+      maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+      onStartReached={hidden > 0 ? showEarlier : undefined}
+      onStartReachedThreshold={0.6}
       onScroll={(e) => {
         const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent
         stick.current = contentSize.height - (contentOffset.y + layoutMeasurement.height) < 120
       }}
       scrollEventThrottle={64}
       onContentSizeChange={(_width, height) => {
+        if (!laidOut.current && height > 0) {
+          laidOut.current = true
+          onFirstLayout?.()
+        }
         // Offsets past the end are clamped, so this lands on the last row even before it is measured.
         if (stick.current) list.current?.scrollToOffset({ offset: height, animated: false })
       }}
-      renderItem={({ item: entry }) => {
-        if (entry.kind === 'tools') return <ToolGroup tools={entry.tools} />
-        if (entry.kind === 'agent-tool')
-          return <AgentToolCard tool={entry.tool} parentId={session.id} hostKey={hostKey} />
-        if (entry.kind === 'edits') return <EditsCard files={entry.files} cwd={cwd} />
-        const item = entry.item
-        switch (item.kind) {
-          case 'message':
-            return item.role === 'user' ? (
-              <View style={styles.userBubble}>
-                <Text size={14} color={colors.textSecondary} style={{ lineHeight: 21 }} selectable>
-                  {item.text}
-                </Text>
-                {item.attachments?.map((a) => (
-                  <Faint key={a.path} size={11.5}>
-                    📎 {a.name}
-                  </Faint>
-                ))}
-              </View>
-            ) : (
-              <Markdown style={markdownStyles}>{item.text}</Markdown>
-            )
-          case 'approval':
-            return <ApprovalCard item={item} cwd={cwd} onApprove={onApprove} />
-          case 'question':
-            return <QuestionCard item={item} onAnswer={onAnswer} />
-          case 'notice':
-            return (
-              <Muted size={12.5} style={{ textAlign: 'center' }}>
-                {item.message}
-              </Muted>
-            )
-          case 'changes':
-            return <ChangesCard item={item} />
-          case 'error':
-            return (
-              <View style={styles.errorBox}>
-                <Text size={13} color={colors.danger} selectable>
-                  {item.message}
-                </Text>
-              </View>
-            )
-          default:
-            return null
-        }
-      }}
+      renderItem={({ item: entry }) => (
+        <Row
+          entry={entry}
+          cwd={cwd}
+          sessionId={session.id}
+          hostKey={hostKey}
+          onApprove={approve}
+          onAnswer={answer}
+          fresh={fresh.current.has(entry.id)}
+          live={session.status === 'running' && entry.id === all[all.length - 1]?.id}
+        />
+      )}
     />
   )
 }
@@ -434,6 +604,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 11,
   },
+  earlier: { alignItems: 'center', paddingVertical: 8 },
   errorBox: {
     borderWidth: 1,
     borderColor: '#4a2523',

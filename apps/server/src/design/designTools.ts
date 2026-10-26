@@ -25,23 +25,82 @@ export const isDesignToolName = (name: string): name is DesignToolName =>
 
 /** The element fields an agent may set (the editor's own whitelist; anything else is dropped). */
 const FIELDS: ReadonlySet<string> = new Set([
-  'name', 'type', 'x', 'y', 'width', 'height', 'rotation', 'opacity', 'visible', 'locked',
-  'flipH', 'flipV', 'blendMode', 'fill', 'stroke', 'strokeWidth', 'strokeStyle', 'strokeAlign',
-  'cornerRadius', 'cornerRadiusTL', 'cornerRadiusTR', 'cornerRadiusBL', 'cornerRadiusBR',
-  'fills', 'strokes', 'shadows', 'blurs', 'textContent', 'fontFamily', 'fontSize', 'fontWeight',
-  'fontStyle', 'textDecoration', 'textAlign', 'lineHeight', 'letterSpacing', 'textColor',
-  'textAutoResize', 'textAlignVertical', 'pathPoints', 'pathClosed', 'sides', 'innerRadius',
-  'autoLayout', 'clipContent', 'constraints', 'layoutSizingH', 'layoutSizingV',
-  'layoutPositioning', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight', 'arrowHeadStyle',
+  'name',
+  'type',
+  'x',
+  'y',
+  'width',
+  'height',
+  'rotation',
+  'opacity',
+  'visible',
+  'locked',
+  'flipH',
+  'flipV',
+  'blendMode',
+  'fill',
+  'stroke',
+  'strokeWidth',
+  'strokeStyle',
+  'strokeAlign',
+  'cornerRadius',
+  'cornerRadiusTL',
+  'cornerRadiusTR',
+  'cornerRadiusBL',
+  'cornerRadiusBR',
+  'fills',
+  'strokes',
+  'shadows',
+  'blurs',
+  'textContent',
+  'fontFamily',
+  'fontSize',
+  'fontWeight',
+  'fontStyle',
+  'textDecoration',
+  'textAlign',
+  'lineHeight',
+  'letterSpacing',
+  'textColor',
+  'textAutoResize',
+  'textAlignVertical',
+  'pathPoints',
+  'pathClosed',
+  'sides',
+  'innerRadius',
+  'autoLayout',
+  'clipContent',
+  'constraints',
+  'layoutSizingH',
+  'layoutSizingV',
+  'layoutPositioning',
+  'minWidth',
+  'maxWidth',
+  'minHeight',
+  'maxHeight',
+  'arrowHeadStyle',
 ])
 
 const MUTATING: ReadonlySet<string> = new Set([
-  'design_add', 'design_update', 'design_remove', 'design_add_page', 'design_add_svg',
-  'design_duplicate', 'design_move',
+  'design_add',
+  'design_update',
+  'design_remove',
+  'design_add_page',
+  'design_add_svg',
+  'design_duplicate',
+  'design_move',
 ])
 
 const ADD_TYPES = [
-  'frame', 'rectangle', 'ellipse', 'text', 'line', 'arrow', 'polygon', 'star', 'group',
+  'frame',
+  'rectangle',
+  'ellipse',
+  'text',
+  'line',
+  'arrow',
+  'polygon',
+  'star',
+  'group',
 ] as const
 const CONTAINERS = new Set<string>(['frame', 'group'])
 const MAX_ELEMENTS = 800
@@ -51,7 +110,10 @@ const design = {
   type: 'string',
   description: 'Design id from design_list. Omit to use the most recently changed design.',
 }
-const page = { type: 'string', description: 'Page id from design_read; the active page if omitted.' }
+const page = {
+  type: 'string',
+  description: 'Page id from design_read; the active page if omitted.',
+}
 
 const elementProps = {
   type: { type: 'string', enum: ADD_TYPES },
@@ -103,8 +165,15 @@ const elementProps = {
     description: 'Several strokes, replacing stroke. Each like a fill, plus width.',
     items: { type: 'object' },
   },
-  cornerRadiusTL: { type: 'number', description: 'Per-corner radius (also cornerRadiusTR, BL, BR).' },
-  layoutSizingH: { type: 'string', enum: ['fixed', 'hug', 'fill'], description: 'Inside an auto-layout frame.' },
+  cornerRadiusTL: {
+    type: 'number',
+    description: 'Per-corner radius (also cornerRadiusTR, BL, BR).',
+  },
+  layoutSizingH: {
+    type: 'string',
+    enum: ['fixed', 'hug', 'fill'],
+    description: 'Inside an auto-layout frame.',
+  },
   layoutSizingV: { type: 'string', enum: ['fixed', 'hug', 'fill'] },
   sides: { type: 'number', description: 'For polygon and star.' },
   autoLayout: {
@@ -136,7 +205,10 @@ export const DESIGN_TOOL_DEFINITIONS = [
       properties: {
         design,
         page,
-        max_depth: { type: 'number', description: 'How many levels of children to include (default 4).' },
+        max_depth: {
+          type: 'number',
+          description: 'How many levels of children to include (default 4).',
+        },
       },
     },
   },
@@ -149,7 +221,10 @@ export const DESIGN_TOOL_DEFINITIONS = [
       properties: {
         design,
         page,
-        parent: { type: 'string', description: 'Id of a frame or group to add into; the page itself if omitted.' },
+        parent: {
+          type: 'string',
+          description: 'Id of a frame or group to add into; the page itself if omitted.',
+        },
         elements: {
           type: 'array',
           items: {
@@ -208,7 +283,10 @@ export const DESIGN_TOOL_DEFINITIONS = [
       properties: {
         design,
         page,
-        element: { type: 'string', description: 'Id of one element to draw by itself; the whole page if omitted.' },
+        element: {
+          type: 'string',
+          description: 'Id of one element to draw by itself; the whole page if omitted.',
+        },
         scale: { type: 'number', description: 'Pixel scale, 0.25 to 2 (default 1).' },
       },
     },
@@ -218,7 +296,9 @@ export const DESIGN_TOOL_DEFINITIONS = [
     description: `Loads a how-to guide for drawing well: ${DESIGN_SKILL_NAMES.join(', ')}. Call it with no name to list them, or with a name to read one (ready-made auto layout rows, an icon library as SVG, UI patterns, the reference-matching loop). Load 'workflow' before your first design, and 'icons' and 'auto-layout' before using them.`,
     inputSchema: {
       type: 'object',
-      properties: { name: { type: 'string', description: 'The skill to read; omit to list them.' } },
+      properties: {
+        name: { type: 'string', description: 'The skill to read; omit to list them.' },
+      },
     },
   },
   {
@@ -236,12 +316,21 @@ export const DESIGN_TOOL_DEFINITIONS = [
       properties: {
         design,
         page,
-        parent: { type: 'string', description: 'Id of a frame or group to put it in; the page if omitted.' },
+        parent: {
+          type: 'string',
+          description: 'Id of a frame or group to put it in; the page if omitted.',
+        },
         svg: { type: 'string', description: 'A complete <svg> element with a viewBox.' },
         x: { type: 'number', description: 'Position (relative to parent).' },
         y: { type: 'number' },
-        width: { type: 'number', description: 'Drawn width in pixels; the height follows the viewBox.' },
-        color: { type: 'string', description: 'Replaces currentColor, e.g. "#9CA3AF". Default black.' },
+        width: {
+          type: 'number',
+          description: 'Drawn width in pixels; the height follows the viewBox.',
+        },
+        color: {
+          type: 'string',
+          description: 'Replaces currentColor, e.g. "#9CA3AF". Default black.',
+        },
         name: { type: 'string' },
       },
       required: ['svg'],
@@ -274,9 +363,13 @@ export const DESIGN_TOOL_DEFINITIONS = [
         id: { type: 'string' },
         parent: {
           type: 'string',
-          description: 'Id of the frame or group to move into, or "page" for the page itself. Unchanged if omitted.',
+          description:
+            'Id of the frame or group to move into, or "page" for the page itself. Unchanged if omitted.',
         },
-        index: { type: 'number', description: 'Position among its siblings, 0 = bottom of the stack; last if omitted.' },
+        index: {
+          type: 'number',
+          description: 'Position among its siblings, 0 = bottom of the stack; last if omitted.',
+        },
         x: { type: 'number' },
         y: { type: 'number' },
       },
@@ -318,11 +411,17 @@ export interface DesignMcpResult {
 }
 
 const ok = (value: unknown): DesignMcpResult => ({
-  content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }],
+  content: [
+    { type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) },
+  ],
 })
-const fail = (text: string): DesignMcpResult => ({ content: [{ type: 'text', text }], isError: true })
+const fail = (text: string): DesignMcpResult => ({
+  content: [{ type: 'text', text }],
+  isError: true,
+})
 
-const newId = (type: string) => `${type}-${Date.now().toString(36)}-${randomBytes(3).toString('hex')}`
+const newId = (type: string) =>
+  `${type}-${Date.now().toString(36)}-${randomBytes(3).toString('hex')}`
 
 const AXIS_SIZING = new Set(['fixed', 'hug', 'fill'])
 
@@ -333,7 +432,8 @@ function normAutoLayout(raw: unknown, base?: unknown): Record<string, unknown> {
     ...(typeof raw === 'object' && raw !== null ? raw : {}),
   } as Record<string, unknown>
   const given = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
-  const n = (v: unknown, d: number) => (v !== undefined && v !== null && Number.isFinite(Number(v)) ? Number(v) : d)
+  const n = (v: unknown, d: number) =>
+    v !== undefined && v !== null && Number.isFinite(Number(v)) ? Number(v) : d
   const pad = (side: string) => (given.padding !== undefined ? n(given.padding, 0) : n(r[side], 0))
   const sizing = (v: unknown) => (typeof v === 'string' && AXIS_SIZING.has(v) ? v : 'fixed')
   return {
@@ -451,7 +551,8 @@ function build(raw: unknown, depth: number, budget: { left: number }): El {
         : type[0]!.toUpperCase() + type.slice(1),
   }
   if (Array.isArray(src.children) && src.children.length) {
-    if (!CONTAINERS.has(type)) throw new Error(`A ${type} cannot have children; use a frame or group`)
+    if (!CONTAINERS.has(type))
+      throw new Error(`A ${type} cannot have children; use a frame or group`)
     el.children = src.children.map((c) => build(c, depth + 1, budget))
   } else if (CONTAINERS.has(type)) el.children = []
   return el
@@ -568,7 +669,8 @@ export class DesignTools {
     if (!this.link) return fail('SVG import is not available on this host.')
     const id = this.resolve(args)
     const svg = typeof args.svg === 'string' ? args.svg.trim() : ''
-    if (!svg.startsWith('<') || !/<svg[\s>]/i.test(svg)) throw new Error('svg must be a complete <svg> element')
+    if (!svg.startsWith('<') || !/<svg[\s>]/i.test(svg))
+      throw new Error('svg must be a complete <svg> element')
     const color = typeof args.color === 'string' && args.color ? args.color : '#000000'
     const width = Number(args.width)
     const result = await this.link.importSvg(
@@ -577,7 +679,8 @@ export class DesignTools {
     )
     if (!result.ok) return fail(result.error)
     const root = result.elements[0] as El | undefined
-    if (!root || typeof root !== 'object') throw new Error('The SVG had no shapes the editor could draw')
+    if (!root || typeof root !== 'object')
+      throw new Error('The SVG had no shapes the editor could draw')
     const made = reId(root, { left: MAX_ELEMENTS }, 0)
     made.x = Number.isFinite(Number(args.x)) ? Number(args.x) : 0
     made.y = Number.isFinite(Number(args.y)) ? Number(args.y) : 0
@@ -590,7 +693,8 @@ export class DesignTools {
         if (parent) {
           const hit = find(pg.elements, parent)
           if (!hit) throw new Error(`No element ${parent} on page ${pg.id}`)
-          if (!CONTAINERS.has(hit.el.type)) throw new Error(`${parent} is a ${hit.el.type}, not a frame or group`)
+          if (!CONTAINERS.has(hit.el.type))
+            throw new Error(`${parent} is a ${hit.el.type}, not a frame or group`)
           hit.el.children = [...(hit.el.children ?? []), made]
         } else pg.elements.push(made)
       },
@@ -716,18 +820,23 @@ export class DesignTools {
       case 'design_get_selection': {
         const view = this.link?.current()
         const d = view?.designId ? this.designs.get(view.designId) : undefined
-        if (!view || !d) return 'Nothing is open in a Design screen right now, so nothing is selected.'
+        if (!view || !d)
+          return 'Nothing is open in a Design screen right now, so nothing is selected.'
         const pg = pageOf(d.project, view.pageId)
         const picked = view.selection
           .map((sel) => find(pg.elements, sel)?.el)
           .filter((e): e is El => e !== undefined)
-        if (!picked.length) return { design: d.id, page: pg.id, selected: [], note: 'Nothing is selected.' }
+        if (!picked.length)
+          return { design: d.id, page: pg.id, selected: [], note: 'Nothing is selected.' }
         return { design: d.id, page: pg.id, selected: picked.map((e) => summarize(e, 2)) }
       }
       case 'design_list':
         return { designs: this.designs.list() }
       case 'design_create': {
-        const d = this.designs.create(typeof args.name === 'string' ? args.name : undefined, 'agent')
+        const d = this.designs.create(
+          typeof args.name === 'string' ? args.name : undefined,
+          'agent',
+        )
         return { id: d.id, name: d.name, page: 'page-1' }
       }
       case 'design_read': {
@@ -739,7 +848,11 @@ export class DesignTools {
           design: id,
           name: d.name,
           rev: d.rev,
-          pages: pagesOf(d.project).map((p) => ({ id: p.id, name: p.name, elements: p.elements.length })),
+          pages: pagesOf(d.project).map((p) => ({
+            id: p.id,
+            name: p.name,
+            elements: p.elements.length,
+          })),
           page: pg.id,
           elements: pg.elements.map((e) => summarize(e, depth)),
         }
@@ -771,12 +884,17 @@ export class DesignTools {
         const flat = flatEls(made)
         const iconish = flat.filter(
           (e) =>
-            /icon|glyph|logo|chevron|caret|close|search|check|arrow|rail/i.test(String(e.name ?? '')) ||
+            /icon|glyph|logo|chevron|caret|close|search|check|arrow|rail/i.test(
+              String(e.name ?? ''),
+            ) ||
             (e.type === 'text' && /^[^\p{L}\p{N}\s]{1,2}$/u.test(String(e.textContent ?? ''))),
         )
         const loose = flat.filter(
           (e) =>
-            e.type === 'frame' && !e.autoLayout && (e.children?.length ?? 0) >= 3 && e.children!.every((c) => c.layoutPositioning !== 'absolute'),
+            e.type === 'frame' &&
+            !e.autoLayout &&
+            (e.children?.length ?? 0) >= 3 &&
+            e.children!.every((c) => c.layoutPositioning !== 'absolute'),
         )
         return {
           design: id,
@@ -786,7 +904,9 @@ export class DesignTools {
                 layoutHint: `Frames like ${loose
                   .slice(0, 3)
                   .map((e) => `"${e.name}"`)
-                  .join(', ')} hold several children placed by hand. If they are a row, list or stack, give the frame autoLayout (design_update) and drop the children's x/y, so spacing stays even.`,
+                  .join(
+                    ', ',
+                  )} hold several children placed by hand. If they are a row, list or stack, give the frame autoLayout (design_update) and drop the children's x/y, so spacing stays even.`,
               }
             : {}),
           ...(iconish.length
@@ -794,7 +914,9 @@ export class DesignTools {
                 hint: `Elements like ${iconish
                   .slice(0, 3)
                   .map((e) => `"${e.name}"`)
-                  .join(', ')} look like icons. Real icons should be vector shapes drawn with design_add_svg, not rectangles, ellipses or characters; replace them.`,
+                  .join(
+                    ', ',
+                  )} look like icons. Real icons should be vector shapes drawn with design_add_svg, not rectangles, ellipses or characters; replace them.`,
               }
             : {}),
         }

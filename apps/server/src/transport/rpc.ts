@@ -1,5 +1,14 @@
 import { statSync } from 'node:fs'
-import { RpcMethods, type RpcMethodName, type RpcParams, type RpcResult } from '@beddcode/contracts'
+import {
+  RpcMethods,
+  type MetricPlatform,
+  type MetricRecord,
+  type RelaySettings,
+  type RpcMethodName,
+  type RpcParams,
+  type RpcResult,
+} from '@beddcode/contracts'
+import { buildPairLink } from '@beddcode/client-runtime/pairLink'
 import type { PairingManager } from '../auth/pairing.ts'
 import type { PeerClass } from '../auth/guard.ts'
 import type { TokenStore } from '../auth/tokens.ts'
@@ -76,6 +85,17 @@ export interface AccessServices {
   tailscale: TailscaleService
   /** The port this host listens on, probed on other tailnet machines. */
   port: () => number
+  /** Addresses another device could reach this host on, and who it is, for pairing links. */
+  reachable?: () => Promise<{ hostId: string; name: string; routes: string[]; relay?: string }>
+  /** Reads and changes the relay this host is reachable through. */
+  relay?: RelayControl
+  /** Where apps' speed measurements go (kept only while the owner has uploads switched on). */
+  telemetry?: { report(platform: MetricPlatform, records: MetricRecord[]): boolean }
+}
+
+export interface RelayControl {
+  get(): RelaySettings
+  set(url: string | null, password?: string | null, telemetry?: boolean): Promise<RelaySettings>
 }
 
 /** What the router knows about the caller. */
@@ -88,6 +108,8 @@ export interface RpcContext {
 /** Managing who may connect is only for someone sitting at this machine. */
 const LOOPBACK_ONLY: ReadonlySet<RpcMethodName> = new Set([
   'host.pair',
+  'host.relay.get',
+  'host.relay.set',
   'devices.list',
   'devices.revoke',
 ])
@@ -103,7 +125,32 @@ export function createRpcRouter(
   const { git, github, projects, terminals, files } = workspace
   const { schedules, alerts, designs } = automation
   const handlers: Handlers = {
-    'host.pair': async () => access.pairing.create(),
+    'host.pair': async () => {
+      const pair = access.pairing.create()
+      const where = await access.reachable?.().catch(() => undefined)
+      if (!where) return pair
+      return {
+        ...pair,
+        link: buildPairLink({
+          code: pair.code,
+          name: where.name,
+          hostId: where.hostId,
+          routes: where.routes,
+          relay: where.relay,
+        }),
+      }
+    },
+    'host.relay.get': async () => {
+      if (!access.relay) throw new Error('This host does not support relays')
+      return access.relay.get()
+    },
+    'host.relay.set': (p) => {
+      if (!access.relay) throw new Error('This host does not support relays')
+      return access.relay.set(p.url, p.password, p.telemetry)
+    },
+    'telemetry.report': async (p) => ({
+      accepted: access.telemetry?.report(p.platform, p.records) ?? false,
+    }),
     'devices.list': async () => access.tokens.list(),
     'devices.revoke': async (p) => {
       alerts.forgetDevice(p.id)
@@ -234,6 +281,10 @@ export function createRpcRouter(
     'sessions.undoTurn': (p) => sessions.undoTurn(p.sessionId, p.after),
     'sessions.setDone': async (p) => {
       sessions.setDone(p.sessionId, p.done)
+      return {}
+    },
+    'sessions.delete': async (p) => {
+      await sessions.delete(p.sessionId)
       return {}
     },
     'sessions.rename': async (p) => {

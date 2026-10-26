@@ -1,4 +1,5 @@
 import { PairResult, type TailnetPeer } from '@beddcode/contracts'
+import { parseRelayRoute } from './relaySocket.ts'
 
 export const DEFAULT_PORT = 3773
 export const LOCAL_HOST_KEY = 'local'
@@ -121,8 +122,8 @@ export function loadRemoteHosts(storage: KeyValueStorage | undefined): HostEntry
         e.routes.length > 0 &&
         e.routes.every((r: unknown) => {
           if (typeof r !== 'string') return false
-          // A websocket address without credentials in it.
-          return /^wss?:\/\/[^\s/@?#]+(\/[^\s]*)?$/i.test(r)
+          // A websocket address without credentials in it, or a relay route (see relaySocket.ts).
+          return /^wss?:\/\/[^\s/@?#]+(\/[^\s]*)?$/i.test(r) || parseRelayRoute(r) !== null
         }) &&
         typeof e.token === 'string' &&
         e.token.length > 0,

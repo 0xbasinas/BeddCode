@@ -55,6 +55,22 @@ function makeClient(onEvent: (e: StoredEvent) => void) {
 }
 
 describe('HostClient', () => {
+  it('measures how long the connection and the catch-up took', () => {
+    const client = makeClient(() => {})
+    client.start()
+    const socket = FakeSocket.instances[0]!
+    socket.open()
+    socket.receive(welcome)
+    socket.receive({ t: 'event', stored: ev(1) })
+    socket.receive({ t: 'event', stored: ev(2) })
+    socket.receive({ t: 'caught-up', seq: 2 })
+    const byName = Object.fromEntries(client.perf.recent.map((r) => [r.name, r]))
+    expect(byName['connect.ms']?.tags).toEqual({ route: 'direct' })
+    expect(byName['replay.events']).toMatchObject({ value: 2, tags: { resume: 'cold' } })
+    expect(byName['replay.kb']!.value).toBeGreaterThan(0)
+    expect(byName['replay.ms']).toBeDefined()
+  })
+
   it.each([false, true])(
     'tries another route when stalled, socket open=%s, ignoring late frames',
     (opened) => {
@@ -134,7 +150,7 @@ describe('HostClient', () => {
     const second = FakeSocket.instances[1]!
     second.open()
     second.receive(welcome)
-    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 7 })
+    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 7, compact: true, batch: true })
     client.stop()
   })
 
@@ -166,7 +182,7 @@ describe('HostClient', () => {
     const ws = FakeSocket.instances[0]!
     ws.open()
     ws.receive(welcome)
-    expect(ws.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 0 })
+    expect(ws.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 0, compact: true, batch: true })
 
     ws.receive({ t: 'event', stored: ev(1) })
     ws.receive({ t: 'event', stored: ev(2) })
@@ -202,7 +218,7 @@ describe('HostClient', () => {
     const second = FakeSocket.instances[1]!
     second.open()
     second.receive(welcome)
-    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 3 })
+    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 3, compact: true, batch: true })
     client.stop()
   })
 
@@ -251,7 +267,7 @@ describe('HostClient', () => {
     const second = FakeSocket.instances[1]!
     second.open()
     second.receive(welcome)
-    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 5 })
+    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 5, compact: true, batch: true })
     second.receive({ t: 'event', stored: ev(5) })
     second.receive({ t: 'event', stored: ev(6) })
     expect(seen).toEqual([5, 6])
@@ -275,6 +291,59 @@ describe('HostClient', () => {
     await expect(client.request('sessions.interrupt', { sessionId: 's' })).rejects.toThrow(
       'not connected',
     )
+  })
+
+  it('sends a message again after a reconnect, under the same rid, and waits while offline', async () => {
+    const client = makeClient(() => {})
+    client.start()
+    const first = FakeSocket.instances[0]!
+    first.open()
+    first.receive(welcome)
+
+    const sent = client.request('sessions.prompt', { sessionId: 's', text: 'hi' })
+    const req = first.sent.at(-1) as { id: string; rid?: string }
+    expect(req.rid).toBeTruthy()
+    first.drop()
+    // Offline: nothing is sent yet, and the message keeps waiting.
+    vi.advanceTimersByTime(50)
+    await Promise.resolve()
+
+    vi.advanceTimersByTime(200)
+    const second = FakeSocket.instances[1]!
+    second.open()
+    second.receive(welcome)
+    await Promise.resolve()
+    const again = second.sent.find((f) => f.t === 'req') as { id: string; rid?: string }
+    expect(again.rid).toBe(req.rid)
+    second.receive({ t: 'res', id: again.id, ok: true, result: { ok: 1 } })
+    await expect(sent).resolves.toEqual({ ok: 1 })
+
+    // Started while offline: it goes out once connected.
+    second.drop()
+    const queued = client.request('sessions.prompt', { sessionId: 's', text: 'later' })
+    vi.advanceTimersByTime(200)
+    const third = FakeSocket.instances[2]!
+    third.open()
+    third.receive(welcome)
+    await Promise.resolve()
+    const out = third.sent.find((f) => f.t === 'req') as { id: string }
+    third.receive({ t: 'res', id: out.id, ok: true, result: { ok: 2 } })
+    await expect(queued).resolves.toEqual({ ok: 2 })
+  })
+
+  it('fails a waiting message when the connection does not come back in time', async () => {
+    const client = new HostClient({
+      url: 'ws://host/ws',
+      onEvent: () => {},
+      createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
+      backoff: { minMs: 100, maxMs: 100 },
+      queueWaitMs: 1000,
+    })
+    client.start()
+    const late = client.request('sessions.prompt', { sessionId: 's', text: 'x' })
+    const failed = expect(late).rejects.toThrow('not connected')
+    vi.advanceTimersByTime(1100)
+    await failed
   })
 
   it('forwards terminal and file frames, and sends frames only while connected', () => {
@@ -362,5 +431,68 @@ describe('HostClient', () => {
     FakeSocket.instances[1]!.drop()
     vi.advanceTimersByTime(200)
     expect(FakeSocket.instances[2]!.url).toBe('ws://100.1.2.3/ws')
+  })
+  it('resumes from a saved copy of the history of the same log', () => {
+    const client = new HostClient({
+      url: 'ws://host/ws',
+      onEvent: () => {},
+      createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
+      initialSeq: 40,
+      resumeLogId: 'log-1',
+    })
+    client.start()
+    const socket = FakeSocket.instances[0]!
+    socket.open()
+    socket.receive({ ...welcome, host: { ...host, logId: 'log-1' } })
+    expect(socket.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 40, compact: true, batch: true })
+    socket.receive({ t: 'caught-up', seq: 40 })
+    expect(client.perf.drain(50).find((r) => r.name === 'replay.ms')?.tags?.resume).toBe('disk')
+  })
+
+  it('forgets a saved copy that belongs to another log, and asks for everything', () => {
+    const reset = vi.fn()
+    const client = new HostClient({
+      url: 'ws://host/ws',
+      onEvent: () => {},
+      onReset: reset,
+      createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
+      initialSeq: 40,
+      resumeLogId: 'old-log',
+    })
+    client.start()
+    const socket = FakeSocket.instances[0]!
+    socket.open()
+    socket.receive({ ...welcome, host: { ...host, logId: 'new-log' } })
+    expect(reset).toHaveBeenCalledOnce()
+    expect(socket.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 0, compact: true, batch: true })
+    expect(client.log).toBe('new-log')
+  })
+
+  it('treats a host without a log id as a different log than a saved copy', () => {
+    const reset = vi.fn()
+    const client = new HostClient({
+      url: 'ws://host/ws',
+      onEvent: () => {},
+      onReset: reset,
+      createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
+      initialSeq: 9,
+      resumeLogId: 'log-1',
+    })
+    client.start()
+    const socket = FakeSocket.instances[0]!
+    socket.open()
+    socket.receive(welcome)
+    expect(reset).toHaveBeenCalledOnce()
+  })
+
+  it('resumes from where the replay ended, not from its last event', () => {
+    const client = makeClient(() => {})
+    client.start()
+    const first = FakeSocket.instances[0]!
+    first.open()
+    first.receive(welcome)
+    first.receive({ t: 'event', stored: ev(3) })
+    first.receive({ t: 'caught-up', seq: 9 })
+    expect(client.seq).toBe(9)
   })
 })

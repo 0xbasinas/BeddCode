@@ -70,7 +70,11 @@ export function splitLineIntoRuns(
   const runs: { text: string; x: number; link?: string }[] = []
   // collect links intersecting this line, clamped to it
   const inLine = links
-    .map((l) => ({ s: Math.max(l.start, lineStartInContent), e: Math.min(l.end, lineStartInContent + lineText.length), url: l.url }))
+    .map((l) => ({
+      s: Math.max(l.start, lineStartInContent),
+      e: Math.min(l.end, lineStartInContent + lineText.length),
+      url: l.url,
+    }))
     .filter((l) => l.e > l.s)
     .sort((a, b) => a.s - b.s)
   let cursor = 0 // position within lineText

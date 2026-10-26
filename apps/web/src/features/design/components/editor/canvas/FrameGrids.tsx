@@ -30,10 +30,22 @@ function frameGridsFor(el: DesignElement, keyPrefix: string): React.ReactNode {
             <g key={grid.id}>
               <defs>
                 <pattern id={patId} width={step} height={step} patternUnits="userSpaceOnUse">
-                  <path d={`M ${step} 0 L 0 0 0 ${step}`} fill="none" stroke={grid.color} strokeWidth={1} />
+                  <path
+                    d={`M ${step} 0 L 0 0 0 ${step}`}
+                    fill="none"
+                    stroke={grid.color}
+                    strokeWidth={1}
+                  />
                 </pattern>
               </defs>
-              <rect x={0} y={0} width={el.width} height={el.height} fill={`url(#${patId})`} opacity={0.35} />
+              <rect
+                x={0}
+                y={0}
+                width={el.width}
+                height={el.height}
+                fill={`url(#${patId})`}
+                opacity={0.35}
+              />
             </g>
           )
         }
@@ -41,7 +53,15 @@ function frameGridsFor(el: DesignElement, keyPrefix: string): React.ReactNode {
         return (
           <g key={grid.id} opacity={0.12}>
             {rects.map((r, i) => (
-              <rect key={i} x={r.x} y={r.y} width={r.width} height={r.height} fill={grid.color} stroke="none" />
+              <rect
+                key={i}
+                x={r.x}
+                y={r.y}
+                width={r.width}
+                height={r.height}
+                fill={grid.color}
+                stroke="none"
+              />
             ))}
           </g>
         )

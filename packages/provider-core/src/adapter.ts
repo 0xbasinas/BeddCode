@@ -78,6 +78,11 @@ export interface HistoryItem {
 export interface HistoryTurn {
   user: string
   assistant: string
+  /**
+   * What the agent did in this exchange, in order: its messages, tool calls and edits. When a
+   * provider gives it, an imported session shows all of it instead of only `assistant`.
+   */
+  events?: SessionEvent[]
 }
 
 export interface ProviderMcp {

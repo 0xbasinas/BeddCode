@@ -42,8 +42,10 @@ async function importSvg(file: File, at: ImportPlacement): Promise<string> {
   const store = useEditorStore.getState()
   store.pushHistory()
   store.importElementsBatch(placed)
-  return `SVG "${file.name}": ${result.stats.imported} elements imported` +
+  return (
+    `SVG "${file.name}": ${result.stats.imported} elements imported` +
     (result.stats.skipped > 0 ? ` (${result.stats.skipped} nodes skipped)` : '')
+  )
 }
 
 /** Import one raster image file → image-fill rectangle at `at`. */
@@ -97,7 +99,10 @@ export interface ImportSummary {
  * land at `at`; JSON projects are offered in merge mode when other files
  * are also present, otherwise replace.
  */
-export async function importFiles(files: File[], at: ImportPlacement = 'view-center'): Promise<ImportSummary> {
+export async function importFiles(
+  files: File[],
+  at: ImportPlacement = 'view-center',
+): Promise<ImportSummary> {
   const summary: ImportSummary = { ok: [], failed: [] }
   const store = useEditorStore.getState()
 

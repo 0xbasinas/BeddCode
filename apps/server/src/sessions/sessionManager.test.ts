@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ProviderCapabilities, ProviderInstance, SessionEvent } from '@beddcode/contracts'
 import type { ProviderAdapter, ProviderSession, StartSessionInput } from '@beddcode/provider-core'
 import { createAsyncQueue, createLogger } from '@beddcode/shared'
@@ -115,6 +115,15 @@ describe('SessionManager', () => {
     })
     expect(() => manager.setDone('missing', true)).toThrow('Unknown session')
   })
+  it('deletes a session: its events leave the log and only the deletion remains', async () => {
+    const { store, manager } = setup({ resume: true })
+    const { sessionId } = await manager.create({ instanceId: 'stub' })
+    const other = await manager.create({ instanceId: 'stub' })
+    await manager.delete(sessionId)
+    expect(store.readSession(sessionId).map((e) => e.event.type)).toEqual(['session.deleted'])
+    expect(store.readSession(other.sessionId).length).toBeGreaterThan(0)
+    await expect(manager.delete(sessionId)).rejects.toThrow('Unknown session')
+  })
   it('refuses to start a session on a provider that is not ready', async () => {
     const { manager } = setup({ resume: true, status: 'needs-sign-in' })
     await expect(manager.create({ instanceId: 'stub' })).rejects.toThrow('not ready')
@@ -135,7 +144,9 @@ describe('SessionManager', () => {
       defaultCwd: '/x',
     })
     await restarted.prompt(sessionId, 'continue')
-    await tick()
+    await vi.waitFor(() =>
+      expect(store.readSession(sessionId).map((e) => e.event.type)).toContain('turn.completed'),
+    )
 
     expect(starts).toHaveLength(2)
     expect(starts[1]).toMatchObject({
@@ -144,8 +155,6 @@ describe('SessionManager', () => {
       permissionMode: 'plan',
       resumeId: 'native-1',
     })
-    const types = store.readSession(sessionId).map((e) => e.event.type)
-    expect(types).toContain('turn.completed')
   })
 
   it('starts only one provider process for concurrent prompts to a stopped session', async () => {

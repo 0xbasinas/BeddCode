@@ -14,7 +14,14 @@ import {
   PrFilter,
   PrAction,
 } from './git.ts'
-import { Device, PairingCode, TailnetStatus } from './hosts.ts'
+import {
+  Device,
+  MetricPlatform,
+  MetricRecord,
+  PairingCode,
+  RelaySettings,
+  TailnetStatus,
+} from './hosts.ts'
 import { ConfigOption, SlashCommand } from './events.ts'
 import { PermissionModeOption, ProviderInstance } from './providers.ts'
 import { FileContent, FileEntry, FileMedia, FolderListing, TerminalInfo } from './workspace.ts'
@@ -280,6 +287,30 @@ export const RpcMethods = {
   },
   /** New pairing code for this host. Only the machine itself may ask (loopback connections). */
   'host.pair': { params: z.object({}), result: PairingCode },
+  /** The relay that lets devices on other networks reach this host. Loopback connections only. */
+  'host.relay.get': { params: z.object({}), result: RelaySettings },
+  /** Sets (an ordinary address such as relay.example.com) or clears (null) the relay; takes effect at once. */
+  'host.relay.set': {
+    params: z.object({
+      url: z.string().nullable(),
+      /** The relay's password: leave out to keep the current one, empty or null to remove it. */
+      password: z.string().nullable().optional(),
+      /** Upload anonymous speed measurements to the relay. Leave out to keep it as it is. */
+      telemetry: z.boolean().optional(),
+    }),
+    result: RelaySettings,
+  },
+  /**
+   * Speed measurements from a client. The host passes them to the relay when the user turned that
+   * on; `accepted: false` tells the client to stop sending.
+   */
+  'telemetry.report': {
+    params: z.object({
+      platform: MetricPlatform,
+      records: z.array(MetricRecord).max(200),
+    }),
+    result: z.object({ accepted: z.boolean() }),
+  },
   /** Paired devices, and removal of one (its token stops working). Loopback connections only. */
   'devices.list': { params: z.object({}), result: z.array(Device) },
   'devices.revoke': {
@@ -510,6 +541,11 @@ export const RpcMethods = {
   /** Moves a session into the sidebar's Done section, or back out of it. */
   'sessions.setDone': {
     params: z.object({ sessionId: z.string(), done: z.boolean() }),
+    result: z.object({}),
+  },
+  /** Removes a session and its history from the host. The folder and any worktree are kept. */
+  'sessions.delete': {
+    params: z.object({ sessionId: z.string() }),
     result: z.object({}),
   },
   /** Pins a session to the top of the sidebar, or unpins it. */

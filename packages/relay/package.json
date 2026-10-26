@@ -1,0 +1,31 @@
+{
+  "name": "@beddcode/relay",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A relay that lets BeddCode hosts and devices meet without a shared network. It forwards encrypted bytes and cannot read them.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./protocol": "./src/protocol.ts"
+  },
+  "bin": {
+    "beddcode-relay": "./src/main.ts"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p worker",
+    "test": "vitest run --passWithNoTests",
+    "deploy": "npx wrangler deploy -c worker/wrangler.toml"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@beddcode/client-runtime": "workspace:*",
+    "@beddcode/contracts": "workspace:*",
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "tsx": "^4.20.0"
+  }
+}

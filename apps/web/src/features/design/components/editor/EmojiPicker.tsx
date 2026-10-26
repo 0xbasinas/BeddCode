@@ -10,7 +10,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { EMOJI_CATEGORIES, ALL_EMOJIS } from '../../lib/emoji'
 
-export function EmojiPickerButton({ onPick, label = '🙂' }: { onPick: (emoji: string) => void; label?: string }) {
+export function EmojiPickerButton({
+  onPick,
+  label = '🙂',
+}: {
+  onPick: (emoji: string) => void
+  label?: string
+}) {
   const [open, setOpen] = useState(false)
   const [cat, setCat] = useState(0)
   const [q, setQ] = useState('')
@@ -31,10 +37,15 @@ export function EmojiPickerButton({ onPick, label = '🙂' }: { onPick: (emoji: 
     <div className="relative" ref={ref}>
       <button
         type="button"
-        onClick={() => { setOpen(!open); setQ('') }}
+        onClick={() => {
+          setOpen(!open)
+          setQ('')
+        }}
         className="w-6 h-6 rounded border border-[color:var(--dc-border)] bg-[color:var(--dc-input)] text-[13px] leading-none hover:border-[color:var(--dc-accent)] shrink-0"
         title="Insert emoji"
-      >{label}</button>
+      >
+        {label}
+      </button>
       {open && (
         <div className="absolute right-0 top-7 z-50 w-56 rounded border border-[color:var(--dc-hover)] bg-[color:var(--dc-raised)] p-1.5 shadow-xl">
           <input
@@ -52,7 +63,9 @@ export function EmojiPickerButton({ onPick, label = '🙂' }: { onPick: (emoji: 
                   type="button"
                   onClick={() => setCat(i)}
                   className={`h-4 px-1.5 text-[9px] rounded-sm ${i === cat ? 'bg-[color:var(--dc-accent)] text-white' : 'bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)]'}`}
-                >{c.name}</button>
+                >
+                  {c.name}
+                </button>
               ))}
             </div>
           )}
@@ -61,9 +74,14 @@ export function EmojiPickerButton({ onPick, label = '🙂' }: { onPick: (emoji: 
               <button
                 key={i}
                 type="button"
-                onClick={() => { onPick(em); setOpen(false) }}
+                onClick={() => {
+                  onPick(em)
+                  setOpen(false)
+                }}
                 className="h-6 w-6 text-[15px] leading-none rounded hover:bg-[color:var(--dc-hover)]"
-              >{em}</button>
+              >
+                {em}
+              </button>
             ))}
           </div>
         </div>

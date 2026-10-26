@@ -1,4 +1,10 @@
-import { configPath, readConfigFile, writeConfigFile, type ConfigFile } from '../config.ts'
+import {
+  configPath,
+  normalizeRelayUrl,
+  readConfigFile,
+  writeConfigFile,
+  type ConfigFile,
+} from '../config.ts'
 import type { Io } from './io.ts'
 
 type Kind = 'number' | 'string' | 'boolean' | 'list'
@@ -16,6 +22,15 @@ export const SETTINGS: Record<keyof ConfigFile, { kind: Kind; help: string }> = 
   },
   requireToken: { kind: 'boolean', help: "Ask for a paired device's token even from this machine" },
   allowedOrigins: { kind: 'list', help: 'Web page origins allowed to connect (comma separated)' },
+  telemetry: {
+    kind: 'boolean',
+    help: 'Upload anonymous speed measurements to your relay (see `beddcode metrics`)',
+  },
+  relayPassword: { kind: 'string', help: 'The password your relay asks of hosts, if you set one' },
+  relayUrl: {
+    kind: 'string',
+    help: 'A relay address (https://relay.example.com) so devices on any network can reach this host',
+  },
 }
 
 const KEYS = Object.keys(SETTINGS) as (keyof ConfigFile)[]
@@ -47,7 +62,7 @@ export function parseValue(key: keyof ConfigFile, raw: string): ConfigFile[keyof
       .filter(Boolean)
   }
   if (!raw) throw new Error(`${key} needs a value`)
-  return raw
+  return key === 'relayUrl' ? normalizeRelayUrl(raw) : raw
 }
 
 const show = (v: unknown) => (Array.isArray(v) ? v.join(',') : String(v))
@@ -69,7 +84,7 @@ export function configCmd(args: string[], io: Io, file = configPath()): number {
     for (const key of KEYS) {
       const v = config[key]
       io.out(
-        `${key.padEnd(15)} ${v === undefined ? '(default)' : show(v)}  — ${SETTINGS[key].help}\n`,
+        `${key.padEnd(15)} ${v === undefined ? '(default)' : key === 'relayPassword' ? '(set)' : show(v)}  — ${SETTINGS[key].help}\n`,
       )
     }
     io.err(`File: ${file}\n`)

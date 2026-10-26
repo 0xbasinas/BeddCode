@@ -28,7 +28,10 @@ function fmtLabel(unitValue: number, unit: RulerUnit): string {
 
 export function Rulers({ containerWidth, containerHeight, zoom, panX, panY }: RulersProps) {
   const { guides, addGuide, showRulers, rulerUnit } = useEditorStore()
-  const isDraggingGuide = useRef<{ orientation: 'horizontal' | 'vertical'; startPos: number } | null>(null)
+  const isDraggingGuide = useRef<{
+    orientation: 'horizontal' | 'vertical'
+    startPos: number
+  } | null>(null)
 
   const canvasToScreen = useCallback(
     (canvasX: number, canvasY: number) => {
@@ -36,7 +39,7 @@ export function Rulers({ containerWidth, containerHeight, zoom, panX, panY }: Ru
       const cy = containerHeight / 2 + panY
       return { x: cx + canvasX * zoom, y: cy + canvasY * zoom }
     },
-    [containerWidth, containerHeight, zoom, panX, panY]
+    [containerWidth, containerHeight, zoom, panX, panY],
   )
   void canvasToScreen
 
@@ -55,9 +58,10 @@ export function Rulers({ containerWidth, containerHeight, zoom, panX, panY }: Ru
     }
 
     const handleUp = (upEvent: MouseEvent) => {
-      const pos = orientation === 'horizontal'
-        ? (upEvent.clientY - cy - RULER_SIZE) / zoom
-        : (upEvent.clientX - cx - RULER_SIZE) / zoom
+      const pos =
+        orientation === 'horizontal'
+          ? (upEvent.clientY - cy - RULER_SIZE) / zoom
+          : (upEvent.clientX - cx - RULER_SIZE) / zoom
 
       const guide: Guide = {
         id: `guide-${Date.now()}`,
@@ -104,11 +108,17 @@ export function Rulers({ containerWidth, containerHeight, zoom, panX, panY }: Ru
 
   const hStart = -cx / zoom
   const hEnd = (containerWidth - cx) / zoom
-  const hTicks = makeTicks(hStart, hEnd).map((t) => ({ ...t, pos: screenFor(t.pos * pxPerUnit, 'x') }))
+  const hTicks = makeTicks(hStart, hEnd).map((t) => ({
+    ...t,
+    pos: screenFor(t.pos * pxPerUnit, 'x'),
+  }))
 
   const vStart = -cy / zoom
   const vEnd = (containerHeight - cy) / zoom
-  const vTicks = makeTicks(vStart, vEnd).map((t) => ({ ...t, pos: screenFor(t.pos * pxPerUnit, 'y') }))
+  const vTicks = makeTicks(vStart, vEnd).map((t) => ({
+    ...t,
+    pos: screenFor(t.pos * pxPerUnit, 'y'),
+  }))
 
   return (
     <>

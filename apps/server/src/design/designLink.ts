@@ -18,11 +18,11 @@ export interface RenderRequest {
   scale?: number
 }
 
-export type RenderResult = { ok: true; image: { data: string; mime: string } } | { ok: false; error: string }
+export type RenderResult =
+  { ok: true; image: { data: string; mime: string } } | { ok: false; error: string }
 export type ImportResult = { ok: true; elements: unknown[] } | { ok: false; error: string }
 export type LayoutResult =
-  | { ok: true; pages: { id: string; elements: unknown[] }[] }
-  | { ok: false; error: string }
+  { ok: true; pages: { id: string; elements: unknown[] }[] } | { ok: false; error: string }
 type Answer = RenderResult | ImportResult | LayoutResult
 
 const RENDER_TIMEOUT_MS = 20_000
@@ -136,7 +136,10 @@ export class DesignLink {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
-        resolve({ ok: false, error: `The app did not ${what} within ${Math.round(timeoutMs / 1000)} s.` })
+        resolve({
+          ok: false,
+          error: `The app did not ${what} within ${Math.round(timeoutMs / 1000)} s.`,
+        })
       }, timeoutMs)
       this.pending.set(id, { clients: new Set(able.map((c) => c.id)), resolve, timer })
       const frame = build(id)
@@ -146,16 +149,28 @@ export class DesignLink {
 
   /** Asks the connected apps for a picture. */
   render(request: RenderRequest, timeoutMs = RENDER_TIMEOUT_MS): Promise<RenderResult> {
-    return this.ask((id) => ({ t: 'design.render', id, ...request }), timeoutMs, 'draw the design') as Promise<RenderResult>
+    return this.ask(
+      (id) => ({ t: 'design.render', id, ...request }),
+      timeoutMs,
+      'draw the design',
+    ) as Promise<RenderResult>
   }
 
   /** Asks the connected apps to work out auto layout and text sizes of a design. */
   layout(designId: string, timeoutMs = 10_000): Promise<LayoutResult> {
-    return this.ask((id) => ({ t: 'design.layout', id, designId }), timeoutMs, 'lay out the design') as Promise<LayoutResult>
+    return this.ask(
+      (id) => ({ t: 'design.layout', id, designId }),
+      timeoutMs,
+      'lay out the design',
+    ) as Promise<LayoutResult>
   }
 
   /** Asks the connected apps to turn SVG markup into design elements. */
   importSvg(svg: string, width?: number, timeoutMs = RENDER_TIMEOUT_MS): Promise<ImportResult> {
-    return this.ask((id) => ({ t: 'design.import', id, svg, width }), timeoutMs, 'read the SVG') as Promise<ImportResult>
+    return this.ask(
+      (id) => ({ t: 'design.import', id, svg, width }),
+      timeoutMs,
+      'read the SVG',
+    ) as Promise<ImportResult>
   }
 }

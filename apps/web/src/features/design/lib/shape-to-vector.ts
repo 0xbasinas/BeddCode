@@ -32,7 +32,12 @@ const K = 0.5522847498307936 // cubic-bezier circle approximation constant
 /** Straight-segment closed network from explicit points. */
 function networkFromPoints(pts: { x: number; y: number }[], closed: boolean): VectorNetwork {
   const vertices: VectorVertex[] = pts.map((p) => ({ x: p.x, y: p.y }))
-  const segments: { start: number; end: number; tangentStart?: { x: number; y: number }; tangentEnd?: { x: number; y: number } }[] = []
+  const segments: {
+    start: number
+    end: number
+    tangentStart?: { x: number; y: number }
+    tangentEnd?: { x: number; y: number }
+  }[] = []
   for (let i = 0; i < pts.length - 1; i++) segments.push({ start: i, end: i + 1 })
   if (closed && pts.length > 2) segments.push({ start: pts.length - 1, end: 0 })
   return { vertices, segments, closed }
@@ -69,27 +74,48 @@ function ellipseNetwork(w: number, h: number): VectorNetwork {
 function roundedRectNetwork(w: number, h: number, r: number): VectorNetwork {
   const rr = Math.min(r, w / 2, h / 2)
   if (rr <= 0.01) {
-    return networkFromPoints([{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }], true)
+    return networkFromPoints(
+      [
+        { x: 0, y: 0 },
+        { x: w, y: 0 },
+        { x: w, y: h },
+        { x: 0, y: h },
+      ],
+      true,
+    )
   }
   const k = rr * K
   // 8 anchors: 2 per corner. Order: top-left corner (a at x=r,y=0 … b at 0,y=r) etc.
   const v: VectorVertex[] = [
-    { x: rr, y: 0 }, { x: 0, y: rr },            // TL corner (top anchor → left anchor)
-    { x: 0, y: h - rr }, { x: rr, y: h },        // BL corner
-    { x: w - rr, y: h }, { x: w, y: h - rr },    // BR corner
-    { x: w, y: rr }, { x: w - rr, y: 0 },        // TR corner
+    { x: rr, y: 0 },
+    { x: 0, y: rr }, // TL corner (top anchor → left anchor)
+    { x: 0, y: h - rr },
+    { x: rr, y: h }, // BL corner
+    { x: w - rr, y: h },
+    { x: w, y: h - rr }, // BR corner
+    { x: w, y: rr },
+    { x: w - rr, y: 0 }, // TR corner
   ]
-  const seg = (s: number, e: number, ts?: { x: number; y: number }, te?: { x: number; y: number }) =>
-    ({ start: s, end: e, ...(ts ? { tangentStart: ts } : {}), ...(te ? { tangentEnd: te } : {}) })
+  const seg = (
+    s: number,
+    e: number,
+    ts?: { x: number; y: number },
+    te?: { x: number; y: number },
+  ) => ({
+    start: s,
+    end: e,
+    ...(ts ? { tangentStart: ts } : {}),
+    ...(te ? { tangentEnd: te } : {}),
+  })
   const segments = [
-    seg(0, 1, { x: k, y: 0 }, { x: 0, y: k }),     // TL corner arc
-    seg(1, 2),                                     // left edge
-    seg(2, 3, { x: 0, y: -k }, { x: k, y: 0 }),    // BL corner arc
-    seg(3, 4),                                     // bottom edge
-    seg(4, 5, { x: -k, y: 0 }, { x: 0, y: -k }),   // BR corner arc
-    seg(5, 6),                                     // right edge
-    seg(6, 7, { x: 0, y: k }, { x: -k, y: 0 }),    // TR corner arc
-    seg(7, 0),                                     // top edge
+    seg(0, 1, { x: k, y: 0 }, { x: 0, y: k }), // TL corner arc
+    seg(1, 2), // left edge
+    seg(2, 3, { x: 0, y: -k }, { x: k, y: 0 }), // BL corner arc
+    seg(3, 4), // bottom edge
+    seg(4, 5, { x: -k, y: 0 }, { x: 0, y: -k }), // BR corner arc
+    seg(5, 6), // right edge
+    seg(6, 7, { x: 0, y: k }, { x: -k, y: 0 }), // TR corner arc
+    seg(7, 0), // top edge
   ]
   return { vertices: v, segments, closed: true }
 }
@@ -103,7 +129,11 @@ function sampledNetwork(d: string, closed: boolean, tolerance: number): VectorNe
   p.setAttribute('d', d)
   probe.appendChild(p)
   let len = 0
-  try { len = p.getTotalLength() } catch { return null }
+  try {
+    len = p.getTotalLength()
+  } catch {
+    return null
+  }
   if (!isFinite(len) || len <= 0) return null
   const step = Math.max(1.5, len / 240)
   const n = Math.max(8, Math.min(240, Math.ceil(len / step)))
@@ -169,7 +199,13 @@ export function shapeToVectorNetwork(el: DesignElement): VectorNetwork | null {
     }
     case 'line':
     case 'arrow':
-      return networkFromPoints([{ x: 0, y: 0 }, { x: el.width, y: el.height }], false)
+      return networkFromPoints(
+        [
+          { x: 0, y: 0 },
+          { x: el.width, y: el.height },
+        ],
+        false,
+      )
     default:
       return null
   }

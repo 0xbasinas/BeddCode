@@ -24,7 +24,12 @@ export function useCanvasHitTest() {
       let bestMatch: DesignElement | null = null
       let bestDepth = -1
 
-      const searchElements = (elements: DesignElement[], parentX: number, parentY: number, depth: number) => {
+      const searchElements = (
+        elements: DesignElement[],
+        parentX: number,
+        parentY: number,
+        depth: number,
+      ) => {
         for (let i = elements.length - 1; i >= 0; i--) {
           const el = elements[i]
           if (!el.visible || el.locked) continue
@@ -34,8 +39,12 @@ export function useCanvasHitTest() {
           const absX = el.x + parentX
           const absY = el.y + parentY
 
-          if (canvasX >= absX && canvasX <= absX + el.width &&
-              canvasY >= absY && canvasY <= absY + el.height) {
+          if (
+            canvasX >= absX &&
+            canvasX <= absX + el.width &&
+            canvasY >= absY &&
+            canvasY <= absY + el.height
+          ) {
             // Found a match - check if there's a deeper nested match
             if (depth > bestDepth) {
               bestDepth = depth
@@ -52,7 +61,7 @@ export function useCanvasHitTest() {
       searchElements(state.elements, 0, 0, 0)
       return bestMatch
     },
-    []
+    [],
   )
 
   const findElementAtPosition = useCallback(
@@ -65,14 +74,22 @@ export function useCanvasHitTest() {
         let best: DesignElement | null = null
         let bestDepth = -1
         let bestAbs = { x: 0, y: 0 }
-        const search = (elements: DesignElement[], parentAbsX: number, parentAbsY: number, depth: number) => {
+        const search = (
+          elements: DesignElement[],
+          parentAbsX: number,
+          parentAbsY: number,
+          depth: number,
+        ) => {
           for (let i = elements.length - 1; i >= 0; i--) {
             const el = elements[i]
             if (!el.visible || el.locked) continue
             const absX = el.x + parentAbsX
             const absY = el.y + parentAbsY
-            const hit = canvasX >= absX && canvasX <= absX + el.width &&
-                        canvasY >= absY && canvasY <= absY + el.height
+            const hit =
+              canvasX >= absX &&
+              canvasX <= absX + el.width &&
+              canvasY >= absY &&
+              canvasY <= absY + el.height
             if (hit && depth >= bestDepth) {
               bestDepth = depth
               best = el
@@ -100,41 +117,50 @@ export function useCanvasHitTest() {
             // Convert child's relative coordinates to absolute canvas coordinates
             const absChildX = el.x + child.x
             const absChildY = el.y + child.y
-            if (canvasX >= absChildX && canvasX <= absChildX + child.width &&
-                canvasY >= absChildY && canvasY <= absChildY + child.height) {
+            if (
+              canvasX >= absChildX &&
+              canvasX <= absChildX + child.width &&
+              canvasY >= absChildY &&
+              canvasY <= absChildY + child.height
+            ) {
               return child
             }
           }
         }
-        if (canvasX >= el.x && canvasX <= el.x + el.width &&
-            canvasY >= el.y && canvasY <= el.y + el.height) {
+        if (
+          canvasX >= el.x &&
+          canvasX <= el.x + el.width &&
+          canvasY >= el.y &&
+          canvasY <= el.y + el.height
+        ) {
           return el
         }
       }
       return null
     },
-    []
+    [],
   )
 
   // Helper: get absolute position of an element (accounts for parent frame offsets)
-  const getAbsolutePosition = useCallback(
-    (elementId: string): { x: number; y: number } | null => {
-      const state = useEditorStore.getState()
-      // Walk down from the top level, adding each ancestor's offset (children sit in their parent's space).
-      const walk = (list: DesignElement[], ox: number, oy: number): { x: number; y: number } | null => {
-        for (const el of list) {
-          if (el.id === elementId) return { x: ox + el.x, y: oy + el.y }
-          if (el.children) {
-            const hit = walk(el.children, ox + el.x, oy + el.y)
-            if (hit) return hit
-          }
+  const getAbsolutePosition = useCallback((elementId: string): { x: number; y: number } | null => {
+    const state = useEditorStore.getState()
+    // Walk down from the top level, adding each ancestor's offset (children sit in their parent's space).
+    const walk = (
+      list: DesignElement[],
+      ox: number,
+      oy: number,
+    ): { x: number; y: number } | null => {
+      for (const el of list) {
+        if (el.id === elementId) return { x: ox + el.x, y: oy + el.y }
+        if (el.children) {
+          const hit = walk(el.children, ox + el.x, oy + el.y)
+          if (hit) return hit
         }
-        return null
       }
-      return walk(state.elements, 0, 0)
-    },
-    []
-  )
+      return null
+    }
+    return walk(state.elements, 0, 0)
+  }, [])
 
   const findResizeHandle = useCallback(
     (canvasX: number, canvasY: number): { elementId: string; handle: HandlePosition } | null => {
@@ -147,7 +173,7 @@ export function useCanvasHitTest() {
       let absEl = el
       for (const parent of state.elements) {
         if (parent.children) {
-          const child = parent.children.find(c => c.id === id)
+          const child = parent.children.find((c) => c.id === id)
           if (child) {
             absEl = { ...child, x: parent.x + child.x, y: parent.y + child.y }
             break
@@ -158,7 +184,10 @@ export function useCanvasHitTest() {
       const handles = getHandlePositions(absEl, safeZoomForHandles)
       const threshold = HANDLE_SIZE / safeZoomForHandles
       const rotHandle = handles.rotate
-      if (Math.abs(canvasX - rotHandle.x) < threshold && Math.abs(canvasY - rotHandle.y) < threshold) {
+      if (
+        Math.abs(canvasX - rotHandle.x) < threshold &&
+        Math.abs(canvasY - rotHandle.y) < threshold
+      ) {
         return { elementId: id, handle: 'rotate' }
       }
       for (const [pos, point] of Object.entries(handles)) {
@@ -169,7 +198,7 @@ export function useCanvasHitTest() {
       }
       return null
     },
-    [zoom]
+    [zoom],
   )
 
   return {

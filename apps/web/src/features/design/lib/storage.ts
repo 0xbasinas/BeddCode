@@ -71,14 +71,23 @@ export async function deleteProject(id: string): Promise<void> {
 let autoSaveTimer: ReturnType<typeof setInterval> | null = null
 
 export function startAutoSave(
-  getState: () => { elements: DesignElement[]; pages: Page[]; fileName: string; guides: Guide[]; isDirty: boolean; setLastSavedAt: (t: number | null) => void; setSaving: (s: boolean) => void; setDirty: (d: boolean) => void }
+  getState: () => {
+    elements: DesignElement[]
+    pages: Page[]
+    fileName: string
+    guides: Guide[]
+    isDirty: boolean
+    setLastSavedAt: (t: number | null) => void
+    setSaving: (s: boolean) => void
+    setDirty: (d: boolean) => void
+  },
 ) {
   if (autoSaveTimer) clearInterval(autoSaveTimer)
-  
+
   autoSaveTimer = setInterval(async () => {
     const state = getState()
     if (!state.isDirty) return
-    
+
     state.setSaving(true)
     try {
       const savedAt = await saveProject({

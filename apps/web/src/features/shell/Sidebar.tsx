@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   ArrowDownWideNarrow,
@@ -19,8 +28,10 @@ import {
   Undo2,
   Bot,
   CalendarClock,
+  History,
   Pin,
   PinOff,
+  Trash2,
   X,
 } from 'lucide-react'
 import {
@@ -38,13 +49,16 @@ import type { Project } from '@beddcode/contracts'
 import { ContextMenu, type ContextMenuItem } from '../../ui/ContextMenu.tsx'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import {
+  reconnectHostNow,
   setSessionDone,
+  deleteSession,
   setSessionPinned,
   useAllSessions,
   useHostStore,
 } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { HostsDialog } from '../hosts/HostsDialog.tsx'
+import { HistoryDialog } from '../history/HistoryDialog.tsx'
 import { folderName, timeAgo } from '../../ui/format.ts'
 import { useUiStore } from '../../stores/ui.ts'
 import { AddFolderMenu } from '../folders/AddFolderMenu.tsx'
@@ -116,12 +130,53 @@ export function Sidebar() {
   const runtimes = useHostStore((s) => s.runtimes)
   const [filter, setFilter] = useState<Filter>('all')
   const [hostsOpen, setHostsOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [hostFilter, setHostFilter] = useState<string>('all')
   const [sort, setSort] = useState<'attention' | 'recent'>('attention')
   const searchOpen = useUiStore((s) => s.searchOpen)
   const setSearchOpen = useUiStore((s) => s.setSearchOpen)
   const [query, setQuery] = useState('')
   const searchInput = useRef<HTMLInputElement>(null)
+  const sessionList = useRef<HTMLDivElement>(null)
+  const onSearchKey = (event: KeyboardEvent<HTMLElement>) => {
+    if (
+      !searchOpen ||
+      event.nativeEvent.isComposing ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey
+    )
+      return
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      setQuery('')
+      setSearchOpen(false)
+      return
+    }
+    if (event.target !== searchInput.current && !(event.target as Element).closest('.session-row'))
+      return
+    const rows = Array.from(
+      sessionList.current?.querySelectorAll<HTMLAnchorElement>('.session-row') ?? [],
+    )
+    const at = rows.indexOf(document.activeElement as HTMLAnchorElement)
+    if (event.key === 'Enter') {
+      event.stopPropagation()
+      if (event.target === searchInput.current) {
+        event.preventDefault()
+        rows[0]?.click()
+      }
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const next = event.key === 'ArrowDown' ? at + 1 : at < 0 ? rows.length - 1 : at - 1
+      if (next < 0 || !rows.length) searchInput.current?.focus()
+      else {
+        const row = rows[next % rows.length]!
+        row.focus({ preventScroll: true })
+        row.scrollIntoView({ block: 'nearest' })
+      }
+    }
+  }
   /** The right-click menu: where it opened, and for which session. */
   const [menu, setMenu] = useState<{ x: number; y: number; session: SessionView } | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
@@ -221,6 +276,12 @@ ${s.projectless ? 'no-project' : s.projectPath}`
         setMenu({ x: e.clientX, y: e.clientY, session: s })
       }}
       activeProps={{ className: 'session-row active' }}
+      onClick={() => {
+        if (searchOpen) {
+          setQuery('')
+          setSearchOpen(false)
+        }
+      }}
     >
       {s.status === 'idle' && s.items.length > 0 && s.lastTurnReason !== 'cancelled' ? (
         <Check className="session-done" size={12} />
@@ -320,6 +381,21 @@ ${s.projectless ? 'no-project' : s.projectPath}`
         icon: session.pinned ? <PinOff size={15} /> : <Pin size={15} />,
         onSelect: () => void setSessionPinned(session.id, !session.pinned),
       },
+      {
+        id: 'delete',
+        label: 'Delete',
+        hint: 'Removes the conversation. Your folder and files stay.',
+        icon: <Trash2 size={15} />,
+        onSelect: () => {
+          if (!window.confirm(`Delete "${session.title}"? This cannot be undone.`)) return
+          void deleteSession(session.id).then(
+            () => {
+              if (openId === session.id) void navigate({ to: '/' })
+            },
+            (err: unknown) => window.alert(err instanceof Error ? err.message : String(err)),
+          )
+        },
+      },
     ]
   }
 
@@ -378,26 +454,38 @@ ${s.projectless ? 'no-project' : s.projectPath}`
                 {selectedHost === 'all' && <Check size={14} />}
               </button>
               {entries.map((entry) => (
-                <button
-                  key={entry.key}
-                  className="menu-row"
-                  role="menuitemradio"
-                  aria-checked={selectedHost === entry.key}
-                  onClick={() => {
-                    setHostFilter(entry.key)
-                    close()
-                  }}
-                >
-                  {entry.key === LOCAL_HOST_KEY ? <Monitor size={15} /> : <Server size={15} />}
-                  <span className="menu-text">{runtimes[entry.key]?.host?.name ?? entry.name}</span>
-                  <span
-                    className={`host-status ${hostState(runtimes[entry.key]?.connection).tone}`}
+                <Fragment key={entry.key}>
+                  <button
+                    className="menu-row"
+                    role="menuitemradio"
+                    aria-checked={selectedHost === entry.key}
+                    onClick={() => {
+                      setHostFilter(entry.key)
+                      close()
+                    }}
                   >
-                    <span className="dot" />
-                    {hostState(runtimes[entry.key]?.connection).label}
-                  </span>
-                  {selectedHost === entry.key && <Check size={14} />}
-                </button>
+                    {entry.key === LOCAL_HOST_KEY ? <Monitor size={15} /> : <Server size={15} />}
+                    <span className="menu-text">
+                      {runtimes[entry.key]?.host?.name ?? entry.name}
+                    </span>
+                    <span
+                      className={`host-status ${hostState(runtimes[entry.key]?.connection).tone}`}
+                    >
+                      <span className="dot" />
+                      {hostState(runtimes[entry.key]?.connection).label}
+                    </span>
+                    {selectedHost === entry.key && <Check size={14} />}
+                  </button>
+                  {entry.key !== LOCAL_HOST_KEY &&
+                    ['connecting', 'reconnecting'].includes(
+                      runtimes[entry.key]?.connection ?? '',
+                    ) && (
+                      <div className="menu-detail">
+                        <span>Messages you send go out when it is back.</span>
+                        <button onClick={() => reconnectHostNow(entry.key)}>Retry now</button>
+                      </div>
+                    )}
+                </Fragment>
               ))}
               <div className="menu-sep" />
               <button
@@ -433,7 +521,17 @@ ${s.projectless ? 'no-project' : s.projectPath}`
       </div>
       <div className="folders-head">
         Folders
-        <AddFolderMenu />
+        <span className="folders-actions">
+          <button
+            className="icon-btn"
+            aria-label="Resume an earlier conversation"
+            title="Resume a conversation from the agent's own CLI"
+            onClick={() => setHistoryOpen(true)}
+          >
+            <History size={16} />
+          </button>
+          <AddFolderMenu />
+        </span>
       </div>
       {searchOpen && (
         <div className="session-search">
@@ -444,12 +542,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
             placeholder="Search sessions…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                setQuery('')
-                setSearchOpen(false)
-              }
-            }}
+            onKeyDown={onSearchKey}
           />
           <button
             className="icon-btn"
@@ -511,7 +604,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
         </div>
       )}
 
-      <div className="session-list">
+      <div className="session-list" ref={sessionList} onKeyDown={onSearchKey}>
         {pinned.length > 0 && (
           <section className="pinned-group" aria-label="Pinned sessions">
             <div className="pinned-head">
@@ -561,7 +654,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
             projectless={projectless}
             project={projectsOf(hostKey).find((p) => samePath(p.path, projectPath))}
             hostName={hostLabel(hostKey)}
-            collapsed={collapsedProjects.has(key)}
+            collapsed={!searching && collapsedProjects.has(key)}
             onToggle={() => toggleProject(key)}
             sessionCount={list.length}
           >
@@ -582,6 +675,12 @@ ${s.projectless ? 'no-project' : s.projectPath}`
       </div>
 
       {hostsOpen && <HostsDialog onClose={() => setHostsOpen(false)} />}
+      {historyOpen && (
+        <HistoryDialog
+          hostKey={selectedHost === 'all' ? LOCAL_HOST_KEY : selectedHost}
+          onClose={() => setHistoryOpen(false)}
+        />
+      )}
       {menu && (
         <ContextMenu
           x={menu.x}

@@ -7,13 +7,20 @@ import { ComponentPanel } from './ComponentPanel'
 import { MousePointer2, Zap, Copy, Check, ChevronDown, ChevronRight } from 'lucide-react'
 
 export function RightSidebar() {
-  const { rightTab, setRightTab, elements, selectedElementIds, addComponent, createInstance, pushHistory } = useEditorStore()
-  const selectedElement = selectedElementIds.length === 1
-    ? findElementInList(elements, selectedElementIds[0])
-    : null
+  const {
+    rightTab,
+    setRightTab,
+    elements,
+    selectedElementIds,
+    addComponent,
+    createInstance,
+    pushHistory,
+  } = useEditorStore()
+  const selectedElement =
+    selectedElementIds.length === 1 ? findElementInList(elements, selectedElementIds[0]) : null
 
-  const frames = elements.filter(el => el.type === 'frame')
-  const components = elements.filter(el => el.isComponent)
+  const frames = elements.filter((el) => el.type === 'frame')
+  const components = elements.filter((el) => el.isComponent)
 
   return (
     <div className="h-full bg-[color:var(--dc-panel)] flex flex-col border-l border-[color:var(--dc-border)] select-none">
@@ -22,7 +29,9 @@ export function RightSidebar() {
         <button
           onClick={() => setRightTab('design')}
           className={`flex-1 px-3 py-1.5 text-[10px] font-semibold transition-colors duration-100 uppercase tracking-wider ${
-            rightTab === 'design' ? 'text-white border-b-2 border-[color:var(--dc-accent)]' : 'text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)]'
+            rightTab === 'design'
+              ? 'text-white border-b-2 border-[color:var(--dc-accent)]'
+              : 'text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)]'
           }`}
         >
           Design
@@ -30,7 +39,9 @@ export function RightSidebar() {
         <button
           onClick={() => setRightTab('inspect')}
           className={`flex-1 px-3 py-1.5 text-[10px] font-semibold transition-colors duration-100 uppercase tracking-wider ${
-            rightTab === 'inspect' ? 'text-white border-b-2 border-[color:var(--dc-accent)]' : 'text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)]'
+            rightTab === 'inspect'
+              ? 'text-white border-b-2 border-[color:var(--dc-accent)]'
+              : 'text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)]'
           }`}
         >
           Inspect
@@ -53,7 +64,9 @@ export function RightSidebar() {
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
                 <MousePointer2 className="w-5 h-5 text-[color:var(--dc-faint)] mx-auto mb-1.5" />
-                <p className="text-[10px] text-[color:var(--dc-muted)]">Select an element to inspect</p>
+                <p className="text-[10px] text-[color:var(--dc-muted)]">
+                  Select an element to inspect
+                </p>
               </div>
             </div>
           )}
@@ -120,10 +133,16 @@ function generateCSS(element: any): string {
   }
   if (element.cornerRadius > 0) {
     const r = element.cornerRadius
-    if (element.cornerRadiusTL === element.cornerRadiusTR && element.cornerRadiusTL === element.cornerRadiusBL && element.cornerRadiusTL === element.cornerRadiusBR) {
+    if (
+      element.cornerRadiusTL === element.cornerRadiusTR &&
+      element.cornerRadiusTL === element.cornerRadiusBL &&
+      element.cornerRadiusTL === element.cornerRadiusBR
+    ) {
       lines.push(`  border-radius: ${r}px;`)
     } else {
-      lines.push(`  border-radius: ${element.cornerRadiusTL}px ${element.cornerRadiusTR}px ${element.cornerRadiusBR}px ${element.cornerRadiusBL}px;`)
+      lines.push(
+        `  border-radius: ${element.cornerRadiusTL}px ${element.cornerRadiusTR}px ${element.cornerRadiusBR}px ${element.cornerRadiusBL}px;`,
+      )
     }
   }
   if (element.opacity < 100) {
@@ -136,10 +155,13 @@ function generateCSS(element: any): string {
     lines.push(`  mix-blend-mode: ${element.blendMode};`)
   }
   if (element.shadows?.length > 0) {
-    const shadowCSS = element.shadows.filter((s: any) => s.visible).map((s: any) => {
-      const inset = s.type === 'inner-shadow' ? 'inset ' : ''
-      return `${inset}${s.x}px ${s.y}px ${s.blur}px ${s.spread}px ${s.color}`
-    }).join(', ')
+    const shadowCSS = element.shadows
+      .filter((s: any) => s.visible)
+      .map((s: any) => {
+        const inset = s.type === 'inner-shadow' ? 'inset ' : ''
+        return `${inset}${s.x}px ${s.y}px ${s.blur}px ${s.spread}px ${s.color}`
+      })
+      .join(', ')
     if (shadowCSS) lines.push(`  box-shadow: ${shadowCSS};`)
   }
   if (element.type === 'text') {
@@ -172,7 +194,9 @@ function generateSwiftUI(element: any): string {
     lines.push(`// ${element.name}`)
     lines.push(`Text("${element.textContent || 'Text'}")`)
     if (element.fontFamily || element.fontSize) {
-      lines.push(`    .font(.system(size: ${element.fontSize || 16}, weight: .${mapFontWeight(element.fontWeight)}, design: .default))`)
+      lines.push(
+        `    .font(.system(size: ${element.fontSize || 16}, weight: .${mapFontWeight(element.fontWeight)}, design: .default))`,
+      )
     }
     if (element.textColor) {
       lines.push(`    .foregroundColor(Color(hex: "${element.textColor}"))`)
@@ -182,7 +206,9 @@ function generateSwiftUI(element: any): string {
     } else if (element.textAlign === 'right') {
       lines.push(`    .multilineTextAlignment(.trailing)`)
     }
-    lines.push(`    .frame(width: ${Math.round(element.width)}, height: ${Math.round(element.height)}, alignment: .${mapAlignment(element.textAlign)})`)
+    lines.push(
+      `    .frame(width: ${Math.round(element.width)}, height: ${Math.round(element.height)}, alignment: .${mapAlignment(element.textAlign)})`,
+    )
     if (element.opacity < 100) {
       lines.push(`    .opacity(${(element.opacity / 100).toFixed(2)})`)
     }
@@ -192,9 +218,13 @@ function generateSwiftUI(element: any): string {
     if (element.fill && element.fill !== 'transparent') {
       lines.push(`    .fill(Color(hex: "${element.fill}"))`)
     }
-    lines.push(`    .frame(width: ${Math.round(element.width)}, height: ${Math.round(element.height)})`)
+    lines.push(
+      `    .frame(width: ${Math.round(element.width)}, height: ${Math.round(element.height)})`,
+    )
     if (element.stroke && element.stroke !== 'transparent' && element.strokeWidth > 0) {
-      lines.push(`    .overlay(Circle().stroke(Color(hex: "${element.stroke}"), lineWidth: ${element.strokeWidth}))`)
+      lines.push(
+        `    .overlay(Circle().stroke(Color(hex: "${element.stroke}"), lineWidth: ${element.strokeWidth}))`,
+      )
     }
     if (element.opacity < 100) {
       lines.push(`    .opacity(${(element.opacity / 100).toFixed(2)})`)
@@ -207,14 +237,20 @@ function generateSwiftUI(element: any): string {
     } else {
       lines.push(`    .fill(Color.clear)`)
     }
-    lines.push(`    .frame(width: ${Math.round(element.width)}, height: ${Math.round(element.height)})`)
+    lines.push(
+      `    .frame(width: ${Math.round(element.width)}, height: ${Math.round(element.height)})`,
+    )
     if (element.stroke && element.stroke !== 'transparent' && element.strokeWidth > 0) {
-      lines.push(`    .overlay(RoundedRectangle(cornerRadius: ${element.cornerRadius || 0}).stroke(Color(hex: "${element.stroke}"), lineWidth: ${element.strokeWidth}))`)
+      lines.push(
+        `    .overlay(RoundedRectangle(cornerRadius: ${element.cornerRadius || 0}).stroke(Color(hex: "${element.stroke}"), lineWidth: ${element.strokeWidth}))`,
+      )
     }
     if (element.shadows?.length > 0) {
       const shadow = element.shadows.find((s: any) => s.visible)
       if (shadow) {
-        lines.push(`    .shadow(color: Color(hex: "${shadow.color}").opacity(${(shadow.opacity / 100).toFixed(2)}), radius: ${shadow.blur}, x: ${shadow.x}, y: ${shadow.y})`)
+        lines.push(
+          `    .shadow(color: Color(hex: "${shadow.color}").opacity(${(shadow.opacity / 100).toFixed(2)}), radius: ${shadow.blur}, x: ${shadow.x}, y: ${shadow.y})`,
+        )
       }
     }
     if (element.opacity < 100) {
@@ -225,7 +261,9 @@ function generateSwiftUI(element: any): string {
     }
   }
 
-  lines.push(`    .position(x: ${Math.round(element.x + element.width / 2)}, y: ${Math.round(element.y + element.height / 2)})`)
+  lines.push(
+    `    .position(x: ${Math.round(element.x + element.width / 2)}, y: ${Math.round(element.y + element.height / 2)})`,
+  )
 
   return lines.join('\n')
 }
@@ -273,7 +311,9 @@ function generateAndroidXML(element: any): string {
       lines.push(`    <solid android:color="${element.fill}" />`)
     }
     if (element.stroke && element.stroke !== 'transparent' && element.strokeWidth > 0) {
-      lines.push(`    <stroke android:width="${element.strokeWidth}dp" android:color="${element.stroke}" />`)
+      lines.push(
+        `    <stroke android:width="${element.strokeWidth}dp" android:color="${element.stroke}" />`,
+      )
     }
     lines.push(`</shape>`)
     lines.push(``)
@@ -319,7 +359,11 @@ function generateAndroidXML(element: any): string {
 
 // Helpers
 function sanitizeClassName(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
 }
 
 function sanitizeSwiftName(name: string): string {
@@ -327,7 +371,11 @@ function sanitizeSwiftName(name: string): string {
 }
 
 function sanitizeAndroidName(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '')
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
 }
 
 function mapFontWeight(weight: number | undefined): string {
@@ -384,11 +432,12 @@ function InspectPanel({ element }: { element: any }) {
   }
 
   // Determine code output based on tab
-  const codeOutput = codeTab === 'css'
-    ? generateCSS(element)
-    : codeTab === 'swiftui'
-    ? generateSwiftUI(element)
-    : generateAndroidXML(element)
+  const codeOutput =
+    codeTab === 'css'
+      ? generateCSS(element)
+      : codeTab === 'swiftui'
+        ? generateSwiftUI(element)
+        : generateAndroidXML(element)
 
   const codeLanguage = codeTab === 'css' ? 'CSS' : codeTab === 'swiftui' ? 'SwiftUI' : 'Android XML'
 
@@ -396,7 +445,9 @@ function InspectPanel({ element }: { element: any }) {
     <div className="space-y-2">
       {/* Element header */}
       <div className="flex items-center gap-2">
-        <span className="text-[11px] font-semibold text-white">{element.type.charAt(0).toUpperCase() + element.type.slice(1)}</span>
+        <span className="text-[11px] font-semibold text-white">
+          {element.type.charAt(0).toUpperCase() + element.type.slice(1)}
+        </span>
         <span className="text-[10px] text-[color:var(--dc-faint)]">{element.name}</span>
       </div>
 
@@ -411,7 +462,9 @@ function InspectPanel({ element }: { element: any }) {
           ) : (
             <ChevronRight className="w-3 h-3 text-[color:var(--dc-muted)]" />
           )}
-          <span className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">Layout</span>
+          <span className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">
+            Layout
+          </span>
         </button>
         {layoutExpanded && (
           <div className="p-2.5">
@@ -428,7 +481,9 @@ function InspectPanel({ element }: { element: any }) {
             ) : null}
             {element.cornerRadius > 0 && (
               <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-                {element.cornerRadiusTL === element.cornerRadiusTR && element.cornerRadiusTL === element.cornerRadiusBL && element.cornerRadiusTL === element.cornerRadiusBR ? (
+                {element.cornerRadiusTL === element.cornerRadiusTR &&
+                element.cornerRadiusTL === element.cornerRadiusBL &&
+                element.cornerRadiusTL === element.cornerRadiusBR ? (
                   <LayoutField label="Radius" value={element.cornerRadius} unit="px" />
                 ) : (
                   <>
@@ -445,7 +500,9 @@ function InspectPanel({ element }: { element: any }) {
                 <LayoutField label="Opacity" value={element.opacity} unit="%" />
               )}
               {element.blendMode && element.blendMode !== 'normal' && (
-                <span className="text-[10px] text-[color:var(--dc-muted)]">Blend: <span className="text-[color:var(--dc-text2)]">{element.blendMode}</span></span>
+                <span className="text-[10px] text-[color:var(--dc-muted)]">
+                  Blend: <span className="text-[color:var(--dc-text2)]">{element.blendMode}</span>
+                </span>
               )}
             </div>
           </div>
@@ -464,8 +521,12 @@ function InspectPanel({ element }: { element: any }) {
             ) : (
               <ChevronRight className="w-3 h-3 text-[color:var(--dc-muted)]" />
             )}
-            <span className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">Colors</span>
-            <span className="text-[9px] text-[color:var(--dc-border-strong)] ml-auto">{elementColors.length}</span>
+            <span className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">
+              Colors
+            </span>
+            <span className="text-[9px] text-[color:var(--dc-border-strong)] ml-auto">
+              {elementColors.length}
+            </span>
           </button>
           {colorsExpanded && (
             <div className="p-2.5 space-y-1">
@@ -480,7 +541,9 @@ function InspectPanel({ element }: { element: any }) {
                     className="w-5 h-5 rounded border border-[color:var(--dc-border-strong)]/50 shrink-0"
                     style={{ backgroundColor: item.color }}
                   />
-                  <span className="text-[10px] text-[color:var(--dc-muted)] w-14 text-left shrink-0">{item.label}</span>
+                  <span className="text-[10px] text-[color:var(--dc-muted)] w-14 text-left shrink-0">
+                    {item.label}
+                  </span>
                   <span className="text-[11px] text-[color:var(--dc-text2)] font-mono flex-1 text-left">
                     {item.color.toUpperCase()}
                   </span>
@@ -508,38 +571,84 @@ function InspectPanel({ element }: { element: any }) {
             ) : (
               <ChevronRight className="w-3 h-3 text-[color:var(--dc-muted)]" />
             )}
-            <span className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">Typography</span>
+            <span className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">
+              Typography
+            </span>
           </button>
           {typographyExpanded && (
             <div className="p-2.5 space-y-1">
               {element.fontFamily && (
-                <TypographyRow label="Family" value={element.fontFamily} onCopy={() => copy(element.fontFamily, 'font-family')} copied={copiedId === 'font-family'} />
+                <TypographyRow
+                  label="Family"
+                  value={element.fontFamily}
+                  onCopy={() => copy(element.fontFamily, 'font-family')}
+                  copied={copiedId === 'font-family'}
+                />
               )}
               {element.fontSize && (
-                <TypographyRow label="Size" value={`${element.fontSize}px`} onCopy={() => copy(`${element.fontSize}px`, 'font-size')} copied={copiedId === 'font-size'} />
+                <TypographyRow
+                  label="Size"
+                  value={`${element.fontSize}px`}
+                  onCopy={() => copy(`${element.fontSize}px`, 'font-size')}
+                  copied={copiedId === 'font-size'}
+                />
               )}
               {element.fontWeight && (
-                <TypographyRow label="Weight" value={`${element.fontWeight}`} onCopy={() => copy(`${element.fontWeight}`, 'font-weight')} copied={copiedId === 'font-weight'} />
+                <TypographyRow
+                  label="Weight"
+                  value={`${element.fontWeight}`}
+                  onCopy={() => copy(`${element.fontWeight}`, 'font-weight')}
+                  copied={copiedId === 'font-weight'}
+                />
               )}
               {element.lineHeight && (
-                <TypographyRow label="Line Height" value={`${element.lineHeight}`} onCopy={() => copy(`${element.lineHeight}`, 'line-height')} copied={copiedId === 'line-height'} />
+                <TypographyRow
+                  label="Line Height"
+                  value={`${element.lineHeight}`}
+                  onCopy={() => copy(`${element.lineHeight}`, 'line-height')}
+                  copied={copiedId === 'line-height'}
+                />
               )}
               {element.letterSpacing !== undefined && element.letterSpacing !== 0 && (
-                <TypographyRow label="Letter Spacing" value={`${element.letterSpacing}px`} onCopy={() => copy(`${element.letterSpacing}px`, 'letter-spacing')} copied={copiedId === 'letter-spacing'} />
+                <TypographyRow
+                  label="Letter Spacing"
+                  value={`${element.letterSpacing}px`}
+                  onCopy={() => copy(`${element.letterSpacing}px`, 'letter-spacing')}
+                  copied={copiedId === 'letter-spacing'}
+                />
               )}
               {element.textAlign && (
-                <TypographyRow label="Align" value={element.textAlign} onCopy={() => copy(element.textAlign, 'text-align')} copied={copiedId === 'text-align'} />
+                <TypographyRow
+                  label="Align"
+                  value={element.textAlign}
+                  onCopy={() => copy(element.textAlign, 'text-align')}
+                  copied={copiedId === 'text-align'}
+                />
               )}
               {element.fontStyle && element.fontStyle !== 'normal' && (
-                <TypographyRow label="Style" value={element.fontStyle} onCopy={() => copy(element.fontStyle, 'font-style')} copied={copiedId === 'font-style'} />
+                <TypographyRow
+                  label="Style"
+                  value={element.fontStyle}
+                  onCopy={() => copy(element.fontStyle, 'font-style')}
+                  copied={copiedId === 'font-style'}
+                />
               )}
               {element.textDecoration && element.textDecoration !== 'none' && (
-                <TypographyRow label="Decoration" value={element.textDecoration} onCopy={() => copy(element.textDecoration, 'text-decoration')} copied={copiedId === 'text-decoration'} />
+                <TypographyRow
+                  label="Decoration"
+                  value={element.textDecoration}
+                  onCopy={() => copy(element.textDecoration, 'text-decoration')}
+                  copied={copiedId === 'text-decoration'}
+                />
               )}
               {element.textContent && (
                 <div className="pt-1 border-t border-[color:var(--dc-border)]">
-                  <span className="text-[10px] text-[color:var(--dc-faint)] block mb-0.5">Content</span>
-                  <span className="text-[11px] text-[color:var(--dc-text2)] break-all">&quot;{element.textContent}&quot;</span>
+                  <span className="text-[10px] text-[color:var(--dc-faint)] block mb-0.5">
+                    Content
+                  </span>
+                  <span className="text-[11px] text-[color:var(--dc-text2)] break-all">
+                    &quot;{element.textContent}&quot;
+                  </span>
                 </div>
               )}
             </div>
@@ -558,7 +667,9 @@ function InspectPanel({ element }: { element: any }) {
           ) : (
             <ChevronRight className="w-3 h-3 text-[color:var(--dc-muted)]" />
           )}
-          <span className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">Code</span>
+          <span className="text-[10px] font-semibold text-[color:var(--dc-muted)] uppercase tracking-wider">
+            Code
+          </span>
         </button>
         {codeExpanded && (
           <div className="p-2.5">
@@ -616,22 +727,38 @@ function InspectPanel({ element }: { element: any }) {
 function LayoutField({ label, value, unit }: { label: string; value: number; unit: string }) {
   return (
     <div className="flex items-center gap-1 px-1.5 py-0.5 bg-[color:var(--dc-input)] rounded">
-      <span className="text-[9px] font-semibold text-[color:var(--dc-accent)] w-3 shrink-0">{label}</span>
+      <span className="text-[9px] font-semibold text-[color:var(--dc-accent)] w-3 shrink-0">
+        {label}
+      </span>
       <span className="text-[11px] text-[color:var(--dc-text2)] tabular-nums flex-1">{value}</span>
       <span className="text-[9px] text-[color:var(--dc-border-strong)]">{unit}</span>
     </div>
   )
 }
 
-function TypographyRow({ label, value, onCopy, copied }: { label: string; value: string; onCopy: () => void; copied: boolean }) {
+function TypographyRow({
+  label,
+  value,
+  onCopy,
+  copied,
+}: {
+  label: string
+  value: string
+  onCopy: () => void
+  copied: boolean
+}) {
   return (
     <button
       className="flex items-center gap-2 w-full px-1.5 py-0.5 rounded hover:bg-[color:var(--dc-border)] transition-colors group"
       onClick={onCopy}
       title="Click to copy"
     >
-      <span className="text-[10px] text-[color:var(--dc-muted)] w-20 text-left shrink-0">{label}</span>
-      <span className="text-[11px] text-[color:var(--dc-text2)] flex-1 text-left font-mono">{value}</span>
+      <span className="text-[10px] text-[color:var(--dc-muted)] w-20 text-left shrink-0">
+        {label}
+      </span>
+      <span className="text-[11px] text-[color:var(--dc-text2)] flex-1 text-left font-mono">
+        {value}
+      </span>
       {copied ? (
         <Check className="w-3 h-3 text-[#4CAF50] shrink-0" />
       ) : (

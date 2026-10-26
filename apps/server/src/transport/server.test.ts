@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -25,6 +25,12 @@ import { ProjectStore } from '../workspace/projects.ts'
 import { EventStore } from '../store/eventStore.ts'
 import { startServer, type RunningServer } from './server.ts'
 import { createAutomation } from '../automation/index.ts'
+import { startRelay } from '@beddcode/relay'
+import { RelayAgent } from '../relay/agent.ts'
+import { removeDir } from '../testing/removeDir.ts'
+import { pairWithLink } from '../../../../packages/client-runtime/src/pairLink.ts'
+import { newRelayKey } from '../../../../packages/client-runtime/src/relayCrypto.ts'
+import { buildRelayRoute } from '../../../../packages/client-runtime/src/relaySocket.ts'
 import { HostClient } from '../../../../packages/client-runtime/src/hostClient.ts'
 import { applyEvent, emptyReplica } from '../../../../packages/client-runtime/src/replica.ts'
 
@@ -61,7 +67,7 @@ async function boot(
   cleanup.push(() => store.close())
   const log = createLogger('test', 'error')
   const dir = mkdtempSync(path.join(os.tmpdir(), 'beddcode-test-'))
-  cleanup.push(() => rmSync(dir, { recursive: true, force: true }))
+  cleanup.push(() => removeDir(dir))
   const acpStore = new AcpAgentStore(path.join(dir, 'acp-agents.json'))
   const attachments = new AttachmentStore(path.join(dir, 'attachments'))
   const git = new GitService()
@@ -289,7 +295,7 @@ describe('server', () => {
     const c = await Client.connect(server.port)
 
     const dir = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'beddcode-api-')))
-    cleanup.push(() => rmSync(dir, { recursive: true, force: true }))
+    cleanup.push(() => removeDir(dir))
     const sh = (...args: string[]) => execFileSync('git', args, { cwd: dir, windowsHide: true })
     sh('init', '-q', '-b', 'main')
     sh('config', 'user.name', 'T')
@@ -385,7 +391,7 @@ describe('server', () => {
     cleanup.push(() => {
       // Windows keeps a just-killed shell's folder locked for a moment; a leftover temp dir is harmless.
       try {
-        rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 150 })
+        removeDir(dir)
       } catch {
         // ignored
       }
@@ -425,9 +431,7 @@ describe('server', () => {
     const { server } = await boot()
     const c = await Client.connect(server.port)
     const dir = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'beddcode-files-api-')))
-    cleanup.push(() =>
-      rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 150 }),
-    )
+    cleanup.push(() => removeDir(dir))
     writeFileSync(path.join(dir, 'a.txt'), 'one\n')
 
     expect(
@@ -468,7 +472,7 @@ describe('server', () => {
     const { server, store, attachments } = await boot()
     const c = await Client.connect(server.port)
     const cwd = mkdtempSync(path.join(os.tmpdir(), 'beddcode-context-'))
-    cleanup.push(() => rmSync(cwd, { recursive: true, force: true }))
+    cleanup.push(() => removeDir(cwd))
     const image = Buffer.from([137, 80, 78, 71, 0, 255])
     writeFileSync(path.join(cwd, 'image.png'), image)
     const saved = await c.rpc('attachments.fromFile', { cwd, path: 'image.png' })
@@ -559,6 +563,74 @@ describe('server', () => {
     const replayed = second.events()
     expect(replayed.map((e) => e.seq)).toEqual([lastSeen + 1])
     expect(replayed[0]?.event.type).toBe('error')
+  })
+
+  it('sends a compact replay to a client that asks, and tells it where the replay ended', async () => {
+    const { server, store } = await boot()
+    store.append({
+      type: 'session.created',
+      sessionId: 's',
+      at: 1,
+      title: 'T',
+      cwd: '/p',
+      instanceId: 'fake',
+    })
+    for (const word of ['a', 'b', 'c', 'd'])
+      store.append({
+        type: 'message.delta',
+        sessionId: 's',
+        at: 2,
+        turnId: 't',
+        role: 'assistant',
+        text: word,
+      })
+    const last = store.readAfter(0).at(-1)!.seq
+
+    const plain = await Client.connect(server.port)
+    plain.send({ t: 'subscribe', afterSeq: 0 })
+    await plain.until((fs) => fs.some((f) => f.t === 'caught-up'))
+    const compact = await Client.connect(server.port)
+    compact.send({ t: 'subscribe', afterSeq: 0, compact: true })
+    await compact.until((fs) => fs.some((f) => f.t === 'caught-up'))
+
+    expect(plain.events()).toHaveLength(5)
+    const joined = compact.events()
+    expect(joined).toHaveLength(2)
+    const delta = joined[1]!.event
+    expect(delta.type === 'message.delta' && delta.text).toBe('abcd')
+    expect(compact.frames.find((f) => f.t === 'caught-up')).toMatchObject({ seq: last })
+  })
+
+  it('sends a replay in groups to a client that asks, and one by one to one that does not', async () => {
+    const { server, store } = await boot()
+    store.append({
+      type: 'session.created',
+      sessionId: 's',
+      at: 1,
+      title: 'T',
+      cwd: '/p',
+      instanceId: 'fake',
+    })
+    for (let i = 0; i < 250; i++)
+      store.append({ type: 'error', sessionId: 's', at: 2 + i, message: `e${i}` })
+
+    const grouped = await Client.connect(server.port)
+    grouped.send({ t: 'subscribe', afterSeq: 0, batch: true })
+    await grouped.until((fs) => fs.some((f) => f.t === 'caught-up'))
+    const groups = grouped.frames.filter((f) => f.t === 'events')
+    expect(groups.map((g) => g.t === 'events' && g.events.length)).toEqual([100, 100, 51])
+    expect(grouped.frames.some((f) => f.t === 'event')).toBe(false)
+
+    const single = await Client.connect(server.port)
+    single.send({ t: 'subscribe', afterSeq: 0 })
+    await single.until((fs) => fs.some((f) => f.t === 'caught-up'))
+    expect(single.frames.filter((f) => f.t === 'event')).toHaveLength(251)
+    expect(single.frames.some((f) => f.t === 'events')).toBe(false)
+  })
+
+  it('says which log it is in the welcome', async () => {
+    const { server, store } = await boot()
+    expect(server.hostInfo.logId).toBe(store.logId)
   })
 })
 
@@ -722,6 +794,13 @@ describe('access control', () => {
       headers: { origin: 'http://localhost:5173' },
     })
     expect(viaBrowser.status).toBe(403)
+  })
+
+  it('keeps relay settings for the local machine, and says so when a host has none', async () => {
+    const { server } = await boot()
+    const c = await Client.connect(server.port)
+    const res = await c.rpc('host.relay.get', {})
+    expect(res.ok).toBe(false)
   })
 
   it('lists and revokes devices, and a revoked token stops working', async () => {
@@ -935,9 +1014,9 @@ describe('automation', () => {
     expect(started).toMatchObject({ agent: 'fake', mode: 'ask' })
     const childId = started.session_id as string
     // A big call, such as a whole screen of design elements, is not turned away for its size.
-    expect(
-      await mcp.tool('get_status', { session_id: 'x'.repeat(200_000) }),
-    ).not.toMatchObject({ error: expect.stringMatching(/Invalid request/) })
+    expect(await mcp.tool('get_status', { session_id: 'x'.repeat(200_000) })).not.toMatchObject({
+      error: expect.stringMatching(/Invalid request/),
+    })
     expect(automation.agentTools.serversFor(childId)).toHaveLength(1)
 
     const waiting = await mcp.tool('wait_for', { session_id: childId, timeout_seconds: 20 })
@@ -967,6 +1046,114 @@ describe('automation', () => {
       sessionId,
       depth: 1,
     })
+  })
+
+  it('does the work of a repeated request once, as after a reconnect', async () => {
+    const { server, store } = await boot()
+    const first = await Client.connect(server.port)
+    const make = (c: Client, id: string) => {
+      c.send({
+        t: 'req',
+        id,
+        rid: 'same-request',
+        method: 'sessions.create',
+        params: { instanceId: 'fake', permissionMode: 'full', title: 'Once' },
+      })
+      return c
+        .until((fs) => fs.some((f) => f.t === 'res' && f.id === id))
+        .then(
+          () =>
+            c.frames.find((f) => f.t === 'res' && f.id === id) as Extract<
+              ServerFrame,
+              { t: 'res' }
+            >,
+        )
+    }
+    const a1 = await make(first, 'a')
+    first.ws.terminate()
+    const second = await Client.connect(server.port)
+    const a2 = await make(second, 'b')
+    expect(a1.ok && a2.ok).toBe(true)
+    expect(a2.result).toEqual(a1.result)
+    const created = store.readAfter(0, 100).filter((e) => e.event.type === 'session.created')
+    expect(created).toHaveLength(1)
+  })
+
+  it('pairs and serves a device through a relay, end to end', async () => {
+    const host = await boot()
+    const relay = await startRelay({ port: 0, host: '127.0.0.1' })
+    cleanup.push(() => relay.close())
+    const key = newRelayKey()
+    const agent = new RelayAgent({
+      url: `ws://127.0.0.1:${relay.port}`,
+      key,
+      attach: (socket) => host.server.attach(socket, 'other'),
+      log: createLogger('test', 'error'),
+      backoff: { minMs: 10, maxMs: 20 },
+    })
+    agent.start()
+    cleanup.push(() => agent.stop())
+    await vi.waitFor(() => expect(agent.status).toBe('online'))
+
+    // Pair with only the relay to go by (a phone on mobile data).
+    const route = buildRelayRoute(`ws://127.0.0.1:${relay.port}`, key)
+    const { code } = host.pairing.create()
+    await expect(
+      pairWithLink({ code: '000000', routes: [], relay: route }, 'Phone'),
+    ).rejects.toThrow(/wrong or has expired/)
+    const entry = await pairWithLink({ code, hostId: 'host-1', routes: [], relay: route }, 'Phone')
+    expect(entry).toMatchObject({ key: 'host-1', routes: [route] })
+    expect(host.tokens.list().map((d) => d.name)).toContain('Phone')
+
+    // A long history, so the replay crosses the relay squeezed and in groups.
+    host.store.append({
+      type: 'session.created',
+      sessionId: 'long',
+      at: 1,
+      title: 'Long',
+      cwd: '/p',
+      instanceId: 'fake',
+    })
+    for (let i = 0; i < 300; i++)
+      host.store.append({
+        type: 'error',
+        sessionId: 'long',
+        at: 2 + i,
+        message: `line ${i}: ${'repeated output '.repeat(20)}`,
+      })
+
+    // Then use it like any other connection.
+    let replica = emptyReplica()
+    const states: string[] = []
+    const client = new HostClient({
+      url: route,
+      token: entry.token,
+      expectedHostId: 'host-1',
+      onEvent: (stored) => {
+        replica = applyEvent(replica, stored)
+      },
+      onState: (s) => states.push(s),
+    })
+    client.start()
+    cleanup.push(() => client.stop())
+    await vi.waitFor(() => expect(client.connectionState).toBe('connected'))
+    const providers = await client.request('providers.list', {})
+    expect(providers.some((p) => p.id === 'fake')).toBe(true)
+    await vi.waitFor(() => expect(replica.sessions['long']?.items).toHaveLength(300))
+
+    const { sessionId } = await client.request('sessions.create', {
+      instanceId: 'fake',
+      permissionMode: 'full',
+      title: 'Over the relay',
+    })
+    await client.request('sessions.prompt', { sessionId, text: 'hello' })
+    await vi.waitFor(() => expect(replica.sessions[sessionId]?.completedTurns).toBe(1))
+
+    // A device with the wrong token is refused inside the encrypted channel, too.
+    const intruder = new HostClient({ url: route, token: 'nope', onEvent: () => {} })
+    intruder.start()
+    cleanup.push(() => intruder.stop())
+    await vi.waitFor(() => expect(intruder.connectionState).toBe('denied'))
   })
 
   it('turns away agent-tool calls without the session key', async () => {

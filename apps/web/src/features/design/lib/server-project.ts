@@ -77,8 +77,7 @@ export interface NormalizedProject {
 
 export function normalizeServerProject(project: any): NormalizedProject {
   const pages = project.pages || []
-  const activePage =
-    pages.find((p: any) => p.id === project.activePageId) || pages[0]
+  const activePage = pages.find((p: any) => p.id === project.activePageId) || pages[0]
   const pageElements = activePage?.elements || project.elements || []
 
   const converted = pageElements.map(normalizeServerElement)
@@ -118,7 +117,9 @@ export function buildProjectPayload(state: any) {
   return {
     name: state.fileName,
     elements: state.elements,
-    pages: state.pages.map((p) => (p.id === state.activePageId ? { ...p, elements: state.elements } : p)),
+    pages: state.pages.map((p) =>
+      p.id === state.activePageId ? { ...p, elements: state.elements } : p,
+    ),
     activePageId: state.activePageId,
     ...(state.guides ? { guides: state.guides } : {}),
     ...(state.styles ? { styles: state.styles } : {}),
@@ -158,12 +159,12 @@ export async function pushProjectToServer(state: {
         // switch), so sending pages as-is would persist a stale active page
         // and lose edits on reload.
         pages: state.pages.map((p) =>
-          p.id === state.activePageId ? { ...p, elements: state.elements } : p
+          p.id === state.activePageId ? { ...p, elements: state.elements } : p,
         ),
         activePageId: state.activePageId,
         ...(state.guides ? { guides: state.guides } : {}),
         ...(state.styles ? { styles: state.styles } : {}),
-                ...(state.comments ? { comments: state.comments } : {}),
+        ...(state.comments ? { comments: state.comments } : {}),
         ...(state.flowStartingPoints ? { flowStartingPoints: state.flowStartingPoints } : {}),
       }),
     })

@@ -2,9 +2,14 @@ import { useMemo } from 'react'
 import { create } from 'zustand'
 import {
   HostClient,
+  startTelemetry,
   applyEvent,
   retryWhileCurrent,
   emptyReplica,
+  decodeSnapshot,
+  ReplicaSaver,
+  SNAPSHOT_VERSION,
+  now,
   type ConnectionState,
   type ReplicaState,
   type SessionView,
@@ -22,6 +27,7 @@ import type {
   ServerFrame,
   StoredEvent,
 } from '@beddcode/contracts'
+import { readReplica, writeReplica } from './replicaDb.ts'
 import {
   LOCAL_HOST_KEY,
   loadRemoteHosts,
@@ -91,8 +97,13 @@ export const useHostStore = create<HostsState>(() => ({
 }))
 
 const clients = new Map<string, HostClient>()
+/** Stops sending a host's speed measurements (see startTelemetry). */
+const telemetryStops = new Map<string, () => void>()
 
-type LiveFrame = Extract<ServerFrame, { t: 'term.out' | 'term.exit' | 'fs.changed' | 'design.changed' }>
+type LiveFrame = Extract<
+  ServerFrame,
+  { t: 'term.out' | 'term.exit' | 'fs.changed' | 'design.changed' }
+>
 const frameListeners = new Map<string, Set<(frame: LiveFrame) => void>>()
 
 /** Terminal output and file-change notifications of one host. Returns the function that unsubscribes. */
@@ -106,6 +117,16 @@ export function onHostFrame(hostKey: string, listener: (frame: LiveFrame) => voi
 /** Sends a frame to a host; false when not connected (nothing was sent). */
 export function sendHostFrame(hostKey: string, frame: ClientFrame): boolean {
   return clients.get(hostKey)?.send(frame) ?? false
+}
+
+/** Records a speed measurement against a host (sent to it when its owner turned that on). */
+export function recordMetric(
+  hostKey: string,
+  name: string,
+  value: number,
+  tags?: Record<string, string | number | boolean>,
+) {
+  clients.get(hostKey)?.perf.record(name, value, tags)
 }
 
 function requireClient(hostKey: string): HostClient {
@@ -170,8 +191,13 @@ function loadHostLists(hostKey: string, client: HostClient) {
   })
 }
 
+/** Saves each host's history shortly after it changes (see replicaCache.ts). */
+const savers = new Map<string, ReplicaSaver>()
+
 function startHost(entry: HostEntry) {
   clients.get(entry.key)?.stop()
+  telemetryStops.get(entry.key)?.()
+  savers.get(entry.key)?.cancel()
   patchRuntime(entry.key, () => emptyRuntime())
 
   const queue: StoredEvent[] = []
@@ -182,9 +208,23 @@ function startHost(entry: HostEntry) {
     const batch = queue.splice(0)
     // A queued animation frame may outlive removing or re-pairing this host.
     if (clients.get(entry.key) !== client) return
-    if (batch.length)
+    if (batch.length) {
       patchRuntime(entry.key, (r) => ({ replica: batch.reduce(applyEvent, r.replica) }))
+      saver.touch()
+    }
   }
+  const saver = new ReplicaSaver({
+    write: (raw) => writeReplica(entry.key, raw),
+    snapshot() {
+      const logId = client.log
+      const replica = useHostStore.getState().runtimes[entry.key]?.replica
+      if (!logId || !replica) return null
+      // Events still waiting to be applied are not in the copy, so it must resume before them.
+      const seq = queue.length ? replica.lastSeq : Math.max(client.seq, replica.lastSeq)
+      return { v: SNAPSHOT_VERSION, logId, seq, replica }
+    },
+  })
+  savers.set(entry.key, saver)
 
   const client = new HostClient({
     url: entry.routes,
@@ -243,6 +283,11 @@ function startHost(entry: HostEntry) {
     onCaughtUp() {
       flush()
       patchRuntime(entry.key, () => ({ synced: true }))
+      saver.touch()
+    },
+    onReset() {
+      queue.length = 0
+      patchRuntime(entry.key, () => ({ replica: emptyReplica(), synced: false }))
     },
     onState(connection, host) {
       patchRuntime(entry.key, (r) => ({
@@ -254,9 +299,22 @@ function startHost(entry: HostEntry) {
     },
   })
   clients.set(entry.key, client)
+  telemetryStops.set(
+    entry.key,
+    startTelemetry(client, navigator.userAgent.includes('Electron') ? 'desktop' : 'web'),
+  )
   client.offerBrowser(browserOffer())
   client.offerDesign({ canRender: true, ...designViews.get(entry.key) })
-  client.start()
+  // Show the history saved last time straight away, and ask the host only for what came after.
+  void readReplica(entry.key).then((raw) => {
+    if (clients.get(entry.key) !== client) return
+    const saved = decodeSnapshot(raw)
+    if (saved) {
+      client.restore(saved.seq, saved.logId)
+      patchRuntime(entry.key, () => ({ replica: saved.replica }))
+    }
+    client.start()
+  })
 }
 
 // -- browser use -------------------------------------------------------------
@@ -301,6 +359,10 @@ let started = false
  * After sleep, a network change or a long time in the background, check every connection now
  * instead of waiting out a heartbeat or a reconnect back-off.
  */
+export function reconnectHostNow(key: string) {
+  clients.get(key)?.reconnectNow()
+}
+
 export function reconnectHostsNow() {
   for (const client of clients.values()) client.reconnectNow()
 }
@@ -325,6 +387,11 @@ export function removeRemoteHost(hostKey: string) {
   if (hostKey === LOCAL_HOST_KEY) return
   clients.get(hostKey)?.stop()
   clients.delete(hostKey)
+  telemetryStops.get(hostKey)?.()
+  telemetryStops.delete(hostKey)
+  savers.get(hostKey)?.cancel()
+  savers.delete(hostKey)
+  void writeReplica(hostKey, null)
   frameListeners.delete(hostKey)
   const entries = useHostStore.getState().entries.filter((e) => e.key !== hostKey)
   useHostStore.setState((s) => {
@@ -449,12 +516,17 @@ export async function prompt(
   attachmentIds?: string[],
   mode?: 'auto' | 'queue',
 ) {
-  return sessionRequest(sessionId, 'sessions.prompt', {
+  const started = now()
+  const result = await sessionRequest(sessionId, 'sessions.prompt', {
     sessionId,
     text,
     attachments: attachmentIds && attachmentIds.length > 0 ? attachmentIds : undefined,
     mode,
   })
+  // Enter to the host having the message: the part of sending that is not the agent's thinking.
+  const hostKey = hostKeyOfSession(sessionId)
+  if (hostKey) recordMetric(hostKey, 'send.ack.ms', now() - started, { state: result.state })
+  return result
 }
 
 /** Cancels a queued message, or sends it into the running turn right away. */
@@ -514,6 +586,10 @@ export async function interrupt(sessionId: string) {
 /** Moves a session into the sidebar's Done section, or back out of it. */
 export async function setSessionDone(sessionId: string, done: boolean) {
   await sessionRequest(sessionId, 'sessions.setDone', { sessionId, done })
+}
+
+export async function deleteSession(sessionId: string) {
+  await sessionRequest(sessionId, 'sessions.delete', { sessionId })
 }
 
 export async function setSessionPinned(sessionId: string, pinned: boolean) {

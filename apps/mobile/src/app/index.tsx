@@ -15,6 +15,7 @@ import {
   CaretDown,
   CaretRight,
   Checks,
+  ClockCounterClockwise,
   FolderSimple,
   FolderSimplePlus,
   Gear,
@@ -24,16 +25,20 @@ import {
   NotePencil,
   Plus,
   SortDescending,
+  Trash,
   ArrowUUpLeft,
   X,
 } from 'phosphor-react-native'
-import { useMemo, useState } from 'react'
-import { FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Alert, FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native'
 
-import { setSessionDone, useAllSessions, useHostStore } from '@/host/store'
+import { deleteSession, setSessionDone, useAllSessions, useHostStore } from '@/host/store'
 import { usePrefs } from '@/host/prefs'
 import { colors, fonts, radius } from '@/theme/tokens'
 import { Diffstat } from '@/ui/Diffstat'
+import { FadeIn } from '@/ui/FadeIn'
+import { animateLayout } from '@/ui/layoutAnimation'
+import { PressableScale } from '@/ui/PressableScale'
 import { Icon } from '@/ui/Icon'
 import { Logo } from '@/ui/Logo'
 import { MenuSheet, type MenuItem } from '@/ui/MenuSheet'
@@ -81,6 +86,13 @@ export default function SessionsScreen() {
   const [menu, setMenu] = useState<{ session: SessionView } | null>(null)
   const [hostMenu, setHostMenu] = useState(false)
   const [sortMenu, setSortMenu] = useState(false)
+  // Rows on screen at first paint ease in one after another; rows scrolled to later just appear.
+  const firstPaint = useRef(true)
+  useEffect(() => {
+    const timer = setTimeout(() => (firstPaint.current = false), 700)
+    return () => clearTimeout(timer)
+  }, [])
+  const openMenu = useCallback((session: SessionView) => setMenu({ session }), [])
 
   const selectedHost = entries.some((e) => e.key === hostFilter) ? hostFilter : 'all'
   const hostName = (key: string) =>
@@ -196,6 +208,25 @@ export default function SessionsScreen() {
         disabled: action.kind === 'busy',
         onSelect: () => void setSessionDone(session.id, action.kind === 'file'),
       },
+      {
+        id: 'delete',
+        label: 'Delete',
+        hint: 'Removes the conversation. Your folder and files stay.',
+        icon: Trash,
+        danger: true,
+        onSelect: () =>
+          Alert.alert('Delete this conversation?', session.title, [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Delete',
+              style: 'destructive',
+              onPress: () =>
+                void deleteSession(session.id).catch((err: unknown) =>
+                  Alert.alert('Could not delete', err instanceof Error ? err.message : String(err)),
+                ),
+            },
+          ]),
+      },
     ]
   }
 
@@ -228,6 +259,19 @@ export default function SessionsScreen() {
             accessibilityLabel="Search"
           >
             <Icon icon={searching ? X : MagnifyingGlass} size={20} />
+          </Pressable>
+          <Pressable
+            hitSlop={8}
+            onPress={() =>
+              router.push({
+                // Typed routes learn the new screen the next time Expo starts.
+                pathname: '/history' as '/new',
+                params: selectedHost === 'all' ? {} : { host: selectedHost },
+              })
+            }
+            accessibilityLabel="Resume an earlier conversation"
+          >
+            <Icon icon={ClockCounterClockwise} size={20} />
           </Pressable>
           <Pressable
             hitSlop={8}
@@ -301,17 +345,29 @@ export default function SessionsScreen() {
 
   return (
     <Screen>
+      {/* Pinned: only the sessions below scroll. */}
+      <View style={{ paddingHorizontal: 8 }}>{header}</View>
       <FlatList
         data={rows}
         keyExtractor={(r) => r.key}
-        ListHeaderComponent={header}
         ListEmptyComponent={empty ?? undefined}
         contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 8 }}
         keyboardShouldPersistTaps="handled"
-        renderItem={({ item }) => {
+        initialNumToRender={14}
+        windowSize={9}
+        maxToRenderPerBatch={8}
+        removeClippedSubviews
+        renderItem={({ item, index }) => {
           if (item.kind === 'folder') {
             return (
-              <Pressable style={styles.folder} onPress={() => toggleCollapsed(item.key.slice(2))}>
+              <PressableScale
+                scaleTo={0.985}
+                style={styles.folder}
+                onPress={() => {
+                  animateLayout()
+                  toggleCollapsed(item.key.slice(2))
+                }}
+              >
                 <Icon
                   icon={item.collapsed ? CaretRight : CaretDown}
                   size={12}
@@ -336,16 +392,23 @@ export default function SessionsScreen() {
                 >
                   <Icon icon={Plus} size={17} color={colors.faint} />
                 </Pressable>
-              </Pressable>
+              </PressableScale>
             )
           }
           if (item.kind === 'done') {
             return (
-              <Pressable style={styles.doneToggle} onPress={() => toggleDone(item.groupKey)}>
+              <PressableScale
+                scaleTo={0.985}
+                style={styles.doneToggle}
+                onPress={() => {
+                  animateLayout()
+                  toggleDone(item.groupKey)
+                }}
+              >
                 <Icon icon={item.open ? CaretDown : CaretRight} size={12} color={colors.faint} />
                 <Faint size={12.5}>Done</Faint>
                 <Faint size={12.5}>{item.count}</Faint>
-              </Pressable>
+              </PressableScale>
             )
           }
           return (
@@ -356,10 +419,8 @@ export default function SessionsScreen() {
                 runtimes[item.hostKey]?.providers.find((p) => p.id === item.session.instanceId)
                   ?.label ?? item.session.instanceId
               }
-              onPress={() =>
-                router.push({ pathname: '/session/[id]', params: { id: item.session.id } })
-              }
-              onLongPress={() => setMenu({ session: item.session })}
+              onLongPress={openMenu}
+              intro={firstPaint.current ? index : -1}
             />
           )
         }}
@@ -433,24 +494,27 @@ export default function SessionsScreen() {
   )
 }
 
-function SessionRow({
+/** Only a row whose session, depth or label changed is drawn again: streaming elsewhere leaves it be. */
+const SessionRow = memo(function SessionRow({
   session,
   depth,
   agent,
-  onPress,
   onLongPress,
+  intro,
 }: {
   session: SessionView
   depth: number
   agent: string
-  onPress(): void
-  onLongPress(): void
+  onLongPress(session: SessionView): void
+  /** The row's place among those on screen at first paint, for a staggered entrance; -1 for none. */
+  intro: number
 }) {
   const note = sessionNote(session)
-  return (
-    <Pressable
-      onPress={onPress}
-      onLongPress={onLongPress}
+  const row = (
+    <PressableScale
+      scaleTo={0.985}
+      onPress={() => router.push({ pathname: '/session/[id]', params: { id: session.id } })}
+      onLongPress={() => onLongPress(session)}
       style={({ pressed }) => [
         styles.session,
         depth > 0 && styles.child,
@@ -493,9 +557,10 @@ function SessionRow({
           <Diffstat added={session.added} removed={session.removed} />
         </View>
       </View>
-    </Pressable>
+    </PressableScale>
   )
-}
+  return intro >= 0 ? <FadeIn delay={Math.min(intro, 10) * 28}>{row}</FadeIn> : row
+})
 
 const styles = StyleSheet.create({
   child: {

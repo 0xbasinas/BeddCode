@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -8,10 +8,13 @@ import { createAsyncQueue, createLogger } from '@beddcode/shared'
 import { AttachmentStore } from '../attachments/store.ts'
 import { EventStore } from '../store/eventStore.ts'
 import { GitService } from '../workspace/git.ts'
+import { removeDir } from '../testing/removeDir.ts'
 import { SessionManager } from './sessionManager.ts'
 
 const dirs: string[] = []
-afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })))
+afterEach(async () => {
+  for (const d of dirs.splice(0)) await removeDir(d)
+})
 const tmp = () => {
   const d = mkdtempSync(path.join(os.tmpdir(), 'beddcode-mgr-'))
   dirs.push(d)
@@ -117,6 +120,7 @@ describe('SessionManager: composer features', () => {
       resumed = make()
       const file = attachments.save('question.txt', Buffer.from('A question'))
       await resumed.prompt(sessionId, 'Continue our discussion', [file.id])
+      await vi.waitFor(() => expect(prompts.length).toBeGreaterThan(0))
       expect(starts[1]).toMatchObject({
         cwd: folder,
         resumeId: 'native-1',
@@ -323,6 +327,7 @@ describe('SessionManager: composer features', () => {
 
     await manager.prompt(sessionId, 'Why did this fail?', [file.id])
 
+    await vi.waitFor(() => expect(prompts).toHaveLength(1))
     expect(prompts[0]).toBe(`Why did this fail?\n\nAttached files:\n- ${file.path}`)
     const user = events(store, sessionId).find((e) => e.type === 'message.delta')
     expect(user).toMatchObject({
@@ -339,6 +344,7 @@ describe('SessionManager: composer features', () => {
 
     const file = attachments.save('shot.png', Buffer.from('x'))
     await manager.prompt(sessionId, '', [file.id])
+    await vi.waitFor(() => expect(prompts).toHaveLength(1))
     expect(prompts[0]).toBe(`Attached files:\n- ${file.path}`)
   })
 

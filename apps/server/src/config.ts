@@ -8,6 +8,12 @@ export interface ServerConfig {
   /** Address to listen on. Loopback unless the user opens the host to other machines. */
   host: string
   guard: GuardOptions
+  /** A relay that lets devices on any network reach this host (e.g. wss://relay.example.com). */
+  relayUrl?: string
+  /** The password the relay asks of hosts, when its owner set one. */
+  relayPassword?: string
+  /** Upload anonymous speed measurements to the relay. */
+  telemetry?: boolean
 }
 
 /** Settings kept in `<data dir>/config.json` (see `beddcode config`); flags and variables win. */
@@ -17,6 +23,9 @@ export interface ConfigFile {
   allowLan?: boolean
   requireToken?: boolean
   allowedOrigins?: string[]
+  relayUrl?: string
+  relayPassword?: string
+  telemetry?: boolean
 }
 
 export const configPath = () => path.join(dataHome(), 'config.json')
@@ -35,6 +44,32 @@ export function readConfigFile(file = configPath()): ConfigFile {
 export function writeConfigFile(config: ConfigFile, file = configPath()): void {
   mkdirSync(path.dirname(file), { recursive: true })
   writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`)
+}
+
+/**
+ * A relay can be given as an ordinary address (`relay.example.com`, `https://relay.example.com`);
+ * the websocket form is derived from it. Plain http/ws is only for a relay on this machine or network.
+ */
+export function normalizeRelayUrl(input: string): string {
+  const raw = input.trim()
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`
+  let url: URL
+  try {
+    url = new URL(withScheme)
+  } catch {
+    throw new Error(`The relay address must look like https://relay.example.com, not ${input}`)
+  }
+  const scheme: Record<string, string> = {
+    'https:': 'wss:',
+    'wss:': 'wss:',
+    'http:': 'ws:',
+    'ws:': 'ws:',
+  }
+  const proto = scheme[url.protocol]
+  if (!proto || !url.hostname || url.username || url.search || url.hash || url.pathname !== '/') {
+    throw new Error(`The relay address must look like https://relay.example.com, not ${input}`)
+  }
+  return `${proto}//${url.host}`
 }
 
 const truthy = (v: string | undefined) => v === '1' || v === 'true'
@@ -67,6 +102,13 @@ export function parseServeArgs(
     host: env.BEDDCODE_HOST ?? file.host ?? '127.0.0.1',
     guard,
   }
+  const relayUrl = env.BEDDCODE_RELAY_URL ?? file.relayUrl
+  if (relayUrl) config.relayUrl = relayUrl
+  const relayPassword = env.BEDDCODE_RELAY_PASSWORD ?? file.relayPassword
+  if (relayPassword) config.relayPassword = relayPassword
+  const telemetry =
+    env.BEDDCODE_TELEMETRY !== undefined ? truthy(env.BEDDCODE_TELEMETRY) : file.telemetry
+  if (telemetry !== undefined) config.telemetry = telemetry
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!
@@ -91,6 +133,15 @@ export function parseServeArgs(
       case '--allow-origin':
         guard.allowedOrigins.push(value())
         break
+      case '--relay-url':
+        config.relayUrl = value()
+        break
+      case '--relay-password':
+        config.relayPassword = value()
+        break
+      case '--telemetry':
+        config.telemetry = true
+        break
       default:
         throw new Error(`Unknown option: ${arg}`)
     }
@@ -99,6 +150,7 @@ export function parseServeArgs(
   if (!Number.isInteger(config.port) || config.port < 0 || config.port > 65535) {
     throw new Error(`Invalid port: ${config.port}`)
   }
+  if (config.relayUrl) config.relayUrl = normalizeRelayUrl(config.relayUrl)
   return config
 }
 

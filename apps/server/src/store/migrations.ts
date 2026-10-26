@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import { dropRepeatedSnapshots } from './snapshots.ts'
 
@@ -24,5 +25,11 @@ export const migrations: (string | ((db: DatabaseSync) => void))[] = [
   // changes are kept from now on, so the old repeats go too. Replaying them changed nothing.
   (db) => {
     dropRepeatedSnapshots(db)
+  },
+  // Which log this is, so a device that saved its copy of the history can tell when the host's
+  // database was replaced and the copy is no longer valid.
+  (db) => {
+    db.exec('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+    db.prepare("INSERT INTO meta (key, value) VALUES ('logId', ?)").run(randomUUID())
   },
 ]

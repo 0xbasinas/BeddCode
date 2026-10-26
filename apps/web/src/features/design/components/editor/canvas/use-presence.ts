@@ -20,8 +20,14 @@ const VIEWPORT_THROTTLE_MS = 400
 const HEARTBEAT_MS = 4000
 
 const PRESENCE_COLORS = [
-  'var(--dc-accent)', '#F24E1E', '#A259FF', '#1ABCFE',
-  '#0ACF83', '#FF7262', '#FFC700', '#EF5DA8',
+  'var(--dc-accent)',
+  '#F24E1E',
+  '#A259FF',
+  '#1ABCFE',
+  '#0ACF83',
+  '#FF7262',
+  '#FFC700',
+  '#EF5DA8',
 ]
 
 function colorForClient(clientId: string): string {
@@ -119,8 +125,10 @@ export function usePresence(containerRef: React.RefObject<HTMLDivElement | null>
     // re-broadcast viewport on pan/zoom/selection changes (store subscription)
     const unsub = useEditorStore.subscribe((state, prev) => {
       if (
-        state.panX !== prev.panX || state.panY !== prev.panY ||
-        state.zoom !== prev.zoom || state.selectedElementIds !== prev.selectedElementIds ||
+        state.panX !== prev.panX ||
+        state.panY !== prev.panY ||
+        state.zoom !== prev.zoom ||
+        state.selectedElementIds !== prev.selectedElementIds ||
         state.currentProjectId !== prev.currentProjectId
       ) {
         const now = Date.now()

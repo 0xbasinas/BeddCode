@@ -1,6 +1,7 @@
-import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native'
+import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native'
 
 import { colors, radius } from '@/theme/tokens'
+import { PressableScale } from './PressableScale'
 import { Text } from './Text'
 
 /** Primary is the desktop's light button; secondary is the dark one beside it. */
@@ -19,7 +20,7 @@ export function Button({
 }) {
   const primary = kind === 'primary'
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       disabled={disabled}
       onPress={onPress}
@@ -40,7 +41,7 @@ export function Button({
       >
         {label}
       </Text>
-    </Pressable>
+    </PressableScale>
   )
 }
 

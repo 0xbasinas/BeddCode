@@ -7,12 +7,25 @@ export const PROTOCOL_VERSION = 1
 /** Frames carried over the single host WebSocket (JSON text frames). */
 export const ClientFrame = z.discriminatedUnion('t', [
   z.object({ t: z.literal('ping') }),
-  z.object({ t: z.literal('hello'), protocol: z.number().int(), token: z.string().optional() }),
+  /** Pair this device using a one-time code, over a connection that has no HTTP (a relay). */
+  z.object({ t: z.literal('pair'), code: z.string().max(32), deviceName: z.string().max(80) }),
+  z.object({
+    t: z.literal('hello'),
+    protocol: z.number().int(),
+    token: z.string().optional(),
+    /** This client can open compressed relay messages, so the host may send them. */
+    z: z.boolean().optional(),
+  }),
   z.object({
     t: z.literal('req'),
     id: z.string(),
     method: z.string(),
     params: z.unknown().optional(),
+    /**
+     * Names a request that may be sent again after a dropped connection. The host does the work
+     * once and answers every repeat with the same result.
+     */
+    rid: z.string().max(64).optional(),
   }),
   /** Start receiving a terminal's output; the server replays what it has buffered first. */
   z.object({ t: z.literal('term.attach'), id: z.string() }),
@@ -28,7 +41,17 @@ export const ClientFrame = z.discriminatedUnion('t', [
   z.object({ t: z.literal('fs.watch'), cwd: z.string() }),
   z.object({ t: z.literal('fs.unwatch'), cwd: z.string() }),
   /** Subscribe to the event log, resuming after `afterSeq`. */
-  z.object({ t: z.literal('subscribe'), afterSeq: z.number().int().nonnegative() }),
+  z.object({
+    t: z.literal('subscribe'),
+    afterSeq: z.number().int().nonnegative(),
+    /**
+     * The client understands a compact replay: streamed text joined into one event and superseded
+     * state left out. The state it builds is the same; far fewer frames cross the wire.
+     */
+    compact: z.boolean().optional(),
+    /** The client understands `events` frames: the replay comes in groups, not one by one. */
+    batch: z.boolean().optional(),
+  }),
   /**
    * Whether this client can run agents' browser tools (the desktop app can), and which session
    * it shows, so the host picks the right one. Sent again whenever either changes.
@@ -85,6 +108,11 @@ export const HostInfo = z.object({
   version: z.string(),
   /** Legacy default folder for clients that omit cwd without requesting a projectless session. */
   defaultCwd: z.string().optional(),
+  /**
+   * Which event log this is. It changes if the host's database is replaced, so a device that
+   * saved its copy of the history knows when that copy no longer belongs to the host.
+   */
+  logId: z.string().optional(),
 })
 export type HostInfo = z.infer<typeof HostInfo>
 
@@ -99,8 +127,14 @@ export const ServerFrame = z.discriminatedUnion('t', [
     error: z.string().optional(),
   }),
   z.object({ t: z.literal('event'), stored: StoredEvent }),
+  /** Several events at once (a replay, sent to a client that asked for `batch`), in seq order. */
+  z.object({ t: z.literal('events'), events: z.array(StoredEvent) }),
   /** The host refused this connection (missing or wrong token). It closes right after. */
   z.object({ t: z.literal('denied'), reason: z.enum(['auth', 'origin', 'network']) }),
+  /** The answer to `pair` when the code was right: this device's token, shown once. */
+  z.object({ t: z.literal('paired'), token: z.string(), host: HostInfo }),
+  /** The answer to `pair` when it was not (wrong, expired, or too many tries). */
+  z.object({ t: z.literal('pair.failed'), error: z.string() }),
   /** Terminal output. `replay` marks the buffered history sent on attach. */
   z.object({
     t: z.literal('term.out'),

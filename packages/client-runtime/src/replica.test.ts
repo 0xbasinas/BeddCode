@@ -70,6 +70,22 @@ describe('replica', () => {
     expect(again.sessions.s1).toMatchObject({ done: undefined, status: 'running' })
   })
 
+  it('drops a deleted session, and ignores late events for it', () => {
+    const state = fold([{ ...created }, { type: 'turn.started', turnId: 't1' }])
+    expect(state.sessions.s1).toBeDefined()
+    const gone = applyEvent(state, {
+      seq: 99,
+      event: { sessionId: 's1', at: 500, type: 'session.deleted' },
+    })
+    expect(gone.sessions.s1).toBeUndefined()
+    expect(gone.order).not.toContain('s1')
+    const late = applyEvent(gone, {
+      seq: 100,
+      event: { sessionId: 's1', at: 600, type: 'turn.started', turnId: 't2' },
+    })
+    expect(late.sessions.s1).toBeUndefined()
+  })
+
   it('merges assistant deltas of one turn into a single message', () => {
     const s = fold([
       created,

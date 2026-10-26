@@ -1,11 +1,27 @@
 // @ts-nocheck
 import { create } from 'zustand'
-import { findElementInList, updateElementInList, removeElementFromList, deepCloneElements, getAllElements, findAncestors } from '../lib/element-utils'
-import { computeAutoLayout } from '../lib/auto-layout'
-import { normalizeServerElement, normalizeServerProject, pushProjectToServer } from '../lib/server-project'
 import {
-  isBooleanOperandType, flattenOperand, polysToContours, contoursBounds, foldElementPolys,
-  getBooleanGroupContours, booleanGroupPathD,
+  findElementInList,
+  updateElementInList,
+  removeElementFromList,
+  deepCloneElements,
+  getAllElements,
+  findAncestors,
+} from '../lib/element-utils'
+import { computeAutoLayout } from '../lib/auto-layout'
+import {
+  normalizeServerElement,
+  normalizeServerProject,
+  pushProjectToServer,
+} from '../lib/server-project'
+import {
+  isBooleanOperandType,
+  flattenOperand,
+  polysToContours,
+  contoursBounds,
+  foldElementPolys,
+  getBooleanGroupContours,
+  booleanGroupPathD,
 } from '../lib/boolean-ops'
 import { computeOutlineStroke, isOutlineStrokeCandidate } from '../lib/outline-stroke'
 // PHASE 18 — parametric shape → editable vector conversion + split-vector
@@ -14,7 +30,11 @@ import type { Poly } from '../lib/polygon-clip'
 import type { Interaction, PrototypeAction, OverlayBackground } from '../types/prototype'
 // PHASE 7 — style helpers (types are import()'d above to avoid a value cycle)
 import {
-  applyStyleUpdates, detachStyleUpdates, paintFromElement, textFromElement, effectsFromElement,
+  applyStyleUpdates,
+  detachStyleUpdates,
+  paintFromElement,
+  textFromElement,
+  effectsFromElement,
 } from '../lib/styles'
 // PHASE 9 — constraints engine
 import { constrainChildren, inferConstraints } from '../lib/constraints'
@@ -88,7 +108,11 @@ function applyAutoLayoutSync(elements: DesignElement[], startIds: string[]): Des
       const cur = findElementInList(out, node.id)
       if (!cur || cur.type !== 'frame' || !cur.autoLayout || !cur.children) continue
       const res = computeAutoLayout(cur)
-      out = updateElementInList(out, cur.id, { children: res.children, width: res.width, height: res.height })
+      out = updateElementInList(out, cur.id, {
+        children: res.children,
+        width: res.width,
+        height: res.height,
+      })
     }
   }
   return out
@@ -102,9 +126,45 @@ function generateClientId(): string {
   return `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-export type ToolType = 'move' | 'frame' | 'rectangle' | 'ellipse' | 'line' | 'pen' | 'text' | 'comment' | 'hand' | 'polygon' | 'star' | 'pencil' | 'eyedropper' | 'slice' | 'arrow' | 'image' | 'scale' | 'section' | 'table' | 'sticky'
+export type ToolType =
+  | 'move'
+  | 'frame'
+  | 'rectangle'
+  | 'ellipse'
+  | 'line'
+  | 'pen'
+  | 'text'
+  | 'comment'
+  | 'hand'
+  | 'polygon'
+  | 'star'
+  | 'pencil'
+  | 'eyedropper'
+  | 'slice'
+  | 'arrow'
+  | 'image'
+  | 'scale'
+  | 'section'
+  | 'table'
+  | 'sticky'
 
-export type ElementType = 'rectangle' | 'frame' | 'group' | 'ellipse' | 'line' | 'text' | 'path' | 'polygon' | 'star' | 'boolean' | 'slice' | 'arrow' | 'component-set' | 'section' | 'table' | 'sticky'
+export type ElementType =
+  | 'rectangle'
+  | 'frame'
+  | 'group'
+  | 'ellipse'
+  | 'line'
+  | 'text'
+  | 'path'
+  | 'polygon'
+  | 'star'
+  | 'boolean'
+  | 'slice'
+  | 'arrow'
+  | 'component-set'
+  | 'section'
+  | 'table'
+  | 'sticky'
 
 export interface PathPoint {
   x: number
@@ -132,7 +192,15 @@ export interface VectorVertex {
   x: number
   y: number
   cornerRadius?: number
-  strokeCap?: 'NONE' | 'ROUND' | 'SQUARE' | 'ARROW_LINES' | 'ARROW_EQUILATERAL' | 'DIAMOND_FILLED' | 'TRIANGLE_FILLED' | 'CIRCLE_FILLED'
+  strokeCap?:
+    | 'NONE'
+    | 'ROUND'
+    | 'SQUARE'
+    | 'ARROW_LINES'
+    | 'ARROW_EQUILATERAL'
+    | 'DIAMOND_FILLED'
+    | 'TRIANGLE_FILLED'
+    | 'CIRCLE_FILLED'
   strokeJoin?: 'MITER' | 'BEVEL' | 'ROUND'
 }
 
@@ -177,7 +245,14 @@ export interface FillStyle {
   /** PHASE 17 + 'pattern' — image tile repeat (source: addPaintOfType +
    *  <pattern patternUnits="userSpaceOnUse"><image …/> rendering, 9456/3835).
    *  Tile size = image natural size × patternScale (default 1). */
-  type: 'solid' | 'linear-gradient' | 'radial-gradient' | 'angular-gradient' | 'diamond-gradient' | 'image' | 'pattern'
+  type:
+    | 'solid'
+    | 'linear-gradient'
+    | 'radial-gradient'
+    | 'angular-gradient'
+    | 'diamond-gradient'
+    | 'image'
+    | 'pattern'
   color: string
   opacity: number
   gradientStops?: GradientStop[]
@@ -259,7 +334,8 @@ export interface AutoLayout {
  *   ComponentNode: variantProperties, componentPropertyDefinitions, createInstance
  *   InstanceNode: componentProperties, componentPropertyReferences, swapComponent, detachInstance
  */
-export type ComponentPropertyType = 'BOOLEAN' | 'TEXT' | 'INSTANCE_SWAP' | 'IMAGE' | 'SLOT' | 'NUMBER' | 'VARIANT'
+export type ComponentPropertyType =
+  'BOOLEAN' | 'TEXT' | 'INSTANCE_SWAP' | 'IMAGE' | 'SLOT' | 'NUMBER' | 'VARIANT'
 
 export interface BooleanPropertyDefinition {
   type: 'BOOLEAN'
@@ -503,13 +579,13 @@ interface HistoryEntry {
 interface EditorState {
   // Elements
   elements: DesignElement[]
-  
+
   // Selection
   selectedElementIds: string[]
-  
+
   // Tool
   activeTool: ToolType
-  
+
   // Canvas
   zoom: number
   panX: number
@@ -540,15 +616,18 @@ interface EditorState {
   // PHASE 22 (C19) — multiplayer presence (source: remoteCursorStore /
   //  multiplayer_cursors / multiplayer_viewport_overlay / allUsers)
   /** Remote collaborators by clientId — pruned when stale (>10s). */
-  remotePresences: Record<string, {
-    clientId: string
-    name: string
-    color: string
-    cursor?: { x: number; y: number }
-    viewport?: { x: number; y: number; w: number; h: number }
-    selection?: { x: number; y: number; w: number; h: number } | null
-    lastSeen: number
-  }>
+  remotePresences: Record<
+    string,
+    {
+      clientId: string
+      name: string
+      color: string
+      cursor?: { x: number; y: number }
+      viewport?: { x: number; y: number; w: number; h: number }
+      selection?: { x: number; y: number; w: number; h: number } | null
+      lastSeen: number
+    }
+  >
   /** Show remote cursors (source: visual_bell multiplayer_cursors_hidden/visible) */
   showMultiplayerCursors: boolean
   /** Hide the remote viewport overlay (source: toggle-viewport-overlay-hiding /
@@ -560,33 +639,43 @@ interface EditorState {
   /** Version history panel open */
   versionHistoryOpen: boolean
   /** Non-null = viewing an old version read-only (HISTORY edit mode). */
-  viewingVersion: { id: string; label: string; snapshot: {
-    elements: DesignElement[]
-    pages: Page[]
-    activePageId: string
-  } } | null
+  viewingVersion: {
+    id: string
+    label: string
+    snapshot: {
+      elements: DesignElement[]
+      pages: Page[]
+      activePageId: string
+    }
+  } | null
 
   // PHASE 22 (C21) — published libraries (source: assets_panel.publish_library /
   //  publishedLibrary / fileSubscribedLibraryKeys / is_subscribed)
-  libraries: { key: string; name: string; publisher: string; publishedAt: string; componentCount?: number }[]
+  libraries: {
+    key: string
+    name: string
+    publisher: string
+    publishedAt: string
+    componentCount?: number
+  }[]
   /** Library keys this project subscribes to (per-project is_subscribed parity). */
   subscribedLibraryKeys: string[]
-  
+
   // Guides
   guides: Guide[]
-  
+
   // UI State
   leftTab: 'file' | 'assets'
   rightTab: 'design' | 'prototype' | 'inspect'
   editorMode: 'design' | 'prototype' | 'dev'
   leftSidebarVisible: boolean
   rightSidebarVisible: boolean
-  
+
   // Pages
   pages: Page[]
   activePageId: string
   fileName: string
-  
+
   // Clipboard
   clipboard: DesignElement[]
   /** PHASE 23 (F5) — property clipboard (source: copy-properties /
@@ -601,16 +690,16 @@ interface EditorState {
   /** PHASE 23 (F13) — keyboard shortcuts modal (source:
    *  keyboard_settings.keyboard_shortcuts_modal). */
   shortcutsOpen: boolean
-  
+
   // History (undo/redo)
   history: HistoryEntry[]
   historyIndex: number
   maxHistory: number
-  
+
   // Frame navigation
   currentFrameId: string | null
   frameBreadcrumb: string[]
-  
+
   // Save state
   lastSavedAt: number | null
   isSaving: boolean
@@ -640,15 +729,15 @@ interface EditorState {
   overlayStack: { frameId: string; background: OverlayBackground; closeOnClickOutside: boolean }[]
   /** Navigation history for the 'back' action */
   previewHistory: string[]
-  
+
   // Actions - Selection
   setSelectedElementIds: (ids: string[]) => void
   toggleElementSelection: (id: string) => void
-  
+
   // Actions - Tool
   setActiveTool: (tool: ToolType) => void
   setEditorMode: (mode: 'design' | 'prototype' | 'dev') => void
-  
+
   // Actions - Canvas
   setZoom: (zoom: number) => void
   setPan: (x: number, y: number) => void
@@ -657,13 +746,13 @@ interface EditorState {
   setSnapToElements: (snap: boolean) => void
   setGridSize: (size: number) => void
   setShowRulers: (show: boolean) => void
-  
+
   // Actions - UI State
   setLeftTab: (tab: 'file' | 'assets') => void
   setRightTab: (tab: 'design' | 'prototype' | 'inspect') => void
   toggleLeftSidebar: () => void
   toggleRightSidebar: () => void
-  
+
   // Actions - Element CRUD
   updateElement: (id: string, updates: Partial<DesignElement>) => void
   /** PHASE 12 — re-run the auto layout engine for an element's frame chain */
@@ -686,20 +775,24 @@ interface EditorState {
   deleteSelectedElements: () => void
   duplicateElement: (id: string) => void
   duplicateSelectedElements: () => void
-  
+
   // Actions - Z-order
   bringForward: (id: string) => void
   sendBackward: (id: string) => void
   bringToFront: (id: string) => void
   sendToBack: (id: string) => void
-  
+
   // Actions - Group/Ungroup
   groupElements: (ids: string[]) => void
   ungroupElements: (id: string) => void
   renameElement: (id: string, name: string) => void
   selectAll: () => void
   // Actions - Boolean ops & masks (PHASE 6)
-  applyBooleanOperation: (op: 'union' | 'subtract' | 'intersect' | 'exclude') => { ok: boolean; reason?: string; id?: string }
+  applyBooleanOperation: (op: 'union' | 'subtract' | 'intersect' | 'exclude') => {
+    ok: boolean
+    reason?: string
+    id?: string
+  }
   setElementAsMask: (id: string, isMask: boolean) => void
   /** PHASE 17 (P2) — convert each selected stroked shape into a filled outline
    *  path (source: OUTLINE_STROKE=233). Returns count converted. */
@@ -725,7 +818,7 @@ interface EditorState {
   reorderPages: (startIndex: number, endIndex: number) => void
   moveElementsToPage: (elementIds: string[], targetPageId: string) => void
   setPageBackground: (id: string, color: string) => void
-  
+
   // Actions - Clipboard
   copySelected: () => void
   pasteClipboard: () => void
@@ -747,12 +840,12 @@ interface EditorState {
   setNudgeAmount: (nudge: { small: number; large: number }) => void
   setShowComments: (show: boolean) => void
   setShortcutsOpen: (open: boolean) => void
-  
+
   // Actions - History
   undo: () => void
   redo: () => void
   pushHistory: () => void
-  
+
   // Actions - File
   setFileName: (name: string) => void
   setLastSavedAt: (time: number | null) => void
@@ -774,7 +867,7 @@ interface EditorState {
   applyRemoteElementUpdate: (element: DesignElement, pageId?: string) => void
   applyRemoteElementDelete: (elementId: string, pageId?: string) => void
   applyRemoteProject: (project: unknown) => void
-  
+
   // Actions - Component system
   addComponent: (id: string) => void
   createInstance: (componentId: string) => void
@@ -783,15 +876,27 @@ interface EditorState {
   propagateComponentChanges: (componentId: string) => void
   // Actions - Component Variant system
   addComponentSet: (ids: string[], name: string) => void
-  addComponentPropertyDefinition: (componentId: string, propName: string, def: ComponentPropertyDefinition) => void
-  editComponentPropertyDefinition: (componentId: string, propName: string, def: Partial<ComponentPropertyDefinition>) => void
+  addComponentPropertyDefinition: (
+    componentId: string,
+    propName: string,
+    def: ComponentPropertyDefinition,
+  ) => void
+  editComponentPropertyDefinition: (
+    componentId: string,
+    propName: string,
+    def: Partial<ComponentPropertyDefinition>,
+  ) => void
   deleteComponentPropertyDefinition: (componentId: string, propName: string) => void
   addVariantPropertyDefinition: (componentSetId: string, propName: string, values: string[]) => void
   setVariantPropertyValue: (variantId: string, propName: string, value: string) => void
-  setComponentPropertyValue: (instanceId: string, propName: string, value: ComponentPropertyValue) => void
+  setComponentPropertyValue: (
+    instanceId: string,
+    propName: string,
+    value: ComponentPropertyValue,
+  ) => void
   swapInstanceComponent: (instanceId: string, newComponentId: string) => void
   setDefaultVariant: (componentSetId: string, variantId: string) => void
-  
+
   // Actions - Fill/Stroke layers
   addFill: (id: string, fill: FillStyle) => void
   removeFill: (id: string, fillIndex: number) => void
@@ -799,14 +904,21 @@ interface EditorState {
   addStroke: (id: string, stroke: StrokeStyle) => void
   removeStroke: (id: string, strokeIndex: number) => void
   updateStroke: (id: string, strokeIndex: number, stroke: Partial<StrokeStyle>) => void
-  
+
   // Actions - Effects
   addEffect: (id: string, effect: ShadowEffect | BlurEffect) => void
   removeEffect: (id: string, effectIndex: number) => void
-  updateEffect: (id: string, effectIndex: number, effect: Partial<ShadowEffect | BlurEffect>) => void
-  
+  updateEffect: (
+    id: string,
+    effectIndex: number,
+    effect: Partial<ShadowEffect | BlurEffect>,
+  ) => void
+
   // Actions - Export settings
-  addExportSetting: (id: string, setting: { format: string; scale: number; quality?: number }) => void
+  addExportSetting: (
+    id: string,
+    setting: { format: string; scale: number; quality?: number },
+  ) => void
   removeExportSetting: (id: string, index: number) => void
 
   // Actions - Styles (PHASE 7) — see lib/styles.ts for the model
@@ -837,7 +949,11 @@ interface EditorState {
   /** Load comments (server load / import). */
   loadComments: (comments: CommentPin[]) => void
   /** Create a style from the given slot of an element and attach it. */
-  createStyleFromElement: (elementId: string, slot: import('../lib/styles').StyleSlot, name: string) => string | null
+  createStyleFromElement: (
+    elementId: string,
+    slot: import('../lib/styles').StyleSlot,
+    name: string,
+  ) => string | null
   /** Apply a style to every currently selected element (where the slot applies). */
   applyStyleToSelection: (styleId: string) => void
   /** Detach a style from selection (values are kept). */
@@ -855,7 +971,11 @@ interface EditorState {
   /** Add a layout grid to a frame. */
   addLayoutGrid: (frameId: string, pattern: 'columns' | 'rows' | 'grid') => void
   /** Update one layout grid of a frame. */
-  updateLayoutGrid: (frameId: string, gridId: string, updates: Partial<import('../lib/layout-grids').LayoutGrid>) => void
+  updateLayoutGrid: (
+    frameId: string,
+    gridId: string,
+    updates: Partial<import('../lib/layout-grids').LayoutGrid>,
+  ) => void
   /** Remove one layout grid from a frame. */
   removeLayoutGrid: (frameId: string, gridId: string) => void
 
@@ -881,7 +1001,9 @@ interface EditorState {
 
   // Actions - Presence (PHASE 22 C19)
   /** Apply an incoming presence event (move/leave) + prune stale entries. */
-  applyRemotePresence: (presence: NonNullable<import('../lib/events/bus').ProjectEvent['presence']>) => void
+  applyRemotePresence: (
+    presence: NonNullable<import('../lib/events/bus').ProjectEvent['presence']>,
+  ) => void
   /** Drop presences not seen for >10s (called on a timer — pruning must not
    *  depend on new events arriving). */
   pruneRemotePresences: () => void
@@ -891,7 +1013,11 @@ interface EditorState {
   // Actions - Version history (PHASE 22 C20)
   setVersionHistoryOpen: (v: boolean) => void
   /** Enter read-only preview of a version snapshot (HISTORY edit mode). */
-  previewVersion: (version: { id: string; label: string; snapshot: { elements: DesignElement[]; pages: Page[]; activePageId: string } }) => void
+  previewVersion: (version: {
+    id: string
+    label: string
+    snapshot: { elements: DesignElement[]; pages: Page[]; activePageId: string }
+  }) => void
   /** Leave version preview back to the live document. */
   exitVersionPreview: () => void
   /** Restore a version on the server, then apply locally (undo-able). */
@@ -911,7 +1037,10 @@ interface EditorState {
    *  select-same-{style,fill,stroke,effect,text,font,instance,variant}; plus
    *  standalone "select-similar" (≈ type+paint match) and "select-inverse".
    *  Returns the new selection size. */
-  selectSimilar: (criteria: 'style' | 'fill' | 'stroke' | 'effect' | 'text' | 'font' | 'instance' | 'variant' | 'similar') => number
+  selectSimilar: (
+    criteria:
+      'style' | 'fill' | 'stroke' | 'effect' | 'text' | 'font' | 'instance' | 'variant' | 'similar',
+  ) => number
   /** E15 — invert the current selection among top-level page objects. */
   selectInverse: () => void
   /** E16 — update an element on any page (find/replace across pages; active
@@ -921,7 +1050,10 @@ interface EditorState {
   // Actions - Constraints (PHASE 9)
   /** Resize a frame and reposition/resize its children according to their
    *  constraints (left/center/right/left-right, top/center/bottom/top-bottom). */
-  resizeFrameWithConstraints: (frameId: string, next: { x?: number; y?: number; width: number; height: number }) => void
+  resizeFrameWithConstraints: (
+    frameId: string,
+    next: { x?: number; y?: number; width: number; height: number },
+  ) => void
   /** Infer constraints for a child from its position in parent (creation-time). */
   inferChildConstraints: (childId: string, parentFrameId: string) => void
 
@@ -931,14 +1063,18 @@ interface EditorState {
 
   // Actions - Prototype (PHASE 2)
   addInteraction: (elementId: string, interaction: Interaction) => void
-  updateInteraction: (elementId: string, interactionId: string, updates: Partial<Interaction>) => void
+  updateInteraction: (
+    elementId: string,
+    interactionId: string,
+    updates: Partial<Interaction>,
+  ) => void
   removeInteraction: (elementId: string, interactionId: string) => void
   /** Start fullscreen prototype playback (optionally from a given frame). */
   startPreview: (frameId?: string | null) => void
   stopPreview: () => void
   /** Execute a prototype action during playback (navigate/overlay/url/back). */
   previewNavigate: (action: PrototypeAction) => void
-  
+
   // Actions - Transform
   setBlendMode: (id: string, mode: string) => void
   flipHorizontal: (id: string) => void
@@ -946,16 +1082,16 @@ interface EditorState {
   alignElements: (ids: string[], alignment: string) => void
   distributeElements: (ids: string[], direction: string) => void
   booleanOperation: (ids: string[], operation: string) => void
-  
+
   // Actions - Guides
   addGuide: (guide: Guide) => void
   removeGuide: (id: string) => void
   clearGuides: () => void
-  
+
   // Actions - Save/Load
   saveToFile: () => Promise<void>
   loadFromFile: () => Promise<void>
-  
+
   // Actions - Frame navigation
   setCurrentFrameId: (id: string | null) => void
   enterFrame: (id: string) => void
@@ -983,29 +1119,171 @@ export function generateId(prefix: string = 'el'): string {
   return `${prefix}-${Date.now()}-${elementCounter}`
 }
 
-export function createDefaultElement(type: ElementType, overrides?: Partial<DesignElement>): DesignElement {
+export function createDefaultElement(
+  type: ElementType,
+  overrides?: Partial<DesignElement>,
+): DesignElement {
   const id = generateId(type)
   const typeDefaults: Record<ElementType, Partial<DesignElement>> = {
-    rectangle: { name: `Rectangle ${elementCounter}`, fill: '#D9D9D9', stroke: 'transparent', strokeWidth: 0, cornerRadius: 0 },
-    ellipse: { name: `Ellipse ${elementCounter}`, fill: '#D9D9D9', stroke: 'transparent', strokeWidth: 0, cornerRadius: 0 },
-    line: { name: `Line ${elementCounter}`, fill: 'transparent', stroke: '#000000', strokeWidth: 2, cornerRadius: 0 },
-    text: { name: `Text ${elementCounter}`, fill: 'transparent', stroke: 'transparent', strokeWidth: 0, cornerRadius: 0, textContent: 'Text', fontFamily: 'Inter', fontSize: 18, fontWeight: 400, textAlign: 'left' as const, textColor: '#000000', lineHeight: 1.4, letterSpacing: 0, textAutoResize: 'grow' as const },
-    frame: { name: `Frame ${elementCounter}`, fill: '#FFFFFF', stroke: '#E0E0E0', strokeWidth: 1, cornerRadius: 0, clipContent: true },
-    group: { name: `Group ${elementCounter}`, fill: 'transparent', stroke: 'transparent', strokeWidth: 0, cornerRadius: 0 },
-    path: { name: `Path ${elementCounter}`, fill: 'transparent', stroke: '#000000', strokeWidth: 2, cornerRadius: 0, pathPoints: [], pathClosed: false },
-    polygon: { name: `Polygon ${elementCounter}`, fill: '#D9D9D9', stroke: 'transparent', strokeWidth: 0, cornerRadius: 0, sides: 6 },
-    star: { name: `Star ${elementCounter}`, fill: '#FFD93D', stroke: 'transparent', strokeWidth: 0, cornerRadius: 0, sides: 5, innerRadius: 40 },
-    boolean: { name: `Boolean ${elementCounter}`, fill: '#D9D9D9', stroke: 'transparent', strokeWidth: 0, cornerRadius: 0 },
-    arrow: { name: `Arrow ${elementCounter}`, fill: 'transparent', stroke: '#000000', strokeWidth: 2, cornerRadius: 0, arrowHeadStyle: 'arrow' },
-    slice: { name: `Slice ${elementCounter}`, fill: 'transparent', stroke: '#0D99FF', strokeWidth: 1, cornerRadius: 0 },
-    'component-set': { name: `Component Set ${elementCounter}`, fill: '#2C2C2C', stroke: '#A259FF', strokeWidth: 1, cornerRadius: 0, isComponentSet: true, isComponent: true },
+    rectangle: {
+      name: `Rectangle ${elementCounter}`,
+      fill: '#D9D9D9',
+      stroke: 'transparent',
+      strokeWidth: 0,
+      cornerRadius: 0,
+    },
+    ellipse: {
+      name: `Ellipse ${elementCounter}`,
+      fill: '#D9D9D9',
+      stroke: 'transparent',
+      strokeWidth: 0,
+      cornerRadius: 0,
+    },
+    line: {
+      name: `Line ${elementCounter}`,
+      fill: 'transparent',
+      stroke: '#000000',
+      strokeWidth: 2,
+      cornerRadius: 0,
+    },
+    text: {
+      name: `Text ${elementCounter}`,
+      fill: 'transparent',
+      stroke: 'transparent',
+      strokeWidth: 0,
+      cornerRadius: 0,
+      textContent: 'Text',
+      fontFamily: 'Inter',
+      fontSize: 18,
+      fontWeight: 400,
+      textAlign: 'left' as const,
+      textColor: '#000000',
+      lineHeight: 1.4,
+      letterSpacing: 0,
+      textAutoResize: 'grow' as const,
+    },
+    frame: {
+      name: `Frame ${elementCounter}`,
+      fill: '#FFFFFF',
+      stroke: '#E0E0E0',
+      strokeWidth: 1,
+      cornerRadius: 0,
+      clipContent: true,
+    },
+    group: {
+      name: `Group ${elementCounter}`,
+      fill: 'transparent',
+      stroke: 'transparent',
+      strokeWidth: 0,
+      cornerRadius: 0,
+    },
+    path: {
+      name: `Path ${elementCounter}`,
+      fill: 'transparent',
+      stroke: '#000000',
+      strokeWidth: 2,
+      cornerRadius: 0,
+      pathPoints: [],
+      pathClosed: false,
+    },
+    polygon: {
+      name: `Polygon ${elementCounter}`,
+      fill: '#D9D9D9',
+      stroke: 'transparent',
+      strokeWidth: 0,
+      cornerRadius: 0,
+      sides: 6,
+    },
+    star: {
+      name: `Star ${elementCounter}`,
+      fill: '#FFD93D',
+      stroke: 'transparent',
+      strokeWidth: 0,
+      cornerRadius: 0,
+      sides: 5,
+      innerRadius: 40,
+    },
+    boolean: {
+      name: `Boolean ${elementCounter}`,
+      fill: '#D9D9D9',
+      stroke: 'transparent',
+      strokeWidth: 0,
+      cornerRadius: 0,
+    },
+    arrow: {
+      name: `Arrow ${elementCounter}`,
+      fill: 'transparent',
+      stroke: '#000000',
+      strokeWidth: 2,
+      cornerRadius: 0,
+      arrowHeadStyle: 'arrow',
+    },
+    slice: {
+      name: `Slice ${elementCounter}`,
+      fill: 'transparent',
+      stroke: '#0D99FF',
+      strokeWidth: 1,
+      cornerRadius: 0,
+    },
+    'component-set': {
+      name: `Component Set ${elementCounter}`,
+      fill: '#2C2C2C',
+      stroke: '#A259FF',
+      strokeWidth: 1,
+      cornerRadius: 0,
+      isComponentSet: true,
+      isComponent: true,
+    },
     // PHASE 15 — section / table / sticky (source: SECTION 116 / TABLE 58 / STICKY 52)
-    section: { name: `Section ${elementCounter}`, fill: '#B3D6F2', stroke: 'transparent', strokeWidth: 0, cornerRadius: 12, clipContent: false, width: 480, height: 360 },
-    table: { name: `Table ${elementCounter}`, fill: '#FFFFFF', stroke: '#383838', strokeWidth: 1, cornerRadius: 0, width: 420, height: 180,
-      tableData: { colWidths: [140, 140, 140], rowHeights: [44, 44, 44], cells: [['Header A', 'Header B', 'Header C'], ['', '', ''], ['', '', '']], headerRow: true } },
-    sticky: { name: `Sticky ${elementCounter}`, fill: '#F5D90A', stroke: 'transparent', strokeWidth: 0, cornerRadius: 4, width: 200, height: 160, textContent: 'Sticky note', fontFamily: 'Inter', fontSize: 14, fontWeight: 400, textAlign: 'left', textColor: '#1E1E1E', lineHeight: 1.4, letterSpacing: 0, textAlignVertical: 'top' },
+    section: {
+      name: `Section ${elementCounter}`,
+      fill: '#B3D6F2',
+      stroke: 'transparent',
+      strokeWidth: 0,
+      cornerRadius: 12,
+      clipContent: false,
+      width: 480,
+      height: 360,
+    },
+    table: {
+      name: `Table ${elementCounter}`,
+      fill: '#FFFFFF',
+      stroke: '#383838',
+      strokeWidth: 1,
+      cornerRadius: 0,
+      width: 420,
+      height: 180,
+      tableData: {
+        colWidths: [140, 140, 140],
+        rowHeights: [44, 44, 44],
+        cells: [
+          ['Header A', 'Header B', 'Header C'],
+          ['', '', ''],
+          ['', '', ''],
+        ],
+        headerRow: true,
+      },
+    },
+    sticky: {
+      name: `Sticky ${elementCounter}`,
+      fill: '#F5D90A',
+      stroke: 'transparent',
+      strokeWidth: 0,
+      cornerRadius: 4,
+      width: 200,
+      height: 160,
+      textContent: 'Sticky note',
+      fontFamily: 'Inter',
+      fontSize: 14,
+      fontWeight: 400,
+      textAlign: 'left',
+      textColor: '#1E1E1E',
+      lineHeight: 1.4,
+      letterSpacing: 0,
+      textAlignVertical: 'top',
+    },
   }
-  
+
   const td = typeDefaults[type] || {}
   return {
     id,
@@ -1051,529 +1329,7 @@ export function createDefaultElement(type: ElementType, overrides?: Partial<Desi
   }
 }
 
-const initialElements: DesignElement[] = [
-  {
-    id: 'rect-1',
-    name: 'Rectangle 1',
-    type: 'rectangle',
-    x: -600,
-    y: -200,
-    width: 200,
-    height: 150,
-    fill: '#D9D9D9',
-    stroke: 'transparent',
-    strokeWidth: 0,
-    strokeStyle: 'solid',
-    strokeAlign: 'center',
-    cornerRadius: 0,
-    cornerRadiusTL: 0,
-    cornerRadiusTR: 0,
-    cornerRadiusBL: 0,
-    cornerRadiusBR: 0,
-    opacity: 100,
-    rotation: 0,
-    visible: true,
-    locked: false,
-    blendMode: 'normal',
-    flipH: false,
-    flipV: false,
-    clipContent: false,
-  },
-  {
-    id: 'rect-2',
-    name: 'Rectangle 2',
-    type: 'rectangle',
-    x: -350,
-    y: -100,
-    width: 180,
-    height: 120,
-    fill: '#FF6B6B',
-    stroke: 'transparent',
-    strokeWidth: 0,
-    strokeStyle: 'solid',
-    strokeAlign: 'center',
-    cornerRadius: 12,
-    cornerRadiusTL: 12,
-    cornerRadiusTR: 12,
-    cornerRadiusBL: 12,
-    cornerRadiusBR: 12,
-    opacity: 100,
-    rotation: 0,
-    visible: true,
-    locked: false,
-    blendMode: 'normal',
-    flipH: false,
-    flipV: false,
-    clipContent: false,
-    shadows: [{ type: 'drop-shadow', x: 0, y: 4, blur: 12, spread: 0, color: '#000000', opacity: 15, visible: true }],
-  },
-  {
-    id: 'ellipse-1',
-    name: 'Ellipse 1',
-    type: 'ellipse',
-    x: -100,
-    y: -250,
-    width: 160,
-    height: 160,
-    fill: '#4ECDC4',
-    stroke: 'transparent',
-    strokeWidth: 0,
-    strokeStyle: 'solid',
-    strokeAlign: 'center',
-    cornerRadius: 0,
-    cornerRadiusTL: 0,
-    cornerRadiusTR: 0,
-    cornerRadiusBL: 0,
-    cornerRadiusBR: 0,
-    opacity: 100,
-    rotation: 0,
-    visible: true,
-    locked: false,
-    blendMode: 'normal',
-    flipH: false,
-    flipV: false,
-    clipContent: false,
-  },
-  {
-    id: 'rect-3',
-    name: 'Card',
-    type: 'rectangle',
-    x: 100,
-    y: -100,
-    width: 280,
-    height: 180,
-    fill: '#FFFFFF',
-    stroke: '#E0E0E0',
-    strokeWidth: 1,
-    strokeStyle: 'solid',
-    strokeAlign: 'center',
-    cornerRadius: 16,
-    cornerRadiusTL: 16,
-    cornerRadiusTR: 16,
-    cornerRadiusBL: 16,
-    cornerRadiusBR: 16,
-    opacity: 100,
-    rotation: 0,
-    visible: true,
-    locked: false,
-    blendMode: 'normal',
-    flipH: false,
-    flipV: false,
-    clipContent: false,
-    shadows: [{ type: 'drop-shadow', x: 0, y: 2, blur: 8, spread: 0, color: '#000000', opacity: 10, visible: true }],
-  },
-  {
-    id: 'text-1',
-    name: 'Heading',
-    type: 'text',
-    x: 120,
-    y: -70,
-    width: 240,
-    height: 36,
-    fill: 'transparent',
-    stroke: 'transparent',
-    strokeWidth: 0,
-    strokeStyle: 'solid',
-    strokeAlign: 'center',
-    cornerRadius: 0,
-    cornerRadiusTL: 0,
-    cornerRadiusTR: 0,
-    cornerRadiusBL: 0,
-    cornerRadiusBR: 0,
-    opacity: 100,
-    rotation: 0,
-    visible: true,
-    locked: false,
-    blendMode: 'normal',
-    flipH: false,
-    flipV: false,
-    clipContent: false,
-    textContent: 'Hello, Figma!',
-    fontFamily: 'Inter',
-    fontSize: 28,
-    fontWeight: 700,
-    textAlign: 'left',
-    textColor: '#1A1A1A',
-    lineHeight: 1.3,
-    letterSpacing: -0.5,
-  },
-  {
-    id: 'text-2',
-    name: 'Body Text',
-    type: 'text',
-    x: 120,
-    y: -30,
-    width: 240,
-    height: 60,
-    fill: 'transparent',
-    stroke: 'transparent',
-    strokeWidth: 0,
-    strokeStyle: 'solid',
-    strokeAlign: 'center',
-    cornerRadius: 0,
-    cornerRadiusTL: 0,
-    cornerRadiusTR: 0,
-    cornerRadiusBL: 0,
-    cornerRadiusBR: 0,
-    opacity: 100,
-    rotation: 0,
-    visible: true,
-    locked: false,
-    blendMode: 'normal',
-    flipH: false,
-    flipV: false,
-    clipContent: false,
-    textContent: 'Design beautiful interfaces with this Figma-like editor.',
-    fontFamily: 'Inter',
-    fontSize: 14,
-    fontWeight: 400,
-    textAlign: 'left',
-    textColor: '#666666',
-    lineHeight: 1.5,
-    letterSpacing: 0,
-  },
-  {
-    id: 'line-1',
-    name: 'Line 1',
-    type: 'line',
-    x: -600,
-    y: 50,
-    width: 400,
-    height: 0,
-    fill: 'transparent',
-    stroke: '#0D99FF',
-    strokeWidth: 2,
-    strokeStyle: 'dashed',
-    strokeAlign: 'center',
-    cornerRadius: 0,
-    cornerRadiusTL: 0,
-    cornerRadiusTR: 0,
-    cornerRadiusBL: 0,
-    cornerRadiusBR: 0,
-    opacity: 100,
-    rotation: 0,
-    visible: true,
-    locked: false,
-    blendMode: 'normal',
-    flipH: false,
-    flipV: false,
-    clipContent: false,
-  },
-  {
-    id: 'star-1',
-    name: 'Star 1',
-    type: 'star',
-    x: 500,
-    y: -200,
-    width: 120,
-    height: 120,
-    fill: '#FFD93D',
-    stroke: 'transparent',
-    strokeWidth: 0,
-    strokeStyle: 'solid',
-    strokeAlign: 'center',
-    cornerRadius: 0,
-    cornerRadiusTL: 0,
-    cornerRadiusTR: 0,
-    cornerRadiusBL: 0,
-    cornerRadiusBR: 0,
-    opacity: 100,
-    rotation: 0,
-    visible: true,
-    locked: false,
-    blendMode: 'normal',
-    flipH: false,
-    flipV: false,
-    clipContent: false,
-    sides: 5,
-    innerRadius: 40,
-  },
-  {
-    id: 'group-1',
-    name: 'iPhone Frame',
-    type: 'group',
-    x: -471.5,
-    y: -437,
-    width: 393,
-    height: 852,
-    fill: 'transparent',
-    stroke: 'transparent',
-    strokeWidth: 0,
-    strokeStyle: 'solid',
-    strokeAlign: 'center',
-    cornerRadius: 0,
-    cornerRadiusTL: 0,
-    cornerRadiusTR: 0,
-    cornerRadiusBL: 0,
-    cornerRadiusBR: 0,
-    opacity: 100,
-    rotation: 0,
-    visible: true,
-    locked: false,
-    blendMode: 'normal',
-    flipH: false,
-    flipV: false,
-    clipContent: false,
-    children: [
-      {
-        id: 'iphone-frame',
-        name: 'iPhone 16',
-        type: 'frame',
-        x: 0,
-        y: 0,
-        width: 393,
-        height: 852,
-        fill: '#FFFFFF',
-        stroke: '#E0E0E0',
-        strokeWidth: 1,
-        strokeStyle: 'solid',
-        strokeAlign: 'center',
-        cornerRadius: 40,
-        cornerRadiusTL: 40,
-        cornerRadiusTR: 40,
-        cornerRadiusBL: 40,
-        cornerRadiusBR: 40,
-        opacity: 100,
-        rotation: 0,
-        visible: true,
-        locked: false,
-        blendMode: 'normal',
-        flipH: false,
-        flipV: false,
-        clipContent: true,
-      },
-      {
-        id: 'iphone-status',
-        name: 'Status Bar',
-        type: 'rectangle',
-        x: 0,
-        y: 0,
-        width: 393,
-        height: 54,
-        fill: '#F8F8F8',
-        stroke: 'transparent',
-        strokeWidth: 0,
-        strokeStyle: 'solid',
-        strokeAlign: 'center',
-        cornerRadius: 0,
-        cornerRadiusTL: 0,
-        cornerRadiusTR: 0,
-        cornerRadiusBL: 0,
-        cornerRadiusBR: 0,
-        opacity: 100,
-        rotation: 0,
-        visible: true,
-        locked: false,
-        blendMode: 'normal',
-        flipH: false,
-        flipV: false,
-        clipContent: false,
-      },
-      {
-        id: 'iphone-island',
-        name: 'Dynamic Island',
-        type: 'rectangle',
-        x: 76,
-        y: 12,
-        width: 126,
-        height: 32,
-        fill: '#000000',
-        stroke: 'transparent',
-        strokeWidth: 0,
-        strokeStyle: 'solid',
-        strokeAlign: 'center',
-        cornerRadius: 20,
-        cornerRadiusTL: 20,
-        cornerRadiusTR: 20,
-        cornerRadiusBL: 20,
-        cornerRadiusBR: 20,
-        opacity: 100,
-        rotation: 0,
-        visible: true,
-        locked: false,
-        blendMode: 'normal',
-        flipH: false,
-        flipV: false,
-        clipContent: false,
-      },
-    ],
-  },
-  // ---- PHASE 2 demo flow: two wireframe screens wired with prototype
-  // interactions so playback (▶) works out of the box. The button on
-  // "Home" smart-animates to "Detail" (matching children by name path);
-  // the back button returns. Keep names in sync across both frames so
-  // smart-animate matching (DECISION-005) finds the pairs.
-  {
-    id: 'proto-home',
-    name: 'Home',
-    type: 'frame',
-    x: 700,
-    y: -380,
-    width: 320,
-    height: 480,
-    fill: '#FFFFFF',
-    stroke: '#E0E0E0',
-    strokeWidth: 1,
-    strokeStyle: 'solid',
-    strokeAlign: 'center',
-    cornerRadius: 12,
-    cornerRadiusTL: 12,
-    cornerRadiusTR: 12,
-    cornerRadiusBL: 12,
-    cornerRadiusBR: 12,
-    opacity: 100,
-    rotation: 0,
-    visible: true,
-    locked: false,
-    blendMode: 'normal',
-    flipH: false,
-    flipV: false,
-    clipContent: true,
-    children: [
-      {
-        id: 'proto-home-title',
-        name: 'Title',
-        type: 'text',
-        x: 24, y: 32, width: 272, height: 32,
-        fill: 'transparent', stroke: 'transparent', strokeWidth: 0, strokeStyle: 'solid', strokeAlign: 'center',
-        cornerRadius: 0, cornerRadiusTL: 0, cornerRadiusTR: 0, cornerRadiusBL: 0, cornerRadiusBR: 0,
-        opacity: 100, rotation: 0, visible: true, locked: false, blendMode: 'normal', flipH: false, flipV: false, clipContent: false,
-        textContent: 'Prototype demo', fontFamily: 'Inter', fontSize: 22, fontWeight: 700, textAlign: 'left',
-        textColor: '#1A1A1A', lineHeight: 1.3, letterSpacing: -0.4,
-      },
-      {
-        id: 'proto-home-card',
-        name: 'Card',
-        type: 'rectangle',
-        x: 24, y: 84, width: 272, height: 180,
-        fill: '#F5F5F5', stroke: 'transparent', strokeWidth: 0, strokeStyle: 'solid', strokeAlign: 'center',
-        cornerRadius: 12, cornerRadiusTL: 12, cornerRadiusTR: 12, cornerRadiusBL: 12, cornerRadiusBR: 12,
-        opacity: 100, rotation: 0, visible: true, locked: false, blendMode: 'normal', flipH: false, flipV: false, clipContent: false,
-      },
-      {
-        id: 'proto-home-cta',
-        name: 'CTA Button',
-        type: 'rectangle',
-        x: 24, y: 300, width: 272, height: 48,
-        fill: '#0D99FF', stroke: 'transparent', strokeWidth: 0, strokeStyle: 'solid', strokeAlign: 'center',
-        cornerRadius: 8, cornerRadiusTL: 8, cornerRadiusTR: 8, cornerRadiusBL: 8, cornerRadiusBR: 8,
-        opacity: 100, rotation: 0, visible: true, locked: false, blendMode: 'normal', flipH: false, flipV: false, clipContent: false,
-        interactions: [
-          {
-            id: 'ix-demo-1',
-            trigger: { type: 'click' },
-            action: { type: 'navigate', destinationId: 'proto-detail' },
-            animation: { type: 'smart-animate', durationMs: 400, easing: 'ease-in-out' },
-          },
-        ],
-      },
-      {
-        id: 'proto-home-cta-label',
-        name: 'CTA Label',
-        type: 'text',
-        x: 24, y: 312, width: 272, height: 24,
-        fill: 'transparent', stroke: 'transparent', strokeWidth: 0, strokeStyle: 'solid', strokeAlign: 'center',
-        cornerRadius: 0, cornerRadiusTL: 0, cornerRadiusTR: 0, cornerRadiusBL: 0, cornerRadiusBR: 0,
-        opacity: 100, rotation: 0, visible: true, locked: false, blendMode: 'normal', flipH: false, flipV: false, clipContent: false,
-        textContent: 'Open detail →', fontFamily: 'Inter', fontSize: 15, fontWeight: 550, textAlign: 'center',
-        textColor: '#FFFFFF', lineHeight: 1.2, letterSpacing: 0,
-        interactions: [
-          {
-            id: 'ix-demo-2',
-            trigger: { type: 'click' },
-            action: { type: 'navigate', destinationId: 'proto-detail' },
-            animation: { type: 'smart-animate', durationMs: 400, easing: 'ease-in-out' },
-          },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'proto-detail',
-    name: 'Detail',
-    type: 'frame',
-    x: 1080,
-    y: -380,
-    width: 320,
-    height: 480,
-    fill: '#FFFFFF',
-    stroke: '#E0E0E0',
-    strokeWidth: 1,
-    strokeStyle: 'solid',
-    strokeAlign: 'center',
-    cornerRadius: 12,
-    cornerRadiusTL: 12,
-    cornerRadiusTR: 12,
-    cornerRadiusBL: 12,
-    cornerRadiusBR: 12,
-    opacity: 100,
-    rotation: 0,
-    visible: true,
-    locked: false,
-    blendMode: 'normal',
-    flipH: false,
-    flipV: false,
-    clipContent: true,
-    children: [
-      {
-        id: 'proto-detail-title',
-        name: 'Title',
-        type: 'text',
-        x: 24, y: 32, width: 272, height: 32,
-        fill: 'transparent', stroke: 'transparent', strokeWidth: 0, strokeStyle: 'solid', strokeAlign: 'center',
-        cornerRadius: 0, cornerRadiusTL: 0, cornerRadiusTR: 0, cornerRadiusBL: 0, cornerRadiusBR: 0,
-        opacity: 100, rotation: 0, visible: true, locked: false, blendMode: 'normal', flipH: false, flipV: false, clipContent: false,
-        textContent: 'Detail screen', fontFamily: 'Inter', fontSize: 22, fontWeight: 700, textAlign: 'left',
-        textColor: '#1A1A1A', lineHeight: 1.3, letterSpacing: -0.4,
-      },
-      {
-        id: 'proto-detail-card',
-        name: 'Card',
-        type: 'rectangle',
-        x: 24, y: 84, width: 272, height: 280,
-        fill: '#EEF6FF', stroke: 'transparent', strokeWidth: 0, strokeStyle: 'solid', strokeAlign: 'center',
-        cornerRadius: 12, cornerRadiusTL: 12, cornerRadiusTR: 12, cornerRadiusBL: 12, cornerRadiusBR: 12,
-        opacity: 100, rotation: 0, visible: true, locked: false, blendMode: 'normal', flipH: false, flipV: false, clipContent: false,
-      },
-      {
-        id: 'proto-detail-back',
-        name: 'CTA Button',
-        type: 'rectangle',
-        x: 24, y: 396, width: 272, height: 48,
-        fill: '#2C2C2C', stroke: 'transparent', strokeWidth: 0, strokeStyle: 'solid', strokeAlign: 'center',
-        cornerRadius: 8, cornerRadiusTL: 8, cornerRadiusTR: 8, cornerRadiusBL: 8, cornerRadiusBR: 8,
-        opacity: 100, rotation: 0, visible: true, locked: false, blendMode: 'normal', flipH: false, flipV: false, clipContent: false,
-        interactions: [
-          {
-            id: 'ix-demo-3',
-            trigger: { type: 'click' },
-            action: { type: 'back' },
-            animation: { type: 'smart-animate', durationMs: 400, easing: 'ease-in-out' },
-          },
-        ],
-      },
-      {
-        id: 'proto-detail-back-label',
-        name: 'CTA Label',
-        type: 'text',
-        x: 24, y: 408, width: 272, height: 24,
-        fill: 'transparent', stroke: 'transparent', strokeWidth: 0, strokeStyle: 'solid', strokeAlign: 'center',
-        cornerRadius: 0, cornerRadiusTL: 0, cornerRadiusTR: 0, cornerRadiusBL: 0, cornerRadiusBR: 0,
-        opacity: 100, rotation: 0, visible: true, locked: false, blendMode: 'normal', flipH: false, flipV: false, clipContent: false,
-        textContent: '← Back home', fontFamily: 'Inter', fontSize: 15, fontWeight: 550, textAlign: 'center',
-        textColor: '#FFFFFF', lineHeight: 1.2, letterSpacing: 0,
-        interactions: [
-          {
-            id: 'ix-demo-4',
-            trigger: { type: 'click' },
-            action: { type: 'back' },
-            animation: { type: 'smart-animate', durationMs: 400, easing: 'ease-in-out' },
-          },
-        ],
-      },
-    ],
-  },
-]
+const initialElements: DesignElement[] = []
 
 const initialPage: Page = {
   id: 'page-1',
@@ -1723,13 +1479,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const next = { ...state.remotePresences }
       let changed = false
       for (const key of Object.keys(next)) {
-        if (now - next[key].lastSeen > 10_000) { delete next[key]; changed = true }
+        if (now - next[key].lastSeen > 10_000) {
+          delete next[key]
+          changed = true
+        }
       }
       return changed ? { remotePresences: next } : state
     }),
 
-  previewVersion: (version) =>
-    set({ viewingVersion: version, selectedElementIds: [] }),
+  previewVersion: (version) => set({ viewingVersion: version, selectedElementIds: [] }),
 
   exitVersionPreview: () => set({ viewingVersion: null }),
 
@@ -1738,10 +1496,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!state.currentProjectId) return false
     try {
       // parity: restore.in_progress → restore_initiated → restore_completed
-      const res = await fetch(`/api/editor/projects/${state.currentProjectId}/versions/${versionId}/restore`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Client-Id': state.clientId },
-      })
+      const res = await fetch(
+        `/api/editor/projects/${state.currentProjectId}/versions/${versionId}/restore`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Client-Id': state.clientId },
+        },
+      )
       if (!res.ok) return false
       // capture pre-restore state so undo brings the live document back
       const preRestore: HistoryEntry = {
@@ -1756,10 +1517,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       // below it so ⌘Z returns the user to the document as it was before the
       // restore (Figma parity: restore is undo-able).
       set((s) => ({
-        history: [
-          preRestore,
-          { elements: deepCloneElements(s.elements), selectedElementIds: [] },
-        ],
+        history: [preRestore, { elements: deepCloneElements(s.elements), selectedElementIds: [] }],
         historyIndex: 1,
       }))
       return true
@@ -1857,7 +1615,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (!res.ok) return false
       const data = await res.json()
       const component = (data?.library?.components || []).find(
-        (c: DesignElement) => c.id === componentId
+        (c: DesignElement) => c.id === componentId,
       ) as DesignElement | undefined
       if (!component) return false
 
@@ -1890,7 +1648,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
   },
   setSelectedElementIds: (ids) => set({ selectedElementIds: ids }),
-  
+
   toggleElementSelection: (id) =>
     set((state) => {
       const isSelected = state.selectedElementIds.includes(id)
@@ -1932,10 +1690,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       // attach to the source element
       const updates: Partial<DesignElement> =
-        slot === 'fill' ? { fillStyleId: style!.id } :
-        slot === 'stroke' ? { strokeStyleId: style!.id } :
-        slot === 'text' ? { textStyleId: style!.id } :
-        { effectStyleId: style!.id }
+        slot === 'fill'
+          ? { fillStyleId: style!.id }
+          : slot === 'stroke'
+            ? { strokeStyleId: style!.id }
+            : slot === 'text'
+              ? { textStyleId: style!.id }
+              : { effectStyleId: style!.id }
       return {
         styles: [...state.styles, style!],
         elements: updateElementInList(state.elements, elementId, updates),
@@ -1984,32 +1745,51 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const rebroadcast = (els: DesignElement[]): DesignElement[] =>
       els.map((el) => {
         let updated = el
-        if (el.fillStyleId === styleId || el.strokeStyleId === styleId ||
-            el.textStyleId === styleId || el.effectStyleId === styleId) {
-          updated = { ...el, ...applyStyleUpdates(el, next), }
+        if (
+          el.fillStyleId === styleId ||
+          el.strokeStyleId === styleId ||
+          el.textStyleId === styleId ||
+          el.effectStyleId === styleId
+        ) {
+          updated = { ...el, ...applyStyleUpdates(el, next) }
         }
         if (el.children) return { ...updated, children: rebroadcast(el.children) }
         return updated
       })
-    set({ styles: state.styles.map((s) => (s.id === styleId ? next : s)), elements: rebroadcast(state.elements), isDirty: true })
+    set({
+      styles: state.styles.map((s) => (s.id === styleId ? next : s)),
+      elements: rebroadcast(state.elements),
+      isDirty: true,
+    })
   },
 
   renameStyle: (styleId, name) =>
-    set((state) => ({ styles: state.styles.map((s) => (s.id === styleId ? { ...s, name } : s)), isDirty: true })),
+    set((state) => ({
+      styles: state.styles.map((s) => (s.id === styleId ? { ...s, name } : s)),
+      isDirty: true,
+    })),
 
   deleteStyle: (styleId) => {
     const state = get()
     const clear = (els: DesignElement[]): DesignElement[] =>
       els.map((el) => {
         let updated = el
-        if (el.fillStyleId === styleId || el.strokeStyleId === styleId ||
-            el.textStyleId === styleId || el.effectStyleId === styleId) {
+        if (
+          el.fillStyleId === styleId ||
+          el.strokeStyleId === styleId ||
+          el.textStyleId === styleId ||
+          el.effectStyleId === styleId
+        ) {
           updated = { ...el, ...detachStyleUpdates(el, styleId) }
         }
         if (el.children) return { ...updated, children: clear(el.children) }
         return updated
       })
-    set({ styles: state.styles.filter((s) => s.id !== styleId), elements: clear(state.elements), isDirty: true })
+    set({
+      styles: state.styles.filter((s) => s.id !== styleId),
+      elements: clear(state.elements),
+      isDirty: true,
+    })
   },
 
   loadStyles: (styles) => set({ styles }),
@@ -2017,32 +1797,47 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   // ---------- PHASE 16: comments ----------------------------------------
   addComment: (x, y, text) =>
     set((state) => ({
-      comments: [...state.comments, {
-        id: `cmt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        x, y, resolved: false,
-        messages: [{ id: `msg-${Date.now()}`, author: 'You', text, ts: Date.now() }],
-      }],
+      comments: [
+        ...state.comments,
+        {
+          id: `cmt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          x,
+          y,
+          resolved: false,
+          messages: [{ id: `msg-${Date.now()}`, author: 'You', text, ts: Date.now() }],
+        },
+      ],
       composerPos: null,
       isDirty: true,
     })),
 
   replyToComment: (commentId, text) =>
     set((state) => ({
-      comments: state.comments.map(c => c.id === commentId
-        ? { ...c, messages: [...c.messages, { id: `msg-${Date.now()}`, author: 'You', text, ts: Date.now() }] }
-        : c),
+      comments: state.comments.map((c) =>
+        c.id === commentId
+          ? {
+              ...c,
+              messages: [
+                ...c.messages,
+                { id: `msg-${Date.now()}`, author: 'You', text, ts: Date.now() },
+              ],
+            }
+          : c,
+      ),
       isDirty: true,
     })),
 
   toggleResolveComment: (commentId) =>
     set((state) => ({
-      comments: state.comments.map(c => c.id === commentId ? { ...c, resolved: !c.resolved } : c),
+      comments: state.comments.map((c) =>
+        c.id === commentId ? { ...c, resolved: !c.resolved } : c,
+      ),
       isDirty: true,
     })),
 
   deleteComment: (commentId) =>
     set((state) => ({
-      comments: state.comments.filter(c => c.id !== commentId),
+      comments: state.comments.filter((c) => c.id !== commentId),
       activeCommentId: state.activeCommentId === commentId ? null : state.activeCommentId,
       isDirty: true,
     })),
@@ -2061,10 +1856,30 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         pattern === 'grid'
           ? { id: generateId('grid'), pattern, visible: true, size: 8, color: '#FF3B30' }
           : pattern === 'columns'
-            ? { id: generateId('grid'), pattern, visible: true, count: 12, gutter: 16, margin: 32, type: 'stretch', color: '#FF3B30' }
-            : { id: generateId('grid'), pattern, visible: true, count: 6, gutter: 16, margin: 32, type: 'start', color: '#FF3B30' }
+            ? {
+                id: generateId('grid'),
+                pattern,
+                visible: true,
+                count: 12,
+                gutter: 16,
+                margin: 32,
+                type: 'stretch',
+                color: '#FF3B30',
+              }
+            : {
+                id: generateId('grid'),
+                pattern,
+                visible: true,
+                count: 6,
+                gutter: 16,
+                margin: 32,
+                type: 'start',
+                color: '#FF3B30',
+              }
       return {
-        elements: updateElementInList(state.elements, frameId, { layoutGrids: [...(frame.layoutGrids || []), grid] }),
+        elements: updateElementInList(state.elements, frameId, {
+          layoutGrids: [...(frame.layoutGrids || []), grid],
+        }),
         isDirty: true,
       }
     }),
@@ -2098,7 +1913,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       const frame = findElementInList(state.elements, frameId)
       if (!frame) return state
-      const constrainedChildren = constrainChildren(frame, frame.width, frame.height, next.width, next.height)
+      const constrainedChildren = constrainChildren(
+        frame,
+        frame.width,
+        frame.height,
+        next.width,
+        next.height,
+      )
       return {
         elements: updateElementInList(state.elements, frameId, {
           ...next,
@@ -2117,7 +1938,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const inferred = inferConstraints(child, frame.width, frame.height)
       return {
         elements: updateElementInList(state.elements, parentFrameId, {
-          children: frame.children.map((c) => (c.id === childId ? { ...c, constraints: inferred } : c)),
+          children: frame.children.map((c) =>
+            c.id === childId ? { ...c, constraints: inferred } : c,
+          ),
         }),
         isDirty: false, // inference is bookkeeping, not a user edit
       }
@@ -2148,7 +1971,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           boxWidth: el.width,
         })
         const lineH = (el.fontSize || 18) * (el.lineHeight || 1.4)
-        const updates: Partial<DesignElement> = { height: Math.max(1, Math.ceil(lines.length * lineH)) }
+        const updates: Partial<DesignElement> = {
+          height: Math.max(1, Math.ceil(lines.length * lineH)),
+        }
         if (mode === 'hug') {
           // width: longest line content + its x offset (prefix + indent)
           let maxW = 0
@@ -2187,11 +2012,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (el?.autoLayout && (updates.width !== undefined || updates.height !== undefined)) {
         const al = { ...(updates.autoLayout ?? el.autoLayout) }
         const horiz = al.direction === 'horizontal'
-        if (updates.width !== undefined && (horiz ? al.primaryAxisSizing : al.counterAxisSizing) === 'hug') {
-          if (horiz) al.primaryAxisSizing = 'fixed'; else al.counterAxisSizing = 'fixed'
+        if (
+          updates.width !== undefined &&
+          (horiz ? al.primaryAxisSizing : al.counterAxisSizing) === 'hug'
+        ) {
+          if (horiz) al.primaryAxisSizing = 'fixed'
+          else al.counterAxisSizing = 'fixed'
         }
-        if (updates.height !== undefined && (horiz ? al.counterAxisSizing : al.primaryAxisSizing) === 'hug') {
-          if (horiz) al.counterAxisSizing = 'fixed'; else al.primaryAxisSizing = 'fixed'
+        if (
+          updates.height !== undefined &&
+          (horiz ? al.counterAxisSizing : al.primaryAxisSizing) === 'hug'
+        ) {
+          if (horiz) al.counterAxisSizing = 'fixed'
+          else al.primaryAxisSizing = 'fixed'
         }
         applied = { ...updates, autoLayout: al }
       }
@@ -2217,17 +2050,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       const frame = findElementInList(state.elements, frameId)
       if (!frame || !frame.children) return state
-      const from = frame.children.findIndex(c => c.id === childId)
+      const from = frame.children.findIndex((c) => c.id === childId)
       if (from === -1) return state
       const children = [...frame.children]
       const [moved] = children.splice(from, 1)
       const idx = Math.max(0, Math.min(children.length, toIndex))
       children.splice(idx, 0, moved)
       return {
-        elements: applyAutoLayoutSync(
-          updateElementInList(state.elements, frameId, { children }),
-          [frameId]
-        ),
+        elements: applyAutoLayoutSync(updateElementInList(state.elements, frameId, { children }), [
+          frameId,
+        ]),
         isDirty: true,
       }
     }),
@@ -2237,9 +2069,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       const el = findElementInList(state.elements, elementId)
       if (!el || !el.tableData) return state
-      const cells = el.tableData.cells.map((r, ri) => r.map((c, ci) => (ri === row && ci === col ? text : c)))
+      const cells = el.tableData.cells.map((r, ri) =>
+        r.map((c, ci) => (ri === row && ci === col ? text : c)),
+      )
       return {
-        elements: updateElementInList(state.elements, elementId, { tableData: { ...el.tableData, cells } }),
+        elements: updateElementInList(state.elements, elementId, {
+          tableData: { ...el.tableData, cells },
+        }),
         isDirty: true,
       }
     }),
@@ -2253,7 +2089,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const rowHeights = [...el.tableData.rowHeights]
       rowHeights.splice(idx, 0, 44)
       const cells = [...el.tableData.cells]
-      cells.splice(idx, 0, Array.from({ length: cols }, () => ''))
+      cells.splice(
+        idx,
+        0,
+        Array.from({ length: cols }, () => ''),
+      )
       return {
         elements: updateElementInList(state.elements, elementId, {
           tableData: { ...el.tableData, rowHeights, cells },
@@ -2286,7 +2126,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const idx = at ?? el.tableData.colWidths.length
       const colWidths = [...el.tableData.colWidths]
       colWidths.splice(idx, 0, 140)
-      const cells = el.tableData.cells.map(r => { const nr = [...r]; nr.splice(idx, 0, ''); return nr })
+      const cells = el.tableData.cells.map((r) => {
+        const nr = [...r]
+        nr.splice(idx, 0, '')
+        return nr
+      })
       return {
         elements: updateElementInList(state.elements, elementId, {
           tableData: { ...el.tableData, colWidths, cells },
@@ -2302,7 +2146,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (!el || !el.tableData || el.tableData.colWidths.length <= 1) return state
       const idx = at ?? el.tableData.colWidths.length - 1
       const colWidths = el.tableData.colWidths.filter((_, i) => i !== idx)
-      const cells = el.tableData.cells.map(r => r.filter((_, i) => i !== idx))
+      const cells = el.tableData.cells.map((r) => r.filter((_, i) => i !== idx))
       return {
         elements: updateElementInList(state.elements, elementId, {
           tableData: { ...el.tableData, colWidths, cells },
@@ -2348,9 +2192,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   moveElement: (id, dx, dy) => {
     if (get().viewingVersion) return
     return set((state) => ({
-      elements: updateElementInList(state.elements, id, { 
-        x: (findElementInList(state.elements, id)?.x ?? 0) + dx, 
-        y: (findElementInList(state.elements, id)?.y ?? 0) + dy 
+      elements: updateElementInList(state.elements, id, {
+        x: (findElementInList(state.elements, id)?.x ?? 0) + dx,
+        y: (findElementInList(state.elements, id)?.y ?? 0) + dy,
       }),
       isDirty: true,
     }))
@@ -2362,7 +2206,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       // If a frame is currently being edited, add element as a child of that frame
       if (state.currentFrameId) {
         const frame = findElementInList(state.elements, state.currentFrameId)
-        if (frame && ((frame.type === 'frame' || frame.type === 'group' || frame.type === 'section'))) {
+        if (
+          frame &&
+          (frame.type === 'frame' || frame.type === 'group' || frame.type === 'section')
+        ) {
           const existingChildren = frame.children || []
           const relChild = {
             ...element,
@@ -2377,7 +2224,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             updateElementInList(state.elements, state.currentFrameId, {
               children: [...existingChildren, childElement],
             }),
-            [state.currentFrameId]
+            [state.currentFrameId],
           )
           return {
             elements,
@@ -2398,7 +2245,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       // PHASE 12: capture the parent chain before removal so auto-layout frames re-flow
       const ancestors = findAncestors(state.elements, id)
       return {
-        elements: applyAutoLayoutSync(removeElementFromList(state.elements, id), ancestors.map(a => a.id)),
+        elements: applyAutoLayoutSync(
+          removeElementFromList(state.elements, id),
+          ancestors.map((a) => a.id),
+        ),
         selectedElementIds: state.selectedElementIds.filter((i) => i !== id),
         isDirty: true,
       }
@@ -2415,7 +2265,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }
       const removed = state.selectedElementIds.reduce(
         (els, id) => removeElementFromList(els, id),
-        state.elements
+        state.elements,
       )
       return {
         elements: applyAutoLayoutSync(removed, [...ancestorIds]),
@@ -2429,7 +2279,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       const element = findElementInList(state.elements, id)
       if (!element) return state
-      const newEl = regenerateIds({ ...element, name: `${element.name} copy`, x: element.x + 20, y: element.y + 20 })
+      const newEl = regenerateIds({
+        ...element,
+        name: `${element.name} copy`,
+        x: element.x + 20,
+        y: element.y + 20,
+      })
       return { elements: [...state.elements, newEl], isDirty: true }
     }),
 
@@ -2440,12 +2295,21 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     for (const id of state.selectedElementIds) {
       const element = findElementInList(state.elements, id)
       if (element) {
-        const newEl = regenerateIds({ ...element, name: `${element.name} copy`, x: element.x + 20, y: element.y + 20 })
+        const newEl = regenerateIds({
+          ...element,
+          name: `${element.name} copy`,
+          x: element.x + 20,
+          y: element.y + 20,
+        })
         newElements.push(newEl)
         newIds.push(newEl.id)
       }
     }
-    set({ elements: [...state.elements, ...newElements], selectedElementIds: newIds, isDirty: true })
+    set({
+      elements: [...state.elements, ...newElements],
+      selectedElementIds: newIds,
+      isDirty: true,
+    })
   },
 
   bringForward: (id) =>
@@ -2497,19 +2361,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const elementsToGroup = ids
         .map((id) => findElementInList(state.elements, id))
         .filter(Boolean) as DesignElement[]
-      
+
       if (elementsToGroup.length < 2) return state
-      
+
       // Compute absolute positions for all elements to group
       // (they might be inside frames with relative coords)
       const getAbsolutePos = (el: DesignElement): { x: number; y: number } => {
-        let absX = el.x, absY = el.y
-        const findParentOffset = (elements: DesignElement[], gpX: number, gpY: number): { x: number; y: number } | null => {
+        let absX = el.x,
+          absY = el.y
+        const findParentOffset = (
+          elements: DesignElement[],
+          gpX: number,
+          gpY: number,
+        ): { x: number; y: number } | null => {
           for (const parent of elements) {
             if (parent.children) {
               const pX = gpX + parent.x
               const pY = gpY + parent.y
-              if (parent.children.some(c => c.id === el.id)) return { x: pX, y: pY }
+              if (parent.children.some((c) => c.id === el.id)) return { x: pX, y: pY }
               const nested = findParentOffset(parent.children, pX, pY)
               if (nested) return nested
             }
@@ -2524,22 +2393,25 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         return { x: absX, y: absY }
       }
 
-      const absoluteElements = elementsToGroup.map(el => {
+      const absoluteElements = elementsToGroup.map((el) => {
         const abs = getAbsolutePos(el)
         return { ...el, x: abs.x, y: abs.y }
       })
 
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      let minX = Infinity,
+        minY = Infinity,
+        maxX = -Infinity,
+        maxY = -Infinity
       absoluteElements.forEach((el) => {
         minX = Math.min(minX, el.x)
         minY = Math.min(minY, el.y)
         maxX = Math.max(maxX, el.x + el.width)
         maxY = Math.max(maxY, el.y + el.height)
       })
-      
+
       const groupId = generateId('group')
       // Convert children to relative coordinates (relative to group's origin)
-      const relativeChildren = absoluteElements.map(el => ({
+      const relativeChildren = absoluteElements.map((el) => ({
         ...el,
         x: el.x - minX,
         y: el.y - minY,
@@ -2572,7 +2444,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         clipContent: false,
         children: relativeChildren,
       }
-      
+
       // Remove ALL grouped elements from the tree (both root and nested children)
       let remainingElements = state.elements
       for (const id of ids) {
@@ -2591,9 +2463,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     return set((state) => {
       const element = findElementInList(state.elements, id)
       if (!element || element.type !== 'group' || !element.children) return state
-      
+
       // Convert children back to absolute coordinates
-      const absoluteChildren = element.children.map(c => ({
+      const absoluteChildren = element.children.map((c) => ({
         ...c,
         x: c.x + element.x,
         y: c.y + element.y,
@@ -2616,9 +2488,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   selectAll: () =>
     set((state) => ({
-      selectedElementIds: state.elements
-        .filter((el) => !el.locked)
-        .map((el) => el.id),
+      selectedElementIds: state.elements.filter((el) => !el.locked).map((el) => el.id),
     })),
 
   // ---- PHASE 21 (E14/E15) — edit parity actions ----
@@ -2651,10 +2521,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const kept = state.elements.filter((el) => !removeIds.has(el.id))
     let insertIdx = -1
     for (let i = state.elements.length - 1; i >= 0; i--) {
-      if (removeIds.has(state.elements[i].id)) { insertIdx = i; break }
+      if (removeIds.has(state.elements[i].id)) {
+        insertIdx = i
+        break
+      }
     }
     const nextElements = [...kept]
-    const at = insertIdx >= 0 ? Math.max(0, Math.min(insertIdx, nextElements.length)) : nextElements.length
+    const at =
+      insertIdx >= 0 ? Math.max(0, Math.min(insertIdx, nextElements.length)) : nextElements.length
     nextElements.splice(at, 0, ...copies)
 
     set({
@@ -2667,16 +2541,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   selectSimilar: (criteria) => {
     const state = get()
     if (state.selectedElementIds.length === 0) return 0
-    const ref = findElementInList(state.elements, state.selectedElementIds[state.selectedElementIds.length - 1])
+    const ref = findElementInList(
+      state.elements,
+      state.selectedElementIds[state.selectedElementIds.length - 1],
+    )
     if (!ref) return 0
 
     // paint signatures (stable JSON of visible paints)
     const fillSig = (el: DesignElement) => {
       const f = (el.fills || []).filter((x) => x.visible !== false)
       if (f.length) {
-        return JSON.stringify(f.map((x) => x.type === 'solid'
-          ? ['solid', x.color, x.opacity]
-          : [x.type, x.gradientStops || null, x.opacity, x.scaleMode || null]))
+        return JSON.stringify(
+          f.map((x) =>
+            x.type === 'solid'
+              ? ['solid', x.color, x.opacity]
+              : [x.type, x.gradientStops || null, x.opacity, x.scaleMode || null],
+          ),
+        )
       }
       return JSON.stringify(['legacy', el.fill])
     }
@@ -2686,27 +2567,42 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return JSON.stringify(['legacy', el.stroke, el.strokeWidth])
     }
     const effectSig = (el: DesignElement) =>
-      JSON.stringify([...(el.shadows || []).map((s) => s.type), ...(el.blurs || []).map((b) => b.type)])
+      JSON.stringify([
+        ...(el.shadows || []).map((s) => s.type),
+        ...(el.blurs || []).map((b) => b.type),
+      ])
     const styleIdsOf = (el: DesignElement) =>
-      [el.fillStyleId, el.strokeStyleId, el.textStyleId, el.effectStyleId].filter(Boolean) as string[]
+      [el.fillStyleId, el.strokeStyleId, el.textStyleId, el.effectStyleId].filter(
+        Boolean,
+      ) as string[]
 
     const refStyleIds = styleIdsOf(ref)
     const same = (el: DesignElement): boolean => {
       if (el.id === ref.id) return true
       switch (criteria) {
-        case 'fill': return fillSig(el) === fillSig(ref)
-        case 'stroke': return strokeSig(el) === strokeSig(ref)
-        case 'effect': return effectSig(el) === effectSig(ref)
-        case 'text': return el.type === 'text'
-        case 'font': return el.type === 'text' && (el.fontFamily || 'Inter') === (ref.fontFamily || 'Inter')
-        case 'instance': return !!el.componentId && el.componentId === ref.componentId
-        case 'variant': return !!el.componentSetId && el.componentSetId === ref.componentSetId
+        case 'fill':
+          return fillSig(el) === fillSig(ref)
+        case 'stroke':
+          return strokeSig(el) === strokeSig(ref)
+        case 'effect':
+          return effectSig(el) === effectSig(ref)
+        case 'text':
+          return el.type === 'text'
+        case 'font':
+          return el.type === 'text' && (el.fontFamily || 'Inter') === (ref.fontFamily || 'Inter')
+        case 'instance':
+          return !!el.componentId && el.componentId === ref.componentId
+        case 'variant':
+          return !!el.componentSetId && el.componentSetId === ref.componentSetId
         case 'style': {
           if (refStyleIds.length === 0) return false
           const ids = styleIdsOf(el)
           return ids.some((id) => refStyleIds.includes(id))
         }
-        case 'similar': return el.type === ref.type && fillSig(el) === fillSig(ref) && strokeSig(el) === strokeSig(ref)
+        case 'similar':
+          return (
+            el.type === ref.type && fillSig(el) === fillSig(ref) && strokeSig(el) === strokeSig(ref)
+          )
       }
     }
 
@@ -2734,7 +2630,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }
       return {
         pages: state.pages.map((p) =>
-          p.id === pageId ? { ...p, elements: updateElementInList(p.elements, elementId, updates) } : p
+          p.id === pageId
+            ? { ...p, elements: updateElementInList(p.elements, elementId, updates) }
+            : p,
         ),
         isDirty: true,
       }
@@ -2748,12 +2646,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const sel = new Set(state.selectedElementIds)
     const candidates = all.filter((el) => sel.has(el.id) && isBooleanOperandType(el))
     if (candidates.length < 2) {
-      return { ok: false, reason: 'Select at least 2 vector shapes (rectangle/ellipse/polygon/star/path)' }
+      return {
+        ok: false,
+        reason: 'Select at least 2 vector shapes (rectangle/ellipse/polygon/star/path)',
+      }
     }
 
     // parent chain + absolute ancestor offset per operand (ancestor rotation not unfolded — documented)
-    const findChain = (targetId: string): { chain: DesignElement[]; parent: DesignElement | null } => {
-      const walk = (list: DesignElement[], acc: DesignElement[]): { chain: DesignElement[]; parent: DesignElement | null } | null => {
+    const findChain = (
+      targetId: string,
+    ): { chain: DesignElement[]; parent: DesignElement | null } => {
+      const walk = (
+        list: DesignElement[],
+        acc: DesignElement[],
+      ): { chain: DesignElement[]; parent: DesignElement | null } | null => {
         for (const el of list) {
           if (el.children) {
             if (el.children.some((c) => c.id === targetId)) return { chain: acc, parent: el }
@@ -2763,7 +2669,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         }
         return null
       }
-      const direct = state.elements.some((e) => e.id === targetId) ? { chain: [] as DesignElement[], parent: null } : null
+      const direct = state.elements.some((e) => e.id === targetId)
+        ? { chain: [] as DesignElement[], parent: null }
+        : null
       return direct ?? walk(state.elements, []) ?? { chain: [], parent: null }
     }
     const chains = candidates.map((el) => findChain(el.id))
@@ -2792,9 +2700,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const contours = polysToContours(loops, parentAbs)
     const b = contoursBounds(contours)
     if (b.width <= 0 || b.height <= 0) return { ok: false, reason: 'result is empty' }
-    const base = op === 'union' ? 'Union' : op === 'subtract' ? 'Subtract' : op === 'intersect' ? 'Intersect' : 'Exclude'
+    const base =
+      op === 'union'
+        ? 'Union'
+        : op === 'subtract'
+          ? 'Subtract'
+          : op === 'intersect'
+            ? 'Intersect'
+            : 'Exclude'
     const usedCount = all.filter((e) => (e.name || '').startsWith(base)).length
-    const clone = <T,>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v)))
+    const clone = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v)))
 
     const resultEl: DesignElement = {
       id: generateId('path'),
@@ -2808,7 +2723,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       stroke: backmost.stroke,
       strokeWidth: backmost.strokeWidth,
       strokeStyle: backmost.strokeStyle,
-      cornerRadius: 0, cornerRadiusTL: 0, cornerRadiusTR: 0, cornerRadiusBL: 0, cornerRadiusBR: 0,
+      cornerRadius: 0,
+      cornerRadiusTL: 0,
+      cornerRadiusTR: 0,
+      cornerRadiusBL: 0,
+      cornerRadiusBR: 0,
       opacity: backmost.opacity,
       rotation: 0,
       visible: true,
@@ -2834,7 +2753,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         const siblings = backChain.parent.children ?? []
         const origIdx = siblings.findIndex((c) => c.id === backmost.id)
         const removedBefore = candidates.filter(
-          (c) => siblings.includes(c) && siblings.indexOf(c) < origIdx
+          (c) => siblings.includes(c) && siblings.indexOf(c) < origIdx,
         ).length
         const idx = Math.max(0, origIdx - removedBefore)
         const nextChildren = [...parentNow.children]
@@ -2846,7 +2765,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     } else {
       const origIdx = state.elements.findIndex((e) => e.id === backmost.id)
       const removedBefore = candidates.filter(
-        (c, i) => chains[i].parent === null && state.elements.indexOf(c) < origIdx
+        (c, i) => chains[i].parent === null && state.elements.indexOf(c) < origIdx,
       ).length
       const idx = Math.max(0, origIdx - removedBefore)
       elements = [...elements.slice(0, idx), resultEl, ...elements.slice(idx)]
@@ -2893,7 +2812,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setActivePage: (id) =>
     set((state) => {
       const newPages = state.pages.map((p) =>
-        p.id === state.activePageId ? { ...p, elements: state.elements } : p
+        p.id === state.activePageId ? { ...p, elements: state.elements } : p,
       )
       const targetPage = newPages.find((p) => p.id === id)
       return {
@@ -2938,7 +2857,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const removed: DesignElement[] = []
       const stripElements = (els: DesignElement[]): DesignElement[] =>
         els.filter((el) => {
-          if (removeIds.has(el.id)) { removed.push(el); return false }
+          if (removeIds.has(el.id)) {
+            removed.push(el)
+            return false
+          }
           if (el.children) el.children = stripElements(el.children)
           return true
         })
@@ -2969,11 +2891,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (get().viewingVersion) return
     const state = get()
     if (state.clipboard.length === 0) return
-    
+
     const newElements = state.clipboard.map((el) => {
       return regenerateIds({ ...el, name: `${el.name} copy`, x: el.x + 20, y: el.y + 20 })
     })
-    
+
     set({
       elements: [...state.elements, ...newElements],
       selectedElementIds: newElements.map((el) => el.id),
@@ -2992,7 +2914,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const minX = Math.min(...state.clipboard.map((el) => el.x))
     const minY = Math.min(...state.clipboard.map((el) => el.y))
     const newElements = state.clipboard.map((el) =>
-      regenerateIds({ ...el, name: `${el.name} copy`, x: el.x + (x - minX), y: el.y + (y - minY) })
+      regenerateIds({ ...el, name: `${el.name} copy`, x: el.x + (x - minX), y: el.y + (y - minY) }),
     )
     set({
       elements: [...state.elements, ...newElements],
@@ -3013,16 +2935,41 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!src) return
     const PROP_KEYS = [
       // paint
-      'fill', 'fills', 'stroke', 'strokes', 'strokeWidth', 'strokeStyle', 'strokeAlign',
-      'cornerRadius', 'cornerRadiusTL', 'cornerRadiusTR', 'cornerRadiusBL', 'cornerRadiusBR',
+      'fill',
+      'fills',
+      'stroke',
+      'strokes',
+      'strokeWidth',
+      'strokeStyle',
+      'strokeAlign',
+      'cornerRadius',
+      'cornerRadiusTL',
+      'cornerRadiusTR',
+      'cornerRadiusBL',
+      'cornerRadiusBR',
       'cornerSmoothing',
       // appearance
-      'opacity', 'blendMode', 'shadows', 'blurs',
+      'opacity',
+      'blendMode',
+      'shadows',
+      'blurs',
       // shape params
-      'sides', 'innerRadius', 'arc',
+      'sides',
+      'innerRadius',
+      'arc',
       // text style
-      'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'textDecoration', 'textAlign',
-      'textAlignVertical', 'lineHeight', 'letterSpacing', 'textColor', 'textCase', 'listType',
+      'fontFamily',
+      'fontSize',
+      'fontWeight',
+      'fontStyle',
+      'textDecoration',
+      'textAlign',
+      'textAlignVertical',
+      'lineHeight',
+      'letterSpacing',
+      'textColor',
+      'textCase',
+      'listType',
       'listIndent',
     ] as const
     const captured: Partial<DesignElement> = {}
@@ -3073,13 +3020,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (elementsToFrame.length < 1) return state
 
       const getAbsolutePos = (el: DesignElement): { x: number; y: number } => {
-        let absX = el.x, absY = el.y
-        const findParentOffset = (elements: DesignElement[], gpX: number, gpY: number): { x: number; y: number } | null => {
+        let absX = el.x,
+          absY = el.y
+        const findParentOffset = (
+          elements: DesignElement[],
+          gpX: number,
+          gpY: number,
+        ): { x: number; y: number } | null => {
           for (const parent of elements) {
             if (parent.children) {
               const pX = gpX + parent.x
               const pY = gpY + parent.y
-              if (parent.children.some(c => c.id === el.id)) return { x: pX, y: pY }
+              if (parent.children.some((c) => c.id === el.id)) return { x: pX, y: pY }
               const nested = findParentOffset(parent.children, pX, pY)
               if (nested) return nested
             }
@@ -3094,12 +3046,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         return { x: absX, y: absY }
       }
 
-      const absoluteElements = elementsToFrame.map(el => {
+      const absoluteElements = elementsToFrame.map((el) => {
         const abs = getAbsolutePos(el)
         return { ...el, x: abs.x, y: abs.y }
       })
 
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      let minX = Infinity,
+        minY = Infinity,
+        maxX = -Infinity,
+        maxY = -Infinity
       absoluteElements.forEach((el) => {
         minX = Math.min(minX, el.x)
         minY = Math.min(minY, el.y)
@@ -3108,7 +3063,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       })
 
       const frameId = generateId('frame')
-      const relativeChildren = absoluteElements.map(el => ({
+      const relativeChildren = absoluteElements.map((el) => ({
         ...el,
         x: el.x - minX,
         y: el.y - minY,
@@ -3167,7 +3122,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return
     }
     if (!el.children || el.children.length === 0) return
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity
     el.children.forEach((c) => {
       minX = Math.min(minX, c.x)
       minY = Math.min(minY, c.y)
@@ -3212,7 +3170,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
       // fresh value: V{n} not already used for this property
       const used = new Set([
-        ...set.children.map((c) => c.variantProperties?.[firstProp]).filter(Boolean) as string[],
+        ...(set.children.map((c) => c.variantProperties?.[firstProp]).filter(Boolean) as string[]),
         ...groupProps[firstProp].values,
       ])
       let n = set.children.length + 1
@@ -3248,7 +3206,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   // PHASE 23 (F11) — nudge amounts (source: nudgeAmountPicker preferences).
-  setNudgeAmount: (nudge) => set({ nudgeAmount: { small: Math.max(1, nudge.small), large: Math.max(1, nudge.large) } }),
+  setNudgeAmount: (nudge) =>
+    set({ nudgeAmount: { small: Math.max(1, nudge.small), large: Math.max(1, nudge.large) } }),
 
   // PHASE 23 (F14) — comment visibility (source: toggle-show-comments).
   setShowComments: (show) => set({ showComments: show }),
@@ -3306,7 +3265,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setLastSavedAt: (time) => set({ lastSavedAt: time }),
   setSaving: (saving) => set({ isSaving: saving }),
   setDirty: (dirty) => set({ isDirty: dirty }),
-  
+
   loadElements: (elements) => set({ elements, selectedElementIds: [], isDirty: true }),
 
   importElementsBatch: (newElements) =>
@@ -3322,7 +3281,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       activePageId: pages[0]?.id ?? state.activePageId,
       elements: pages[0]?.elements ?? [],
       fileName: fileName ?? state.fileName,
-      guides: Array.isArray(guides) && guides.length > 0 ? (guides as typeof state.guides) : state.guides,
+      guides:
+        Array.isArray(guides) && guides.length > 0 ? (guides as typeof state.guides) : state.guides,
       selectedElementIds: [],
       isDirty: true,
     })),
@@ -3345,8 +3305,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         selectedElementIds: [],
         styles: (normalized.styles || []) as EditorState['styles'],
         comments: (normalized.comments || []) as EditorState['comments'],
-        flowStartingPoints: (normalized.flowStartingPoints || []) as EditorState['flowStartingPoints'],
-        history: [{ elements: deepCloneElements(normalized.activePageElements), selectedElementIds: [] }],
+        flowStartingPoints: (normalized.flowStartingPoints ||
+          []) as EditorState['flowStartingPoints'],
+        history: [
+          { elements: deepCloneElements(normalized.activePageElements), selectedElementIds: [] },
+        ],
         historyIndex: 0,
         isDirty: false,
         currentProjectId: projectId,
@@ -3368,8 +3331,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         selectedElementIds: [],
         styles: (normalized.styles || []) as EditorState['styles'],
         comments: (normalized.comments || []) as EditorState['comments'],
-        flowStartingPoints: (normalized.flowStartingPoints || []) as EditorState['flowStartingPoints'],
-        history: [{ elements: deepCloneElements(normalized.activePageElements), selectedElementIds: [] }],
+        flowStartingPoints: (normalized.flowStartingPoints ||
+          []) as EditorState['flowStartingPoints'],
+        history: [
+          { elements: deepCloneElements(normalized.activePageElements), selectedElementIds: [] },
+        ],
         historyIndex: 0,
         isDirty: false,
         fitNonce: state.fitNonce + 1,
@@ -3397,13 +3363,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (alreadyActive && alreadyInPage) return {}
       const isTargetActivePage = targetPageId === state.activePageId
       return {
-        elements: isTargetActivePage && !alreadyActive
-          ? [...state.elements, normalized]
-          : state.elements,
+        elements:
+          isTargetActivePage && !alreadyActive ? [...state.elements, normalized] : state.elements,
         pages: state.pages.map((p) =>
           p.id === targetPageId && !p.elements.some((e) => e.id === normalized.id)
             ? { ...p, elements: [...p.elements, normalized] }
-            : p
+            : p,
         ),
         isDirty: false,
       }
@@ -3418,7 +3383,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         pages: state.pages.map((p) =>
           p.id === targetPageId
             ? { ...p, elements: updateElementInList(p.elements, normalized.id, normalized) }
-            : p
+            : p,
         ),
         isDirty: false,
       }
@@ -3432,7 +3397,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         pages: state.pages.map((p) =>
           p.id === targetPageId
             ? { ...p, elements: removeElementFromList(p.elements, elementId) }
-            : p
+            : p,
         ),
         selectedElementIds: state.selectedElementIds.filter((id) => id !== elementId),
         isDirty: false,
@@ -3443,8 +3408,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       const normalized = normalizeServerProject(project)
       // Preserve the user's selection when the selected elements still exist.
-      const preservedSelection = state.selectedElementIds.filter((id) =>
-        findElementInList(normalized.activePageElements, id) !== null
+      const preservedSelection = state.selectedElementIds.filter(
+        (id) => findElementInList(normalized.activePageElements, id) !== null,
       )
       return {
         elements: normalized.activePageElements,
@@ -3496,7 +3461,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (!instance || !instance.componentId) return state
       const master = findElementInList(state.elements, instance.componentId)
       if (!master) return state
-      const reset = { ...master, id: instanceId, componentId: instance.componentId, overrides: {}, x: instance.x, y: instance.y }
+      const reset = {
+        ...master,
+        id: instanceId,
+        componentId: instance.componentId,
+        overrides: {},
+        x: instance.x,
+        y: instance.y,
+      }
       return {
         elements: updateElementInList(state.elements, instanceId, reset),
         isDirty: true,
@@ -3508,7 +3480,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const instance = findElementInList(state.elements, instanceId)
       if (!instance || !instance.componentId) return state
       return {
-        elements: updateElementInList(state.elements, instanceId, { componentId: undefined, overrides: undefined }),
+        elements: updateElementInList(state.elements, instanceId, {
+          componentId: undefined,
+          overrides: undefined,
+        }),
         isDirty: true,
       }
     }),
@@ -3518,7 +3493,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const master = findElementInList(state.elements, componentId)
       if (!master || !master.isComponent) return state
       const allElements = flattenElements(state.elements)
-      const instances = allElements.filter(el => el.componentId === componentId)
+      const instances = allElements.filter((el) => el.componentId === componentId)
       let newElements = state.elements
       for (const instance of instances) {
         const overrideKeys = instance.overrides ? Object.keys(instance.overrides) : []
@@ -3531,9 +3506,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         delete (masterCopy as any).overrides
         delete (masterCopy as any).isComponent
         delete (masterCopy as any).name
-        Object.keys(masterCopy).forEach(key => {
+        Object.keys(masterCopy).forEach((key) => {
           if (!overrideKeys.includes(key)) {
-            (updates as any)[key] = (masterCopy as any)[key]
+            ;(updates as any)[key] = (masterCopy as any)[key]
           }
         })
         newElements = updateElementInList(newElements, instance.id, updates)
@@ -3545,14 +3520,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   addComponentSet: (ids, name) =>
     set((state) => {
       if (ids.length < 2) return state
-      const children = ids.map(id => findElementInList(state.elements, id)).filter(Boolean) as DesignElement[]
+      const children = ids
+        .map((id) => findElementInList(state.elements, id))
+        .filter(Boolean) as DesignElement[]
       if (children.length < 2) return state
       const setId = generateId('comp')
       const bbox = {
-        minX: Math.min(...children.map(c => c.x)),
-        minY: Math.min(...children.map(c => c.y)),
-        maxX: Math.max(...children.map(c => c.x + c.width)),
-        maxY: Math.max(...children.map(c => c.y + c.height)),
+        minX: Math.min(...children.map((c) => c.x)),
+        minY: Math.min(...children.map((c) => c.y)),
+        maxX: Math.max(...children.map((c) => c.x + c.width)),
+        maxY: Math.max(...children.map((c) => c.y + c.height)),
       }
       let elList = state.elements
       for (const child of children) {
@@ -3571,14 +3548,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         strokeWidth: 1,
         strokeStyle: 'solid',
         cornerRadius: 0,
-        cornerRadiusTL: 0, cornerRadiusTR: 0, cornerRadiusBL: 0, cornerRadiusBR: 0,
+        cornerRadiusTL: 0,
+        cornerRadiusTR: 0,
+        cornerRadiusBL: 0,
+        cornerRadiusBR: 0,
         opacity: 1,
         rotation: 0,
         visible: true,
         locked: false,
         isComponentSet: true,
         isComponent: true,
-        children: children.map(c => ({
+        children: children.map((c) => ({
           ...c,
           isComponent: true,
           componentSetId: setId,
@@ -3615,7 +3595,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         elements: updateElementInList(state.elements, componentId, {
           componentPropertyDefinitions: {
             ...el.componentPropertyDefinitions,
-            [propName]: { ...el.componentPropertyDefinitions[propName], ...def } as ComponentPropertyDefinition,
+            [propName]: {
+              ...el.componentPropertyDefinitions[propName],
+              ...def,
+            } as ComponentPropertyDefinition,
           },
         }),
         isDirty: true,
@@ -3652,7 +3635,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       for (const el of state.elements) {
         if (!el.isComponentSet || !el.children) continue
-        const idx = el.children.findIndex(c => c.id === variantId)
+        const idx = el.children.findIndex((c) => c.id === variantId)
         if (idx !== -1) {
           const variant = el.children[idx]
           const updatedChildren = [...el.children]
@@ -3702,7 +3685,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const el = findElementInList(state.elements, componentSetId)
       if (!el || !el.isComponentSet) return state
       return {
-        elements: updateElementInList(state.elements, componentSetId, { defaultVariant: variantId }),
+        elements: updateElementInList(state.elements, componentSetId, {
+          defaultVariant: variantId,
+        }),
         isDirty: true,
       }
     }),
@@ -3728,7 +3713,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       const el = findElementInList(state.elements, id)
       if (!el || !el.fills) return state
-      const fills = el.fills.map((f, i) => i === fillIndex ? { ...f, ...fill } : f)
+      const fills = el.fills.map((f, i) => (i === fillIndex ? { ...f, ...fill } : f))
       return { elements: updateElementInList(state.elements, id, { fills }), isDirty: true }
     }),
 
@@ -3752,7 +3737,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       const el = findElementInList(state.elements, id)
       if (!el || !el.strokes) return state
-      const strokes = el.strokes.map((s, i) => i === strokeIndex ? { ...s, ...stroke } : s)
+      const strokes = el.strokes.map((s, i) => (i === strokeIndex ? { ...s, ...stroke } : s))
       return { elements: updateElementInList(state.elements, id, { strokes }), isDirty: true }
     }),
 
@@ -3764,9 +3749,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const shadows = el.shadows || []
       const blurs = el.blurs || []
       if (effect.type === 'drop-shadow' || effect.type === 'inner-shadow') {
-        return { elements: updateElementInList(state.elements, id, { shadows: [...shadows, effect as ShadowEffect] }), isDirty: true }
+        return {
+          elements: updateElementInList(state.elements, id, {
+            shadows: [...shadows, effect as ShadowEffect],
+          }),
+          isDirty: true,
+        }
       } else {
-        return { elements: updateElementInList(state.elements, id, { blurs: [...blurs, effect as BlurEffect] }), isDirty: true }
+        return {
+          elements: updateElementInList(state.elements, id, {
+            blurs: [...blurs, effect as BlurEffect],
+          }),
+          isDirty: true,
+        }
       }
     }),
 
@@ -3777,10 +3772,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const shadows = el.shadows || []
       const blurs = el.blurs || []
       if (effectIndex < shadows.length) {
-        return { elements: updateElementInList(state.elements, id, { shadows: shadows.filter((_, i) => i !== effectIndex) }), isDirty: true }
+        return {
+          elements: updateElementInList(state.elements, id, {
+            shadows: shadows.filter((_, i) => i !== effectIndex),
+          }),
+          isDirty: true,
+        }
       } else {
         const blurIdx = effectIndex - shadows.length
-        return { elements: updateElementInList(state.elements, id, { blurs: blurs.filter((_, i) => i !== blurIdx) }), isDirty: true }
+        return {
+          elements: updateElementInList(state.elements, id, {
+            blurs: blurs.filter((_, i) => i !== blurIdx),
+          }),
+          isDirty: true,
+        }
       }
     }),
 
@@ -3791,12 +3796,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const shadows = el.shadows || []
       const blurs = el.blurs || []
       if (effectIndex < shadows.length) {
-        const newShadows = shadows.map((s, i) => i === effectIndex ? { ...s, ...effect } as ShadowEffect : s)
-        return { elements: updateElementInList(state.elements, id, { shadows: newShadows }), isDirty: true }
+        const newShadows = shadows.map((s, i) =>
+          i === effectIndex ? ({ ...s, ...effect } as ShadowEffect) : s,
+        )
+        return {
+          elements: updateElementInList(state.elements, id, { shadows: newShadows }),
+          isDirty: true,
+        }
       } else {
         const blurIdx = effectIndex - shadows.length
-        const newBlurs = blurs.map((b, i) => i === blurIdx ? { ...b, ...effect } as BlurEffect : b)
-        return { elements: updateElementInList(state.elements, id, { blurs: newBlurs }), isDirty: true }
+        const newBlurs = blurs.map((b, i) =>
+          i === blurIdx ? ({ ...b, ...effect } as BlurEffect) : b,
+        )
+        return {
+          elements: updateElementInList(state.elements, id, { blurs: newBlurs }),
+          isDirty: true,
+        }
       }
     }),
 
@@ -3806,7 +3821,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const el = findElementInList(state.elements, id)
       if (!el) return state
       const exportSettings = [...(el.exportSettings || []), setting]
-      return { elements: updateElementInList(state.elements, id, { exportSettings }), isDirty: true }
+      return {
+        elements: updateElementInList(state.elements, id, { exportSettings }),
+        isDirty: true,
+      }
     }),
 
   removeExportSetting: (id, index) =>
@@ -3814,7 +3832,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const el = findElementInList(state.elements, id)
       if (!el || !el.exportSettings) return state
       const exportSettings = el.exportSettings.filter((_, i) => i !== index)
-      return { elements: updateElementInList(state.elements, id, { exportSettings }), isDirty: true }
+      return {
+        elements: updateElementInList(state.elements, id, { exportSettings }),
+        isDirty: true,
+      }
     }),
 
   // Prototype interactions (PHASE 2)
@@ -3823,7 +3844,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const el = findElementInList(state.elements, elementId)
       if (!el) return state
       const interactions = [...(el.interactions || []), interaction]
-      return { elements: updateElementInList(state.elements, elementId, { interactions }), isDirty: true }
+      return {
+        elements: updateElementInList(state.elements, elementId, { interactions }),
+        isDirty: true,
+      }
     }),
 
   updateInteraction: (elementId, interactionId, updates) =>
@@ -3839,9 +3863,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
               action: updates.action ? { ...i.action, ...updates.action } : i.action,
               animation: updates.animation ? { ...i.animation, ...updates.animation } : i.animation,
             }
-          : i
+          : i,
       )
-      return { elements: updateElementInList(state.elements, elementId, { interactions }), isDirty: true }
+      return {
+        elements: updateElementInList(state.elements, elementId, { interactions }),
+        isDirty: true,
+      }
     }),
 
   removeInteraction: (elementId, interactionId) =>
@@ -3849,7 +3876,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const el = findElementInList(state.elements, elementId)
       if (!el || !el.interactions) return state
       const interactions = el.interactions.filter((i) => i.id !== interactionId)
-      return { elements: updateElementInList(state.elements, elementId, { interactions }), isDirty: true }
+      return {
+        elements: updateElementInList(state.elements, elementId, { interactions }),
+        isDirty: true,
+      }
     }),
 
   startPreview: (frameId) =>
@@ -3860,8 +3890,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const selectedFrame = state.selectedElementIds
         .map((id) => state.elements.find((el) => el.id === id))
         .find((el) => el && el.type === 'frame')
-      const flowStart = state.flowStartingPoints?.find((f) => frames.some((fr) => fr.id === f.frameId))
-      const start = frameId ?? flowStart?.frameId ?? (selectedFrame && selectedFrame.type === 'frame' ? selectedFrame.id : null) ?? frames[0]?.id ?? null
+      const flowStart = state.flowStartingPoints?.find((f) =>
+        frames.some((fr) => fr.id === f.frameId),
+      )
+      const start =
+        frameId ??
+        flowStart?.frameId ??
+        (selectedFrame && selectedFrame.type === 'frame' ? selectedFrame.id : null) ??
+        frames[0]?.id ??
+        null
       if (!start) return state
       return {
         isPreviewing: true,
@@ -3939,25 +3976,37 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       const el = findElementInList(state.elements, id)
       if (!el) return state
-      return { elements: updateElementInList(state.elements, id, { flipH: !el.flipH }), isDirty: true }
+      return {
+        elements: updateElementInList(state.elements, id, { flipH: !el.flipH }),
+        isDirty: true,
+      }
     }),
 
   flipVertical: (id) =>
     set((state) => {
       const el = findElementInList(state.elements, id)
       if (!el) return state
-      return { elements: updateElementInList(state.elements, id, { flipV: !el.flipV }), isDirty: true }
+      return {
+        elements: updateElementInList(state.elements, id, { flipV: !el.flipV }),
+        isDirty: true,
+      }
     }),
 
   alignElements: (ids, alignment) =>
     set((state) => {
       if (ids.length < 2) return state
-      const elements = ids.map(id => findElementInList(state.elements, id)).filter(Boolean) as DesignElement[]
+      const elements = ids
+        .map((id) => findElementInList(state.elements, id))
+        .filter(Boolean) as DesignElement[]
       if (elements.length < 2) return state
 
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-      let sumX = 0, sumY = 0
-      elements.forEach(el => {
+      let minX = Infinity,
+        minY = Infinity,
+        maxX = -Infinity,
+        maxY = -Infinity
+      let sumX = 0,
+        sumY = 0
+      elements.forEach((el) => {
         minX = Math.min(minX, el.x)
         minY = Math.min(minY, el.y)
         maxX = Math.max(maxX, el.x + el.width)
@@ -4001,7 +4050,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   distributeElements: (ids, direction) =>
     set((state) => {
       if (ids.length < 3) return state
-      const elements = ids.map(id => findElementInList(state.elements, id)).filter(Boolean) as DesignElement[]
+      const elements = ids
+        .map((id) => findElementInList(state.elements, id))
+        .filter(Boolean) as DesignElement[]
       if (elements.length < 3) return state
 
       let newElements = state.elements
@@ -4009,7 +4060,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         const sorted = [...elements].sort((a, b) => a.x - b.x)
         const first = sorted[0]
         const last = sorted[sorted.length - 1]
-        const totalGap = (last.x + last.width) - first.x - sorted.reduce((sum, el) => sum + el.width, 0)
+        const totalGap =
+          last.x + last.width - first.x - sorted.reduce((sum, el) => sum + el.width, 0)
         const gap = totalGap / (sorted.length - 1)
         let currentX = first.x
         for (const el of sorted) {
@@ -4020,7 +4072,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         const sorted = [...elements].sort((a, b) => a.y - b.y)
         const first = sorted[0]
         const last = sorted[sorted.length - 1]
-        const totalGap = (last.y + last.height) - first.y - sorted.reduce((sum, el) => sum + el.height, 0)
+        const totalGap =
+          last.y + last.height - first.y - sorted.reduce((sum, el) => sum + el.height, 0)
         const gap = totalGap / (sorted.length - 1)
         let currentY = first.y
         for (const el of sorted) {
@@ -4034,11 +4087,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   booleanOperation: (ids, operation) =>
     set((state) => {
       if (ids.length < 2) return state
-      const elements = ids.map(id => findElementInList(state.elements, id)).filter(Boolean) as DesignElement[]
+      const elements = ids
+        .map((id) => findElementInList(state.elements, id))
+        .filter(Boolean) as DesignElement[]
       if (elements.length < 2) return state
 
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-      elements.forEach(el => {
+      let minX = Infinity,
+        minY = Infinity,
+        maxX = -Infinity,
+        maxY = -Infinity
+      elements.forEach((el) => {
         minX = Math.min(minX, el.x)
         minY = Math.min(minY, el.y)
         maxX = Math.max(maxX, el.x + el.width)
@@ -4077,7 +4135,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         children: elements,
       }
 
-      const remainingElements = state.elements.filter(el => !ids.includes(el.id))
+      const remainingElements = state.elements.filter((el) => !ids.includes(el.id))
       return {
         elements: [...remainingElements, result],
         selectedElementIds: [resultId],
@@ -4094,7 +4152,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const next = r.elements.map(function walk(el: DesignElement): DesignElement {
       if (r.selectedElementIds.includes(el.id)) {
         const out = outlineOne(el)
-        if (out) { converted++; return out }
+        if (out) {
+          converted++
+          return out
+        }
       }
       if (el.children?.length) {
         return { ...el, children: el.children.map(walk) }
@@ -4113,7 +4174,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const next = r.elements.map(function walk(el: DesignElement): DesignElement {
       if (el.type === 'boolean' && r.selectedElementIds.includes(el.id)) {
         const out = flattenOne(el)
-        if (out) { flattened++; return out }
+        if (out) {
+          flattened++
+          return out
+        }
       }
       if (el.children?.length) {
         return { ...el, children: el.children.map(walk) }
@@ -4180,7 +4244,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   // Guides
   addGuide: (guide) => set((state) => ({ guides: [...state.guides, guide], isDirty: true })),
-  removeGuide: (id) => set((state) => ({ guides: state.guides.filter(g => g.id !== id), isDirty: true })),
+  removeGuide: (id) =>
+    set((state) => ({ guides: state.guides.filter((g) => g.id !== id), isDirty: true })),
   clearGuides: () => set({ guides: [], isDirty: true }),
 
   // PHASE 20 (PR13) — flow starting points
@@ -4188,14 +4253,25 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       if (state.flowStartingPoints.some((f) => f.frameId === frameId)) return state
       return {
-        flowStartingPoints: [...state.flowStartingPoints, { frameId, name: name || `Flow ${state.flowStartingPoints.length + 1}` }],
+        flowStartingPoints: [
+          ...state.flowStartingPoints,
+          { frameId, name: name || `Flow ${state.flowStartingPoints.length + 1}` },
+        ],
         isDirty: true,
       }
     }),
   removeFlowStartingPoint: (frameId) =>
-    set((state) => ({ flowStartingPoints: state.flowStartingPoints.filter((f) => f.frameId !== frameId), isDirty: true })),
+    set((state) => ({
+      flowStartingPoints: state.flowStartingPoints.filter((f) => f.frameId !== frameId),
+      isDirty: true,
+    })),
   renameFlowStartingPoint: (frameId, name) =>
-    set((state) => ({ flowStartingPoints: state.flowStartingPoints.map((f) => (f.frameId === frameId ? { ...f, name } : f)), isDirty: true })),
+    set((state) => ({
+      flowStartingPoints: state.flowStartingPoints.map((f) =>
+        f.frameId === frameId ? { ...f, name } : f,
+      ),
+      isDirty: true,
+    })),
 
   // Save/Load
   saveToFile: async () => {
@@ -4227,7 +4303,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const db = await openDB(dbName)
       const tx = db.transaction('projects', 'readonly')
       const store = tx.objectStore('projects')
-      const data = await wrapRequest(store.get('current')) as any
+      const data = (await wrapRequest(store.get('current'))) as any
       if (data && data.elements) {
         set({
           elements: data.elements,
@@ -4246,25 +4322,27 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setCurrentFrameId: (id) => set({ currentFrameId: id, selectedElementIds: [] }),
 
-  enterFrame: (id) => set((state) => {
-    const el = findElementInList(state.elements, id)
-    if (!el) return state
-    const name = el.name || id
-    return {
-      currentFrameId: id,
-      frameBreadcrumb: [...state.frameBreadcrumb, name],
-      selectedElementIds: [],
-    }
-  }),
+  enterFrame: (id) =>
+    set((state) => {
+      const el = findElementInList(state.elements, id)
+      if (!el) return state
+      const name = el.name || id
+      return {
+        currentFrameId: id,
+        frameBreadcrumb: [...state.frameBreadcrumb, name],
+        selectedElementIds: [],
+      }
+    }),
 
-  exitFrame: () => set((state) => {
-    const newBreadcrumb = state.frameBreadcrumb.slice(0, -1)
-    return {
-      currentFrameId: null,
-      frameBreadcrumb: newBreadcrumb,
-      selectedElementIds: [],
-    }
-  }),
+  exitFrame: () =>
+    set((state) => {
+      const newBreadcrumb = state.frameBreadcrumb.slice(0, -1)
+      return {
+        currentFrameId: null,
+        frameBreadcrumb: newBreadcrumb,
+        selectedElementIds: [],
+      }
+    }),
 
   moveElementToFrame: (elementId, frameId) =>
     set((state) => {
@@ -4273,15 +4351,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (!element || !frame || (frame.type !== 'frame' && frame.type !== 'group')) return state
 
       // Helper: recursively find absolute position of any element in the tree
-      const getAbsolutePos = (targetId: string, targetEl: DesignElement): { absX: number; absY: number } => {
+      const getAbsolutePos = (
+        targetId: string,
+        targetEl: DesignElement,
+      ): { absX: number; absY: number } => {
         let absX = targetEl.x
         let absY = targetEl.y
-        const findParent = (elements: DesignElement[], parentAbsX: number, parentAbsY: number): boolean => {
+        const findParent = (
+          elements: DesignElement[],
+          parentAbsX: number,
+          parentAbsY: number,
+        ): boolean => {
           for (const el of elements) {
             if (el.children) {
               const elAbsX = parentAbsX + el.x
               const elAbsY = parentAbsY + el.y
-              if (el.children.some(c => c.id === targetId)) {
+              if (el.children.some((c) => c.id === targetId)) {
                 absX = elAbsX + targetEl.x
                 absY = elAbsY + targetEl.y
                 return true
@@ -4321,7 +4406,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       // (auto-inference from creation/drop position — manual edits later win)
       const withConstraints = childElement.constraintsEdited
         ? childElement
-        : { ...childElement, constraints: inferConstraints(childElement, updatedFrame.width, updatedFrame.height) }
+        : {
+            ...childElement,
+            constraints: inferConstraints(childElement, updatedFrame.width, updatedFrame.height),
+          }
 
       // Add element to frame's children
       const existingChildren = updatedFrame.children || []
@@ -4344,10 +4432,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       let parentAbsX = 0
       let parentAbsY = 0
 
-      const findParent = (elements: DesignElement[], grandParentAbsX: number, grandParentAbsY: number): boolean => {
+      const findParent = (
+        elements: DesignElement[],
+        grandParentAbsX: number,
+        grandParentAbsY: number,
+      ): boolean => {
         for (const el of elements) {
           if (el.children) {
-            if (el.children.some(c => c.id === elementId)) {
+            if (el.children.some((c) => c.id === elementId)) {
               parentFrame = el
               parentAbsX = grandParentAbsX + el.x
               parentAbsY = grandParentAbsY + el.y
@@ -4369,12 +4461,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (!foundFrame.children || foundFrame.children.length === 0) return state
 
       const foundChildren: DesignElement[] = foundFrame.children
-      const element = foundChildren.find(c => c.id === elementId)
+      const element = foundChildren.find((c) => c.id === elementId)
       if (!element) return state
 
       // Remove from frame's children
-      const newChildren = foundChildren.filter(c => c.id !== elementId)
-      const elementsWithoutFrameUpdate = updateElementInList(state.elements, foundFrame.id, { children: newChildren })
+      const newChildren = foundChildren.filter((c) => c.id !== elementId)
+      const elementsWithoutFrameUpdate = updateElementInList(state.elements, foundFrame.id, {
+        children: newChildren,
+      })
 
       // Adjust coordinates to be absolute (using computed parent absolute position)
       const absElement = {
@@ -4391,7 +4485,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }),
 
   getElementById: (id) => findElementInList(get().elements, id),
-  
+
   getSelectedElements: () => {
     const state = get()
     return state.selectedElementIds
@@ -4412,7 +4506,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       // PHASE 12: child reorder — find the parent and reorder inside it
       const parent = findAncestors(state.elements, id)[0]
       if (!parent || !parent.children) return state
-      const childIndex = parent.children.findIndex(c => c.id === id)
+      const childIndex = parent.children.findIndex((c) => c.id === id)
       if (childIndex === -1) return state
       const children = [...parent.children]
       const [moved] = children.splice(childIndex, 1)
@@ -4420,7 +4514,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return {
         elements: applyAutoLayoutSync(
           updateElementInList(state.elements, parent.id, { children }),
-          [parent.id]
+          [parent.id],
         ),
         isDirty: true,
       }
@@ -4454,5 +4548,5 @@ function wrapRequest<T>(request: IDBRequest<T>): Promise<T> {
 // without going through synthetic DOM events. Harmless in production builds
 // (no credentials, no server surface — the API whitelist still guards writes).
 if (typeof window !== 'undefined') {
-  (window as unknown as Record<string, unknown>).__openfigma = useEditorStore
+  ;(window as unknown as Record<string, unknown>).__openfigma = useEditorStore
 }

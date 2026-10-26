@@ -70,10 +70,7 @@ export function indexByNamePath(root: DesignElement): Map<string, DesignElement>
  * matched pair. The frame roots themselves are NOT matched (the player
  * renders the destination frame as the container).
  */
-export function matchFrames(
-  fromFrame: DesignElement,
-  toFrame: DesignElement
-): SmartFrameMatch {
+export function matchFrames(fromFrame: DesignElement, toFrame: DesignElement): SmartFrameMatch {
   const fromIndex = indexByNamePath(fromFrame)
   const toIndex = indexByNamePath(toFrame)
 
@@ -110,6 +107,6 @@ export function hasVisibleChanges(match: SmartFrameMatch): boolean {
       m.diff.from.width !== m.diff.to.width ||
       m.diff.from.height !== m.diff.to.height ||
       m.diff.from.opacity !== m.diff.to.opacity ||
-      m.diff.from.rotation !== m.diff.to.rotation
+      m.diff.from.rotation !== m.diff.to.rotation,
   )
 }

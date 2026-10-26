@@ -46,11 +46,18 @@ function GridRow({ frameId, grid }: { frameId: string; grid: LayoutGrid }) {
           {grid.visible ? '◉' : '○'}
         </button>
         {/* pattern icon */}
-        <span className="w-4 h-4 flex items-center justify-center text-[color:var(--dc-muted)]" title={grid.pattern}>
+        <span
+          className="w-4 h-4 flex items-center justify-center text-[color:var(--dc-muted)]"
+          title={grid.pattern}
+        >
           {grid.pattern === 'columns' ? '▥' : grid.pattern === 'rows' ? '▤' : '▦'}
         </span>
         {/* color */}
-        <label className="relative w-4 h-4 rounded-[2px] border border-[color:var(--dc-border-strong)] cursor-pointer shrink-0" style={{ background: grid.color }} title="Grid color">
+        <label
+          className="relative w-4 h-4 rounded-[2px] border border-[color:var(--dc-border-strong)] cursor-pointer shrink-0"
+          style={{ background: grid.color }}
+          title="Grid color"
+        >
           <input
             type="color"
             className="absolute inset-0 opacity-0 cursor-pointer"
@@ -63,7 +70,9 @@ function GridRow({ frameId, grid }: { frameId: string; grid: LayoutGrid }) {
           <div className="flex items-center gap-1 flex-1">
             <span className="text-[10px] text-[color:var(--dc-muted)]">Size</span>
             <input
-              type="number" min={1} step={1}
+              type="number"
+              min={1}
+              step={1}
               value={grid.size ?? 8}
               onChange={(e) => upd({ size: num(e.target.value) ?? 8 })}
               className="w-12 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
@@ -77,7 +86,11 @@ function GridRow({ frameId, grid }: { frameId: string; grid: LayoutGrid }) {
               className="flex-1 min-w-0 h-5 px-0.5 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]"
               title="Grid type"
             >
-              {GRID_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              {GRID_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
             </select>
           </div>
         )}
@@ -97,21 +110,28 @@ function GridRow({ frameId, grid }: { frameId: string; grid: LayoutGrid }) {
         <div className="flex items-center gap-1 pl-6">
           <span className="text-[10px] text-[color:var(--dc-muted)] w-8">Count</span>
           <input
-            type="number" min={1} max={100} step={1}
+            type="number"
+            min={1}
+            max={100}
+            step={1}
             value={grid.count ?? 12}
             onChange={(e) => upd({ count: Math.max(1, Math.round(num(e.target.value) ?? 12)) })}
             className="w-11 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
           />
           <span className="text-[10px] text-[color:var(--dc-muted)] w-9 pl-1">Gutter</span>
           <input
-            type="number" min={0} step={1}
+            type="number"
+            min={0}
+            step={1}
             value={grid.gutter ?? 16}
             onChange={(e) => upd({ gutter: Math.max(0, num(e.target.value) ?? 16) })}
             className="w-11 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
           />
           <span className="text-[10px] text-[color:var(--dc-muted)] w-9 pl-1">Margin</span>
           <input
-            type="number" min={0} step={1}
+            type="number"
+            min={0}
+            step={1}
             value={grid.margin ?? 32}
             onChange={(e) => upd({ margin: Math.max(0, num(e.target.value) ?? 32) })}
             className="w-11 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"
@@ -123,7 +143,9 @@ function GridRow({ frameId, grid }: { frameId: string; grid: LayoutGrid }) {
         <div className="flex items-center gap-1 pl-6">
           <span className="text-[10px] text-[color:var(--dc-muted)]">Track</span>
           <input
-            type="number" min={1} step={1}
+            type="number"
+            min={1}
+            step={1}
             value={grid.sectionSize ?? 60}
             onChange={(e) => upd({ sectionSize: Math.max(1, num(e.target.value) ?? 60) })}
             className="w-11 h-5 px-1 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-text2)] text-center focus:outline-none focus:border-[color:var(--dc-accent)] tabular-nums"

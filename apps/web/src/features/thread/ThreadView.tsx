@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
   Copy,
@@ -47,10 +47,12 @@ import { ChildAgentsBar, StartedByBanner } from './AgentToolCard.tsx'
 import { endedByDecline, handoffPrompt, sessionChanges } from '@beddcode/client-runtime'
 import { setHandoff } from '../../stores/handoff.ts'
 import { useFollowEnd } from './useFollowEnd.ts'
+import { MessageNav } from './MessageNav.tsx'
 import { folderId, useFiles } from '../files/filesStore.ts'
 import { useUiStore } from '../../stores/ui.ts'
 import { EnvironmentButton, SessionChip } from './SessionPanel.tsx'
 import { RenameSessionDialog } from './RenameSessionDialog.tsx'
+import { threadKey, useThreadDrafts } from './threadState.ts'
 
 export function ThreadView({ sessionId }: { sessionId: string }) {
   const navigate = useNavigate()
@@ -68,11 +70,26 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
   const hostAway = useHostStore((s) =>
     Object.values(s.runtimes).some((r) => r.connection !== 'connected'),
   )
-  const [text, setText] = useState('')
+  const memoryKey = threadKey(hostKey, sessionId)
+  const text = useThreadDrafts((s) => s.drafts[memoryKey] ?? '')
+  const setText = useCallback(
+    (value: string) => useThreadDrafts.getState().setDraft(memoryKey, value),
+    [memoryKey],
+  )
   const [renaming, setRenaming] = useState(false)
   const [actionError, setActionError] = useState<string>()
   const scroller = useRef<HTMLDivElement>(null)
-  useFollowEnd(scroller, session?.items)
+  const followEnd = useFollowEnd(scroller, session?.items, memoryKey)
+  const [jump, setJump] = useState<{ id: string; n: number }>()
+  const jumpToMessage = useCallback(
+    (id: string) => setJump((j) => ({ id, n: (j?.n ?? 0) + 1 })),
+    [],
+  )
+  useEffect(() => {
+    if (!jump) return
+    const node = scroller.current?.querySelector(`[data-msg-id="${CSS.escape(jump.id)}"]`)
+    node?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [jump])
 
   // The agent's browser tool calls go to the window showing its session.
   useEffect(() => {
@@ -86,6 +103,45 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
     () =>
       session?.items.findLast((i) => i.kind === 'approval' && !i.resolvedOptionId && !i.cancelled),
     [session?.items],
+  )
+  const stats = useMemo(
+    () => (session ? sessionChanges(session.items) : { added: 0, removed: 0 }),
+    [session?.items],
+  )
+  const busy = session?.status === 'running' || session?.status === 'needs-you'
+  const changes = useMemo(
+    () => ({ hostKey, sessionId, idle: !busy, worktree: Boolean(session?.worktree) }),
+    [hostKey, sessionId, busy, session?.worktree],
+  )
+  const cwd = session?.cwd
+  const openFile = useCallback(
+    (path: string) => {
+      if (!cwd) return
+      useUiStore.getState().openPane('files')
+      void useFiles.getState().open(folderId(hostKey, cwd), path)
+    },
+    [hostKey, cwd],
+  )
+  const approveRequest = useCallback(
+    (requestId: string, optionId: string) => approve(sessionId, requestId, optionId),
+    [sessionId],
+  )
+  const answerRequest = useCallback(
+    (requestId: string, answers?: Record<string, string[]>) =>
+      answerQuestion(sessionId, requestId, answers),
+    [sessionId],
+  )
+  const fork = useCallback(
+    async (throughTurn?: number) => {
+      setActionError(undefined)
+      try {
+        const forked = await forkSession(sessionId, throughTurn)
+        void navigate({ to: '/session/$sessionId', params: { sessionId: forked } })
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [navigate, sessionId],
   )
 
   // Enter allows and Escape denies the open request, unless the user is typing somewhere.
@@ -118,23 +174,12 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
   }
 
   const provider = providers.find((p) => p.id === session.instanceId)
-  const busy = session.status === 'running' || session.status === 'needs-you'
   const modes = session.modes ?? provider?.capabilities.permissionModes ?? []
   const canSteer = provider?.capabilities.steer === true
   // Forking needs the agent's own conversation id, which exists once the first turn has begun.
   const canFork = provider?.capabilities.fork === true && session.completedTurns > 0
 
-  const fork = async (throughTurn?: number) => {
-    setActionError(undefined)
-    try {
-      const forked = await forkSession(sessionId, throughTurn)
-      void navigate({ to: '/session/$sessionId', params: { sessionId: forked } })
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err))
-    }
-  }
   const report = (err: unknown) => setActionError(err instanceof Error ? err.message : String(err))
-  const stats = sessionChanges(session.items)
 
   return (
     <main className="panel thread">
@@ -293,19 +338,21 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             cwd={session.cwd}
             sessionId={sessionId}
             hostKey={hostKey}
-            onOpenFile={(path) => {
-              useUiStore.getState().openPane('files')
-              void useFiles.getState().open(folderId(hostKey, session.cwd), path)
-            }}
-            onApprove={(requestId, optionId) => approve(sessionId, requestId, optionId)}
-            onAnswer={(requestId, answers) => answerQuestion(sessionId, requestId, answers)}
-            onFork={canFork ? (turnNo) => fork(turnNo) : undefined}
+            readingKey={memoryKey}
+            onOpenFile={openFile}
+            onApprove={approveRequest}
+            onAnswer={answerRequest}
+            onFork={canFork ? fork : undefined}
+            jumpTo={jump}
             completedTurns={session.completedTurns}
-            stoppedTurn={session.lastTurnReason === 'cancelled' ? session.completedTurns : undefined}
-            changes={{ hostKey, sessionId, idle: !busy, worktree: Boolean(session?.worktree) }}
+            stoppedTurn={
+              session.lastTurnReason === 'cancelled' ? session.completedTurns : undefined
+            }
+            changes={changes}
           />
         </div>
       </div>
+      <MessageNav items={session.items} scroller={scroller} onJump={jumpToMessage} />
       {actionError && (
         <p className="thread-action-error" role="alert">
           {actionError}
@@ -350,7 +397,13 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
           )
         }}
         onSend={async (value, attachments) => {
-          await prompt(sessionId, value, attachments)
+          followEnd()
+          try {
+            await prompt(sessionId, value, attachments)
+          } catch (err) {
+            useThreadDrafts.getState().restoreDraft(memoryKey, text)
+            throw err
+          }
         }}
         modes={modes}
         modeId={session.currentModeId}

@@ -1,5 +1,6 @@
 import { Check } from 'phosphor-react-native'
-import { StyleSheet, View } from 'react-native'
+import { useEffect, useRef } from 'react'
+import { Animated, Easing, StyleSheet, View } from 'react-native'
 import type { SessionView } from '@beddcode/client-runtime'
 
 import { colors } from '@/theme/tokens'
@@ -18,7 +19,47 @@ export function StatusDot({ session }: { session: SessionView }) {
       : session.status === 'running'
         ? colors.muted
         : colors.faint
+  if (session.status === 'running') return <Pulse color={color} />
   return <View style={[styles.dot, { backgroundColor: color }]} />
+}
+
+/** A running session breathes, so a glance at the list shows what is working. */
+function Pulse({ color }: { color: string }) {
+  const level = useRef(new Animated.Value(0)).current
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(level, {
+          toValue: 1,
+          duration: 700,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(level, {
+          toValue: 0,
+          duration: 700,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [level])
+  return (
+    <Animated.View
+      style={[
+        styles.dot,
+        {
+          backgroundColor: color,
+          opacity: level.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }),
+          transform: [
+            { scale: level.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1.25] }) },
+          ],
+        },
+      ]}
+    />
+  )
 }
 
 const styles = StyleSheet.create({

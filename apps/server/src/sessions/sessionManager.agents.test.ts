@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -9,10 +9,13 @@ import { PreviewCache } from '../agents/previews.ts'
 import { AttachmentStore } from '../attachments/store.ts'
 import { EventStore } from '../store/eventStore.ts'
 import { GitService } from '../workspace/git.ts'
+import { removeDir } from '../testing/removeDir.ts'
 import { SessionManager } from './sessionManager.ts'
 
 const dirs: string[] = []
-afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })))
+afterEach(async () => {
+  for (const d of dirs.splice(0)) await removeDir(d)
+})
 
 function setup(options: Parameters<typeof createFakeAdapter>[0] = {}) {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'beddcode-agents-'))
@@ -221,6 +224,75 @@ describe('history, import and fork', () => {
     if (ask?.type !== 'approval.requested') throw new Error('no approval')
     await manager.approve(sessionId, ask.requestId, 'allow')
     await waitFor(() => turnsDone(sessionId) === 3, 'the resumed turn')
+  })
+
+  it('imports the tool calls of a stored conversation, in order, with ids that cannot collide', async () => {
+    const tool = (n: number) => [
+      { type: 'tool.started', toolId: 'item-1', kind: 'command', title: `Running ${n}` },
+      { type: 'tool.completed', toolId: 'item-1', ok: true, output: 'fine' },
+    ]
+    const stored = [
+      {
+        id: 'old-2',
+        title: 'Tools',
+        turns: [
+          { user: 'a', assistant: 'x', events: tool(1) },
+          {
+            user: 'b',
+            assistant: 'y',
+            events: [...tool(2), { type: 'message.delta', role: 'assistant', text: 'y' }],
+          },
+        ],
+      },
+    ] as never
+    const { manager, events, dir } = setup({ advanced: true, history: stored })
+    const { sessionId } = await manager.importSession({
+      instanceId: 'fake',
+      providerSessionId: 'old-2',
+      cwd: dir,
+    })
+    const log = events(sessionId)
+    const ids = log.flatMap((e) => (e.type === 'tool.started' ? [e.toolId] : []))
+    expect(ids).toEqual(['turn-1:item-1', 'turn-2:item-1'])
+    // Written times are kept, and a tool that never finished is closed instead of left spinning.
+    const timed = [
+      {
+        id: 'old-3',
+        title: 'Timed',
+        turns: [
+          {
+            user: 'go',
+            assistant: '',
+            events: [
+              { type: 'tool.started', toolId: 'x', kind: 'command', title: 'Running', at: 1000 },
+            ],
+          },
+        ],
+      },
+    ] as never
+    const second = setup({ advanced: true, history: timed })
+    const timedId = (
+      await second.manager.importSession({
+        instanceId: 'fake',
+        providerSessionId: 'old-3',
+        cwd: second.dir,
+      })
+    ).sessionId
+    const timedLog = second.events(timedId)
+    expect(timedLog.find((e) => e.type === 'tool.started')).toMatchObject({ at: 1000 })
+    expect(timedLog.find((e) => e.type === 'tool.completed')).toMatchObject({
+      toolId: 'turn-1:x',
+      ok: false,
+    })
+    const kinds = log.filter((e) => e.turnId === 'turn-2').map((e) => e.type)
+    expect(kinds).toEqual([
+      'message.delta',
+      'turn.started',
+      'tool.started',
+      'tool.completed',
+      'message.delta',
+      'turn.completed',
+    ])
   })
 
   it('forks a session, keeping only the turns asked for', async () => {

@@ -1,8 +1,11 @@
 name: Android
 
-# Builds the phone app as an installable APK. Pushing a tag such as v0.2.0 attaches it to that
-# release (next to the desktop installers); "Run workflow" builds one on demand and keeps it as a
-# downloadable artifact.
+# Builds the phone app as installable APKs. Pushing a tag such as v0.2.0 builds both the release
+# (standalone) and the debug (development) APK and attaches them to that release, next to the
+# desktop installers. "Run workflow" builds just the one you choose, keeps it as a downloadable
+# artifact and publishes it to a prerelease with a fixed tag, release-dev or debug-dev, which each
+# run replaces so the link to the latest build never changes.
+# The debug build loads the app from `pnpm --filter @beddcode/mobile start` instead of carrying it inside.
 #
 # The APK is signed with the debug key unless these repository secrets are set, which signs it with
 # your own key so later builds update the installed app in place:
@@ -12,6 +15,12 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      variant:
+        description: release (standalone app) or debug (development build)
+        type: choice
+        options: [release, debug]
+        default: release
 
 permissions:
   contents: write
@@ -21,6 +30,10 @@ jobs:
     name: APK
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ${{ fromJSON(github.event_name == 'push' && '["release","debug"]' || format('["{0}"]', inputs.variant)) }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -78,7 +91,7 @@ jobs:
       - name: Build the APK
         working-directory: apps/mobile/android
         env:
-          NODE_ENV: production
+          NODE_ENV: ${{ matrix.variant == 'debug' && 'development' || 'production' }}
           KEYSTORE_FILE: ${{ steps.signing.outputs.file }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -94,7 +107,7 @@ jobs:
             )
           fi
           # arm64 covers every phone made in the last several years and keeps the APK small.
-          ./gradlew assembleRelease --no-daemon \
+          ./gradlew ${{ matrix.variant == 'debug' && 'assembleDebug' || 'assembleRelease' }} --no-daemon \
             -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" \
             -PreactNativeArchitectures=arm64-v8a \
             "${signing[@]}"
@@ -103,8 +116,11 @@ jobs:
         id: apk
         run: |
           version=$(node -p "require('./apps/mobile/app.json').expo.version")
-          name="BeddCode-${version}-android.apk"
-          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk "$name"
+          variant="${{ matrix.variant }}"
+          suffix=""
+          [ "$variant" = debug ] && suffix="-dev"
+          name="BeddCode-${version}-android${suffix}.apk"
+          cp "apps/mobile/android/app/build/outputs/apk/$variant/app-$variant.apk" "$name"
           echo "name=$name" >> "$GITHUB_OUTPUT"
           ls -lh "$name"
 
@@ -125,3 +141,16 @@ jobs:
         run: |
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --draft --title "${TAG#v}" --notes "" || true
           gh release upload "$TAG" "$APK" --clobber
+
+      # A manual run publishes to a fixed tag per variant. The release is recreated so the tag moves
+      # to the commit that was built.
+      - name: Publish it to the rolling release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ matrix.variant }}-dev
+          APK: ${{ steps.apk.outputs.name }}
+        run: |
+          gh release delete "$TAG" --cleanup-tag --yes || true
+          gh release create "$TAG" "$APK" --prerelease --target "$GITHUB_SHA" \
+            --title "$TAG" --notes "Built from $GITHUB_SHA by run $GITHUB_RUN_NUMBER. Replaced by the next manual run."

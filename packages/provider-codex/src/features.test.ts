@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createLogger, type Transport } from '@beddcode/shared'
 import { createCodexAdapter } from './adapter.ts'
-import { createCodexHistory, createWithAppServer, skillsToCommands, turnText } from './history.ts'
+import {
+  createCodexHistory,
+  createWithAppServer,
+  skillsToCommands,
+  turnEvents,
+  turnText,
+} from './history.ts'
 import { addArgs, createCodexMcp, parseMcpJson } from './mcp.ts'
 
 const log = createLogger('test', 'error')
@@ -84,10 +90,32 @@ describe('Codex history', () => {
 
   it('reads a conversation turn by turn', async () => {
     const { history: h } = history()
-    expect(await h.read('th-1', '/w')).toEqual([
-      { user: 'why?', assistant: 'because' },
-      { user: 'fix it', assistant: 'done' },
+    expect(await h.read('th-1', '/w')).toMatchObject([
+      { user: 'why?', assistant: 'because', events: [{ type: 'message.delta', text: 'because' }] },
+      { user: 'fix it', assistant: 'done', events: [{ type: 'message.delta', text: 'done' }] },
     ])
+  })
+
+  it('keeps the commands and messages of a stored turn in order', () => {
+    const events = turnEvents(
+      {
+        items: [
+          { type: 'userMessage', id: 'u', content: [{ type: 'text', text: 'run it' }] },
+          {
+            type: 'commandExecution',
+            id: 'c',
+            command: 'ls',
+            status: 'completed',
+            exitCode: 0,
+            aggregatedOutput: 'a b',
+          },
+          { type: 'agentMessage', id: 'm', text: 'listed' },
+        ],
+      },
+      '/w',
+    )
+    expect(events.map((e) => e.type)).toEqual(['tool.started', 'tool.completed', 'message.delta'])
+    expect(events[1]).toMatchObject({ toolId: 'c', ok: true, output: 'a b' })
   })
 
   it('forks through a turn by its id, or the whole thread', async () => {

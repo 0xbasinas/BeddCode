@@ -5,6 +5,7 @@ import { TailscaleService } from '../network/tailscale.ts'
 import { doctor, doctorExitCode, formatChecks } from './doctor.ts'
 import { fetchHealth } from './health.ts'
 import { configCmd } from './configCmd.ts'
+import { metricsCmd } from './metrics.ts'
 import { hostsCmd } from './hostsCmd.ts'
 import { realIo, type Io } from './io.ts'
 import { hostLogPath, logs, parseLevel } from './logs.ts'
@@ -80,6 +81,7 @@ export const HANDLERS: Record<string, Handler> = {
   attach: attachCmd,
   hosts: (a, ctx) => hostsCmd(a, ctx.io),
   config: (a, ctx) => Promise.resolve(configCmd(a, ctx.io)),
+  metrics: (a, ctx) => metricsCmd(a, ctx.io),
   report: reportCmd,
   update: updateCmd,
   completion: (a, ctx) => {

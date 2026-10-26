@@ -44,7 +44,7 @@ export function isImageFile(file: File): boolean {
 export async function importImageFile(
   file: File,
   viewCenter: { x: number; y: number },
-  makeId: () => string
+  makeId: () => string,
 ): Promise<DesignElement> {
   const dataUrl = await readFileAsDataUrl(file)
   const natural = await measureImage(dataUrl)

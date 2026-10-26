@@ -123,7 +123,7 @@ export function ShortcutsModal() {
     return SHORTCUT_GROUPS.map((g) => ({
       group: g.group,
       rows: g.rows.filter(
-        (r) => r.label.toLowerCase().includes(q) || r.keys.toLowerCase().includes(q)
+        (r) => r.label.toLowerCase().includes(q) || r.keys.toLowerCase().includes(q),
       ),
     })).filter((g) => g.rows.length > 0)
   }, [query])
@@ -141,7 +141,9 @@ export function ShortcutsModal() {
       >
         {/* header */}
         <div className="flex items-center justify-between px-4 h-11 border-b border-[color:var(--dc-hover)]">
-          <span className="text-[13px] font-medium text-[color:var(--dc-text2)]">Keyboard shortcuts</span>
+          <span className="text-[13px] font-medium text-[color:var(--dc-text2)]">
+            Keyboard shortcuts
+          </span>
           <button
             className="w-6 h-6 flex items-center justify-center rounded text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-hover)]"
             onClick={() => useEditorStore.getState().setShortcutsOpen(false)}

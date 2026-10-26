@@ -440,6 +440,11 @@ kbd {
   padding: 0 0 calc(24px * var(--ui-scale));
   font-size: calc(15px * var(--ui-scale));
 }
+/* Messages scrolled far out of view are not laid out or painted until they come near. */
+.transcript-inner > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 90px;
+}
 .msg.user {
   background: var(--bg-raised);
   padding: calc(12px * var(--ui-scale)) calc(16px * var(--ui-scale));
@@ -910,6 +915,25 @@ button.chip-lite:hover {
 }
 .popover.wide {
   width: calc(340px * var(--ui-scale));
+}
+/* A line under a host in the hosts menu, saying it is reconnecting. */
+.menu-detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(10px * var(--ui-scale));
+  margin: calc(-2px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale))
+    calc(35px * var(--ui-scale));
+  color: var(--text-muted);
+  font-size: calc(11.5px * var(--ui-scale));
+}
+.menu-detail button {
+  flex: none;
+  padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 1px solid var(--border-strong);
+  border-radius: calc(6px * var(--ui-scale));
+  background: var(--bg-hover);
+  color: var(--text);
 }
 .menu-row {
   display: flex;
@@ -4314,13 +4338,12 @@ button.tcall-row:hover .tcall-chevron,
 .host-banner {
   position: fixed;
   z-index: 30;
-  left: 50%;
-  bottom: calc(18px * var(--ui-scale));
-  transform: translateX(-50%);
+  left: calc(14px * var(--ui-scale));
+  bottom: calc(14px * var(--ui-scale));
   display: flex;
   align-items: center;
   gap: calc(16px * var(--ui-scale));
-  max-width: min(calc(560px * var(--ui-scale)), calc(100vw - 32px));
+  max-width: min(calc(420px * var(--ui-scale)), calc(100vw - 32px));
   padding: calc(10px * var(--ui-scale)) calc(14px * var(--ui-scale));
   border: 1px solid var(--border-strong);
   border-radius: calc(10px * var(--ui-scale));
@@ -4343,6 +4366,21 @@ button.tcall-row:hover .tcall-chevron,
   white-space: pre-wrap;
   color: var(--text-muted);
   font: calc(11px * var(--ui-scale)) / 1.5 var(--font-mono);
+}
+/* A single line in the bottom-left corner, clear of the composer and the window buttons. */
+.host-banner.compact {
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(6px * var(--ui-scale))
+    calc(12px * var(--ui-scale));
+  gap: calc(10px * var(--ui-scale));
+  opacity: 0.95;
+}
+.host-banner.compact .host-banner-detail {
+  display: none;
+}
+.host-banner-detail {
+  margin-top: calc(2px * var(--ui-scale));
+  color: var(--text-muted);
+  font-size: calc(12px * var(--ui-scale));
 }
 .host-banner-actions {
   display: flex;
@@ -5602,4 +5640,101 @@ button.agent-tools-chip.on:hover {
 }
 :root:has(.window-island) .design-bar {
   padding-right: calc(var(--island-w) + var(--gap) * 2);
+}
+
+.show-earlier {
+  display: block;
+  margin: 0 auto 12px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.show-earlier:hover {
+  color: var(--text);
+}
+
+/* Message navigator: a rail of ticks at the thread's edge that opens into a list of your messages */
+.thread {
+  position: relative;
+}
+.message-nav {
+  position: absolute;
+  right: calc(8px * var(--ui-scale));
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  display: flex;
+  justify-content: flex-end;
+}
+.message-nav-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: calc(9px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale));
+}
+.message-nav-tick {
+  display: block;
+  width: calc(10px * var(--ui-scale));
+  height: 2px;
+  border-radius: 2px;
+  background: var(--border-strong);
+  flex: none;
+}
+.message-nav-tick[data-active='true'] {
+  width: calc(14px * var(--ui-scale));
+  background: var(--text);
+}
+.message-nav-list {
+  display: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: calc(2px * var(--ui-scale));
+  max-height: 60vh;
+  width: calc(220px * var(--ui-scale));
+  overflow-y: auto;
+  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: calc(14px * var(--ui-scale));
+  background: var(--bg-panel);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  scrollbar-width: thin;
+}
+.message-nav.open .message-nav-list {
+  display: flex;
+}
+.message-nav.open .message-nav-rail {
+  display: none;
+}
+.message-nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: calc(10px * var(--ui-scale));
+  width: 100%;
+  padding: calc(5px * var(--ui-scale)) 0;
+  color: var(--text-muted);
+  font-size: calc(13px * var(--ui-scale));
+  text-align: right;
+}
+.message-nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.message-nav-row:hover {
+  color: var(--text);
+}
+.message-nav-row:hover .message-nav-tick {
+  background: var(--text);
+}
+.message-nav-row[data-active='true'] {
+  color: var(--text);
+}
+.message-nav-row[data-active='true'] .message-nav-tick {
+  width: calc(14px * var(--ui-scale));
+  background: var(--text);
 }

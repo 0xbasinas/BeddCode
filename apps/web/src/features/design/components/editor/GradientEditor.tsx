@@ -13,43 +13,66 @@ export function GradientEditor({ angle, stops, onChange }: GradientEditorProps) 
   const barRef = useRef<HTMLDivElement>(null)
   const isDragging = useRef(false)
 
-  const handleAngleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseInt(e.target.value)
-    if (!isNaN(val) && val >= 0 && val < 360) {
-      onChange(val, stops)
-    }
-  }, [stops, onChange])
+  const handleAngleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = parseInt(e.target.value)
+      if (!isNaN(val) && val >= 0 && val < 360) {
+        onChange(val, stops)
+      }
+    },
+    [stops, onChange],
+  )
 
-  const handleStopColorChange = useCallback((index: number, color: string) => {
-    const newStops = stops.map((s, i) => i === index ? { ...s, color } : s)
-    onChange(angle, newStops)
-  }, [angle, stops, onChange])
+  const handleStopColorChange = useCallback(
+    (index: number, color: string) => {
+      const newStops = stops.map((s, i) => (i === index ? { ...s, color } : s))
+      onChange(angle, newStops)
+    },
+    [angle, stops, onChange],
+  )
 
-  const handleStopOffsetChange = useCallback((index: number, offset: number) => {
-    const newStops = stops.map((s, i) => i === index ? { ...s, offset: Math.max(0, Math.min(1, offset)) } : s)
-    onChange(angle, newStops)
-  }, [angle, stops, onChange])
+  const handleStopOffsetChange = useCallback(
+    (index: number, offset: number) => {
+      const newStops = stops.map((s, i) =>
+        i === index ? { ...s, offset: Math.max(0, Math.min(1, offset)) } : s,
+      )
+      onChange(angle, newStops)
+    },
+    [angle, stops, onChange],
+  )
 
-  const handleAddStop = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const bar = barRef.current
-    if (!bar) return
-    const rect = bar.getBoundingClientRect()
-    const offset = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-    // Find color at this position by interpolation
-    const newStop: GradientStop = {
-      offset,
-      color: interpolateColor(stops, offset),
-      opacity: 1,
-    }
-    onChange(angle, [...stops, newStop].sort((a, b) => a.offset - b.offset))
-  }, [angle, stops, onChange])
+  const handleAddStop = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const bar = barRef.current
+      if (!bar) return
+      const rect = bar.getBoundingClientRect()
+      const offset = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+      // Find color at this position by interpolation
+      const newStop: GradientStop = {
+        offset,
+        color: interpolateColor(stops, offset),
+        opacity: 1,
+      }
+      onChange(
+        angle,
+        [...stops, newStop].sort((a, b) => a.offset - b.offset),
+      )
+    },
+    [angle, stops, onChange],
+  )
 
-  const handleRemoveStop = useCallback((index: number) => {
-    if (stops.length <= 2) return
-    onChange(angle, stops.filter((_, i) => i !== index))
-  }, [angle, stops, onChange])
+  const handleRemoveStop = useCallback(
+    (index: number) => {
+      if (stops.length <= 2) return
+      onChange(
+        angle,
+        stops.filter((_, i) => i !== index),
+      )
+    },
+    [angle, stops, onChange],
+  )
 
-  const gradientCSS = `linear-gradient(${angle}deg, ${stops.map(s => `${s.color} ${s.offset * 100}%`).join(', ')})`
+  const gradientCSS = `linear-gradient(${angle}deg, ${stops.map((s) => `${s.color} ${s.offset * 100}%`).join(', ')})`
 
   return (
     <div className="space-y-2">

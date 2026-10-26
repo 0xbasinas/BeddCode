@@ -75,7 +75,8 @@ For logos or odd shapes, trace the reference as paths in a larger viewBox (e.g. 
   },
   {
     name: 'reference-matching',
-    summary: 'Recreating a screenshot or mock closely: measuring, colours, spacing, and the compare loop.',
+    summary:
+      'Recreating a screenshot or mock closely: measuring, colours, spacing, and the compare loop.',
     body: `Matching a reference image
 1. Size: make the outer frame the reference's pixel size (or exact aspect ratio at a round scale). Everything else is measured against it.
 2. Regions: name them (title bar, tabs, section header, rows, footer). Draw them top to bottom as nested frames.
@@ -88,7 +89,8 @@ For logos or odd shapes, trace the reference as paths in a larger viewBox (e.g. 
   },
   {
     name: 'ui-patterns',
-    summary: 'Ready-made structures for common UI: lists with badges, tabs, inputs, cards, panels, toolbars.',
+    summary:
+      'Ready-made structures for common UI: lists with badges, tabs, inputs, cards, panels, toolbars.',
     body: `UI patterns (all with auto layout; sizes are starting points)
 - Panel / window: vertical frame, width 360 to 480, cornerRadius 12 to 16, fill surface, 1px border, padding 0. Children: title bar (horizontal, height 36 to 44, padding 12), content (vertical, layoutSizingV "fill"), footer if any.
 - Tabs: horizontal frame, gap 4. Each tab: horizontal, padding 6/10, cornerRadius 6, text 13. Active tab: raised fill and bright text; inactive: transparent and muted text. A count badge is a small frame (cornerRadius 8, padding 2/6, text 11).

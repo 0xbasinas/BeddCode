@@ -18,7 +18,12 @@ import type {
   UsageLimits,
   UsageSummary,
 } from '@beddcode/contracts'
-import type { ProviderAdapter, ProviderSession, SessionMcpServer } from '@beddcode/provider-core'
+import type {
+  HistoryTurn,
+  ProviderAdapter,
+  ProviderSession,
+  SessionMcpServer,
+} from '@beddcode/provider-core'
 import type { Logger } from '@beddcode/shared'
 import { PreviewSeeds, type PreviewCache } from '../agents/previews.ts'
 import type { AttachmentStore } from '../attachments/store.ts'
@@ -70,12 +75,21 @@ interface TurnState {
   sendAfterInterrupt?: string
   /** The snapshot taken as the running turn started (see `turn.changes`). */
   before?: { hash: string; refBase: string }
+  /** The message is answered but not yet with the agent: the snapshot comes first. */
+  starting?: Promise<void>
+  /** The starting snapshot, still being taken after the message was already sent. */
+  taking?: Promise<void>
   /** Recording the last turn's changes; the next turn waits so the snapshots do not overlap. */
   settling?: Promise<void>
 }
 
-/** How long a turn waits for its starting snapshot before going ahead without one. */
-const CHECKPOINT_WAIT_MS = 4_000
+/**
+ * How long the agent's start waits for the turn's starting snapshot before going ahead without
+ * one (the snapshot then carries on). The sender is answered at once either way. Waiting for the
+ * snapshot matters: an agent that starts first can edit files the snapshot would then include,
+ * and the turn's changes and undo would miss them.
+ */
+const CHECKPOINT_GRACE_MS = 4_000
 /** Folders with more untracked (and not ignored) files than this get no turn snapshots. */
 const CHECKPOINT_MAX_UNTRACKED = 5_000
 /** Turns per session whose snapshots are kept (for their diffs); older ones are dropped. */
@@ -258,7 +272,10 @@ export class SessionManager {
         model: params.model,
         effort: params.effort,
         config: params.config,
-        mcpServers: this.toolServersFor(sessionId, params.agentTools || params.browserTools || params.designTools),
+        mcpServers: this.toolServersFor(
+          sessionId,
+          params.agentTools || params.browserTools || params.designTools,
+        ),
       })
     } catch (err) {
       // Do not leave an unused worktree behind when the agent could not start.
@@ -379,6 +396,7 @@ export class SessionManager {
       // No way to talk into the running turn: stop it and send this next.
       turn.queue.unshift(item)
       turn.sendAfterInterrupt = queueId
+      await turn.starting
       await live.session.interrupt()
     }
   }
@@ -455,13 +473,22 @@ export class SessionManager {
         message: err instanceof Error ? err.message : String(err),
       })
     }
-    try {
-      await turn.settling
-      await this.checkpointBefore(sessionId, turn)
-      session.prompt(promptInput(text, attachments)).catch(failed)
-    } catch (err) {
-      failed(err)
-    }
+    // The sender is answered now, with its message already in the log; waiting for the snapshot
+    // of the folder would hold the composer for as long as git takes.
+    const starting = (async () => {
+      try {
+        await turn.settling
+        await turn.taking
+        await this.checkpointBefore(sessionId, turn)
+        session.prompt(promptInput(text, attachments)).catch(failed)
+      } catch (err) {
+        failed(err)
+      }
+    })()
+    turn.starting = starting
+    void starting.finally(() => {
+      if (turn.starting === starting) turn.starting = undefined
+    })
   }
 
   /** Where a session's turn snapshots go, or null when its folder is not a git repository. */
@@ -495,15 +522,27 @@ export class SessionManager {
         return undefined
       })
     let timer: NodeJS.Timeout | undefined
-    const late = new Promise<undefined>((resolve) => {
-      timer = setTimeout(() => resolve(undefined), CHECKPOINT_WAIT_MS)
+    const late = new Promise<'late'>((resolve) => {
+      timer = setTimeout(() => resolve('late'), CHECKPOINT_GRACE_MS)
     })
-    turn.before = await Promise.race([taking, late])
+    const first = await Promise.race([taking, late])
     clearTimeout(timer)
+    if (first !== 'late') {
+      turn.before = first
+      return
+    }
+    const finishing = taking.then((snapshot) => {
+      turn.before = snapshot
+    })
+    turn.taking = finishing
+    void finishing.finally(() => {
+      if (turn.taking === finishing) turn.taking = undefined
+    })
   }
 
   /** After a turn: snapshot again and record what changed, if anything. */
   private async recordTurnChanges(sessionId: string, turn: TurnState, turnId?: string) {
+    await turn.taking
     const before = turn.before
     turn.before = undefined
     if (!before) return
@@ -632,9 +671,12 @@ export class SessionManager {
     return state
   }
 
-  interrupt(sessionId: string): Promise<void> {
+  async interrupt(sessionId: string): Promise<void> {
     this.dropAsks(sessionId)
-    return this.requireLive(sessionId).session.interrupt()
+    const { session } = this.requireLive(sessionId)
+    // A stop pressed while the message is still on its way to the agent waits for it to arrive.
+    await this.turnState(sessionId).starting
+    return session.interrupt()
   }
 
   rename(sessionId: string, title: string): void {
@@ -646,6 +688,23 @@ export class SessionManager {
   setDone(sessionId: string, done: boolean): void {
     if (!this.createdEvent(sessionId)) throw new Error(`Unknown session: ${sessionId}`)
     this.deps.store.append({ type: 'session.done', sessionId, at: Date.now(), done })
+  }
+
+  /**
+   * Removes a session: the agent stops, devices are told to drop it, and its events leave the log.
+   * The folder and any worktree stay where they are.
+   */
+  async delete(sessionId: string): Promise<void> {
+    if (!this.createdEvent(sessionId)) throw new Error(`Unknown session: ${sessionId}`)
+    const live = this.live.get(sessionId)
+    if (live) {
+      this.live.delete(sessionId)
+      this.dropAsks(sessionId)
+      await live.session.close().catch(() => undefined)
+    }
+    this.turns.delete(sessionId)
+    const { seq } = this.deps.store.append({ type: 'session.deleted', sessionId, at: Date.now() })
+    this.deps.store.purgeSession(sessionId, seq)
   }
 
   /** Deletes the worktree a session was started in. The session's branch and history are kept. */
@@ -733,6 +792,10 @@ export class SessionManager {
   }
 
   async close() {
+    // Messages still on their way to the agent, and snapshots still being taken, finish first.
+    await Promise.allSettled(
+      [...this.turns.values()].flatMap((t) => [t.starting, t.taking, t.settling]),
+    )
     await Promise.all([...this.live.values()].map((l) => l.session.close()))
     this.live.clear()
   }
@@ -1113,13 +1176,35 @@ export class SessionManager {
   }
 
   /** Writes stored exchanges into the log the way a live conversation would have. */
-  private appendTurns(sessionId: string, turns: { user: string; assistant: string }[], at: number) {
+  private appendTurns(sessionId: string, turns: HistoryTurn[], at: number) {
     turns.forEach((turn, index) => {
       const turnId = `turn-${index + 1}`
       const base = { sessionId, at, turnId }
       this.deps.store.append({ ...base, type: 'message.delta', role: 'user', text: turn.user })
       this.deps.store.append({ ...base, type: 'turn.started' })
-      if (turn.assistant) {
+      if (turn.events?.length) {
+        // Tool ids only have to be unique within a turn where they came from.
+        const open = new Set<string>()
+        let last = at
+        for (const event of turn.events) {
+          const toolId = 'toolId' in event ? { toolId: `${turnId}:${event.toolId}` } : {}
+          // Keep the time the agent's own record gives, so tool calls show how long they took.
+          if (event.at > 0) last = event.at
+          if (event.type === 'tool.started') open.add(event.toolId)
+          if (event.type === 'tool.completed') open.delete(event.toolId)
+          this.deps.store.append({ ...event, ...toolId, ...base, at: last } as SessionEvent)
+        }
+        // A tool still running when the conversation was stored never finished; it must not spin.
+        for (const toolId of open) {
+          this.deps.store.append({
+            ...base,
+            at: last,
+            type: 'tool.completed',
+            toolId: `${turnId}:${toolId}`,
+            ok: false,
+          })
+        }
+      } else if (turn.assistant) {
         this.deps.store.append({
           ...base,
           type: 'message.delta',
@@ -1156,7 +1241,7 @@ export class SessionManager {
         if (event.type === 'turn.started') this.turnState(sessionId).busy = true
         if (event.type === 'turn.completed') {
           const turn = this.turnState(sessionId)
-          if (turn.before) {
+          if (turn.before || turn.taking) {
             const settling = this.recordTurnChanges(sessionId, turn, event.turnId)
             turn.settling = settling
             void settling.finally(() => {

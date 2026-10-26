@@ -49,7 +49,7 @@ function baseElement(
   fill: string,
   stroke: string,
   strokeWidth: number,
-  opacity: number
+  opacity: number,
 ): DesignElement {
   return {
     id,
@@ -148,10 +148,7 @@ function inherited(node: Element, name: string): string | null {
 }
 
 /** Resolve fill/stroke that may reference a gradient by url(#id). */
-function resolvePaint(
-  value: string | null,
-  idMap: Map<string, Element>
-): string {
+function resolvePaint(value: string | null, idMap: Map<string, Element>): string {
   if (!value) return 'transparent'
   const urlMatch = value.match(/url\(#([^)]+)\)/)
   if (urlMatch) {
@@ -165,7 +162,7 @@ function convertNode(
   node: Element,
   ctx: ImportContext,
   inheritedOpacity: number,
-  idMap: Map<string, Element>
+  idMap: Map<string, Element>,
 ): DesignElement | null {
   const tag = node.tagName.toLowerCase()
   const opacity = inheritedOpacity * opacityOf(node)
@@ -174,40 +171,92 @@ function convertNode(
   const fill = resolvePaint(inherited(node, 'fill') ?? '#000000', idMap)
   const stroke = resolvePaint(inherited(node, 'stroke'), idMap)
   const strokeWidthAttr = parseFloat(inherited(node, 'stroke-width') ?? '')
-  const strokeWidth = Number.isFinite(strokeWidthAttr) ? strokeWidthAttr : stroke !== 'transparent' ? 1 : 0
+  const strokeWidth = Number.isFinite(strokeWidthAttr)
+    ? strokeWidthAttr
+    : stroke !== 'transparent'
+      ? 1
+      : 0
 
-  const mk = (type: ElementType, name: string, x: number, y: number, w: number, h: number): DesignElement =>
-    baseElement(ctx.makeId(type), name, type, x * ctx.scale, y * ctx.scale, w * ctx.scale, h * ctx.scale, fill, stroke, strokeWidth * ctx.scale, opacity)
+  const mk = (
+    type: ElementType,
+    name: string,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+  ): DesignElement =>
+    baseElement(
+      ctx.makeId(type),
+      name,
+      type,
+      x * ctx.scale,
+      y * ctx.scale,
+      w * ctx.scale,
+      h * ctx.scale,
+      fill,
+      stroke,
+      strokeWidth * ctx.scale,
+      opacity,
+    )
 
   switch (tag) {
     case 'rect': {
-      const el = mk('rectangle', node.id || 'Rectangle', num(node, 'x'), num(node, 'y'), num(node, 'width'), num(node, 'height'))
+      const el = mk(
+        'rectangle',
+        node.id || 'Rectangle',
+        num(node, 'x'),
+        num(node, 'y'),
+        num(node, 'width'),
+        num(node, 'height'),
+      )
       const rx = num(node, 'rx', 0)
       el.cornerRadius = rx * ctx.scale
       el.cornerRadiusTL = el.cornerRadiusTR = el.cornerRadiusBL = el.cornerRadiusBR = rx * ctx.scale
       return el
     }
     case 'circle': {
-      const cx = num(node, 'cx'), cy = num(node, 'cy'), r = num(node, 'r')
+      const cx = num(node, 'cx'),
+        cy = num(node, 'cy'),
+        r = num(node, 'r')
       return mk('ellipse', node.id || 'Ellipse', cx - r, cy - r, r * 2, r * 2)
     }
     case 'ellipse': {
-      const cx = num(node, 'cx'), cy = num(node, 'cy'), rx = num(node, 'rx'), ry = num(node, 'ry')
+      const cx = num(node, 'cx'),
+        cy = num(node, 'cy'),
+        rx = num(node, 'rx'),
+        ry = num(node, 'ry')
       return mk('ellipse', node.id || 'Ellipse', cx - rx, cy - ry, rx * 2, ry * 2)
     }
     case 'line': {
-      const el = mk('line', node.id || 'Line', num(node, 'x1'), num(node, 'y1'), num(node, 'x2') - num(node, 'x1'), num(node, 'y2') - num(node, 'y1'))
+      const el = mk(
+        'line',
+        node.id || 'Line',
+        num(node, 'x1'),
+        num(node, 'y1'),
+        num(node, 'x2') - num(node, 'x1'),
+        num(node, 'y2') - num(node, 'y1'),
+      )
       return el
     }
     case 'polygon':
     case 'polyline': {
       const pts = parsePoints(node.getAttribute('points'))
-      if (pts.length < 2) { ctx.stats.skipped++; return null }
+      if (pts.length < 2) {
+        ctx.stats.skipped++
+        return null
+      }
       const minX = Math.min(...pts.map((p) => p.x))
       const minY = Math.min(...pts.map((p) => p.y))
       const w = Math.max(...pts.map((p) => p.x)) - minX
       const h = Math.max(...pts.map((p) => p.y)) - minY
-      const el = mk('path', node.id || (tag === 'polygon' ? 'Polygon' : 'Polyline'), minX, minY, w, h)
+      const el = mk(
+        'path',
+        node.id || (tag === 'polygon' ? 'Polygon' : 'Polyline'),
+        minX,
+        minY,
+        w,
+        h,
+      )
       el.pathPoints = pts.map((p) => ({ x: (p.x - minX) * ctx.scale, y: (p.y - minY) * ctx.scale }))
       el.pathClosed = tag === 'polygon'
       el.vectorNetwork = pathPointsToVectorNetwork(el.pathPoints, tag === 'polygon')
@@ -215,13 +264,21 @@ function convertNode(
     }
     case 'path': {
       const d = node.getAttribute('d')
-      if (!d) { ctx.stats.skipped++; return null }
+      if (!d) {
+        ctx.stats.skipped++
+        return null
+      }
       const network = pathToVectorNetwork(d, ctx.scale)
-      if (!network || network.vertices.length < 2) { ctx.stats.skipped++; return null }
+      if (!network || network.vertices.length < 2) {
+        ctx.stats.skipped++
+        return null
+      }
       const xs = network.vertices.map((v) => v.x)
       const ys = network.vertices.map((v) => v.y)
-      const minX = Math.min(...xs), minY = Math.min(...ys)
-      const w = Math.max(...xs) - minX, h = Math.max(...ys) - minY
+      const minX = Math.min(...xs),
+        minY = Math.min(...ys)
+      const w = Math.max(...xs) - minX,
+        h = Math.max(...ys) - minY
       const el = mk('path', node.id || 'Path', minX, minY, w, h)
       el.vectorNetwork = {
         ...network,
@@ -236,10 +293,21 @@ function convertNode(
     }
     case 'text': {
       const content = (node.textContent || '').trim()
-      if (!content) { ctx.stats.skipped++; return null }
+      if (!content) {
+        ctx.stats.skipped++
+        return null
+      }
       const fontSize = num(node, 'font-size', 16)
-      const x = num(node, 'x'), y = num(node, 'y')
-      const el = mk('text', node.id || 'Text', x, y - fontSize, content.length * fontSize * 0.55, fontSize * 1.4)
+      const x = num(node, 'x'),
+        y = num(node, 'y')
+      const el = mk(
+        'text',
+        node.id || 'Text',
+        x,
+        y - fontSize,
+        content.length * fontSize * 0.55,
+        fontSize * 1.4,
+      )
       el.textContent = content
       el.fontFamily = node.getAttribute('font-family') || 'Inter'
       el.fontSize = Math.round(fontSize * ctx.scale)
@@ -254,10 +322,23 @@ function convertNode(
       return el
     }
     case 'image': {
-      const href = node.getAttribute('href') || node.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
-      if (!href) { ctx.stats.skipped++; return null }
-      const el = mk('rectangle', node.id || 'Image', num(node, 'x'), num(node, 'y'), num(node, 'width', 100), num(node, 'height', 100))
-      el.fills = [{ type: 'image', color: 'transparent', opacity: 100, imageUrl: href, visible: true }]
+      const href =
+        node.getAttribute('href') || node.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
+      if (!href) {
+        ctx.stats.skipped++
+        return null
+      }
+      const el = mk(
+        'rectangle',
+        node.id || 'Image',
+        num(node, 'x'),
+        num(node, 'y'),
+        num(node, 'width', 100),
+        num(node, 'height', 100),
+      )
+      el.fills = [
+        { type: 'image', color: 'transparent', opacity: 100, imageUrl: href, visible: true },
+      ]
       return el
     }
     case 'g':
@@ -269,7 +350,10 @@ function convertNode(
         const converted = convertNode(child, ctx, opacity, idMap)
         if (converted) children.push(converted)
       }
-      if (children.length === 0) { ctx.stats.skipped++; return null }
+      if (children.length === 0) {
+        ctx.stats.skipped++
+        return null
+      }
 
       if (tag === 'svg') {
         // root svg handled by caller (importSvg) — not reached here
@@ -281,9 +365,17 @@ function convertNode(
       const maxX = Math.max(...children.map((c) => c.x + c.width))
       const maxY = Math.max(...children.map((c) => c.y + c.height))
       const group = baseElement(
-        ctx.makeId('group'), node.id || 'Group', 'group',
-        minX, minY, maxX - minX, maxY - minY,
-        'transparent', 'transparent', 0, opacity
+        ctx.makeId('group'),
+        node.id || 'Group',
+        'group',
+        minX,
+        minY,
+        maxX - minX,
+        maxY - minY,
+        'transparent',
+        'transparent',
+        0,
+        opacity,
       )
       group.children = children.map((c) => ({ ...c, x: c.x - minX, y: c.y - minY }))
       ctx.stats.imported += children.length
@@ -291,7 +383,8 @@ function convertNode(
     }
     default: {
       // defs, metadata, title, unknown tags…
-      if (tag !== 'defs' && tag !== 'title' && tag !== 'desc' && tag !== 'metadata') ctx.stats.skipped++
+      if (tag !== 'defs' && tag !== 'title' && tag !== 'desc' && tag !== 'metadata')
+        ctx.stats.skipped++
       return null
     }
   }
@@ -314,7 +407,7 @@ export interface SvgImportResult {
 export function importSvgText(
   svgText: string,
   makeId: (prefix: string) => string,
-  wrapInFrame = true
+  wrapInFrame = true,
 ): SvgImportResult {
   const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml')
   const parseError = doc.querySelector('parsererror')
@@ -356,7 +449,12 @@ export function importSvgText(
   ctx.stats.imported += children.length
 
   if (!wrapInFrame || children.length === 0) {
-    return { elements: children, stats: ctx.stats, width: docWidth * scale, height: docHeight * scale }
+    return {
+      elements: children,
+      stats: ctx.stats,
+      width: docWidth * scale,
+      height: docHeight * scale,
+    }
   }
 
   // Wrap everything in a frame (Figma-style import result)
@@ -365,9 +463,17 @@ export function importSvgText(
   const maxX = Math.max(...children.map((c) => c.x + c.width))
   const maxY = Math.max(...children.map((c) => c.y + c.height))
   const frame = baseElement(
-    makeId('frame'), 'Imported SVG', 'frame',
-    minX, minY, Math.max(1, maxX - minX), Math.max(1, maxY - minY),
-    'transparent', 'transparent', 0, 1
+    makeId('frame'),
+    'Imported SVG',
+    'frame',
+    minX,
+    minY,
+    Math.max(1, maxX - minX),
+    Math.max(1, maxY - minY),
+    'transparent',
+    'transparent',
+    0,
+    1,
   )
   frame.children = children.map((c) => ({ ...c, x: c.x - minX, y: c.y - minY }))
   return { elements: [frame], stats: ctx.stats, width: frame.width, height: frame.height }

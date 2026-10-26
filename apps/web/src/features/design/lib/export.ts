@@ -48,7 +48,10 @@ const MIME: Record<ExportFormat, string> = {
 /* ------------------------------------------------------------------ */
 
 function safeName(name: string): string {
-  return (name || 'design').replace(/[^\w\-]+/g, '-').replace(/-+/g, '-').slice(0, 60)
+  return (name || 'design')
+    .replace(/[^\w\-]+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 60)
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -91,7 +94,7 @@ async function reencodeToBlob(dataUrl: string, mime: string, quality: number): P
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error(`canvas.toBlob(${mime}) returned null`))),
       mime,
-      quality
+      quality,
     )
   })
 }
@@ -198,7 +201,10 @@ function fillAttrOf(el: DesignElement): string {
     // PHASE 17 — pattern paint (tile repeat)
     if (fill.type === 'pattern' && fill.imageUrl) return `url(#exp-pat-${el.id})`
     // gradients are approximated by their first stop color offscreen
-    if ((fill.type === 'linear-gradient' || fill.type === 'radial-gradient') && fill.gradientStops?.length) {
+    if (
+      (fill.type === 'linear-gradient' || fill.type === 'radial-gradient') &&
+      fill.gradientStops?.length
+    ) {
       return fill.gradientStops[0].color
     }
   }
@@ -234,12 +240,16 @@ function appendDefs(target: SVGElement, el: DesignElement) {
     const pattern = document.createElementNS(SVG_NS, 'pattern')
     pattern.setAttribute('id', `exp-pat-${el.id}`)
     pattern.setAttribute('patternUnits', 'userSpaceOnUse')
-    pattern.setAttribute('x', '0'); pattern.setAttribute('y', '0')
-    pattern.setAttribute('width', tw); pattern.setAttribute('height', th)
+    pattern.setAttribute('x', '0')
+    pattern.setAttribute('y', '0')
+    pattern.setAttribute('width', tw)
+    pattern.setAttribute('height', th)
     const image = document.createElementNS(SVG_NS, 'image')
     image.setAttribute('href', fill.imageUrl)
-    image.setAttribute('x', '0'); image.setAttribute('y', '0')
-    image.setAttribute('width', tw); image.setAttribute('height', th)
+    image.setAttribute('x', '0')
+    image.setAttribute('y', '0')
+    image.setAttribute('width', tw)
+    image.setAttribute('height', th)
     image.setAttribute('preserveAspectRatio', 'none')
     pattern.appendChild(image)
     defs.appendChild(pattern)
@@ -255,7 +265,10 @@ function renderTree(el: DesignElement, svg: SVGElement): SVGElement | null {
   if (!el.visible) return null
 
   const g = document.createElementNS(SVG_NS, 'g')
-  g.setAttribute('transform', `translate(${el.x}, ${el.y})${el.rotation ? ` rotate(${el.rotation} ${el.width / 2} ${el.height / 2})` : ''}`)
+  g.setAttribute(
+    'transform',
+    `translate(${el.x}, ${el.y})${el.rotation ? ` rotate(${el.rotation} ${el.width / 2} ${el.height / 2})` : ''}`,
+  )
   appendDefs(g, el)
 
   const fillAttr = fillAttrOf(el)
@@ -278,7 +291,14 @@ function renderTree(el: DesignElement, svg: SVGElement): SVGElement | null {
     case 'group': {
       // groups render children only; frames/groups still draw their own bg
       const rect = document.createElementNS(SVG_NS, 'rect')
-      set(rect, { ...common, x: '0', y: '0', width: String(el.width), height: String(el.height), rx: String(el.cornerRadius || 0) })
+      set(rect, {
+        ...common,
+        x: '0',
+        y: '0',
+        width: String(el.width),
+        height: String(el.height),
+        rx: String(el.cornerRadius || 0),
+      })
       g.appendChild(rect)
       break
     }
@@ -296,7 +316,13 @@ function renderTree(el: DesignElement, svg: SVGElement): SVGElement | null {
         }
       }
       const ellipse = document.createElementNS(SVG_NS, 'ellipse')
-      set(ellipse, { ...common, cx: String(el.width / 2), cy: String(el.height / 2), rx: String(el.width / 2), ry: String(el.height / 2) })
+      set(ellipse, {
+        ...common,
+        cx: String(el.width / 2),
+        cy: String(el.height / 2),
+        rx: String(el.width / 2),
+        ry: String(el.height / 2),
+      })
       g.appendChild(ellipse)
       break
     }
@@ -305,7 +331,12 @@ function renderTree(el: DesignElement, svg: SVGElement): SVGElement | null {
       const d = booleanGroupPathD(el)
       if (d) {
         const p = document.createElementNS(SVG_NS, 'path')
-        const attrs: Record<string, string> = { ...common, d, 'fill-rule': 'evenodd', 'stroke-linejoin': 'round' }
+        const attrs: Record<string, string> = {
+          ...common,
+          d,
+          'fill-rule': 'evenodd',
+          'stroke-linejoin': 'round',
+        }
         set(p, attrs)
         g.appendChild(p)
       } else {
@@ -318,7 +349,10 @@ function renderTree(el: DesignElement, svg: SVGElement): SVGElement | null {
     case 'line': {
       const line = document.createElementNS(SVG_NS, 'line')
       set(line, {
-        x1: '0', y1: '0', x2: String(el.width), y2: String(el.height),
+        x1: '0',
+        y1: '0',
+        x2: String(el.width),
+        y2: String(el.height),
         stroke: el.stroke === 'transparent' ? '#000000' : el.stroke,
         'stroke-width': String(el.strokeWidth || 2),
         'stroke-dasharray': dash ?? '',
@@ -333,12 +367,14 @@ function renderTree(el: DesignElement, svg: SVGElement): SVGElement | null {
       const lineHeightPx = fontSize * (el.lineHeight || 1.4)
       const lines = (el.textContent || 'Text').split('\n')
       const startY = (el.height - lines.length * lineHeightPx) / 2 + fontSize
-      const anchor = el.textAlign === 'center' ? 'middle' : el.textAlign === 'right' ? 'end' : 'start'
+      const anchor =
+        el.textAlign === 'center' ? 'middle' : el.textAlign === 'right' ? 'end' : 'start'
       const x = el.textAlign === 'center' ? el.width / 2 : el.textAlign === 'right' ? el.width : 0
       lines.forEach((line, i) => {
         const text = document.createElementNS(SVG_NS, 'text')
         set(text, {
-          x: String(x), y: String(startY + i * lineHeightPx),
+          x: String(x),
+          y: String(startY + i * lineHeightPx),
           'font-size': String(fontSize),
           'font-weight': String(el.fontWeight || 400),
           'font-family': el.fontFamily || 'Inter, system-ui, sans-serif',
@@ -362,7 +398,10 @@ function renderTree(el: DesignElement, svg: SVGElement): SVGElement | null {
       const pts: string[] = []
       const count = el.type === 'star' ? sides * 2 : sides
       for (let i = 0; i < count; i++) {
-        const angle = el.type === 'star' ? (i * Math.PI) / sides - Math.PI / 2 : (i * 2 * Math.PI) / sides - Math.PI / 2
+        const angle =
+          el.type === 'star'
+            ? (i * Math.PI) / sides - Math.PI / 2
+            : (i * 2 * Math.PI) / sides - Math.PI / 2
         const r = el.type === 'star' ? (i % 2 === 0 ? outerR : innerR) : outerR
         pts.push(`${cx + r * Math.cos(angle)},${cy + r * Math.sin(angle)}`)
       }
@@ -375,7 +414,12 @@ function renderTree(el: DesignElement, svg: SVGElement): SVGElement | null {
       const d = pathElementToSvgPath(el)
       if (d) {
         const path = document.createElementNS(SVG_NS, 'path')
-        const attrs: Record<string, string> = { ...common, d, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }
+        const attrs: Record<string, string> = {
+          ...common,
+          d,
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+        }
         if (isEvenOddFill(el)) attrs['fill-rule'] = 'evenodd'
         set(path, attrs)
         g.appendChild(path)
@@ -392,7 +436,8 @@ function renderTree(el: DesignElement, svg: SVGElement): SVGElement | null {
   // children (auto-layout applied when the frame uses it)
   // PHASE 6: mask semantics — a mask child clips all previous siblings + itself
   if (el.children && el.children.length > 0) {
-    const effective = el.type === 'frame' && hasAutoLayout(el) ? calculateAutoLayout(el) : el.children
+    const effective =
+      el.type === 'frame' && hasAutoLayout(el) ? calculateAutoLayout(el) : el.children
     const groups: SVGElement[] = []
     let buffer: SVGElement[] = []
     for (const child of effective) {
@@ -406,7 +451,10 @@ function renderTree(el: DesignElement, svg: SVGElement): SVGElement | null {
           const clip = document.createElementNS(SVG_NS, 'clipPath')
           clip.setAttribute('id', clipId)
           const cg = document.createElementNS(SVG_NS, 'g')
-          cg.setAttribute('transform', `translate(${child.x}, ${child.y})${child.rotation ? ` rotate(${child.rotation} ${child.width / 2} ${child.height / 2})` : ''}`)
+          cg.setAttribute(
+            'transform',
+            `translate(${child.x}, ${child.y})${child.rotation ? ` rotate(${child.rotation} ${child.width / 2} ${child.height / 2})` : ''}`,
+          )
           cg.appendChild(clipShape)
           clip.appendChild(cg)
           defs.appendChild(clip)
@@ -439,8 +487,10 @@ function exportMaskClipShape(mask: DesignElement): SVGElement | null {
   switch (mask.type) {
     case 'rectangle': {
       const rect = document.createElementNS(SVG_NS, 'rect')
-      rect.setAttribute('x', '0'); rect.setAttribute('y', '0')
-      rect.setAttribute('width', String(mask.width)); rect.setAttribute('height', String(mask.height))
+      rect.setAttribute('x', '0')
+      rect.setAttribute('y', '0')
+      rect.setAttribute('width', String(mask.width))
+      rect.setAttribute('height', String(mask.height))
       rect.setAttribute('rx', String(mask.cornerRadius || 0))
       return rect
     }
@@ -456,8 +506,10 @@ function exportMaskClipShape(mask: DesignElement): SVGElement | null {
         }
       }
       const ell = document.createElementNS(SVG_NS, 'ellipse')
-      ell.setAttribute('cx', String(mask.width / 2)); ell.setAttribute('cy', String(mask.height / 2))
-      ell.setAttribute('rx', String(mask.width / 2)); ell.setAttribute('ry', String(mask.height / 2))
+      ell.setAttribute('cx', String(mask.width / 2))
+      ell.setAttribute('cy', String(mask.height / 2))
+      ell.setAttribute('rx', String(mask.width / 2))
+      ell.setAttribute('ry', String(mask.height / 2))
       return ell
     }
     case 'polygon': {
@@ -466,7 +518,7 @@ function exportMaskClipShape(mask: DesignElement): SVGElement | null {
       const pts: string[] = []
       for (let i = 0; i < sides; i++) {
         const a = (i * 2 * Math.PI) / sides - Math.PI / 2
-        pts.push(`${(mask.width / 2) + r * Math.cos(a)},${(mask.height / 2) + r * Math.sin(a)}`)
+        pts.push(`${mask.width / 2 + r * Math.cos(a)},${mask.height / 2 + r * Math.sin(a)}`)
       }
       const poly = document.createElementNS(SVG_NS, 'polygon')
       poly.setAttribute('points', pts.join(' '))
@@ -480,7 +532,7 @@ function exportMaskClipShape(mask: DesignElement): SVGElement | null {
       for (let i = 0; i < sides * 2; i++) {
         const a = (i * Math.PI) / sides - Math.PI / 2
         const r = i % 2 === 0 ? outerR : innerR
-        pts.push(`${(mask.width / 2) + r * Math.cos(a)},${(mask.height / 2) + r * Math.sin(a)}`)
+        pts.push(`${mask.width / 2 + r * Math.cos(a)},${mask.height / 2 + r * Math.sin(a)}`)
       }
       const poly = document.createElementNS(SVG_NS, 'polygon')
       poly.setAttribute('points', pts.join(' '))
@@ -518,7 +570,7 @@ export function buildElementSvg(element: DesignElement, scale = 1): SVGSVGElemen
 /** Rasterize a detached SVG element to a dataURL via html-to-image. */
 async function rasterizeDetached(
   svg: SVGSVGElement,
-  opts: { scale: number; background?: string }
+  opts: { scale: number; background?: string },
 ): Promise<string> {
   svg.style.position = 'absolute'
   svg.style.left = '-99999px'
@@ -570,7 +622,10 @@ export async function exportElement(element: DesignElement, opts: ExportOptions)
     }
     case 'PDF': {
       const { default: jsPDF } = await import('jspdf')
-      const dataUrl = await rasterizeDetached(buildElementSvg(element, 1), { scale: 2, background: '#FFFFFF' })
+      const dataUrl = await rasterizeDetached(buildElementSvg(element, 1), {
+        scale: 2,
+        background: '#FFFFFF',
+      })
       const pdf = new jsPDF({
         orientation: element.width >= element.height ? 'landscape' : 'portrait',
         unit: 'px',
@@ -609,13 +664,16 @@ export async function exportElementAsPNG(element: DesignElement, scale: number =
  */
 export async function renderElementToDataUrl(
   element: DesignElement,
-  opts: { scale: number; background?: string }
+  opts: { scale: number; background?: string },
 ): Promise<string> {
   const svg = buildElementSvg(element, opts.scale)
   // The page's fonts do not reach an SVG drawn as an image, so give text a sensible fallback.
   const markup = new XMLSerializer()
     .serializeToString(svg)
-    .replace(/font-family="([^"]*)"/g, (_m, f) => `font-family="${f}, system-ui, 'Segoe UI', Arial, sans-serif"`)
+    .replace(
+      /font-family="([^"]*)"/g,
+      (_m, f) => `font-family="${f}, system-ui, 'Segoe UI', Arial, sans-serif"`,
+    )
   const img = new Image()
   await new Promise<void>((resolve, reject) => {
     img.onload = () => resolve()

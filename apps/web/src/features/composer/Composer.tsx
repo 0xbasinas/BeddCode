@@ -105,12 +105,23 @@ export function Composer(props: ComposerProps) {
     setSending(true)
     setError(null)
     try {
-      await props.onSend(
-        props.text.trim(),
+      const sent = props.text
+      const request = props.onSend(
+        sent.trim(),
         ready.map((f) => f.id!),
       )
-      if (mounted.current && latest.current.draft === draft && latest.current.text === props.text) {
+      // The box empties as Enter is pressed instead of when the host answers; a failure puts the
+      // words back (unless something new was typed meanwhile).
+      if (mounted.current && latest.current.draft === draft && latest.current.text === sent) {
         props.onTextChange('')
+      }
+      try {
+        await request
+      } catch (err) {
+        if (mounted.current && latest.current.draft === draft && latest.current.text === '') {
+          props.onTextChange(sent)
+        }
+        throw err
       }
       useAttachments.getState().remove(
         draft,

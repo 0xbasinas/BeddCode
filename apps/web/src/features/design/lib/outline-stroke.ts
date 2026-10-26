@@ -189,10 +189,7 @@ export function computeOutlineStroke(el: DesignElement): OutlineResult | null {
   if (closed) {
     // ring with hole: outer loop + inner loop (evenodd)
     if (outerS.length < 3 || innerS.length < 3) return null
-    contours = [
-      polyToNetwork(outerS, true),
-      polyToNetwork(innerS, true),
-    ]
+    contours = [polyToNetwork(outerS, true), polyToNetwork(innerS, true)]
   } else {
     // open path: single band ring = outer forward + inner backward
     const band = [...outerS, ...innerS]
@@ -215,6 +212,9 @@ function polyToNetwork(poly: { x: number; y: number }[], closed: boolean): Vecto
 }
 
 /** Convenience for tests: contours from explicit polys (parity with polysToContours). */
-export function outlineContoursFromPolys(polys: Poly[], origin: { x: number; y: number }): VectorNetwork[] {
+export function outlineContoursFromPolys(
+  polys: Poly[],
+  origin: { x: number; y: number },
+): VectorNetwork[] {
   return polysToContours(polys, origin)
 }

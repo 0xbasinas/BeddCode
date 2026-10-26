@@ -10,7 +10,12 @@ import {
 import type { SessionMcpServer } from '@beddcode/provider-core'
 import type { SessionOrigin } from '../sessions/sessionManager.ts'
 import { BROWSER_INSTRUCTIONS, BROWSER_TOOL_DEFINITIONS, type BrowserTools } from './browserUse.ts'
-import { DESIGN_INSTRUCTIONS, DESIGN_TOOL_DEFINITIONS, isDesignToolName, type DesignTools } from '../design/designTools.ts'
+import {
+  DESIGN_INSTRUCTIONS,
+  DESIGN_TOOL_DEFINITIONS,
+  isDesignToolName,
+  type DesignTools,
+} from '../design/designTools.ts'
 import { digest, transcript, type SessionDigest } from './digest.ts'
 
 /** How deep sessions may nest: a child (1) may start children of its own (2), and those none. */
@@ -198,8 +203,7 @@ export class AgentTools {
       // The server is only given to sessions with one of the three; without the other flags it
       // was for the agent tools.
       agents:
-        event?.agentTools === true ||
-        (event?.browserTools !== true && event?.designTools !== true),
+        event?.agentTools === true || (event?.browserTools !== true && event?.designTools !== true),
       browser: event?.browserTools === true && this.browser !== undefined,
       design: event?.designTools === true && this.design !== undefined,
     }

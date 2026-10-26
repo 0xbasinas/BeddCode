@@ -50,11 +50,23 @@ export function useCanvasKeyboard({
   const setActiveTool = useEditorStore((s) => s.setActiveTool)
 
   const {
-    penPoints, setPenPoints, penPointsRef, penElementIdRef,
-    finishPenPath, isPencilDrawing, setIsPencilDrawing,
-    pencilPoints, setPencilPoints,
+    penPoints,
+    setPenPoints,
+    penPointsRef,
+    penElementIdRef,
+    finishPenPath,
+    isPencilDrawing,
+    setIsPencilDrawing,
+    pencilPoints,
+    setPencilPoints,
   } = pen
-  const { editingPathId, editingPointIndex, setEditingPointIndex, exitPathEditing, setEditingPathId } = pathEditing
+  const {
+    editingPathId,
+    editingPointIndex,
+    setEditingPointIndex,
+    exitPathEditing,
+    setEditingPathId,
+  } = pathEditing
 
   // BRAKE: Block ALL browser shortcuts to make app feel native
   // This runs in capture phase and prevents Ctrl+key combos from reaching the browser
@@ -84,9 +96,23 @@ export function useCanvasKeyboard({
         // Allow Ctrl+Z (undo), Ctrl+Shift+Z (redo), Ctrl+Y (redo)
         if (code === 'KeyZ' || code === 'KeyY') return
         // Allow Ctrl+C, Ctrl+V, Ctrl+D, Ctrl+A, Ctrl+G
-        if (code === 'KeyC' || code === 'KeyV' || code === 'KeyD' || code === 'KeyA' || code === 'KeyG') return
+        if (
+          code === 'KeyC' ||
+          code === 'KeyV' ||
+          code === 'KeyD' ||
+          code === 'KeyA' ||
+          code === 'KeyG'
+        )
+          return
         // Allow Ctrl+/-, Ctrl+0, Ctrl+1, Ctrl+2
-        if (code === 'Equal' || code === 'Minus' || code === 'Digit0' || code === 'Digit1' || code === 'Digit2') return
+        if (
+          code === 'Equal' ||
+          code === 'Minus' ||
+          code === 'Digit0' ||
+          code === 'Digit1' ||
+          code === 'Digit2'
+        )
+          return
         // Allow Ctrl+], Ctrl+[, Ctrl+;
         if (code === 'BracketRight' || code === 'BracketLeft' || code === 'Semicolon') return
         // Allow Ctrl+' (apostrophe)
@@ -137,7 +163,7 @@ export function useCanvasKeyboard({
             penElementIdRef.current = null
             setPenPoints([])
           } else {
-            setPenPoints(prev => prev.slice(0, -1))
+            setPenPoints((prev) => prev.slice(0, -1))
           }
           return
         }
@@ -178,8 +204,8 @@ export function useCanvasKeyboard({
             if (network.vertices.length > 2) {
               const newVertices = network.vertices.filter((_, i) => i !== editingPointIndex)
               const newSegments = network.segments
-                .filter(s => s.start !== editingPointIndex && s.end !== editingPointIndex)
-                .map(s => ({
+                .filter((s) => s.start !== editingPointIndex && s.end !== editingPointIndex)
+                .map((s) => ({
                   ...s,
                   start: s.start > editingPointIndex ? s.start - 1 : s.start,
                   end: s.end > editingPointIndex ? s.end - 1 : s.end,
@@ -242,8 +268,15 @@ export function useCanvasKeyboard({
         }
       }
 
-      if (ctrl && e.key === 'c') { e.preventDefault(); state.copySelected() }
-      if (ctrl && e.key === 'v' && !e.shiftKey) { e.preventDefault(); state.pasteClipboard(); state.pushHistory() }
+      if (ctrl && e.key === 'c') {
+        e.preventDefault()
+        state.copySelected()
+      }
+      if (ctrl && e.key === 'v' && !e.shiftKey) {
+        e.preventDefault()
+        state.pasteClipboard()
+        state.pushHistory()
+      }
       // PHASE 21 (E14) — ⇧⌘V paste over selection (source: PASTE_OVER_SELECTION=53)
       if (ctrl && e.shiftKey && e.code === 'KeyV') {
         e.preventDefault()
@@ -251,8 +284,15 @@ export function useCanvasKeyboard({
         state.pushHistory()
         return
       }
-      if (ctrl && e.key === 'd') { e.preventDefault(); state.duplicateSelectedElements(); state.pushHistory() }
-      if (ctrl && e.key === 'a') { e.preventDefault(); state.selectAll() }
+      if (ctrl && e.key === 'd') {
+        e.preventDefault()
+        state.duplicateSelectedElements()
+        state.pushHistory()
+      }
+      if (ctrl && e.key === 'a') {
+        e.preventDefault()
+        state.selectAll()
+      }
 
       // PHASE 21 (E16) — ⌘F opens find & replace (source: FIND_AND_REPLACE=4;
       // our app binding — the source shortcut registry is minified/not recovered)
@@ -278,22 +318,39 @@ export function useCanvasKeyboard({
 
       if (ctrl && e.key === 'g' && !e.shiftKey) {
         e.preventDefault()
-        if (state.selectedElementIds.length >= 2) { state.groupElements(state.selectedElementIds); state.pushHistory() }
+        if (state.selectedElementIds.length >= 2) {
+          state.groupElements(state.selectedElementIds)
+          state.pushHistory()
+        }
       }
       if (ctrl && e.key === 'g' && e.shiftKey) {
         e.preventDefault()
-        if (state.selectedElementIds.length === 1) { state.ungroupElements(state.selectedElementIds[0]); state.pushHistory() }
+        if (state.selectedElementIds.length === 1) {
+          state.ungroupElements(state.selectedElementIds[0])
+          state.pushHistory()
+        }
       }
 
       // PHASE 6: boolean ops ⌥⌘U/S/I/E + mask ⌃⌘M
       if (ctrl && e.altKey && ['KeyU', 'KeyS', 'KeyI', 'KeyE'].includes(e.code)) {
         e.preventDefault()
-        const op = e.code === 'KeyU' ? 'union' : e.code === 'KeyS' ? 'subtract' : e.code === 'KeyI' ? 'intersect' : 'exclude' as const
+        const op =
+          e.code === 'KeyU'
+            ? 'union'
+            : e.code === 'KeyS'
+              ? 'subtract'
+              : e.code === 'KeyI'
+                ? 'intersect'
+                : ('exclude' as const)
         if (state.selectedElementIds.length >= 2) {
           state.pushHistory()
           const res = state.applyBooleanOperation(op)
           if (!res.ok) {
-            toast({ title: 'Boolean operation failed', description: res.reason, variant: 'destructive' })
+            toast({
+              title: 'Boolean operation failed',
+              description: res.reason,
+              variant: 'destructive',
+            })
           }
         }
         return
@@ -311,20 +368,52 @@ export function useCanvasKeyboard({
       }
 
       // Zoom shortcuts
-      if (ctrl && e.key === '=') { e.preventDefault(); state.setZoom(state.zoom + 0.1) }
-      if (ctrl && e.key === '-') { e.preventDefault(); state.setZoom(state.zoom - 0.1) }
-      if (ctrl && e.key === '0') { e.preventDefault(); fitToScreen() }
-      if (ctrl && e.key === '1' && !e.shiftKey) { e.preventDefault(); state.setZoom(1); state.setPan(0, 0) }
-      if (ctrl && e.shiftKey && e.key === '1') { e.preventDefault(); fitToScreen() }
-      if (ctrl && e.key === '2') { e.preventDefault(); zoomToSelection() }
+      if (ctrl && e.key === '=') {
+        e.preventDefault()
+        state.setZoom(state.zoom + 0.1)
+      }
+      if (ctrl && e.key === '-') {
+        e.preventDefault()
+        state.setZoom(state.zoom - 0.1)
+      }
+      if (ctrl && e.key === '0') {
+        e.preventDefault()
+        fitToScreen()
+      }
+      if (ctrl && e.key === '1' && !e.shiftKey) {
+        e.preventDefault()
+        state.setZoom(1)
+        state.setPan(0, 0)
+      }
+      if (ctrl && e.shiftKey && e.key === '1') {
+        e.preventDefault()
+        fitToScreen()
+      }
+      if (ctrl && e.key === '2') {
+        e.preventDefault()
+        zoomToSelection()
+      }
       // +/- without modifier for zoom
-      if (!ctrl && !e.shiftKey && !e.altKey && e.key === '=') { state.setZoom(state.zoom + 0.1) }
-      if (!ctrl && !e.shiftKey && !e.altKey && e.key === '-') { state.setZoom(state.zoom - 0.1) }
+      if (!ctrl && !e.shiftKey && !e.altKey && e.key === '=') {
+        state.setZoom(state.zoom + 0.1)
+      }
+      if (!ctrl && !e.shiftKey && !e.altKey && e.key === '-') {
+        state.setZoom(state.zoom - 0.1)
+      }
       // PHASE 16 — Figma zoom shortcuts: Shift+1 zoom-to-fit, Shift+0 zoom 100%
       // (Shift+2 zoom-to-selection exists below)
-      if (!ctrl && e.shiftKey && !e.altKey && (e.key === '1' || e.key === '!')) { e.preventDefault(); fitToScreen() }
-      if (!ctrl && e.shiftKey && !e.altKey && (e.key === '0' || e.key === ')')) { e.preventDefault(); state.setZoom(1) }
-      if (!ctrl && e.shiftKey && !e.altKey && (e.key === '2' || e.key === '@')) { e.preventDefault(); zoomToSelection() }
+      if (!ctrl && e.shiftKey && !e.altKey && (e.key === '1' || e.key === '!')) {
+        e.preventDefault()
+        fitToScreen()
+      }
+      if (!ctrl && e.shiftKey && !e.altKey && (e.key === '0' || e.key === ')')) {
+        e.preventDefault()
+        state.setZoom(1)
+      }
+      if (!ctrl && e.shiftKey && !e.altKey && (e.key === '2' || e.key === '@')) {
+        e.preventDefault()
+        zoomToSelection()
+      }
 
       // Page navigation (Ctrl+PageUp/PageDown like Figma)
       if (ctrl && e.key === 'PageUp') {
@@ -339,11 +428,22 @@ export function useCanvasKeyboard({
       }
 
       // Z-order shortcuts (Ctrl+] and Ctrl+[ like Figma)
-      if (ctrl && e.key === ']') { e.preventDefault(); state.selectedElementIds.forEach(id => state.bringForward(id)); state.pushHistory() }
-      if (ctrl && e.key === '[') { e.preventDefault(); state.selectedElementIds.forEach(id => state.sendBackward(id)); state.pushHistory() }
+      if (ctrl && e.key === ']') {
+        e.preventDefault()
+        state.selectedElementIds.forEach((id) => state.bringForward(id))
+        state.pushHistory()
+      }
+      if (ctrl && e.key === '[') {
+        e.preventDefault()
+        state.selectedElementIds.forEach((id) => state.sendBackward(id))
+        state.pushHistory()
+      }
 
       // Shift+2 for zoom to selection (Figma shortcut)
-      if (e.shiftKey && e.key === '2') { e.preventDefault(); zoomToSelection() }
+      if (e.shiftKey && e.key === '2') {
+        e.preventDefault()
+        zoomToSelection()
+      }
 
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
         e.preventDefault()
@@ -351,7 +451,7 @@ export function useCanvasKeyboard({
         // (source: nudgeAmountPicker, figma_app; Figma defaults 1/10)
         const nudge = state.nudgeAmount
         const delta = e.shiftKey ? nudge.large : nudge.small
-        state.selectedElementIds.forEach(id => {
+        state.selectedElementIds.forEach((id) => {
           const el = findElementInList(state.elements, id)
           if (el) {
             if (e.key === 'ArrowUp') state.updateElement(id, { y: el.y - delta })
@@ -434,7 +534,12 @@ export function useCanvasKeyboard({
       }
       // PHASE 23 (F1) — ⇧⌘C copy as PNG (source: copy-as-png action, 5018;
       // binding is Figma-documented, registry minified in source).
-      if (ctrl && e.shiftKey && (e.key === 'c' || e.key === 'C') && state.selectedElementIds.length === 1) {
+      if (
+        ctrl &&
+        e.shiftKey &&
+        (e.key === 'c' || e.key === 'C') &&
+        state.selectedElementIds.length === 1
+      ) {
         e.preventDefault()
         const el = findElementInList(state.elements, state.selectedElementIds[0])
         if (el) void import('../../../lib/clipboard-io').then((m) => m.copyAsPngToClipboard(el, 2))
@@ -447,17 +552,23 @@ export function useCanvasKeyboard({
         e.stopPropagation()
       }
       if (ctrl && e.altKey && (e.key === 'k' || e.key === 'K')) {
-        state.selectedElementIds.forEach(id => {
+        state.selectedElementIds.forEach((id) => {
           const el = findElementInList(state.elements, id)
-          if (el && !el.isComponent) { state.addComponent(id); state.pushHistory() }
+          if (el && !el.isComponent) {
+            state.addComponent(id)
+            state.pushHistory()
+          }
         })
       }
       if (ctrl && e.altKey && (e.key === 'b' || e.key === 'B')) {
         e.preventDefault()
         e.stopPropagation()
-        state.selectedElementIds.forEach(id => {
+        state.selectedElementIds.forEach((id) => {
           const el = findElementInList(state.elements, id)
-          if (el && el.isComponent) { state.createInstance(id); state.pushHistory() }
+          if (el && el.isComponent) {
+            state.createInstance(id)
+            state.pushHistory()
+          }
         })
       }
       // PHASE 23 (F10) — ⌥⌘G frame selection (source: frame-selection /
@@ -465,7 +576,13 @@ export function useCanvasKeyboard({
       // inline here; now routes through the store action (which also resolves
       // absolute positions for nested children). Binding is Figma-documented
       // (registry minified in source).
-      if (ctrl && e.altKey && !e.shiftKey && (e.key === 'g' || e.key === 'G') && state.selectedElementIds.length >= 1) {
+      if (
+        ctrl &&
+        e.altKey &&
+        !e.shiftKey &&
+        (e.key === 'g' || e.key === 'G') &&
+        state.selectedElementIds.length >= 1
+      ) {
         e.preventDefault()
         state.pushHistory()
         state.frameSelection()
@@ -476,17 +593,23 @@ export function useCanvasKeyboard({
         e.stopPropagation()
       }
       if (ctrl && e.altKey && (e.key === 'k' || e.key === 'K')) {
-        state.selectedElementIds.forEach(id => {
+        state.selectedElementIds.forEach((id) => {
           const el = findElementInList(state.elements, id)
-          if (el && !el.isComponent) { state.addComponent(id); state.pushHistory() }
+          if (el && !el.isComponent) {
+            state.addComponent(id)
+            state.pushHistory()
+          }
         })
       }
       if (ctrl && e.altKey && (e.key === 'b' || e.key === 'B')) {
         e.preventDefault()
         e.stopPropagation()
-        state.selectedElementIds.forEach(id => {
+        state.selectedElementIds.forEach((id) => {
           const el = findElementInList(state.elements, id)
-          if (el && el.isComponent) { state.createInstance(id); state.pushHistory() }
+          if (el && el.isComponent) {
+            state.createInstance(id)
+            state.pushHistory()
+          }
         })
       }
     }
@@ -509,5 +632,30 @@ export function useCanvasKeyboard({
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('auxclick', handleAuxClick)
     }
-  }, [activeTool, currentFrameId, editingTextId, editingPathId, editingPointIndex, penPoints, isPencilDrawing, pencilPoints, finishPenPath, fitToScreen, zoomToSelection, setSelectedElementIds, setActiveTool, setEditingTextId, setSpaceHeld, setAltHeld, resetDrawingState, exitPathEditing, setEditingPointIndex, setIsPencilDrawing, setPencilPoints, setPenPoints, penPointsRef, penElementIdRef])
+  }, [
+    activeTool,
+    currentFrameId,
+    editingTextId,
+    editingPathId,
+    editingPointIndex,
+    penPoints,
+    isPencilDrawing,
+    pencilPoints,
+    finishPenPath,
+    fitToScreen,
+    zoomToSelection,
+    setSelectedElementIds,
+    setActiveTool,
+    setEditingTextId,
+    setSpaceHeld,
+    setAltHeld,
+    resetDrawingState,
+    exitPathEditing,
+    setEditingPointIndex,
+    setIsPencilDrawing,
+    setPencilPoints,
+    setPenPoints,
+    penPointsRef,
+    penElementIdRef,
+  ])
 }

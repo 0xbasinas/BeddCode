@@ -5,7 +5,11 @@ import type {
   SDKSessionInfo,
   SessionMessage,
 } from '@anthropic-ai/claude-agent-sdk'
+import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { SessionEvent } from '@beddcode/contracts'
 import type { HistoryItem, HistoryTurn } from '@beddcode/provider-core'
+import { ClaudeEventMapper } from './mapper.ts'
+import { findTranscript, readTranscript } from './transcriptFile.ts'
 
 /** The parts of the SDK that read Claude's own stored conversations; injected in tests. */
 export interface ClaudeHistorySdk {
@@ -48,14 +52,26 @@ function isInjected(text: string): boolean {
   )
 }
 
+/** The events of a stored exchange worth showing again; usage and turn bookkeeping are not. */
+const KEPT = new Set<SessionEvent['type']>([
+  'message.delta',
+  'tool.started',
+  'tool.completed',
+  'diff',
+  'plan.updated',
+])
+
 export interface GroupedTurn extends HistoryTurn {
   /** The last stored message of this turn, which a fork can end at. */
   lastUuid: string
 }
 
 /** Splits a transcript into exchanges: each starts with something the user typed. */
-export function groupTurns(messages: SessionMessage[]): GroupedTurn[] {
+export function groupTurns(messages: SessionMessage[], cwd?: string): GroupedTurn[] {
   const turns: GroupedTurn[] = []
+  // The live mapper turns stored messages into the same message, tool and edit events.
+  let at = Date.now()
+  const mapper = new ClaudeEventMapper('history', { cwd, now: () => at })
   for (const m of messages) {
     // Subagents and system rows are not part of the visible conversation.
     if (m.parent_tool_use_id !== null || m.parent_agent_id) continue
@@ -63,13 +79,20 @@ export function groupTurns(messages: SessionMessage[]): GroupedTurn[] {
       const text = typedText(m.message)
       if (isInjected(text)) continue
       if (text.trim()) {
-        turns.push({ user: text, assistant: '', lastUuid: m.uuid })
+        turns.push({ user: text, assistant: '', events: [], lastUuid: m.uuid })
         continue
       }
     }
     const current = turns.at(-1)
     if (!current) continue
     current.lastUuid = m.uuid
+    const written = (m as { timestamp?: unknown }).timestamp
+    if (typeof written === 'number' && Number.isFinite(written)) at = written
+    if (m.type === 'assistant' || m.type === 'user') {
+      for (const event of mapper.map(m as unknown as SDKMessage)) {
+        if (KEPT.has(event.type)) current.events!.push(event)
+      }
+    }
     if (m.type === 'assistant') {
       const said = spokenText(m.message)
       if (said) current.assistant = current.assistant ? `${current.assistant}\n\n${said}` : said
@@ -78,7 +101,22 @@ export function groupTurns(messages: SessionMessage[]): GroupedTurn[] {
   return turns
 }
 
-export function createClaudeHistory(sdk: ClaudeHistorySdk) {
+/** Reads a whole conversation from its file, or nothing when it cannot be found or read. */
+export type ReadWhole = (sessionId: string) => Promise<SessionMessage[] | undefined>
+
+const readWholeFromDisk: ReadWhole = async (sessionId) => {
+  try {
+    const file = findTranscript(sessionId)
+    return file ? await readTranscript(file) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export function createClaudeHistory(
+  sdk: ClaudeHistorySdk,
+  readWhole: ReadWhole = readWholeFromDisk,
+) {
   return {
     async list(cwd?: string): Promise<HistoryItem[]> {
       const sessions = await sdk.listSessions({ dir: cwd, limit: 50 })
@@ -93,8 +131,14 @@ export function createClaudeHistory(sdk: ClaudeHistorySdk) {
     },
 
     async read(sessionId: string, cwd?: string): Promise<HistoryTurn[]> {
-      const messages = await sdk.getSessionMessages(sessionId, { dir: cwd })
-      return groupTurns(messages).map(({ user, assistant }) => ({ user, assistant }))
+      // The file holds what came before a compaction; the SDK's view starts at the last one.
+      const messages =
+        (await readWhole(sessionId)) ?? (await sdk.getSessionMessages(sessionId, { dir: cwd }))
+      return groupTurns(messages, cwd).map(({ user, assistant, events }) => ({
+        user,
+        assistant,
+        events,
+      }))
     },
 
     async fork(sessionId: string, cwd: string, throughTurn?: number): Promise<string> {

@@ -34,10 +34,16 @@ export function usePenTool({ findParentFrameAtPosition }: UsePenToolParams) {
 
   const [penPoints, setPenPoints] = useState<PenPoint[]>([])
   const penPointsRef = useRef(penPoints)
-  useEffect(() => { penPointsRef.current = penPoints }, [penPoints])
+  useEffect(() => {
+    penPointsRef.current = penPoints
+  }, [penPoints])
 
   const penElementIdRef = useRef<string | null>(null)
-  const [penDragStart, setPenDragStart] = useState<{ x: number; y: number; pointIndex: number } | null>(null)
+  const [penDragStart, setPenDragStart] = useState<{
+    x: number
+    y: number
+    pointIndex: number
+  } | null>(null)
   const [penCursorPos, setPenCursorPos] = useState<{ x: number; y: number } | null>(null)
 
   // Pencil drawing state
@@ -49,40 +55,69 @@ export function usePenTool({ findParentFrameAtPosition }: UsePenToolParams) {
   const syncPenElement = useCallback((points: PenPoint[], closed: boolean) => {
     const state = useEditorStore.getState()
     if (points.length < 1) return
-    let pMinX = Infinity, pMinY = Infinity, pMaxX = -Infinity, pMaxY = -Infinity
-    points.forEach(pt => {
+    let pMinX = Infinity,
+      pMinY = Infinity,
+      pMaxX = -Infinity,
+      pMaxY = -Infinity
+    points.forEach((pt) => {
       pMinX = Math.min(pMinX, pt.x, pt.cx1 ?? pt.x, pt.cx2 ?? pt.x)
       pMinY = Math.min(pMinY, pt.y, pt.cy1 ?? pt.y, pt.cy2 ?? pt.y)
       pMaxX = Math.max(pMaxX, pt.x, pt.cx1 ?? pt.x, pt.cx2 ?? pt.x)
       pMaxY = Math.max(pMaxY, pt.y, pt.cy1 ?? pt.y, pt.cy2 ?? pt.y)
     })
-    const relPoints = points.map(pt => ({
-      x: pt.x - pMinX, y: pt.y - pMinY,
+    const relPoints = points.map((pt) => ({
+      x: pt.x - pMinX,
+      y: pt.y - pMinY,
       cx1: pt.cx1 !== undefined ? pt.cx1 - pMinX : undefined,
       cy1: pt.cy1 !== undefined ? pt.cy1 - pMinY : undefined,
       cx2: pt.cx2 !== undefined ? pt.cx2 - pMinX : undefined,
       cy2: pt.cy2 !== undefined ? pt.cy2 - pMinY : undefined,
     }))
-    const vectorNetwork = translateNetwork(
-      pathPointsToVectorNetwork(relPoints, closed),
-      0, 0
-    )
-    const x = Math.round(pMinX), y = Math.round(pMinY)
-    const w = Math.round(pMaxX - pMinX) || 1, h = Math.round(pMaxY - pMinY) || 1
+    const vectorNetwork = translateNetwork(pathPointsToVectorNetwork(relPoints, closed), 0, 0)
+    const x = Math.round(pMinX),
+      y = Math.round(pMinY)
+    const w = Math.round(pMaxX - pMinX) || 1,
+      h = Math.round(pMaxY - pMinY) || 1
     if (penElementIdRef.current) {
       state.updateElement(penElementIdRef.current, {
-        x, y, width: w, height: h,
-        pathPoints: relPoints, pathClosed: closed, vectorNetwork,
+        x,
+        y,
+        width: w,
+        height: h,
+        pathPoints: relPoints,
+        pathClosed: closed,
+        vectorNetwork,
       })
     } else {
       const newEl: DesignElement = {
-        id: generateId('path'), name: 'Path', type: 'path',
-        x, y, width: w, height: h,
-        fill: 'transparent', stroke: '#000000', strokeWidth: 2, strokeStyle: 'solid', strokeAlign: 'center',
-        cornerRadius: 0, cornerRadiusTL: 0, cornerRadiusTR: 0, cornerRadiusBL: 0, cornerRadiusBR: 0,
-        opacity: 100, rotation: 0, visible: true, locked: false,
-        blendMode: 'normal', flipH: false, flipV: false, clipContent: false,
-        pathPoints: relPoints, pathClosed: closed, vectorNetwork,
+        id: generateId('path'),
+        name: 'Path',
+        type: 'path',
+        x,
+        y,
+        width: w,
+        height: h,
+        fill: 'transparent',
+        stroke: '#000000',
+        strokeWidth: 2,
+        strokeStyle: 'solid',
+        strokeAlign: 'center',
+        cornerRadius: 0,
+        cornerRadiusTL: 0,
+        cornerRadiusTR: 0,
+        cornerRadiusBL: 0,
+        cornerRadiusBR: 0,
+        opacity: 100,
+        rotation: 0,
+        visible: true,
+        locked: false,
+        blendMode: 'normal',
+        flipH: false,
+        flipV: false,
+        clipContent: false,
+        pathPoints: relPoints,
+        pathClosed: closed,
+        vectorNetwork,
       }
       state.addElement(newEl)
       penElementIdRef.current = newEl.id
@@ -105,7 +140,9 @@ export function usePenTool({ findParentFrameAtPosition }: UsePenToolParams) {
     }
     // Finalize: element already exists, just select it
     if (penElementIdRef.current) {
-      const parentFrame = findParentFrameAtPosition(penPoints[0].x, penPoints[0].y, [penElementIdRef.current])
+      const parentFrame = findParentFrameAtPosition(penPoints[0].x, penPoints[0].y, [
+        penElementIdRef.current,
+      ])
       if (parentFrame && parentFrame.id !== currentFrameId) {
         state.moveElementToFrame(penElementIdRef.current, parentFrame.id)
       }
@@ -129,7 +166,9 @@ export function usePenTool({ findParentFrameAtPosition }: UsePenToolParams) {
   // setState-in-effect: React's hooks lint allows state updates inside
   // subscription callbacks, and this fires exactly on the tool transition.
   const finishPenPathRef = useRef(finishPenPath)
-  useEffect(() => { finishPenPathRef.current = finishPenPath })
+  useEffect(() => {
+    finishPenPathRef.current = finishPenPath
+  })
 
   useEffect(() => {
     const unsubscribe = useEditorStore.subscribe((state, prev) => {

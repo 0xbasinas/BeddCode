@@ -1,3 +1,5 @@
+import { ReplayCompactor } from '../store/compact.ts'
+import { LiveCoalescer } from './liveCoalescer.ts'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import os from 'node:os'
 import { WebSocketServer, type ServerOptions, type WebSocket } from 'ws'
@@ -38,6 +40,8 @@ import {
   type AutomationServices,
   type RpcContext,
   type WorkspaceServices,
+  type AccessServices,
+  type RelayControl,
 } from './rpc.ts'
 
 function parsePairRequest(body: unknown): { code: string; deviceName: string } | null {
@@ -95,6 +99,13 @@ export interface StartServerOptions {
   tokens: TokenStore
   pairing: PairingManager
   tailscale: TailscaleService
+  /** Where other devices can reach this host, for pairing links. */
+  reachable?: () => Promise<{ hostId: string; name: string; routes: string[]; relay?: string }>
+  /** Reads and changes the relay this host is reachable through. */
+  relay?: RelayControl
+  telemetry?: AccessServices['telemetry']
+  /** Takes the host's own measurements (see Telemetry.record). */
+  telemetryRecorder?: (name: string, value: number, tags?: Record<string, string>) => void
   automation: AutomationServices
   /** Answers BeddCode's agent tools for sessions that may use them (loopback only). */
   agentTools?: AgentTools
@@ -112,13 +123,40 @@ export interface StartServerOptions {
   idleTimeoutMs?: number
 }
 
+/**
+ * What a connection needs from its socket. A `ws` WebSocket does; so does the stand-in for a
+ * device that arrives through a relay (see relay/agent.ts).
+ */
+export interface ConnSocket {
+  readonly readyState: number
+  readonly OPEN: number
+  readonly bufferedAmount: number
+  /** Set when the client can open compressed messages; only sockets that compress themselves have it. */
+  compress?: boolean
+  send(data: string): void
+  close(code?: number, reason?: string): void
+  terminate(): void
+  ping(): void
+  on(event: 'pong' | 'close', listener: () => void): unknown
+  on(event: 'message', listener: (raw: unknown) => void): unknown
+}
+
 export interface RunningServer {
   port: number
   hostInfo: HostInfo
+  /** Serves a connection that did not come in through this host's own listener (a relay's). */
+  attach(socket: ConnSocket, peer: PeerClass): void
   close(): Promise<void>
 }
 
 const REPLAY_BATCH = 1000
+/** Events per frame when a client asks for a replay in groups. */
+const GROUP = 100
+/** How long a repeated request (same `rid`) still gets the first answer. */
+const REPEAT_TTL_MS = 5 * 60_000
+const REPEAT_MAX = 1000
+
+type Outcome = { ok: true; result: unknown } | { ok: false; error: string }
 const IDLE_TIMEOUT_MS = 45_000
 
 export async function startServer(options: StartServerOptions): Promise<RunningServer> {
@@ -130,9 +168,30 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       process.platform === 'win32' || process.platform === 'darwin' ? process.platform : 'linux',
     version: VERSION,
     defaultCwd: options.defaultCwd,
+    logId: store.logId,
   }
   const guard = options.guard ?? defaultGuard()
   let listeningPort = options.port
+  /** Requests that carry a `rid`: the work runs once, a repeat after a reconnect gets its answer. */
+  const repeats = new Map<string, { at: number; outcome: Promise<Outcome> }>()
+  const runOnce = (key: string, run: () => Promise<unknown>): Promise<Outcome> => {
+    const now = Date.now()
+    for (const [k, v] of repeats) {
+      if (now - v.at > REPEAT_TTL_MS || repeats.size > REPEAT_MAX) repeats.delete(k)
+      else break
+    }
+    const known = repeats.get(key)
+    if (known) return known.outcome
+    const outcome = run().then(
+      (result): Outcome => ({ ok: true, result }),
+      (err: unknown): Outcome => ({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    )
+    repeats.set(key, { at: now, outcome })
+    return outcome
+  }
   const dispatch = createRpcRouter(
     options.sessions,
     options.agents,
@@ -143,6 +202,9 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       pairing: options.pairing,
       tailscale: options.tailscale,
       port: () => listeningPort,
+      reachable: options.reachable,
+      relay: options.relay,
+      telemetry: options.telemetry,
     },
     options.automation,
   )
@@ -244,7 +306,17 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       return done(false, 403, 'origin')
     done(true)
   }
-  const wss = new WebSocketServer({ noServer: true, verifyClient })
+  // Direct connections squeeze what is big (a replay, a diff); small frames go as they are.
+  const wss = new WebSocketServer({
+    noServer: true,
+    verifyClient,
+    perMessageDeflate: {
+      threshold: 1024,
+      serverNoContextTakeover: true,
+      clientNoContextTakeover: true,
+      zlibDeflateOptions: { level: 4 },
+    },
+  })
   // The desktop app's port forwarding for its browser pane (see tunnel.ts).
   const tunnels = new WebSocketServer({ noServer: true, verifyClient, perMessageDeflate: false })
   http.on('upgrade', (req, socket, head) => {
@@ -257,7 +329,10 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     server.handleUpgrade(req, socket, head, (ws) => server.emit('connection', ws, req))
   })
   wss.on('connection', (ws, req) =>
-    handleConnection(ws, classifyRequest(req.socket.remoteAddress, req.headers)),
+    handleConnection(
+      ws as unknown as ConnSocket,
+      classifyRequest(req.socket.remoteAddress, req.headers),
+    ),
   )
   tunnels.on('connection', (ws, req) =>
     handleTunnel(ws, {
@@ -272,7 +347,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
   // A laptop that slept or a phone that lost its network leaves a socket that never closes on its
   // own; its subscriptions, terminals and watchers would stay attached. Close the silent ones.
   const idleMs = options.idleTimeoutMs ?? IDLE_TIMEOUT_MS
-  const lastSeen = new Map<WebSocket, number>()
+  const lastSeen = new Map<ConnSocket, number>()
   const sweep = setInterval(
     () => {
       const now = Date.now()
@@ -291,7 +366,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
   )
   sweep.unref()
 
-  function handleConnection(ws: WebSocket, peer: PeerClass) {
+  function handleConnection(ws: ConnSocket, peer: PeerClass) {
     // Trusted peers (this machine) are in at once; everyone else proves a token in `hello`.
     let authed = !needsToken(peer, guard)
     let deviceId: string | undefined
@@ -346,6 +421,24 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
         return
       }
 
+      if (!authed && frame.t === 'pair') {
+        const outcome = options.pairing.redeem(frame.code)
+        if (outcome === 'ok') {
+          const { token, device } = options.tokens.issue(frame.deviceName)
+          log.info(`paired device "${device.name}" over a relay`)
+          send({ t: 'paired', token, host: hostInfo })
+        } else {
+          send({
+            t: 'pair.failed',
+            error:
+              outcome === 'locked'
+                ? 'Too many wrong codes. Wait a minute and ask for a new one.'
+                : 'That code is wrong or has expired',
+          })
+        }
+        return
+      }
+
       if (!authed) {
         const device = frame.t === 'hello' ? options.tokens.verify(frame.token) : null
         if (device) {
@@ -368,20 +461,29 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
             ws.close(1002, 'protocol version')
             return
           }
+          if (frame.z && 'compress' in ws) ws.compress = true
           send({ t: 'welcome', protocol: PROTOCOL_VERSION, host: hostInfo })
           break
-        case 'req':
-          dispatch(frame.method, frame.params, context).then(
-            (result) => send({ t: 'res', id: frame.id, ok: true, result }),
-            (err: unknown) =>
-              send({
-                t: 'res',
-                id: frame.id,
-                ok: false,
-                error: err instanceof Error ? err.message : String(err),
-              }),
+        case 'req': {
+          const run = () => dispatch(frame.method, frame.params, context)
+          const outcome = frame.rid
+            ? runOnce(`${deviceId ?? 'local'}:${frame.rid}`, run)
+            : run().then(
+                (result): Outcome => ({ ok: true, result }),
+                (err: unknown): Outcome => ({
+                  ok: false,
+                  error: err instanceof Error ? err.message : String(err),
+                }),
+              )
+          void outcome.then((o) =>
+            send(
+              o.ok
+                ? { t: 'res', id: frame.id, ok: true, result: o.result }
+                : { t: 'res', id: frame.id, ok: false, error: o.error },
+            ),
           )
           break
+        }
         case 'term.attach':
           terminalDetach.get(frame.id)?.()
           try {
@@ -430,12 +532,23 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
           break
         case 'subscribe': {
           unsubscribe?.()
+          const replayStart = performance.now()
+          let replayed = 0
           // Replay and attach the live listener in one synchronous step: appends are synchronous,
           // so no event can slip between the last replayed row and the first live one.
           let cursor = frame.afterSeq
+          const compactor = frame.compact
+            ? new ReplayCompactor(store.latestStateSeqs(frame.afterSeq))
+            : undefined
           for (;;) {
             const batch = store.readAfter(cursor, REPLAY_BATCH)
-            for (const stored of batch) send({ t: 'event', stored })
+            const sent = compactor ? compactor.compact(batch) : batch
+            if (frame.batch) {
+              for (let i = 0; i < sent.length; i += GROUP) {
+                send({ t: 'events', events: sent.slice(i, i + GROUP) })
+              }
+            } else for (const stored of sent) send({ t: 'event', stored })
+            replayed += sent.length
             if (batch.length < REPLAY_BATCH) {
               cursor = batch.at(-1)?.seq ?? cursor
               break
@@ -443,7 +556,16 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
             cursor = batch.at(-1)!.seq
           }
           send({ t: 'caught-up', seq: cursor })
-          unsubscribe = store.subscribe((stored) => send({ t: 'event', stored }))
+          const resume = frame.afterSeq === 0 ? 'cold' : 'warm'
+          options.telemetryRecorder?.('host.replay.ms', performance.now() - replayStart, { resume })
+          options.telemetryRecorder?.('host.replay.events', replayed, { resume })
+          // Streamed text goes out a few times a second, not once per token.
+          const live = new LiveCoalescer((stored) => send({ t: 'event', stored }))
+          const stop = store.subscribe((stored) => live.push(stored))
+          unsubscribe = () => {
+            stop()
+            live.dispose()
+          }
           break
         }
       }
@@ -462,6 +584,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
   return {
     port,
     hostInfo,
+    attach: handleConnection,
     close: () =>
       new Promise<void>((resolve) => {
         clearInterval(sweep)

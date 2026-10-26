@@ -103,7 +103,8 @@ export class DesignStore {
   save(id: string, project: DesignProject, origin?: string, touched?: string[]): DesignSummary {
     const design = this.load(id)
     if (!design) throw new Error(`No design ${id}`)
-    const name = typeof project.name === 'string' && project.name.trim() ? project.name : design.name
+    const name =
+      typeof project.name === 'string' && project.name.trim() ? project.name : design.name
     const next: Design = { ...design, name, project, rev: design.rev + 1, updatedAt: Date.now() }
     this.write(next)
     this.emit(next, origin, touched)

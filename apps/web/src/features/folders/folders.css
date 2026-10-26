@@ -12,8 +12,14 @@
   letter-spacing: 0.2px;
   text-transform: uppercase;
 }
-.folders-head .dropdown {
+.folders-head .folders-actions {
+  display: flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
   margin-left: auto;
+}
+.folders-head .folders-actions .dropdown {
+  margin-left: 0;
 }
 .folders-add {
   display: flex;

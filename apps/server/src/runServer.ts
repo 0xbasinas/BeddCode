@@ -1,18 +1,31 @@
+import os from 'node:os'
 import path from 'node:path'
 import { AcpAgentStore, AcpRegistry, createAcpAdapter } from '@beddcode/provider-acp'
 import { createClaudeAdapter } from '@beddcode/provider-claude'
 import { createCodexAdapter } from '@beddcode/provider-codex'
 import { createFakeAdapter, type ProviderAdapter } from '@beddcode/provider-core'
+import type { RelaySettings } from '@beddcode/contracts'
 import { createLogger } from '@beddcode/shared'
 import { AgentCatalog } from './agents/catalog.ts'
 import { PreviewCache } from './agents/previews.ts'
 import { AttachmentStore } from './attachments/store.ts'
 import { PairingManager } from './auth/pairing.ts'
 import { TokenStore } from './auth/tokens.ts'
-import { isLoopbackHost, type ServerConfig } from './config.ts'
-import { dataHome, loadHostId } from './hostIdentity.ts'
+import {
+  isLoopbackHost,
+  normalizeRelayUrl,
+  readConfigFile,
+  writeConfigFile,
+  type ServerConfig,
+} from './config.ts'
+import { dataHome, loadHostId, loadRelayKey } from './hostIdentity.ts'
+import { RelayAgent } from './relay/agent.ts'
+import { Telemetry, hostLabel } from './telemetry/telemetry.ts'
+import { newRelayKey } from '@beddcode/client-runtime/relayCrypto'
+import { buildRelayRoute } from '@beddcode/client-runtime/relaySocket'
 import { findWebRoot } from './web/static.ts'
 import { TailscaleService } from './network/tailscale.ts'
+import { reachableRoutes } from './network/reachable.ts'
 import { SessionManager } from './sessions/sessionManager.ts'
 import { recoverInterruptedTurns } from './sessions/recovery.ts'
 import { EventStore } from './store/eventStore.ts'
@@ -94,6 +107,64 @@ export async function runServer(config: ServerConfig): Promise<void> {
   const tokens = new TokenStore(path.join(home, 'auth.json'))
   tokens.onRevoke((deviceId) => alerts.forgetDevice(deviceId))
 
+  const tailscale = new TailscaleService()
+  // The relay can be switched on, changed or off while the host runs (see `relayControl`).
+  let relayUrl = config.relayUrl
+  let relayPassword = config.relayPassword
+  let telemetryOn = config.telemetry ?? false
+  const telemetry = new Telemetry({
+    target: () =>
+      relayUrl && relayPassword ? { url: relayUrl, password: relayPassword } : undefined,
+    enabled: () => telemetryOn,
+    hostLabel: hostLabel(hostId),
+    log,
+  })
+  let relayRoute: string | undefined
+  let relay: RelayAgent | undefined
+  const relaySettings = (): RelaySettings => ({
+    url: relayUrl,
+    passwordSet: !!relayPassword,
+    telemetry: telemetryOn,
+    status: relay && relay.status !== 'stopped' ? relay.status : 'off',
+  })
+  const relayControl = {
+    get: relaySettings,
+    // A password of undefined keeps the one in use; an empty one removes it.
+    async set(
+      input: string | null,
+      password?: string | null,
+      telemetryChoice?: boolean,
+    ): Promise<RelaySettings> {
+      const next = input === null || input.trim() === '' ? undefined : normalizeRelayUrl(input)
+      if (password !== undefined) relayPassword = password?.trim() || undefined
+      if (telemetryChoice !== undefined) telemetryOn = telemetryChoice
+      writeConfigFile({
+        ...readConfigFile(),
+        relayUrl: next,
+        relayPassword: next ? relayPassword : undefined,
+        telemetry: telemetryOn,
+      })
+      relayUrl = next
+      relay?.stop()
+      relay = undefined
+      relayRoute = undefined
+      if (next) startRelay(next)
+      return relaySettings()
+    },
+  }
+  // Devices on other networks reach this host through the relay, which this host dials out to.
+  const startRelay = (url: string) => {
+    const key = loadRelayKey(home, newRelayKey)
+    relayRoute = buildRelayRoute(url, key)
+    relay = new RelayAgent({
+      url,
+      key,
+      password: relayPassword,
+      attach: (socket) => server.attach(socket, 'other'),
+      log,
+    })
+    relay.start()
+  }
   const server = await startServer({
     port: config.port,
     host: config.host,
@@ -109,7 +180,21 @@ export async function runServer(config: ServerConfig): Promise<void> {
     watchers,
     tokens,
     pairing: new PairingManager(),
-    tailscale: new TailscaleService(),
+    tailscale,
+    reachable: async () => ({
+      hostId,
+      name: os.hostname(),
+      relay: relayRoute,
+      routes: await reachableRoutes({
+        tailscale,
+        port,
+        listenHost: config.host,
+        allowLan: config.guard.allowLan,
+      }),
+    }),
+    relay: relayControl,
+    telemetry,
+    telemetryRecorder: (name, value, tags) => telemetry.record(name, value, tags),
     automation: { schedules, alerts, designs },
     agentTools,
     browser: automation.browser,
@@ -117,6 +202,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     log,
   })
   port = server.port
+  if (relayUrl) startRelay(relayUrl)
   schedules.start()
   log.info(`listening on ${config.host}:${server.port} (data: ${home})`)
   if (!isLoopbackHost(config.host)) {
@@ -130,6 +216,8 @@ export async function runServer(config: ServerConfig): Promise<void> {
     log,
     exit: (code) => process.exit(code),
     close: async () => {
+      relay?.stop()
+      telemetry.stop()
       automation.stop()
       await sessions.close()
       workspace.terminals.shutdown()
