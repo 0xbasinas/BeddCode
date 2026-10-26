@@ -149,18 +149,21 @@ export default function PairScreen() {
             </Text>
           </View>
         ) : null}
-      </View>
-      <View style={styles.footer}>
-        <View />
         {link && !paired ? (
           <Button
             label={busy ? 'Pairing…' : 'Pair and connect'}
             kind="primary"
             onPress={() => void pair()}
             disabled={busy}
+            style={styles.action}
           />
         ) : (
-          <Button label="Done" kind="primary" onPress={() => router.replace('/')} />
+          <Button
+            label="Done"
+            kind="primary"
+            onPress={() => router.replace('/')}
+            style={styles.action}
+          />
         )}
       </View>
     </Screen>
@@ -199,11 +202,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.panel,
     padding: 12,
   },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-  },
+  // Under the text, not pinned to the bottom edge, so it is always in view.
+  action: { alignSelf: 'stretch', marginTop: 8 },
 })
