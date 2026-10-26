@@ -1,9 +1,10 @@
 import type { Icon as PhosphorIcon } from 'phosphor-react-native'
 import { Check } from 'phosphor-react-native'
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { ScrollView, StyleSheet, View } from 'react-native'
 
 import { colors, radius } from '@/theme/tokens'
 import { Icon } from './Icon'
+import { PressableScale } from './PressableScale'
 import { Sheet } from './Sheet'
 import { Faint, Text } from './Text'
 
@@ -42,7 +43,8 @@ export function MenuSheet({
       ) : null}
       <ScrollView bounces={false} style={{ flexGrow: 0 }}>
         {items.map((item, index) => (
-          <Pressable
+          <PressableScale
+            scaleTo={0.98}
             // Ids come from the agents (two of them may share one), so the position is part of the key.
             key={`${index}:${item.id}`}
             disabled={item.disabled}
@@ -70,7 +72,7 @@ export function MenuSheet({
               {item.hint ? <Faint size={12}>{item.hint}</Faint> : null}
             </View>
             {item.selected ? <Icon icon={Check} size={16} color={colors.textSecondary} /> : null}
-          </Pressable>
+          </PressableScale>
         ))}
       </ScrollView>
     </Sheet>

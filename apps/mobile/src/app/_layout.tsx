@@ -56,16 +56,19 @@ export default function RootLayout() {
   const entries = useHostStore((s) => s.entries)
   const runtimes = useHostStore((s) => s.runtimes)
   const anyConnected = entries.some((e) => runtimes[e.key]?.connection === 'connected')
+  // A saved copy of the history is already on screen, so there is nothing to wait for.
+  const anyRestored = entries.some((e) => (runtimes[e.key]?.replica.order.length ?? 0) > 0)
   useEffect(() => {
     if (!fontsLoaded) return
-    const short = setTimeout(() => setMinimumShown(true), 900)
+    const short = setTimeout(() => setMinimumShown(true), 450)
     const long = setTimeout(() => setGaveUp(true), 5000)
     return () => {
       clearTimeout(short)
       clearTimeout(long)
     }
   }, [fontsLoaded])
-  const done = minimumShown && ready && (entries.length === 0 || anyConnected || gaveUp)
+  const done =
+    minimumShown && ready && (entries.length === 0 || anyConnected || anyRestored || gaveUp)
   const onGone = useCallback(() => setGone(true), [])
   const waitingFor = entries.find((e) => runtimes[e.key]?.connection !== 'connected')
   const status = !ready
@@ -88,6 +91,9 @@ export default function RootLayout() {
               headerShown: false,
               contentStyle: { backgroundColor: colors.panel },
               animation: 'slide_from_right',
+              animationDuration: 240,
+              // Swipe back from anywhere on the screen, not just its edge (iOS).
+              fullScreenGestureEnabled: true,
             }}
           />
           {gone ? null : <LoadingScreen status={status} done={done} onGone={onGone} />}

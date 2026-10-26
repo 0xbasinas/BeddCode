@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
-import { Modal, Pressable, StyleSheet, View } from 'react-native'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Animated, Easing, Modal, Pressable, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { colors, radius } from '@/theme/tokens'
@@ -18,20 +18,49 @@ export function Sheet({
   children: ReactNode
 }) {
   const insets = useSafeAreaInsets()
+  // The modal stays up while the panel slides away, then goes.
+  const [mounted, setMounted] = useState(visible)
+  const progress = useRef(new Animated.Value(visible ? 1 : 0)).current
+  useEffect(() => {
+    if (visible) {
+      setMounted(true)
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: 240,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start()
+    } else {
+      Animated.timing(progress, {
+        toValue: 0,
+        duration: 160,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start(({ finished }) => finished && setMounted(false))
+    }
+  }, [visible, progress])
+  if (!mounted) return null
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
+    <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
       <Pressable style={styles.outside} onPress={onClose} accessibilityLabel="Close" />
       <View
         pointerEvents="box-none"
         style={[styles.anchor, { paddingBottom: Math.max(insets.bottom, 8) + 6 }]}
       >
-        <View style={styles.panel}>{children}</View>
+        <Animated.View
+          style={[
+            styles.panel,
+            {
+              opacity: progress,
+              transform: [
+                { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [36, 0] }) },
+                { scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.98, 1] }) },
+              ],
+            },
+          ]}
+        >
+          {children}
+        </Animated.View>
       </View>
     </Modal>
   )

@@ -170,7 +170,8 @@ function startHost(entry: HostEntry) {
 
   const queue: StoredEvent[] = []
   let scheduled = false
-  // Coalesce bursts of streamed events into one state update per frame.
+  // Coalesce bursts of streamed events into one state update every few frames: streamed text
+  // reads the same at 20 updates a second, and the screen does a third of the work.
   const flush = () => {
     scheduled = false
     const batch = queue.splice(0)
@@ -202,7 +203,7 @@ function startHost(entry: HostEntry) {
       queue.push(stored)
       if (!scheduled) {
         scheduled = true
-        requestAnimationFrame(flush)
+        setTimeout(flush, useHostStore.getState().runtimes[entry.key]?.synced ? 50 : 250)
       }
     },
     onFrame(frame) {

@@ -440,6 +440,11 @@ kbd {
   padding: 0 0 calc(24px * var(--ui-scale));
   font-size: calc(15px * var(--ui-scale));
 }
+/* Messages scrolled far out of view are not laid out or painted until they come near. */
+.transcript-inner > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 90px;
+}
 .msg.user {
   background: var(--bg-raised);
   padding: calc(12px * var(--ui-scale)) calc(16px * var(--ui-scale));
