@@ -8,7 +8,6 @@ import { startNotifications } from '../notifications/notifier.ts'
 import { LeftRail } from './LeftRail.tsx'
 import { RightRail } from './RightRail.tsx'
 import { HostStatusBanner } from './HostStatusBanner.tsx'
-import { RemoteStatusBanner } from './RemoteStatusBanner.tsx'
 import { WindowBar } from './WindowBar.tsx'
 import { RAIL_WIDTH, openPaneWidth, rememberPaneWidth } from './paneWidth.ts'
 import { Sidebar } from './Sidebar.tsx'
@@ -107,7 +106,6 @@ export function AppShell() {
       <FolderPickerHint />
       <WindowBar />
       <HostStatusBanner />
-      <RemoteStatusBanner />
     </>
   )
   if (settings)

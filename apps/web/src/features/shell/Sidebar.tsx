@@ -38,6 +38,7 @@ import type { Project } from '@beddcode/contracts'
 import { ContextMenu, type ContextMenuItem } from '../../ui/ContextMenu.tsx'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import {
+  reconnectHostsNow,
   setSessionDone,
   setSessionPinned,
   useAllSessions,
@@ -399,6 +400,15 @@ ${s.projectless ? 'no-project' : s.projectPath}`
                   {selectedHost === entry.key && <Check size={14} />}
                 </button>
               ))}
+              {entries.some((e) => {
+                const c = runtimes[e.key]?.connection
+                return e.key !== LOCAL_HOST_KEY && c !== undefined && c !== 'connected'
+              }) && (
+                <button className="menu-row" onClick={() => reconnectHostsNow()}>
+                  <Server size={15} />
+                  Retry connecting now
+                </button>
+              )}
               <div className="menu-sep" />
               <button
                 className="menu-row"
