@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronDown,
   ChevronUp,
@@ -21,6 +21,7 @@ import { AgentToolCard } from './AgentToolCard.tsx'
 import { isAgentTool, isBrowserTool } from '@beddcode/client-runtime'
 import { BrowserToolCard } from './BrowserToolCard.tsx'
 import { TurnChangesCard } from './TurnChanges.tsx'
+import { readingPosition, rememberReadingPosition } from './threadState.ts'
 
 type Item = TranscriptItem
 
@@ -28,7 +29,7 @@ type Item = TranscriptItem
 const FIRST_BLOCKS = 80
 const MORE_BLOCKS = 120
 
-export function Transcript({
+export const Transcript = memo(function Transcript({
   items,
   cwd,
   onApprove,
@@ -41,6 +42,7 @@ export function Transcript({
   sessionId,
   hostKey,
   jumpTo,
+  readingKey,
 }: {
   items: Item[]
   cwd: string
@@ -58,15 +60,19 @@ export function Transcript({
   completedTurns?: number
   /** Draws this message if it is among the earlier, undrawn ones (a new `n` asks again). */
   jumpTo?: { id: string; n: number }
+  readingKey?: string
   /** A turn the user stopped; its fork button stays visible instead of waiting for a hover. */
   stoppedTurn?: number
 }) {
-  const blocks = buildBlocks(items)
+  const blocks = useMemo(() => buildBlocks(items), [items])
   // Where drawing starts. It stays put as the thread grows, so rows already on screen keep their place.
-  const [view, setWindow] = useState({
+  const [view, setWindow] = useState(() => ({
     id: sessionId,
-    from: Math.max(0, blocks.length - FIRST_BLOCKS),
-  })
+    from: Math.min(
+      readingPosition(readingKey)?.from ?? Math.max(0, blocks.length - FIRST_BLOCKS),
+      Math.max(0, blocks.length - FIRST_BLOCKS),
+    ),
+  }))
   let from = view.from
   if (view.id !== sessionId) {
     from = Math.max(0, blocks.length - FIRST_BLOCKS)
@@ -81,16 +87,19 @@ export function Transcript({
       setWindow({ id: sessionId, from })
     }
   }
+  useLayoutEffect(() => {
+    if (readingKey) rememberReadingPosition(readingKey, { from })
+  }, [readingKey, from])
   const showEarlier = () => setWindow({ id: sessionId, from: Math.max(0, from - MORE_BLOCKS) })
   const latestChanges = items.findLast((i) => i.kind === 'changes')?.id
   // "Fork from here" goes at the end of each turn: after its last reply or, when the turn was
   // stopped mid-work, after the tool calls that ran before the stop.
-  const forkAnchor = new Map<number, number>()
-  {
+  const forkAnchor = useMemo(() => {
+    const anchors = new Map<number, number>()
     let segment: { turnNo?: number; last: number } = { last: -1 }
     const close = () => {
       if (segment.turnNo !== undefined && segment.last >= 0)
-        forkAnchor.set(segment.turnNo, segment.last)
+        anchors.set(segment.turnNo, segment.last)
       segment = { last: -1 }
     }
     blocks.forEach((b, i) => {
@@ -101,7 +110,8 @@ export function Transcript({
       if (b.item.kind === 'message' || b.item.kind === 'tool') segment.last = i
     })
     close()
-  }
+    return anchors
+  }, [blocks])
   const forkButton = (turnNo: number) =>
     onFork && (
       <button
@@ -211,7 +221,7 @@ export function Transcript({
       })}
     </>
   )
-}
+})
 
 function ItemView({
   item,

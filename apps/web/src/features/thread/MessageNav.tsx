@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { TranscriptItem } from '@beddcode/client-runtime'
 
 /** The collapsed rail shows this many ticks around the message being read. */
@@ -10,7 +10,7 @@ const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim()
  * A rail of ticks at the thread's edge, one per message you sent. Hover it for the list; picking
  * one scrolls there. The tick of the message being read is highlighted.
  */
-export function MessageNav({
+export const MessageNav = memo(function MessageNav({
   items,
   scroller,
   onJump,
@@ -107,4 +107,4 @@ export function MessageNav({
       </div>
     </nav>
   )
-}
+})

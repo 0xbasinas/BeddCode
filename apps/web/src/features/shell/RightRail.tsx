@@ -6,7 +6,7 @@ import {
   PanelRightOpen,
   SquareTerminal,
 } from 'lucide-react'
-import { useEffect, type ComponentType, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, type ComponentType, type ReactNode } from 'react'
 import { useRouterState } from '@tanstack/react-router'
 import { useSession, useSessionHostKey } from '../../stores/host.ts'
 import { HostScopeProvider } from '../../stores/HostScope.tsx'
@@ -15,11 +15,18 @@ import { useComposerWorkspace, type PaneWorkspace } from '../../stores/composerW
 import { useUiStore, type PaneId } from '../../stores/ui.ts'
 import { isMac } from '../../ui/desktop.ts'
 import { MissingFolder, useFolderMissing } from './MissingFolder.tsx'
-import { BrowserPane } from '../browser/BrowserPane.tsx'
 import { EMPTY_FOLDER, folderId, useFiles } from '../files/filesStore.ts'
-import { FilesPane } from '../files/FilesPane.tsx'
-import { GitPane } from '../git/GitPane.tsx'
-import { TerminalPane } from '../terminal/TerminalPane.tsx'
+
+const BrowserPane = lazy(() =>
+  import('../browser/BrowserPane.tsx').then((m) => ({ default: m.BrowserPane })),
+)
+const FilesPane = lazy(() =>
+  import('../files/FilesPane.tsx').then((m) => ({ default: m.FilesPane })),
+)
+const GitPane = lazy(() => import('../git/GitPane.tsx').then((m) => ({ default: m.GitPane })))
+const TerminalPane = lazy(() =>
+  import('../terminal/TerminalPane.tsx').then((m) => ({ default: m.TerminalPane })),
+)
 
 const panes: { id: PaneId; label: string; Icon: ComponentType<{ size?: number }> }[] = [
   { id: 'terminal', label: 'Terminal', Icon: SquareTerminal },
@@ -109,13 +116,21 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
           aria-label={activePane}
         >
           <HostScopeProvider hostKey={hostKey}>
-            {activePane === 'git' &&
-              needFolder((s) => <GitPane key={workspaceKey} workspace={s} />)}
-            {activePane === 'terminal' &&
-              needFolder((s) => <TerminalPane key={workspaceKey} workspace={s} />)}
-            {activePane === 'files' &&
-              needFolder((s) => <FilesPane key={workspaceKey} workspace={s} />)}
-            {activePane === 'browser' && <BrowserPane draftId={workspace?.draftId} />}
+            <Suspense
+              fallback={
+                <div className="git-empty muted" role="status">
+                  Loading pane…
+                </div>
+              }
+            >
+              {activePane === 'git' &&
+                needFolder((s) => <GitPane key={workspaceKey} workspace={s} />)}
+              {activePane === 'terminal' &&
+                needFolder((s) => <TerminalPane key={workspaceKey} workspace={s} />)}
+              {activePane === 'files' &&
+                needFolder((s) => <FilesPane key={workspaceKey} workspace={s} />)}
+              {activePane === 'browser' && <BrowserPane draftId={workspace?.draftId} />}
+            </Suspense>
           </HostScopeProvider>
         </section>
       )}
