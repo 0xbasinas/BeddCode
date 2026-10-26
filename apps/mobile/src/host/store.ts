@@ -10,6 +10,7 @@ import {
   decodeSnapshot,
   ReplicaSaver,
   SNAPSHOT_VERSION,
+  now,
   loadRemoteHosts,
   saveRemoteHosts,
   upsertHost,
@@ -404,12 +405,16 @@ export async function prompt(
   attachmentIds?: string[],
   mode?: 'auto' | 'queue',
 ) {
-  return sessionRequest(sessionId, 'sessions.prompt', {
+  const started = now()
+  const result = await sessionRequest(sessionId, 'sessions.prompt', {
     sessionId,
     text,
     attachments: attachmentIds && attachmentIds.length > 0 ? attachmentIds : undefined,
     mode,
   })
+  const hostKey = hostKeyOfSession(sessionId)
+  if (hostKey) recordMetric(hostKey, 'send.ack.ms', now() - started, { state: result.state })
+  return result
 }
 
 /** Cancels a queued message, or sends it into the running turn right away. */

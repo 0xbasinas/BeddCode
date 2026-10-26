@@ -468,14 +468,18 @@ export class SessionManager {
         message: err instanceof Error ? err.message : String(err),
       })
     }
-    try {
-      await turn.settling
-      await turn.taking
-      await this.checkpointBefore(sessionId, turn)
-      session.prompt(promptInput(text, attachments)).catch(failed)
-    } catch (err) {
-      failed(err)
-    }
+    // The sender is answered now, with its message already in the log; waiting for the snapshot
+    // of the folder would hold the composer for as long as git takes.
+    void (async () => {
+      try {
+        await turn.settling
+        await turn.taking
+        await this.checkpointBefore(sessionId, turn)
+        session.prompt(promptInput(text, attachments)).catch(failed)
+      } catch (err) {
+        failed(err)
+      }
+    })()
   }
 
   /** Where a session's turn snapshots go, or null when its folder is not a git repository. */

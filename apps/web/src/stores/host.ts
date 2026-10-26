@@ -9,6 +9,7 @@ import {
   decodeSnapshot,
   ReplicaSaver,
   SNAPSHOT_VERSION,
+  now,
   type ConnectionState,
   type ReplicaState,
   type SessionView,
@@ -116,6 +117,16 @@ export function onHostFrame(hostKey: string, listener: (frame: LiveFrame) => voi
 /** Sends a frame to a host; false when not connected (nothing was sent). */
 export function sendHostFrame(hostKey: string, frame: ClientFrame): boolean {
   return clients.get(hostKey)?.send(frame) ?? false
+}
+
+/** Records a speed measurement against a host (sent to it when its owner turned that on). */
+export function recordMetric(
+  hostKey: string,
+  name: string,
+  value: number,
+  tags?: Record<string, string | number | boolean>,
+) {
+  clients.get(hostKey)?.perf.record(name, value, tags)
 }
 
 function requireClient(hostKey: string): HostClient {
@@ -505,12 +516,17 @@ export async function prompt(
   attachmentIds?: string[],
   mode?: 'auto' | 'queue',
 ) {
-  return sessionRequest(sessionId, 'sessions.prompt', {
+  const started = now()
+  const result = await sessionRequest(sessionId, 'sessions.prompt', {
     sessionId,
     text,
     attachments: attachmentIds && attachmentIds.length > 0 ? attachmentIds : undefined,
     mode,
   })
+  // Enter to the host having the message: the part of sending that is not the agent's thinking.
+  const hostKey = hostKeyOfSession(sessionId)
+  if (hostKey) recordMetric(hostKey, 'send.ack.ms', now() - started, { state: result.state })
+  return result
 }
 
 /** Cancels a queued message, or sends it into the running turn right away. */

@@ -64,7 +64,7 @@ th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:
 </main>
 <script>
 (function(){
-var KEY=[['replay.ms','Catching up','How long a device takes to load the thread history after it connects'],['connect.ms','Connecting','From opening the app to talking to your computer'],['thread.open.ms','Opening a thread','Tap to a thread being on screen']];
+var KEY=[['replay.ms','Catching up','How long a device takes to load the thread history after it connects'],['connect.ms','Connecting','From opening the app to talking to your computer'],['thread.open.ms','Opening a thread','Tap to a thread being on screen'],['send.ack.ms','Sending a message','Enter to the host having your message, before the agent starts thinking']];
 var $=function(id){return document.getElementById(id)};
 var pw=null,data=null;
 try{pw=sessionStorage.getItem('pw')}catch(e){}
