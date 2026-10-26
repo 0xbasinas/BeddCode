@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import {
   Animated,
   Pressable,
@@ -24,14 +24,20 @@ export function PressableScale({
   ...rest
 }: Omit<PressableProps, 'style'> & { scaleTo?: number; style?: Style }) {
   const scale = useRef(new Animated.Value(1)).current
+  const [pressed, setPressed] = useState(false)
+  // Animated ignores a style that is a function, which would leave `scale` an unwired value on a
+  // plain view (and the button invisible). So the function is resolved here, to an ordinary style.
+  const resolved = typeof style === 'function' ? style({ pressed, hovered: false }) : style
   return (
     <AnimatedPressable
       {...rest}
       onPressIn={(e) => {
+        setPressed(true)
         Animated.timing(scale, { toValue: scaleTo, duration: 70, useNativeDriver: true }).start()
         onPressIn?.(e)
       }}
       onPressOut={(e) => {
+        setPressed(false)
         Animated.spring(scale, {
           toValue: 1,
           speed: 40,
@@ -40,10 +46,7 @@ export function PressableScale({
         }).start()
         onPressOut?.(e)
       }}
-      style={(state) => [
-        typeof style === 'function' ? style(state) : style,
-        { transform: [{ scale }] },
-      ]}
+      style={[resolved, { transform: [{ scale }] }]}
     />
   )
 }
