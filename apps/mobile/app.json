@@ -56,6 +56,12 @@
       "typedRoutes": true,
       "reactCompiler": true
     },
-    "backgroundColor": "#101010"
+    "backgroundColor": "#101010",
+    "extra": {
+      "eas": {
+        "projectId": "46df81e1-c436-42a5-9097-2634255e897c"
+      }
+    },
+    "owner": "0xbasinas"
   }
 }
