@@ -312,6 +312,10 @@ let started = false
  * After sleep, a network change or a long time in the background, check every connection now
  * instead of waiting out a heartbeat or a reconnect back-off.
  */
+export function reconnectHostNow(key: string) {
+  clients.get(key)?.reconnectNow()
+}
+
 export function reconnectHostsNow() {
   for (const client of clients.values()) client.reconnectNow()
 }

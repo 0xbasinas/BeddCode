@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   ArrowDownWideNarrow,
@@ -38,7 +38,7 @@ import type { Project } from '@beddcode/contracts'
 import { ContextMenu, type ContextMenuItem } from '../../ui/ContextMenu.tsx'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import {
-  reconnectHostsNow,
+  reconnectHostNow,
   setSessionDone,
   setSessionPinned,
   useAllSessions,
@@ -379,36 +379,39 @@ ${s.projectless ? 'no-project' : s.projectPath}`
                 {selectedHost === 'all' && <Check size={14} />}
               </button>
               {entries.map((entry) => (
-                <button
-                  key={entry.key}
-                  className="menu-row"
-                  role="menuitemradio"
-                  aria-checked={selectedHost === entry.key}
-                  onClick={() => {
-                    setHostFilter(entry.key)
-                    close()
-                  }}
-                >
-                  {entry.key === LOCAL_HOST_KEY ? <Monitor size={15} /> : <Server size={15} />}
-                  <span className="menu-text">{runtimes[entry.key]?.host?.name ?? entry.name}</span>
-                  <span
-                    className={`host-status ${hostState(runtimes[entry.key]?.connection).tone}`}
+                <Fragment key={entry.key}>
+                  <button
+                    className="menu-row"
+                    role="menuitemradio"
+                    aria-checked={selectedHost === entry.key}
+                    onClick={() => {
+                      setHostFilter(entry.key)
+                      close()
+                    }}
                   >
-                    <span className="dot" />
-                    {hostState(runtimes[entry.key]?.connection).label}
-                  </span>
-                  {selectedHost === entry.key && <Check size={14} />}
-                </button>
+                    {entry.key === LOCAL_HOST_KEY ? <Monitor size={15} /> : <Server size={15} />}
+                    <span className="menu-text">
+                      {runtimes[entry.key]?.host?.name ?? entry.name}
+                    </span>
+                    <span
+                      className={`host-status ${hostState(runtimes[entry.key]?.connection).tone}`}
+                    >
+                      <span className="dot" />
+                      {hostState(runtimes[entry.key]?.connection).label}
+                    </span>
+                    {selectedHost === entry.key && <Check size={14} />}
+                  </button>
+                  {entry.key !== LOCAL_HOST_KEY &&
+                    ['connecting', 'reconnecting'].includes(
+                      runtimes[entry.key]?.connection ?? '',
+                    ) && (
+                      <div className="menu-detail">
+                        <span>Messages you send go out when it is back.</span>
+                        <button onClick={() => reconnectHostNow(entry.key)}>Retry now</button>
+                      </div>
+                    )}
+                </Fragment>
               ))}
-              {entries.some((e) => {
-                const c = runtimes[e.key]?.connection
-                return e.key !== LOCAL_HOST_KEY && c !== undefined && c !== 'connected'
-              }) && (
-                <button className="menu-row" onClick={() => reconnectHostsNow()}>
-                  <Server size={15} />
-                  Retry connecting now
-                </button>
-              )}
               <div className="menu-sep" />
               <button
                 className="menu-row"
