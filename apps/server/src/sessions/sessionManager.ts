@@ -75,6 +75,8 @@ interface TurnState {
   sendAfterInterrupt?: string
   /** The snapshot taken as the running turn started (see `turn.changes`). */
   before?: { hash: string; refBase: string }
+  /** The message is answered but not yet with the agent: the snapshot comes first. */
+  starting?: Promise<void>
   /** The starting snapshot, still being taken after the message was already sent. */
   taking?: Promise<void>
   /** Recording the last turn's changes; the next turn waits so the snapshots do not overlap. */
@@ -82,10 +84,12 @@ interface TurnState {
 }
 
 /**
- * How long sending a message waits for the turn's starting snapshot. The agent needs longer than
- * this to get to its first edit, so a slow snapshot carries on while it thinks.
+ * How long the agent's start waits for the turn's starting snapshot before going ahead without
+ * one (the snapshot then carries on). The sender is answered at once either way. Waiting for the
+ * snapshot matters: an agent that starts first can edit files the snapshot would then include,
+ * and the turn's changes and undo would miss them.
  */
-const CHECKPOINT_GRACE_MS = 300
+const CHECKPOINT_GRACE_MS = 4_000
 /** Folders with more untracked (and not ignored) files than this get no turn snapshots. */
 const CHECKPOINT_MAX_UNTRACKED = 5_000
 /** Turns per session whose snapshots are kept (for their diffs); older ones are dropped. */
@@ -392,6 +396,7 @@ export class SessionManager {
       // No way to talk into the running turn: stop it and send this next.
       turn.queue.unshift(item)
       turn.sendAfterInterrupt = queueId
+      await turn.starting
       await live.session.interrupt()
     }
   }
@@ -470,7 +475,7 @@ export class SessionManager {
     }
     // The sender is answered now, with its message already in the log; waiting for the snapshot
     // of the folder would hold the composer for as long as git takes.
-    void (async () => {
+    const starting = (async () => {
       try {
         await turn.settling
         await turn.taking
@@ -480,6 +485,10 @@ export class SessionManager {
         failed(err)
       }
     })()
+    turn.starting = starting
+    void starting.finally(() => {
+      if (turn.starting === starting) turn.starting = undefined
+    })
   }
 
   /** Where a session's turn snapshots go, or null when its folder is not a git repository. */
@@ -662,9 +671,12 @@ export class SessionManager {
     return state
   }
 
-  interrupt(sessionId: string): Promise<void> {
+  async interrupt(sessionId: string): Promise<void> {
     this.dropAsks(sessionId)
-    return this.requireLive(sessionId).session.interrupt()
+    const { session } = this.requireLive(sessionId)
+    // A stop pressed while the message is still on its way to the agent waits for it to arrive.
+    await this.turnState(sessionId).starting
+    return session.interrupt()
   }
 
   rename(sessionId: string, title: string): void {
@@ -780,6 +792,10 @@ export class SessionManager {
   }
 
   async close() {
+    // Messages still on their way to the agent, and snapshots still being taken, finish first.
+    await Promise.allSettled(
+      [...this.turns.values()].flatMap((t) => [t.starting, t.taking, t.settling]),
+    )
     await Promise.all([...this.live.values()].map((l) => l.session.close()))
     this.live.clear()
   }

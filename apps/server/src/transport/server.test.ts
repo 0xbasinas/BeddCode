@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -27,6 +27,7 @@ import { startServer, type RunningServer } from './server.ts'
 import { createAutomation } from '../automation/index.ts'
 import { startRelay } from '@beddcode/relay'
 import { RelayAgent } from '../relay/agent.ts'
+import { removeDir } from '../testing/removeDir.ts'
 import { pairWithLink } from '../../../../packages/client-runtime/src/pairLink.ts'
 import { newRelayKey } from '../../../../packages/client-runtime/src/relayCrypto.ts'
 import { buildRelayRoute } from '../../../../packages/client-runtime/src/relaySocket.ts'
@@ -66,7 +67,7 @@ async function boot(
   cleanup.push(() => store.close())
   const log = createLogger('test', 'error')
   const dir = mkdtempSync(path.join(os.tmpdir(), 'beddcode-test-'))
-  cleanup.push(() => rmSync(dir, { recursive: true, force: true }))
+  cleanup.push(() => removeDir(dir))
   const acpStore = new AcpAgentStore(path.join(dir, 'acp-agents.json'))
   const attachments = new AttachmentStore(path.join(dir, 'attachments'))
   const git = new GitService()
@@ -294,7 +295,7 @@ describe('server', () => {
     const c = await Client.connect(server.port)
 
     const dir = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'beddcode-api-')))
-    cleanup.push(() => rmSync(dir, { recursive: true, force: true }))
+    cleanup.push(() => removeDir(dir))
     const sh = (...args: string[]) => execFileSync('git', args, { cwd: dir, windowsHide: true })
     sh('init', '-q', '-b', 'main')
     sh('config', 'user.name', 'T')
@@ -390,7 +391,7 @@ describe('server', () => {
     cleanup.push(() => {
       // Windows keeps a just-killed shell's folder locked for a moment; a leftover temp dir is harmless.
       try {
-        rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 150 })
+        removeDir(dir)
       } catch {
         // ignored
       }
@@ -430,9 +431,7 @@ describe('server', () => {
     const { server } = await boot()
     const c = await Client.connect(server.port)
     const dir = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'beddcode-files-api-')))
-    cleanup.push(() =>
-      rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 150 }),
-    )
+    cleanup.push(() => removeDir(dir))
     writeFileSync(path.join(dir, 'a.txt'), 'one\n')
 
     expect(
@@ -473,7 +472,7 @@ describe('server', () => {
     const { server, store, attachments } = await boot()
     const c = await Client.connect(server.port)
     const cwd = mkdtempSync(path.join(os.tmpdir(), 'beddcode-context-'))
-    cleanup.push(() => rmSync(cwd, { recursive: true, force: true }))
+    cleanup.push(() => removeDir(cwd))
     const image = Buffer.from([137, 80, 78, 71, 0, 255])
     writeFileSync(path.join(cwd, 'image.png'), image)
     const saved = await c.rpc('attachments.fromFile', { cwd, path: 'image.png' })

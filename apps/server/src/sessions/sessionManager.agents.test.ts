@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -9,10 +9,13 @@ import { PreviewCache } from '../agents/previews.ts'
 import { AttachmentStore } from '../attachments/store.ts'
 import { EventStore } from '../store/eventStore.ts'
 import { GitService } from '../workspace/git.ts'
+import { removeDir } from '../testing/removeDir.ts'
 import { SessionManager } from './sessionManager.ts'
 
 const dirs: string[] = []
-afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })))
+afterEach(async () => {
+  for (const d of dirs.splice(0)) await removeDir(d)
+})
 
 function setup(options: Parameters<typeof createFakeAdapter>[0] = {}) {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'beddcode-agents-'))

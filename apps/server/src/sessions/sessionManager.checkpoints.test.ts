@@ -94,7 +94,7 @@ function setup(edit: (cwd: string, text: string) => void) {
 const events = (store: EventStore, sessionId: string) =>
   store.readSession(sessionId).map((e) => e.event)
 
-async function until<T>(read: () => T | undefined, ms = 10_000): Promise<T> {
+async function until<T>(read: () => T | undefined, ms = 25_000): Promise<T> {
   const end = Date.now() + ms
   for (;;) {
     const value = read()

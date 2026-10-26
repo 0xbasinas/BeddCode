@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ProviderCapabilities, ProviderInstance, SessionEvent } from '@beddcode/contracts'
 import type { ProviderAdapter, ProviderSession, StartSessionInput } from '@beddcode/provider-core'
 import { createAsyncQueue, createLogger } from '@beddcode/shared'
@@ -144,7 +144,9 @@ describe('SessionManager', () => {
       defaultCwd: '/x',
     })
     await restarted.prompt(sessionId, 'continue')
-    await tick()
+    await vi.waitFor(() =>
+      expect(store.readSession(sessionId).map((e) => e.event.type)).toContain('turn.completed'),
+    )
 
     expect(starts).toHaveLength(2)
     expect(starts[1]).toMatchObject({
@@ -153,8 +155,6 @@ describe('SessionManager', () => {
       permissionMode: 'plan',
       resumeId: 'native-1',
     })
-    const types = store.readSession(sessionId).map((e) => e.event.type)
-    expect(types).toContain('turn.completed')
   })
 
   it('starts only one provider process for concurrent prompts to a stopped session', async () => {
