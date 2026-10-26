@@ -19,6 +19,7 @@ import {
   Undo2,
   Bot,
   CalendarClock,
+  History,
   Pin,
   PinOff,
   X,
@@ -46,6 +47,7 @@ import {
 } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { HostsDialog } from '../hosts/HostsDialog.tsx'
+import { HistoryDialog } from '../history/HistoryDialog.tsx'
 import { folderName, timeAgo } from '../../ui/format.ts'
 import { useUiStore } from '../../stores/ui.ts'
 import { AddFolderMenu } from '../folders/AddFolderMenu.tsx'
@@ -117,6 +119,7 @@ export function Sidebar() {
   const runtimes = useHostStore((s) => s.runtimes)
   const [filter, setFilter] = useState<Filter>('all')
   const [hostsOpen, setHostsOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [hostFilter, setHostFilter] = useState<string>('all')
   const [sort, setSort] = useState<'attention' | 'recent'>('attention')
   const searchOpen = useUiStore((s) => s.searchOpen)
@@ -446,7 +449,17 @@ ${s.projectless ? 'no-project' : s.projectPath}`
       </div>
       <div className="folders-head">
         Folders
-        <AddFolderMenu />
+        <span className="folders-actions">
+          <button
+            className="icon-btn"
+            aria-label="Resume an earlier conversation"
+            title="Resume a conversation from the agent's own CLI"
+            onClick={() => setHistoryOpen(true)}
+          >
+            <History size={16} />
+          </button>
+          <AddFolderMenu />
+        </span>
       </div>
       {searchOpen && (
         <div className="session-search">
@@ -595,6 +608,12 @@ ${s.projectless ? 'no-project' : s.projectPath}`
       </div>
 
       {hostsOpen && <HostsDialog onClose={() => setHostsOpen(false)} />}
+      {historyOpen && (
+        <HistoryDialog
+          hostKey={selectedHost === 'all' ? LOCAL_HOST_KEY : selectedHost}
+          onClose={() => setHistoryOpen(false)}
+        />
+      )}
       {menu && (
         <ContextMenu
           x={menu.x}
