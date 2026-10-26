@@ -75,12 +75,17 @@ interface TurnState {
   sendAfterInterrupt?: string
   /** The snapshot taken as the running turn started (see `turn.changes`). */
   before?: { hash: string; refBase: string }
+  /** The starting snapshot, still being taken after the message was already sent. */
+  taking?: Promise<void>
   /** Recording the last turn's changes; the next turn waits so the snapshots do not overlap. */
   settling?: Promise<void>
 }
 
-/** How long a turn waits for its starting snapshot before going ahead without one. */
-const CHECKPOINT_WAIT_MS = 4_000
+/**
+ * How long sending a message waits for the turn's starting snapshot. The agent needs longer than
+ * this to get to its first edit, so a slow snapshot carries on while it thinks.
+ */
+const CHECKPOINT_GRACE_MS = 300
 /** Folders with more untracked (and not ignored) files than this get no turn snapshots. */
 const CHECKPOINT_MAX_UNTRACKED = 5_000
 /** Turns per session whose snapshots are kept (for their diffs); older ones are dropped. */
@@ -465,6 +470,7 @@ export class SessionManager {
     }
     try {
       await turn.settling
+      await turn.taking
       await this.checkpointBefore(sessionId, turn)
       session.prompt(promptInput(text, attachments)).catch(failed)
     } catch (err) {
@@ -503,15 +509,27 @@ export class SessionManager {
         return undefined
       })
     let timer: NodeJS.Timeout | undefined
-    const late = new Promise<undefined>((resolve) => {
-      timer = setTimeout(() => resolve(undefined), CHECKPOINT_WAIT_MS)
+    const late = new Promise<'late'>((resolve) => {
+      timer = setTimeout(() => resolve('late'), CHECKPOINT_GRACE_MS)
     })
-    turn.before = await Promise.race([taking, late])
+    const first = await Promise.race([taking, late])
     clearTimeout(timer)
+    if (first !== 'late') {
+      turn.before = first
+      return
+    }
+    const finishing = taking.then((snapshot) => {
+      turn.before = snapshot
+    })
+    turn.taking = finishing
+    void finishing.finally(() => {
+      if (turn.taking === finishing) turn.taking = undefined
+    })
   }
 
   /** After a turn: snapshot again and record what changed, if anything. */
   private async recordTurnChanges(sessionId: string, turn: TurnState, turnId?: string) {
+    await turn.taking
     const before = turn.before
     turn.before = undefined
     if (!before) return
@@ -1187,7 +1205,7 @@ export class SessionManager {
         if (event.type === 'turn.started') this.turnState(sessionId).busy = true
         if (event.type === 'turn.completed') {
           const turn = this.turnState(sessionId)
-          if (turn.before) {
+          if (turn.before || turn.taking) {
             const settling = this.recordTurnChanges(sessionId, turn, event.turnId)
             turn.settling = settling
             void settling.finally(() => {
