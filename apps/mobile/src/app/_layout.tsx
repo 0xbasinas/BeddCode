@@ -18,6 +18,16 @@ import { LoadingScreen } from '@/ui/LoadingScreen'
 
 SplashScreen.preventAutoHideAsync()
 
+// One object for good: a fresh one per render would make the navigator reconsider every screen.
+const screenOptions = {
+  headerShown: false,
+  contentStyle: { backgroundColor: colors.panel },
+  animation: 'slide_from_right',
+  animationDuration: 240,
+  // Swipe back from anywhere on the screen, not just its edge (iOS).
+  fullScreenGestureEnabled: true,
+} as const
+
 const theme = {
   ...DarkTheme,
   colors: {
@@ -52,30 +62,37 @@ export default function RootLayout() {
   const [minimumShown, setMinimumShown] = useState(false)
   const [gaveUp, setGaveUp] = useState(false)
   const [gone, setGone] = useState(false)
+  // Each of these is a plain value, so this layout (the root of everything) is not redrawn for every
+  // update a host streams, only when one of them actually changes.
   const ready = useHostStore((s) => s.ready)
-  const entries = useHostStore((s) => s.entries)
-  const runtimes = useHostStore((s) => s.runtimes)
-  const anyConnected = entries.some((e) => runtimes[e.key]?.connection === 'connected')
+  const hasHosts = useHostStore((s) => s.entries.length > 0)
+  const anyConnected = useHostStore((s) =>
+    s.entries.some((e) => s.runtimes[e.key]?.connection === 'connected'),
+  )
   // A saved copy of the history is already on screen, so there is nothing to wait for.
-  const anyRestored = entries.some((e) => (runtimes[e.key]?.replica.order.length ?? 0) > 0)
+  const anyRestored = useHostStore((s) =>
+    s.entries.some((e) => (s.runtimes[e.key]?.replica.order.length ?? 0) > 0),
+  )
+  const waitingName = useHostStore((s) => {
+    const waiting = s.entries.find((e) => s.runtimes[e.key]?.connection !== 'connected')
+    return waiting ? (s.runtimes[waiting.key]?.host?.name ?? waiting.name) : undefined
+  })
   useEffect(() => {
     if (!fontsLoaded) return
     const short = setTimeout(() => setMinimumShown(true), 450)
-    const long = setTimeout(() => setGaveUp(true), 5000)
+    const long = setTimeout(() => setGaveUp(true), 2000)
     return () => {
       clearTimeout(short)
       clearTimeout(long)
     }
   }, [fontsLoaded])
-  const done =
-    minimumShown && ready && (entries.length === 0 || anyConnected || anyRestored || gaveUp)
+  const done = minimumShown && ready && (!hasHosts || anyConnected || anyRestored || gaveUp)
   const onGone = useCallback(() => setGone(true), [])
-  const waitingFor = entries.find((e) => runtimes[e.key]?.connection !== 'connected')
   const status = !ready
     ? 'Opening…'
-    : waitingFor
-      ? `Connecting to ${runtimes[waitingFor.key]?.host?.name ?? waitingFor.name}…`
-      : entries.length > 0
+    : waitingName
+      ? `Connecting to ${waitingName}…`
+      : hasHosts
         ? 'Ready'
         : 'Getting things ready…'
 
@@ -86,16 +103,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ThemeProvider value={theme}>
           <StatusBar style="light" />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: colors.panel },
-              animation: 'slide_from_right',
-              animationDuration: 240,
-              // Swipe back from anywhere on the screen, not just its edge (iOS).
-              fullScreenGestureEnabled: true,
-            }}
-          />
+          <Stack screenOptions={screenOptions} />
           {gone ? null : <LoadingScreen status={status} done={done} onGone={onGone} />}
         </ThemeProvider>
       </SafeAreaProvider>

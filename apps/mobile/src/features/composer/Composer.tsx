@@ -15,6 +15,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View }
 
 import { EMPTY_ATTACHMENTS, type DraftAttachment } from '@/host/attachments'
 import { colors, fonts, radius } from '@/theme/tokens'
+import { send as sendHaptic } from '@/ui/haptics'
 import { Icon } from '@/ui/Icon'
 import { Faint, Muted, Text } from '@/ui/Text'
 
@@ -71,6 +72,7 @@ export function Composer({
 
   const send = async () => {
     if (!canSend) return
+    sendHaptic()
     setBusy(true)
     setError(undefined)
     try {

@@ -38,6 +38,7 @@ import { colors, fonts, radius } from '@/theme/tokens'
 import { Diffstat } from '@/ui/Diffstat'
 import { FadeIn } from '@/ui/FadeIn'
 import { animateLayout } from '@/ui/layoutAnimation'
+import { useWhileFocused } from '@/ui/useWhileFocused'
 import { PressableScale } from '@/ui/PressableScale'
 import { Icon } from '@/ui/Icon'
 import { Logo } from '@/ui/Logo'
@@ -73,9 +74,11 @@ type Row =
 /** The sessions of every paired host: the desktop sidebar, as a full screen. */
 export default function SessionsScreen() {
   const entries = useHostStore((s) => s.entries)
-  const runtimes = useHostStore((s) => s.runtimes)
+  // While a thread is open on top, this list keeps what it last drew instead of redoing its
+  // grouping and sorting for every update that thread streams.
+  const runtimes = useWhileFocused(useHostStore((s) => s.runtimes))
   const ready = useHostStore((s) => s.ready)
-  const hosted = useAllSessions()
+  const hosted = useWhileFocused(useAllSessions())
   const { openDone, collapsed, toggleDone, toggleCollapsed } = usePrefs()
 
   const [filter, setFilter] = useState<Filter>('all')

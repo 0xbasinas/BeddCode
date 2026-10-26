@@ -1,6 +1,7 @@
 import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native'
 
 import { colors, radius } from '@/theme/tokens'
+import { tap } from './haptics'
 import { PressableScale } from './PressableScale'
 import { Text } from './Text'
 
@@ -23,7 +24,10 @@ export function Button({
     <PressableScale
       accessibilityRole="button"
       disabled={disabled}
-      onPress={onPress}
+      onPress={() => {
+        tap()
+        onPress?.()
+      }}
       style={({ pressed }) => [
         styles.base,
         {

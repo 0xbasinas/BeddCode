@@ -29,7 +29,7 @@ import {
   X,
 } from 'phosphor-react-native'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, FlatList, Platform, Pressable, StyleSheet, View } from 'react-native'
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native'
 import Markdown from '@ronradtke/react-native-markdown-display'
 
 import { colors, fonts, radius } from '@/theme/tokens'
@@ -535,9 +535,8 @@ export function Transcript({
       contentContainerStyle={styles.list}
       keyboardShouldPersistTaps="handled"
       initialNumToRender={14}
-      windowSize={9}
-      maxToRenderPerBatch={8}
-      removeClippedSubviews={Platform.OS === 'android'}
+      windowSize={5}
+      maxToRenderPerBatch={6}
       maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
       onStartReached={hidden > 0 ? showEarlier : undefined}
       onStartReachedThreshold={0.6}
