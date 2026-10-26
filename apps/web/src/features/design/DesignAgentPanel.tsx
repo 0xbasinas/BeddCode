@@ -18,14 +18,22 @@ import {
   useAllSessions,
   useRuntime,
 } from '../../stores/host.ts'
-import { agentDefaults, defaultAgent, hostDefaults, usePreferences } from '../../stores/preferences.ts'
+import {
+  agentDefaults,
+  defaultAgent,
+  hostDefaults,
+  usePreferences,
+} from '../../stores/preferences.ts'
 
 const NEW = 'new'
 
 /** What is selected on the canvas, which the agent can read with design_get_selection. */
 function SelectionStrip() {
   const names = useEditorStore((s) =>
-    s.selectedElementIds.map((id) => findElementInList(s.elements, id)?.name ?? '').filter(Boolean).join('|'),
+    s.selectedElementIds
+      .map((id) => findElementInList(s.elements, id)?.name ?? '')
+      .filter(Boolean)
+      .join('|'),
   )
   const list = names ? names.split('|') : []
   if (list.length === 0) return null
@@ -58,17 +66,32 @@ export function DesignAgentPanel({ hostKey }: { hostKey: string }) {
   const shown = picked === NEW ? undefined : (sessions.find((s) => s.id === picked) ?? sessions[0])
   const [instanceId, setInstanceId] = useState<string>()
   const ready = readyProviders(providers)
-  const agent = ready.find((p) => p.id === instanceId) ?? defaultAgent(providers, defaults.instanceId)
+  const agent =
+    ready.find((p) => p.id === instanceId) ?? defaultAgent(providers, defaults.instanceId)
   const saved = agentDefaults(defaults, agent)
   const selectionKey = `${host?.hostId ?? hostKey}:${agent?.id ?? ''}`
-  const [selection, setSelection] = useState<{ key: string; modeId?: string; choice: ModelChoice }>()
-  const [configState, setConfigState] = useState<{ key: string; values: Record<string, string | boolean> }>()
+  const [selection, setSelection] = useState<{
+    key: string
+    modeId?: string
+    choice: ModelChoice
+  }>()
+  const [configState, setConfigState] = useState<{
+    key: string
+    values: Record<string, string | boolean>
+  }>()
   const [commands, setCommands] = useState<SlashCommand[]>([])
   const [preview, setPreview] = useState<{ key: string; data?: AgentPreview }>()
 
   const modeId = selection?.key === selectionKey ? selection.modeId : saved.permissionMode
-  const chosen = selection?.key === selectionKey ? selection.choice : { model: saved.model, effort: saved.effort }
-  const choice = modelChoice(agent?.capabilities.models ?? [], agent?.capabilities.efforts ?? [], chosen)
+  const chosen =
+    selection?.key === selectionKey
+      ? selection.choice
+      : { model: saved.model, effort: saved.effort }
+  const choice = modelChoice(
+    agent?.capabilities.models ?? [],
+    agent?.capabilities.efforts ?? [],
+    chosen,
+  )
   const setModeId = (next: string) => setSelection({ key: selectionKey, modeId: next, choice })
   const setChoice = (next: ModelChoice) => setSelection({ key: selectionKey, modeId, choice: next })
 
@@ -98,7 +121,10 @@ export function DesignAgentPanel({ hostKey }: { hostKey: string }) {
   }, [hostKey, agent?.id, agent?.kind, connection, selectionKey])
   const offered = preview?.key === selectionKey ? preview.data : undefined
   const configValues = configState?.key === selectionKey ? configState.values : {}
-  const configOptions = (offered?.config ?? []).map((o) => ({ ...o, value: configValues[o.id] ?? o.value }))
+  const configOptions = (offered?.config ?? []).map((o) => ({
+    ...o,
+    value: configValues[o.id] ?? o.value,
+  }))
   const nativeModes = agent?.capabilities.permissionModes ?? []
   const modes = nativeModes.length > 0 ? nativeModes : (offered?.modes ?? [])
   const validModeId = modes.some((m) => m.id === modeId) ? modeId : undefined
@@ -175,7 +201,10 @@ export function DesignAgentPanel({ hostKey }: { hostKey: string }) {
                   <ConfigMenu
                     options={configOptions}
                     onChange={(id, value) =>
-                      setConfigState({ key: selectionKey, values: { ...configValues, [id]: value } })
+                      setConfigState({
+                        key: selectionKey,
+                        values: { ...configValues, [id]: value },
+                      })
                     }
                   />
                   <ModelMenu

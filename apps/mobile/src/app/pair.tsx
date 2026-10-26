@@ -18,7 +18,8 @@ import { Screen } from '@/ui/Screen'
 import { Muted, Text } from '@/ui/Text'
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v)
-const many = (v: string | string[] | undefined) => (v === undefined ? [] : Array.isArray(v) ? v : [v])
+const many = (v: string | string[] | undefined) =>
+  v === undefined ? [] : Array.isArray(v) ? v : [v]
 
 /**
  * Opened by a pairing link, e.g. from scanning the QR code with the phone's camera

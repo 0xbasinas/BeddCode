@@ -47,12 +47,17 @@ function elementSvgMarkup(element: DesignElement): string {
 export async function copyAsPngToClipboard(element: DesignElement, scale = 2): Promise<boolean> {
   try {
     if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
-      toast({ title: 'Copy as PNG unavailable', description: 'Clipboard image write is not supported in this browser.' })
+      toast({
+        title: 'Copy as PNG unavailable',
+        description: 'Clipboard image write is not supported in this browser.',
+      })
       return false
     }
     const blob = await elementPngBlob(element, scale)
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-    toast({ title: `Copied as PNG (${Math.round(element.width * scale)}×${Math.round(element.height * scale)})` })
+    toast({
+      title: `Copied as PNG (${Math.round(element.width * scale)}×${Math.round(element.height * scale)})`,
+    })
     return true
   } catch {
     toast({ title: 'Copy as PNG failed', description: 'The browser refused the clipboard write.' })

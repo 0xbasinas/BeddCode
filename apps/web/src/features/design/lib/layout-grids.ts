@@ -86,14 +86,20 @@ export function computeGridRects(grid: LayoutGrid, frameW: number, frameH: numbe
     if (track <= 0) return rects
     for (let i = 0; i < count; i++) emit(margin + i * (track + gutter), track)
   } else if (type === 'start') {
-    const track = grid.sectionSize && grid.sectionSize > 0 ? grid.sectionSize : (avail - gutter * (count - 1)) / count
+    const track =
+      grid.sectionSize && grid.sectionSize > 0
+        ? grid.sectionSize
+        : (avail - gutter * (count - 1)) / count
     let p = margin
     for (let i = 0; i < count && p + track <= total; i++) {
       emit(p, track)
       p += track + gutter
     }
   } else if (type === 'end') {
-    const track = grid.sectionSize && grid.sectionSize > 0 ? grid.sectionSize : (avail - gutter * (count - 1)) / count
+    const track =
+      grid.sectionSize && grid.sectionSize > 0
+        ? grid.sectionSize
+        : (avail - gutter * (count - 1)) / count
     // align the block to the end edge: right/bottom
     const block = count * track + gutter * (count - 1)
     let p = total - margin - block

@@ -64,17 +64,20 @@ export function InlineTextEditor({
     onClose()
   }, [elementId, updateElement, onClose, element, applyTextAutoSize])
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.preventDefault()
-      if (editorRef.current && element) {
-        updateElement(elementId, { textContent: editorRef.current.innerText })
-        applyTextAutoSize(elementId)
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        if (editorRef.current && element) {
+          updateElement(elementId, { textContent: editorRef.current.innerText })
+          applyTextAutoSize(elementId)
+        }
+        onClose()
       }
-      onClose()
-    }
-    e.stopPropagation()
-  }, [elementId, updateElement, onClose, element, applyTextAutoSize])
+      e.stopPropagation()
+    },
+    [elementId, updateElement, onClose, element, applyTextAutoSize],
+  )
 
   const handleInput = useCallback(() => {
     if (!hasPushedHistory.current) {
@@ -151,5 +154,3 @@ export function InlineTextEditor({
     </div>
   )
 }
-
-

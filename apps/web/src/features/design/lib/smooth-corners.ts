@@ -45,22 +45,29 @@ export function smoothedRectPath(o: SmoothCornerOpts): string {
   // corner point C, edge entry E1 (previous edge), edge exit E2 (next edge);
   // control points sit along the edges at distance r*k from the corner.
   const corner = (
-    cx: number, cy: number,
-    rPrev: number, rNext: number,
-    dPrev: [number, number], dNext: [number, number],
+    cx: number,
+    cy: number,
+    rPrev: number,
+    rNext: number,
+    dPrev: [number, number],
+    dNext: [number, number],
   ) => {
-    const p1x = cx + dPrev[0] * rPrev, p1y = cy + dPrev[1] * rPrev
-    const p2x = cx + dNext[0] * rNext, p2y = cy + dNext[1] * rNext
-    const c1x = cx + dPrev[0] * rPrev * k, c1y = cy + dPrev[1] * rPrev * k
-    const c2x = cx + dNext[0] * rNext * k, c2y = cy + dNext[1] * rNext * k
+    const p1x = cx + dPrev[0] * rPrev,
+      p1y = cy + dPrev[1] * rPrev
+    const p2x = cx + dNext[0] * rNext,
+      p2y = cy + dNext[1] * rNext
+    const c1x = cx + dPrev[0] * rPrev * k,
+      c1y = cy + dPrev[1] * rPrev * k
+    const c2x = cx + dNext[0] * rNext * k,
+      c2y = cy + dNext[1] * rNext * k
     return `L ${p1x} ${p1y} C ${c1x} ${c1y} ${c2x} ${c2y} ${p2x} ${p2y}`
   }
   // walk clockwise from the top edge: TL → TR → BR → BL
   let d = `M ${rTL} 0`
-  d += ' ' + corner(w, 0, rTR, rTR, [-1, 0], [0, 1])            // top-right
-  d += ' ' + corner(w, h, rBR, rBR, [0, -1], [-1, 0])           // bottom-right
-  d += ' ' + corner(0, h, rBL, rBL, [1, 0], [0, -1])            // bottom-left
-  d += ' ' + corner(0, 0, rTL, rTL, [0, 1], [1, 0])             // top-left
+  d += ' ' + corner(w, 0, rTR, rTR, [-1, 0], [0, 1]) // top-right
+  d += ' ' + corner(w, h, rBR, rBR, [0, -1], [-1, 0]) // bottom-right
+  d += ' ' + corner(0, h, rBL, rBL, [1, 0], [0, -1]) // bottom-left
+  d += ' ' + corner(0, 0, rTL, rTL, [0, 1], [1, 0]) // top-left
   d += ' Z'
   return d
 }

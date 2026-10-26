@@ -33,7 +33,11 @@ export interface Constraints {
 const CENTER_EPS = 2
 
 /** Infer constraints from a child's position inside its parent frame. */
-export function inferConstraints(child: DesignElement, parentW: number, parentH: number): Constraints {
+export function inferConstraints(
+  child: DesignElement,
+  parentW: number,
+  parentH: number,
+): Constraints {
   // --- horizontal ---
   let horizontal: HConstraint
   const leftMargin = child.x
@@ -64,7 +68,7 @@ export function constrainChild(
   oldW: number,
   oldH: number,
   newW: number,
-  newH: number
+  newH: number,
 ): DesignElement {
   const h = (child.constraints?.horizontal as HConstraint | undefined) || 'left'
   const v = (child.constraints?.vertical as VConstraint | undefined) || 'top'
@@ -109,7 +113,7 @@ export function constrainChildren(
   oldW: number,
   oldH: number,
   newW: number,
-  newH: number
+  newH: number,
 ): DesignElement[] | undefined {
   if (!frame.children || frame.children.length === 0) return undefined
   if (frame.autoLayout) return undefined // auto-layout owns child geometry

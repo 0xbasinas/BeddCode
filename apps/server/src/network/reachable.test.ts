@@ -22,14 +22,14 @@ describe('reachableRoutes', () => {
   it('offers the tailnet name, then address, then the local network when allowed', async () => {
     const self = { name: 'desk', dnsName: 'desk.tail.ts.net', ip: '100.64.0.2' }
     const base = { tailscale: tailscale('running', self), port: 3773, interfaces: nics }
-    expect(
-      await reachableRoutes({ ...base, listenHost: '0.0.0.0', allowLan: true }),
-    ).toEqual([
+    expect(await reachableRoutes({ ...base, listenHost: '0.0.0.0', allowLan: true })).toEqual([
       'ws://desk.tail.ts.net:3773/ws',
       'ws://100.64.0.2:3773/ws',
       'ws://192.168.1.4:3773/ws',
     ])
-    expect(await reachableRoutes({ ...base, listenHost: '0.0.0.0', allowLan: false })).toHaveLength(2)
+    expect(await reachableRoutes({ ...base, listenHost: '0.0.0.0', allowLan: false })).toHaveLength(
+      2,
+    )
   })
 
   it('offers nothing for a host that only listens on this machine', async () => {

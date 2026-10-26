@@ -51,7 +51,11 @@ export function FindReplaceModal() {
   /** Pages actually searched: active page uses live elements; others pages[]. */
   const searchablePages = useMemo(() => {
     const list = [
-      { pageId: activePageId, pageName: pages.find((p) => p.id === activePageId)?.name || 'Page', elements },
+      {
+        pageId: activePageId,
+        pageName: pages.find((p) => p.id === activePageId)?.name || 'Page',
+        elements,
+      },
     ]
     if (scope === 'all') {
       for (const p of pages) {
@@ -81,7 +85,10 @@ export function FindReplaceModal() {
       const el = (function find(list: DesignElement[]): DesignElement | null {
         for (const e of list) {
           if (e.id === hit.elementId) return e
-          if (e.children) { const r = find(e.children); if (r) return r }
+          if (e.children) {
+            const r = find(e.children)
+            if (r) return r
+          }
         }
         return null
       })(st.elements)
@@ -103,28 +110,37 @@ export function FindReplaceModal() {
     }
   }, [])
 
-  const step = useCallback((dir: 1 | -1) => {
-    if (hits.length === 0) return
-    const next = (activeIndex + dir + hits.length) % hits.length
-    setActiveIndex(next)
-    jumpTo(hits[next])
-  }, [hits, activeIndex, jumpTo])
+  const step = useCallback(
+    (dir: 1 | -1) => {
+      if (hits.length === 0) return
+      const next = (activeIndex + dir + hits.length) % hits.length
+      setActiveIndex(next)
+      jumpTo(hits[next])
+    },
+    [hits, activeIndex, jumpTo],
+  )
 
   /** Replace the currently active match only. */
   const replaceCurrent = useCallback(() => {
     const hit = hits[activeIndex]
     if (!hit) return
     const s = useEditorStore.getState()
-    const pageEls = hit.pageId === s.activePageId ? s.elements : (s.pages.find((p) => p.id === hit.pageId)?.elements || [])
+    const pageEls =
+      hit.pageId === s.activePageId
+        ? s.elements
+        : s.pages.find((p) => p.id === hit.pageId)?.elements || []
     const el = (function find(list: DesignElement[]): DesignElement | null {
       for (const e of list) {
         if (e.id === hit.elementId) return e
-        if (e.children) { const r = find(e.children); if (r) return r }
+        if (e.children) {
+          const r = find(e.children)
+          if (r) return r
+        }
       }
       return null
     })(pageEls)
     if (!el) return
-    const source = hit.field === 'text' ? (el.textContent || '') : el.name
+    const source = hit.field === 'text' ? el.textContent || '' : el.name
     const next = replaceRange(source, hit.start, hit.end, replacement)
     s.pushHistory()
     if (hit.field === 'text') {
@@ -145,16 +161,22 @@ export function FindReplaceModal() {
     s.pushHistory()
     let count = 0
     for (const g of groups.values()) {
-      const pageEls = g.pageId === s.activePageId ? s.elements : (s.pages.find((p) => p.id === g.pageId)?.elements || [])
+      const pageEls =
+        g.pageId === s.activePageId
+          ? s.elements
+          : s.pages.find((p) => p.id === g.pageId)?.elements || []
       const el = (function find(list: DesignElement[]): DesignElement | null {
         for (const e of list) {
           if (e.id === g.elementId) return e
-          if (e.children) { const r = find(e.children); if (r) return r }
+          if (e.children) {
+            const r = find(e.children)
+            if (r) return r
+          }
         }
         return null
       })(pageEls)
       if (!el) continue
-      const source = g.field === 'text' ? (el.textContent || '') : el.name
+      const source = g.field === 'text' ? el.textContent || '' : el.name
       const res = replaceAllInText(source, query, replacement, opts)
       if (res.count === 0) continue
       count += res.count
@@ -168,9 +190,10 @@ export function FindReplaceModal() {
     // parity: canvas_search.replace_all_message(_all_pages)
     toast({
       title: 'Replace all',
-      description: scope === 'all'
-        ? `Replaced ${count} match${count === 1 ? '' : 'es'} across all pages.`
-        : `Replaced ${count} match${count === 1 ? '' : 'es'} on this page.`,
+      description:
+        scope === 'all'
+          ? `Replaced ${count} match${count === 1 ? '' : 'es'} across all pages.`
+          : `Replaced ${count} match${count === 1 ? '' : 'es'} on this page.`,
     })
   }, [hits, query, replacement, opts, scope])
 
@@ -182,7 +205,9 @@ export function FindReplaceModal() {
     <div className="absolute top-3 right-3 z-50 w-[340px] rounded-lg bg-[color:var(--dc-raised)] border border-[color:var(--dc-hover)] shadow-xl">
       {/* header */}
       <div className="flex items-center justify-between px-3 h-9 border-b border-[color:var(--dc-hover)]">
-        <span className="text-[11px] font-medium text-[color:var(--dc-text2)]">Find and replace</span>
+        <span className="text-[11px] font-medium text-[color:var(--dc-text2)]">
+          Find and replace
+        </span>
         <button
           className="w-5 h-5 flex items-center justify-center rounded text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-hover)]"
           onClick={() => useEditorStore.getState().setFindReplaceOpen(false)}
@@ -198,9 +223,15 @@ export function FindReplaceModal() {
           <input
             ref={findInputRef}
             value={query}
-            onChange={(e) => { setQuery(e.target.value); setActiveIndex(0) }}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setActiveIndex(0)
+            }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') { e.preventDefault(); step(e.shiftKey ? -1 : 1) }
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                step(e.shiftKey ? -1 : 1)
+              }
               if (e.key === 'Escape') useEditorStore.getState().setFindReplaceOpen(false)
             }}
             placeholder="Find"
@@ -257,23 +288,34 @@ export function FindReplaceModal() {
         <div className="flex items-center gap-3 pt-0.5">
           <select
             value={scope}
-            onChange={(e) => { setScope(e.target.value as 'active' | 'all'); setActiveIndex(0) }}
+            onChange={(e) => {
+              setScope(e.target.value as 'active' | 'all')
+              setActiveIndex(0)
+            }}
             className="h-6 px-1 text-[10px] rounded bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] text-[color:var(--dc-text2)] focus:outline-none focus:border-[color:var(--dc-accent)]"
             title="Search scope (source: ACTIVE_PAGE / ALL_PAGES)"
           >
             <option value="active">This page</option>
             <option value="all">All pages</option>
           </select>
-          {([
-            ['matchCase', 'Match case'],
-            ['wholeWord', 'Whole word'],
-            ['includeLayerNames', 'Layer names'],
-          ] as const).map(([key, label]) => (
-            <label key={key} className="flex items-center gap-1 text-[10px] text-[color:var(--dc-muted)] cursor-pointer select-none">
+          {(
+            [
+              ['matchCase', 'Match case'],
+              ['wholeWord', 'Whole word'],
+              ['includeLayerNames', 'Layer names'],
+            ] as const
+          ).map(([key, label]) => (
+            <label
+              key={key}
+              className="flex items-center gap-1 text-[10px] text-[color:var(--dc-muted)] cursor-pointer select-none"
+            >
               <input
                 type="checkbox"
                 checked={opts[key]}
-                onChange={(e) => { setOpts((o) => ({ ...o, [key]: e.target.checked })); setActiveIndex(0) }}
+                onChange={(e) => {
+                  setOpts((o) => ({ ...o, [key]: e.target.checked }))
+                  setActiveIndex(0)
+                }}
                 className="accent-[color:var(--dc-accent)] w-3 h-3"
               />
               {label}
@@ -295,16 +337,27 @@ export function FindReplaceModal() {
               <button
                 key={`${h.pageId}:${h.elementId}:${h.field}:${h.start}`}
                 className={`w-full text-left px-2 py-1.5 hover:bg-[color:var(--dc-hover)] ${i === activeIndex ? 'bg-[color:var(--dc-accent)]/15' : ''}`}
-                onClick={() => { setActiveIndex(i); jumpTo(h) }}
+                onClick={() => {
+                  setActiveIndex(i)
+                  jumpTo(h)
+                }}
               >
                 <div className="flex items-center gap-1.5">
                   <span className="text-[9px] px-1 rounded bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] shrink-0">
                     {h.field === 'name' ? 'layer' : 'text'}
                   </span>
-                  <span className="text-[10px] text-[color:var(--dc-text2)] truncate">{h.elementName}</span>
-                  {scope === 'all' && <span className="text-[9px] text-[color:var(--dc-faint)] ml-auto shrink-0">{h.pageName}</span>}
+                  <span className="text-[10px] text-[color:var(--dc-text2)] truncate">
+                    {h.elementName}
+                  </span>
+                  {scope === 'all' && (
+                    <span className="text-[9px] text-[color:var(--dc-faint)] ml-auto shrink-0">
+                      {h.pageName}
+                    </span>
+                  )}
                 </div>
-                <div className="text-[10px] text-[color:var(--dc-muted)] truncate font-mono">…{h.preview}…</div>
+                <div className="text-[10px] text-[color:var(--dc-muted)] truncate font-mono">
+                  …{h.preview}…
+                </div>
               </button>
             ))}
           </div>

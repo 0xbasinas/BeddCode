@@ -27,7 +27,7 @@ export function calculateSnapLines(
   selectedIds: string[],
   gridSize: number,
   snapToGrid: boolean,
-  snapToElements: boolean
+  snapToElements: boolean,
 ): { snapLines: SnapLine[]; snapX: number | null; snapY: number | null } {
   const snapLines: SnapLine[] = []
   let snapX: number | null = null
@@ -68,7 +68,7 @@ export function calculateSnapLines(
   // Snap to other elements
   if (snapToElements) {
     const otherElements = allElements.filter(
-      (el) => !selectedIds.includes(el.id) && el.visible && !el.locked
+      (el) => !selectedIds.includes(el.id) && el.visible && !el.locked,
     )
 
     for (const other of otherElements) {
@@ -152,7 +152,7 @@ export function constrainToAngle(
   startY: number,
   currentX: number,
   currentY: number,
-  angleSnap: number = 15
+  angleSnap: number = 15,
 ): { x: number; y: number } {
   const dx = currentX - startX
   const dy = currentY - startY

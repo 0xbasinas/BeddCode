@@ -36,7 +36,7 @@ export function getImageDimensions(base64: string): Promise<{ width: number; hei
 export async function createImageElement(
   base64: string,
   x: number = 0,
-  y: number = 0
+  y: number = 0,
 ): Promise<DesignElement> {
   const dims = await getImageDimensions(base64)
   // Cap max dimension to 800px for reasonable canvas size
@@ -75,13 +75,15 @@ export async function createImageElement(
     flipH: false,
     flipV: false,
     clipContent: false,
-    fills: [{
-      type: 'image',
-      color: '#FFFFFF',
-      opacity: 100,
-      imageUrl: base64,
-      visible: true,
-    }],
+    fills: [
+      {
+        type: 'image',
+        color: '#FFFFFF',
+        opacity: 100,
+        imageUrl: base64,
+        visible: true,
+      },
+    ],
   }
 }
 
@@ -115,7 +117,7 @@ export function sampleColorAtPixel(clientX: number, clientY: number): string | n
  */
 export function simplifyPath(
   points: { x: number; y: number }[],
-  tolerance: number = 2
+  tolerance: number = 2,
 ): { x: number; y: number }[] {
   if (points.length <= 2) return points
 
@@ -146,11 +148,13 @@ export function simplifyPath(
 function perpendicularDistance(
   point: { x: number; y: number },
   lineStart: { x: number; y: number },
-  lineEnd: { x: number; y: number }
+  lineEnd: { x: number; y: number },
 ): number {
   const dx = lineEnd.x - lineStart.x
   const dy = lineEnd.y - lineStart.y
   const len = Math.sqrt(dx * dx + dy * dy)
   if (len === 0) return Math.sqrt((point.x - lineStart.x) ** 2 + (point.y - lineStart.y) ** 2)
-  return Math.abs(dy * point.x - dx * point.y + lineEnd.x * lineStart.y - lineEnd.y * lineStart.x) / len
+  return (
+    Math.abs(dy * point.x - dx * point.y + lineEnd.x * lineStart.y - lineEnd.y * lineStart.x) / len
+  )
 }

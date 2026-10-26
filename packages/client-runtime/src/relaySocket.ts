@@ -76,7 +76,8 @@ export class RelaySocket {
   send(data: string) {
     if (!this.channel || this.readyState !== 1) throw new Error('relay not connected')
     const sealed = this.channel.seal(data)
-    for (const part of chunks(sealed)) this.ws.send(JSON.stringify({ t: 'm', d: part.d, f: part.f }))
+    for (const part of chunks(sealed))
+      this.ws.send(JSON.stringify({ t: 'm', d: part.d, f: part.f }))
   }
 
   close() {
@@ -99,12 +100,7 @@ export class RelaySocket {
     }
     try {
       if (frame.t === 'hi' && !this.channel && typeof frame.n === 'string') {
-        this.channel = new SecureChannel(
-          this.route.key,
-          this.nonce,
-          fromBase64(frame.n),
-          'client',
-        )
+        this.channel = new SecureChannel(this.route.key, this.nonce, fromBase64(frame.n), 'client')
         this.readyState = 1
         this.onopen?.({})
       } else if (frame.t === 'm' && this.channel && typeof frame.d === 'string') {
@@ -155,12 +151,10 @@ export function pairViaRelay(
       } catch {
         return
       }
-      if (frame.t === 'paired')
-        finish(() => resolve({ token: frame.token, host: frame.host }))
+      if (frame.t === 'paired') finish(() => resolve({ token: frame.token, host: frame.host }))
       else if (frame.t === 'pair.failed') finish(() => reject(new Error(frame.error)))
     }
     socket.onclose = () =>
       finish(() => reject(new Error('The relay could not reach the host. Is it running?')))
   })
 }
-

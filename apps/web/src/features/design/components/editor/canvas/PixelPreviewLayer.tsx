@@ -50,31 +50,43 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
 /** blob:/http: image hrefs → data: URIs (secure-static mode requires inline data). */
 async function inlineImageHrefs(root: Element, cache: Map<string, string>): Promise<void> {
   const images = Array.from(root.querySelectorAll('image'))
-  await Promise.all(images.map(async (img) => {
-    const href = img.getAttribute('href') || img.getAttribute('xlink:href')
-    if (!href || href.startsWith('data:')) return
-    let dataUri = cache.get(href)
-    if (!dataUri) {
-      try {
-        const blob = await (await fetch(href)).blob()
-        dataUri = await new Promise<string>((resolve, reject) => {
-          const fr = new FileReader()
-          fr.onload = () => resolve(String(fr.result))
-          fr.onerror = reject
-          fr.readAsDataURL(blob)
-        })
-        cache.set(href, dataUri)
-      } catch {
-        return // leave as-is; the raster just omits that image
+  await Promise.all(
+    images.map(async (img) => {
+      const href = img.getAttribute('href') || img.getAttribute('xlink:href')
+      if (!href || href.startsWith('data:')) return
+      let dataUri = cache.get(href)
+      if (!dataUri) {
+        try {
+          const blob = await (await fetch(href)).blob()
+          dataUri = await new Promise<string>((resolve, reject) => {
+            const fr = new FileReader()
+            fr.onload = () => resolve(String(fr.result))
+            fr.onerror = reject
+            fr.readAsDataURL(blob)
+          })
+          cache.set(href, dataUri)
+        } catch {
+          return // leave as-is; the raster just omits that image
+        }
       }
-    }
-    img.setAttribute('href', dataUri)
-    img.removeAttribute('xlink:href')
-  }))
+      img.setAttribute('href', dataUri)
+      img.removeAttribute('xlink:href')
+    }),
+  )
 }
 
 export function PixelPreviewLayer({
-  svgRef, active, retina, zoom, panX, panY, centerX, centerY, width, height, sceneVersion,
+  svgRef,
+  active,
+  retina,
+  zoom,
+  panX,
+  panY,
+  centerX,
+  centerY,
+  width,
+  height,
+  sceneVersion,
 }: PixelPreviewLayerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rafRef = useRef<number | null>(null)
@@ -148,9 +160,14 @@ export function PixelPreviewLayer({
     }
 
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
-    rafRef.current = requestAnimationFrame(() => { void rasterize() })
+    rafRef.current = requestAnimationFrame(() => {
+      void rasterize()
+    })
     return () => {
-      if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
     }
   }, [active, retina, zoom, panX, panY, centerX, centerY, width, height, sceneVersion, svgRef])
 

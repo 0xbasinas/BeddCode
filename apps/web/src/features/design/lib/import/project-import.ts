@@ -67,7 +67,8 @@ export function parseProjectJson(text: string): ParsedProject {
         id: page.id,
         name: typeof page.name === 'string' ? page.name : 'Page',
         elements: elements as DesignElement[],
-        backgroundColor: typeof page.backgroundColor === 'string' ? page.backgroundColor : undefined,
+        backgroundColor:
+          typeof page.backgroundColor === 'string' ? page.backgroundColor : undefined,
       })
     }
     if (pages.length === 0) throw new Error('Project file has no valid pages')
@@ -95,7 +96,10 @@ export function parseProjectJson(text: string): ParsedProject {
 }
 
 /** Regenerate every id in a tree (used by merge mode to avoid collisions). */
-export function regenerateTreeIds(element: DesignElement, makeId: (prefix: string) => string): DesignElement {
+export function regenerateTreeIds(
+  element: DesignElement,
+  makeId: (prefix: string) => string,
+): DesignElement {
   const clone: DesignElement = { ...element, id: makeId(element.type) }
   if (element.children) {
     clone.children = element.children.map((c) => regenerateTreeIds(c, makeId))

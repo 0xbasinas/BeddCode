@@ -6,7 +6,15 @@
  * RightSidebar.tsx, InlineTextEditor.tsx, ComponentPanel.tsx, LayerPanel.tsx
  */
 
-import { type DesignElement, type VectorNetwork, type PathPoint, type VectorSegment, type VectorVertex, type VectorTangent, type HandleMirroring } from '../store/editor-store'
+import {
+  type DesignElement,
+  type VectorNetwork,
+  type PathPoint,
+  type VectorSegment,
+  type VectorVertex,
+  type VectorTangent,
+  type HandleMirroring,
+} from '../store/editor-store'
 
 /**
  * Recursively search for an element by id in a list (including children).
@@ -56,7 +64,7 @@ export function getAllElements(elements: DesignElement[]): DesignElement[] {
 export function updateElementInList(
   elements: DesignElement[],
   id: string,
-  updates: Partial<DesignElement>
+  updates: Partial<DesignElement>,
 ): DesignElement[] {
   return elements.map((el) => {
     if (el.id === id) {
@@ -192,7 +200,10 @@ export function pathPointsToVectorNetwork(points: PathPoint[], closed: boolean):
  * Convert a VectorNetwork to legacy PathPoint[] (absolute tangents).
  * Inverse of pathPointsToVectorNetwork.
  */
-export function vectorNetworkToPathPoints(network: VectorNetwork): { points: PathPoint[]; closed: boolean } {
+export function vectorNetworkToPathPoints(network: VectorNetwork): {
+  points: PathPoint[]
+  closed: boolean
+} {
   const { vertices, segments, closed } = network
   if (vertices.length === 0) return { points: [], closed: !!closed }
 
@@ -240,10 +251,10 @@ export function vectorNetworkToSvgPath(network: VectorNetwork): string {
     const startV = vertices[seg.start]
     const endV = vertices[seg.end]
     const hasTangents = seg.tangentStart || seg.tangentEnd
-    const isLine = !hasTangents || (
-      (!seg.tangentStart || (seg.tangentStart.x === 0 && seg.tangentStart.y === 0)) &&
-      (!seg.tangentEnd || (seg.tangentEnd.x === 0 && seg.tangentEnd.y === 0))
-    )
+    const isLine =
+      !hasTangents ||
+      ((!seg.tangentStart || (seg.tangentStart.x === 0 && seg.tangentStart.y === 0)) &&
+        (!seg.tangentEnd || (seg.tangentEnd.x === 0 && seg.tangentEnd.y === 0)))
     if (isLine) {
       d += ` L ${endV.x} ${endV.y}`
     } else {
@@ -290,7 +301,12 @@ export function pathElementToSvgPath(el: DesignElement): string {
     let d = `M ${el.pathPoints[0].x} ${el.pathPoints[0].y}`
     for (let i = 1; i < el.pathPoints.length; i++) {
       const pt = el.pathPoints[i]
-      if (pt.cx1 !== undefined && pt.cy1 !== undefined && pt.cx2 !== undefined && pt.cy2 !== undefined) {
+      if (
+        pt.cx1 !== undefined &&
+        pt.cy1 !== undefined &&
+        pt.cx2 !== undefined &&
+        pt.cy2 !== undefined
+      ) {
         d += ` C ${pt.cx1} ${pt.cy1}, ${pt.cx2} ${pt.cy2}, ${pt.x} ${pt.y}`
       } else {
         d += ` L ${pt.x} ${pt.y}`
@@ -336,7 +352,12 @@ export function addVertexToNetwork(network: VectorNetwork, x: number, y: number)
  * Update a vertex position. The element's bounding box is NOT recomputed here;
  * the caller should call computeNetworkBounds() to get the updated box.
  */
-export function updateVertexInNetwork(network: VectorNetwork, index: number, x: number, y: number): VectorNetwork {
+export function updateVertexInNetwork(
+  network: VectorNetwork,
+  index: number,
+  x: number,
+  y: number,
+): VectorNetwork {
   const newVertices = network.vertices.map((v, i) => (i === index ? { x, y } : v))
   return { ...network, vertices: newVertices }
 }
@@ -351,7 +372,7 @@ export function setTangentInNetwork(
   vertexIndex: number,
   side: 'start' | 'end',
   tangent: VectorTangent,
-  handleMirroring: HandleMirroring = 'NONE'
+  handleMirroring: HandleMirroring = 'NONE',
 ): VectorNetwork {
   const newSegments = network.segments.map((seg) => {
     if (side === 'end' && seg.end === vertexIndex) {
@@ -376,8 +397,18 @@ export function setTangentInNetwork(
 /**
  * Compute the bounding box of a VectorNetwork (vertices + tangent extents).
  */
-export function computeNetworkBounds(network: VectorNetwork): { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number } {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+export function computeNetworkBounds(network: VectorNetwork): {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+  width: number
+  height: number
+} {
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity
   for (const v of network.vertices) {
     if (v.x < minX) minX = v.x
     if (v.y < minY) minY = v.y
@@ -404,7 +435,10 @@ export function computeNetworkBounds(network: VectorNetwork): { minX: number; mi
     }
   }
   if (!isFinite(minX)) {
-    minX = 0; minY = 0; maxX = 0; maxY = 0
+    minX = 0
+    minY = 0
+    maxX = 0
+    maxY = 0
   }
   return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY }
 }
@@ -423,7 +457,10 @@ export function translateNetwork(network: VectorNetwork, dx: number, dy: number)
  * Simplify a point array using Douglas-Peucker algorithm.
  * Source parity: standard vector simplification used in Figma's pencil tool.
  */
-export function simplifyPath(points: { x: number; y: number }[], tolerance: number = 2): { x: number; y: number }[] {
+export function simplifyPath(
+  points: { x: number; y: number }[],
+  tolerance: number = 2,
+): { x: number; y: number }[] {
   if (points.length <= 2) return points
 
   let maxDist = 0
@@ -448,7 +485,11 @@ export function simplifyPath(points: { x: number; y: number }[], tolerance: numb
   return [first, last]
 }
 
-function perpendicularDistance(point: { x: number; y: number }, lineStart: { x: number; y: number }, lineEnd: { x: number; y: number }): number {
+function perpendicularDistance(
+  point: { x: number; y: number },
+  lineStart: { x: number; y: number },
+  lineEnd: { x: number; y: number },
+): number {
   const dx = lineEnd.x - lineStart.x
   const dy = lineEnd.y - lineStart.y
   const norm = Math.sqrt(dx * dx + dy * dy)
@@ -463,11 +504,11 @@ function perpendicularDistance(point: { x: number; y: number }, lineStart: { x: 
  */
 export function smoothPointsToPathPoints(
   points: { x: number; y: number }[],
-  tension: number = 0.5
+  tension: number = 0.5,
 ): PathPoint[] {
   if (points.length === 0) return []
   if (points.length === 1) return [{ x: points[0].x, y: points[0].y }]
-  if (points.length === 2) return points.map(p => ({ x: p.x, y: p.y }))
+  if (points.length === 2) return points.map((p) => ({ x: p.x, y: p.y }))
 
   const result: PathPoint[] = []
 
@@ -479,22 +520,22 @@ export function smoothPointsToPathPoints(
 
     if (i === 0) {
       // First point: only outgoing tangent (cx2/cy2)
-      const cp1x = p1.x + (p2.x - p0.x) * tension / 3
-      const cp1y = p1.y + (p2.y - p0.y) * tension / 3
-      const cp2x = p2.x - (p3.x - p1.x) * tension / 3
-      const cp2y = p2.y - (p3.y - p1.y) * tension / 3
+      const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3
+      const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3
+      const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3
+      const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3
       result.push({ x: p1.x, y: p1.y, cx2: cp1x, cy2: cp1y })
     } else if (i === points.length - 1) {
       // Last point: only incoming tangent (cx1/cy1)
-      const cp1x = p1.x + (p2.x - p0.x) * tension / 3
-      const cp1y = p1.y + (p2.y - p0.y) * tension / 3
+      const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3
+      const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3
       result.push({ x: p1.x, y: p1.y, cx1: cp1x, cy1: cp1y })
     } else {
       // Middle points: both incoming and outgoing tangents
-      const cp1x = p1.x + (p2.x - p0.x) * tension / 3
-      const cp1y = p1.y + (p2.y - p0.y) * tension / 3
-      const cp2x = p2.x - (p3.x - p1.x) * tension / 3
-      const cp2y = p2.y - (p3.y - p1.y) * tension / 3
+      const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3
+      const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3
+      const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3
+      const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3
       result.push({ x: p1.x, y: p1.y, cx1: cp1x, cy1: cp1y, cx2: cp2x, cy2: cp2y })
     }
   }

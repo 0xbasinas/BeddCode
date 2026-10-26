@@ -2,7 +2,15 @@ import { useMemo } from 'react'
 import qrcode from 'qrcode-generator'
 
 /** A QR code as inline SVG, always dark on white with a quiet zone so any camera can read it. */
-export function QrCode({ text, size = 240, label }: { text: string; size?: number; label: string }) {
+export function QrCode({
+  text,
+  size = 240,
+  label,
+}: {
+  text: string
+  size?: number
+  label: string
+}) {
   const { path, modules } = useMemo(() => {
     const qr = qrcode(0, 'L')
     qr.addData(text)

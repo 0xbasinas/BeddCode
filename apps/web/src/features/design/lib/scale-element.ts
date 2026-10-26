@@ -20,7 +20,7 @@ export function scaleElementBy(
   el: DesignElement,
   factor: number,
   originX: number,
-  originY: number
+  originY: number,
 ): DesignElement {
   if (!isFinite(factor) || factor <= 0 || factor === 1) return el
   const next: DesignElement = {

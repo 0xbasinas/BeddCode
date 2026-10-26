@@ -21,7 +21,16 @@
  * MOUSE_DOWN / MOUSE_UP ×11 each). 'hover' kept as a legacy alias that fires
  * on enter like Figma's older hover trigger.
  */
-export type PrototypeTriggerType = 'click' | 'hover' | 'drag' | 'keypress' | 'delay' | 'mouse-enter' | 'mouse-leave' | 'mouse-down' | 'mouse-up'
+export type PrototypeTriggerType =
+  | 'click'
+  | 'hover'
+  | 'drag'
+  | 'keypress'
+  | 'delay'
+  | 'mouse-enter'
+  | 'mouse-leave'
+  | 'mouse-down'
+  | 'mouse-up'
 
 export interface PrototypeTrigger {
   type: PrototypeTriggerType

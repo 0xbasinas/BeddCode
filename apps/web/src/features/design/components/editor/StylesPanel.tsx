@@ -18,16 +18,29 @@ import { countStyleUsage, styleSwatchStyle, STYLE_KIND_LABEL } from '../../lib/s
 import type { ProjectStyle } from '../../lib/styles'
 
 function StyleRow({ style }: { style: ProjectStyle }) {
-  const { elements, selectedElementIds, applyStyleToSelection, detachStyleFromSelection, deleteStyle, renameStyle } = useEditorStore()
+  const {
+    elements,
+    selectedElementIds,
+    applyStyleToSelection,
+    detachStyleFromSelection,
+    deleteStyle,
+    renameStyle,
+  } = useEditorStore()
   const [editingName, setEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState(style.name)
 
   const usage = useMemo(() => countStyleUsage(elements, style.id), [elements, style.id])
   const attachedToSelection = useMemo(() => {
-    const selected = selectedElementIds.map((id) => findDeep(elements, id)).filter(Boolean) as DesignElement[]
-    return selected.some((el) =>
-      el.fillStyleId === style.id || el.strokeStyleId === style.id ||
-      el.textStyleId === style.id || el.effectStyleId === style.id)
+    const selected = selectedElementIds
+      .map((id) => findDeep(elements, id))
+      .filter(Boolean) as DesignElement[]
+    return selected.some(
+      (el) =>
+        el.fillStyleId === style.id ||
+        el.strokeStyleId === style.id ||
+        el.textStyleId === style.id ||
+        el.effectStyleId === style.id,
+    )
   }, [elements, selectedElementIds, style.id])
 
   const kindIcon = style.kind === 'paint' ? '◍' : style.kind === 'text' ? 'T' : '◉'
@@ -50,23 +63,39 @@ function StyleRow({ style }: { style: ProjectStyle }) {
           className="flex-1 min-w-0 h-5 px-1 text-[11px] bg-[color:var(--dc-input)] border border-[color:var(--dc-accent)] rounded text-[color:var(--dc-text2)] focus:outline-none"
           value={nameDraft}
           onChange={(e) => setNameDraft(e.target.value)}
-          onBlur={() => { setEditingName(false); if (nameDraft.trim()) renameStyle(style.id, nameDraft.trim()) }}
+          onBlur={() => {
+            setEditingName(false)
+            if (nameDraft.trim()) renameStyle(style.id, nameDraft.trim())
+          }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') { setEditingName(false); if (nameDraft.trim()) renameStyle(style.id, nameDraft.trim()) }
-            if (e.key === 'Escape') { setEditingName(false); setNameDraft(style.name) }
+            if (e.key === 'Enter') {
+              setEditingName(false)
+              if (nameDraft.trim()) renameStyle(style.id, nameDraft.trim())
+            }
+            if (e.key === 'Escape') {
+              setEditingName(false)
+              setNameDraft(style.name)
+            }
           }}
           onClick={(e) => e.stopPropagation()}
         />
       ) : (
         <span
           className="flex-1 min-w-0 truncate text-[11px] text-[color:var(--dc-text2)]"
-          onDoubleClick={(e) => { e.stopPropagation(); setEditingName(true); setNameDraft(style.name) }}
+          onDoubleClick={(e) => {
+            e.stopPropagation()
+            setEditingName(true)
+            setNameDraft(style.name)
+          }}
         >
           {style.name}
         </span>
       )}
       {usage > 0 && (
-        <span className="text-[9px] text-[color:var(--dc-muted)] tabular-nums shrink-0" title={`${usage} usage${usage === 1 ? '' : 's'}`}>
+        <span
+          className="text-[9px] text-[color:var(--dc-muted)] tabular-nums shrink-0"
+          title={`${usage} usage${usage === 1 ? '' : 's'}`}
+        >
           {usage}
         </span>
       )}
@@ -74,9 +103,19 @@ function StyleRow({ style }: { style: ProjectStyle }) {
         <button
           className="w-4 h-4 shrink-0 hidden group-hover:flex items-center justify-center text-[color:var(--dc-muted)] hover:text-[#FFA116]"
           title="Detach from selection"
-          onClick={(e) => { e.stopPropagation(); detachStyleFromSelection(style.id) }}
+          onClick={(e) => {
+            e.stopPropagation()
+            detachStyleFromSelection(style.id)
+          }}
         >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.4">
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+          >
             <path d="M5.5 2.5 L2.5 5.5 a1.4 1.4 0 0 0 0 2 l0 0 a1.4 1.4 0 0 0 2 0 L7.5 4.5" />
             <path d="M4 2 L5.5 2 L8 4.5 L8 6" />
           </svg>
@@ -85,7 +124,10 @@ function StyleRow({ style }: { style: ProjectStyle }) {
       <button
         className="w-4 h-4 shrink-0 hidden group-hover:flex items-center justify-center text-[color:var(--dc-muted)] hover:text-[#F24822]"
         title="Delete style (references detach, values stay)"
-        onClick={(e) => { e.stopPropagation(); deleteStyle(style.id) }}
+        onClick={(e) => {
+          e.stopPropagation()
+          deleteStyle(style.id)
+        }}
       >
         <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" strokeWidth="1.4">
           <path d="M2 2 L8 8 M8 2 L2 8" />
@@ -112,8 +154,8 @@ export function StylesPanel() {
   if (styles.length === 0) {
     return (
       <div className="px-3 py-4 text-[10px] leading-4 text-[color:var(--dc-faint)]">
-        No styles yet. Select an element and use the style menu (four dots) next to
-        Fill, Stroke, Text or Effects in the design panel to create one.
+        No styles yet. Select an element and use the style menu (four dots) next to Fill, Stroke,
+        Text or Effects in the design panel to create one.
       </div>
     )
   }
@@ -132,7 +174,9 @@ export function StylesPanel() {
         if (list.length === 0) return null
         return (
           <div key={kind}>
-            <div className="px-2 pt-1 pb-0.5 text-[9px] font-medium uppercase tracking-wide text-[color:var(--dc-faint)]">{label}</div>
+            <div className="px-2 pt-1 pb-0.5 text-[9px] font-medium uppercase tracking-wide text-[color:var(--dc-faint)]">
+              {label}
+            </div>
             {list.map((s) => (
               <StyleRow key={s.id} style={s} />
             ))}

@@ -12,7 +12,10 @@ export type HandlePosition = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' |
 export const HANDLE_SIZE = 8
 export const ROTATION_HANDLE_DISTANCE = 30
 
-export function getHandlePositions(el: DesignElement, zoom: number): Record<HandlePosition, { x: number; y: number }> {
+export function getHandlePositions(
+  el: DesignElement,
+  zoom: number,
+): Record<HandlePosition, { x: number; y: number }> {
   const safeZoom = isFinite(zoom) && zoom > 0.001 ? zoom : 1
   return {
     nw: { x: el.x, y: el.y },
@@ -28,12 +31,22 @@ export function getHandlePositions(el: DesignElement, zoom: number): Record<Hand
 }
 
 export const handleCursors: Record<HandlePosition, string> = {
-  nw: 'nw-resize', n: 'n-resize', ne: 'ne-resize', e: 'e-resize',
-  se: 'se-resize', s: 's-resize', sw: 'sw-resize', w: 'w-resize', rotate: 'grab',
+  nw: 'nw-resize',
+  n: 'n-resize',
+  ne: 'ne-resize',
+  e: 'e-resize',
+  se: 'se-resize',
+  s: 's-resize',
+  sw: 'sw-resize',
+  w: 'w-resize',
+  rotate: 'grab',
 }
 
 // Frustum culling: check if element is visible in viewport
-export function isElementInViewport(el: DesignElement, viewportBounds: { minX: number; minY: number; maxX: number; maxY: number }): boolean {
+export function isElementInViewport(
+  el: DesignElement,
+  viewportBounds: { minX: number; minY: number; maxX: number; maxY: number },
+): boolean {
   return (
     el.x + el.width >= viewportBounds.minX &&
     el.x <= viewportBounds.maxX &&

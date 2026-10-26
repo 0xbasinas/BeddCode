@@ -18,9 +18,7 @@
 
 import type { DesignElement, VectorNetwork } from '../store/editor-store'
 import type { Poly, Pt, BooleanOp } from './polygon-clip'
-import {
-  foldOp, normalizeLoops, ensureCCW,
-} from './polygon-clip'
+import { foldOp, normalizeLoops, ensureCCW } from './polygon-clip'
 import { getVectorNetwork } from './element-utils'
 
 export type { BooleanOp }
@@ -37,7 +35,14 @@ export function isBooleanOperandType(el: DesignElement): boolean {
 
 /* ---------- geometry sampling (mirrors renderShape in Canvas.tsx exactly) ---------- */
 
-function sampleQuarterArc(cx: number, cy: number, r: number, a0: number, a1: number, steps = 6): Pt[] {
+function sampleQuarterArc(
+  cx: number,
+  cy: number,
+  r: number,
+  a0: number,
+  a1: number,
+  steps = 6,
+): Pt[] {
   const out: Pt[] = []
   for (let i = 1; i <= steps; i++) {
     const a = a0 + (a1 - a0) * (i / steps)
@@ -55,18 +60,25 @@ function localShapePolys(el: DesignElement): Poly[] | null {
     case 'rectangle': {
       const r = Math.min(el.cornerRadius || 0, w / 2, h / 2)
       if (r <= 0.01) {
-        return [[{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }]]
+        return [
+          [
+            { x: 0, y: 0 },
+            { x: w, y: 0 },
+            { x: w, y: h },
+            { x: 0, y: h },
+          ],
+        ]
       }
       const pts: Pt[] = []
       // start at (r,0), walk CCW: bottom-right corner, right edge, etc.
       pts.push({ x: r, y: 0 })
-      pts.push(...sampleQuarterArc(w - r, r, r, -Math.PI / 2, 0))        // br corner
+      pts.push(...sampleQuarterArc(w - r, r, r, -Math.PI / 2, 0)) // br corner
       pts.push({ x: w, y: r })
-      pts.push(...sampleQuarterArc(w - r, h - r, r, 0, Math.PI / 2))     // tr
+      pts.push(...sampleQuarterArc(w - r, h - r, r, 0, Math.PI / 2)) // tr
       pts.push({ x: w - r, y: h })
-      pts.push(...sampleQuarterArc(r, h - r, r, Math.PI / 2, Math.PI))    // tl
+      pts.push(...sampleQuarterArc(r, h - r, r, Math.PI / 2, Math.PI)) // tl
       pts.push({ x: 0, y: h - r })
-      pts.push(...sampleQuarterArc(r, r, r, Math.PI, Math.PI * 1.5))     // bl
+      pts.push(...sampleQuarterArc(r, r, r, Math.PI, Math.PI * 1.5)) // bl
       return [pts]
     }
     case 'ellipse': {
@@ -121,21 +133,33 @@ function localShapePolys(el: DesignElement): Poly[] | null {
           const s = net.vertices[seg.start]
           const e = net.vertices[seg.end]
           const hasT = seg.tangentStart || seg.tangentEnd
-          const isLine = !hasT || (
-            (!seg.tangentStart || (seg.tangentStart.x === 0 && seg.tangentStart.y === 0)) &&
-            (!seg.tangentEnd || (seg.tangentEnd.x === 0 && seg.tangentEnd.y === 0))
-          )
+          const isLine =
+            !hasT ||
+            ((!seg.tangentStart || (seg.tangentStart.x === 0 && seg.tangentStart.y === 0)) &&
+              (!seg.tangentEnd || (seg.tangentEnd.x === 0 && seg.tangentEnd.y === 0)))
           if (isLine) {
             poly.push({ x: e.x, y: e.y })
           } else {
             // sample cubic: control points = tangent-relative offsets from endpoints
-            const ts = seg.tangentStart ? { x: s.x + seg.tangentStart.x, y: s.y + seg.tangentStart.y } : { x: s.x, y: s.y }
-            const te = seg.tangentEnd ? { x: e.x + seg.tangentEnd.x, y: e.y + seg.tangentEnd.y } : { x: e.x, y: e.y }
+            const ts = seg.tangentStart
+              ? { x: s.x + seg.tangentStart.x, y: s.y + seg.tangentStart.y }
+              : { x: s.x, y: s.y }
+            const te = seg.tangentEnd
+              ? { x: e.x + seg.tangentEnd.x, y: e.y + seg.tangentEnd.y }
+              : { x: e.x, y: e.y }
             for (let k = 1; k <= 12; k++) {
               const t = k / 12
               const mt = 1 - t
-              const x = mt * mt * mt * s.x + 3 * mt * mt * t * ts.x + 3 * mt * t * t * te.x + t * t * t * e.x
-              const y = mt * mt * mt * s.y + 3 * mt * mt * t * ts.y + 3 * mt * t * t * te.y + t * t * t * e.y
+              const x =
+                mt * mt * mt * s.x +
+                3 * mt * mt * t * ts.x +
+                3 * mt * t * t * te.x +
+                t * t * t * e.x
+              const y =
+                mt * mt * mt * s.y +
+                3 * mt * mt * t * ts.y +
+                3 * mt * t * t * te.y +
+                t * t * t * e.y
               poly.push({ x, y })
             }
           }
@@ -174,7 +198,10 @@ function toAbsolute(poly: Poly, el: DesignElement, ax: number, ay: number): Poly
 }
 
 /** Flatten an operand to absolute-coordinate Polys; null if unsupported. */
-export function flattenOperand(el: DesignElement, absAncestor: { x: number; y: number }): Poly[] | null {
+export function flattenOperand(
+  el: DesignElement,
+  absAncestor: { x: number; y: number },
+): Poly[] | null {
   if (!OPERAND_TYPES.has(el.type)) return null
   if (!el.visible) return null
   const local = localShapePolys(el)
@@ -192,8 +219,16 @@ export function polysToContours(polys: Poly[], origin: { x: number; y: number })
 }
 
 /** Contour bounds for placing the result element. */
-export function contoursBounds(contours: VectorNetwork[]): { x: number; y: number; width: number; height: number } {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+export function contoursBounds(contours: VectorNetwork[]): {
+  x: number
+  y: number
+  width: number
+  height: number
+} {
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity
   for (const c of contours) {
     for (const v of c.vertices) {
       if (v.x < minX) minX = v.x
@@ -216,7 +251,10 @@ export function foldElementPolys(operandPolys: Poly[][], op: BooleanOp): Poly[] 
     for (const loop of operandPolys[i]) {
       const r = foldOp(acc, loop, op)
       if (r === null) {
-        return { ok: false, reason: `degenerate geometry at operand #${i + 1} (try nudging shapes)` }
+        return {
+          ok: false,
+          reason: `degenerate geometry at operand #${i + 1} (try nudging shapes)`,
+        }
       }
       acc = r
     }
@@ -244,7 +282,10 @@ export function foldElementPolys(operandPolys: Poly[][], op: BooleanOp): Poly[] 
 
 /** Recursively collect absolute Polys for one operand
  *  (a plain shape, or a nested boolean group folded first). */
-function collectOperandPolys(el: DesignElement, absAncestor: { x: number; y: number }): Poly[] | null {
+function collectOperandPolys(
+  el: DesignElement,
+  absAncestor: { x: number; y: number },
+): Poly[] | null {
   if (!el.visible) return null
   if (el.type === 'boolean') {
     const nested = foldGroupPolys(el)
@@ -299,6 +340,8 @@ export function booleanGroupPathD(group: DesignElement): string {
   const contours = getBooleanGroupContours(group)
   if (!contours) return ''
   return contours
-    .map((net) => net.vertices.map((v, i) => `${i === 0 ? 'M' : 'L'} ${v.x} ${v.y}`).join(' ') + ' Z')
+    .map(
+      (net) => net.vertices.map((v, i) => `${i === 0 ? 'M' : 'L'} ${v.x} ${v.y}`).join(' ') + ' Z',
+    )
     .join(' ')
 }

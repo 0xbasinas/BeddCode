@@ -86,7 +86,13 @@ const designRoute = createRoute({
 
 // Hash history so the Electron build works when loaded from file://.
 export const router = createRouter({
-  routeTree: rootRoute.addChildren([indexRoute, sessionRoute, designRoute, schedulesRoute, settingsRoute]),
+  routeTree: rootRoute.addChildren([
+    indexRoute,
+    sessionRoute,
+    designRoute,
+    schedulesRoute,
+    settingsRoute,
+  ]),
   history: createHashHistory(),
 })
 

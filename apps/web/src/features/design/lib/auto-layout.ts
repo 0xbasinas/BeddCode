@@ -63,7 +63,7 @@ function textContentSize(el: DesignElement): { width: number; height: number } {
     fontWeight: el.fontWeight || 400,
     lineHeight: el.lineHeight || (el.fontSize || 16) * 1.4,
     letterSpacing: el.letterSpacing || 0,
-    fontStyle: el.fontStyle || 'normal' as const,
+    fontStyle: el.fontStyle || ('normal' as const),
   }
   if (autoResize === 'hug') {
     // hug: width follows content (no wrap), height follows line count
@@ -99,9 +99,8 @@ function clampDim(v: number, min?: number, max?: number): number {
 function textBaselineOffset(el: DesignElement): number | null {
   if (!isTextLike(el)) return null
   const fontSize = el.fontSize || 16
-  const lineHeight = typeof el.lineHeight === 'number' && el.lineHeight > 0
-    ? el.lineHeight
-    : fontSize * 1.4
+  const lineHeight =
+    typeof el.lineHeight === 'number' && el.lineHeight > 0 ? el.lineHeight : fontSize * 1.4
   // approximation: ascent ≈ 0.8 × fontSize, centered within the line box
   return (lineHeight - fontSize) / 2 + fontSize * 0.8
 }
@@ -136,29 +135,32 @@ export function computeAutoLayout(frame: DesignElement): AutoLayoutResult {
 
   const isHorizontal = direction === 'horizontal'
   const allChildren = frame.children || []
-  const inFlow = allChildren.filter(c => c.visible && c.layoutPositioning !== 'absolute')
+  const inFlow = allChildren.filter((c) => c.visible && c.layoutPositioning !== 'absolute')
   if (inFlow.length === 0) {
     // hug with no content: frame collapses to padding, clamped
     const w = clampDim(paddingLeft + paddingRight, frame.minWidth, frame.maxWidth)
     const h = clampDim(paddingTop + paddingBottom, frame.minHeight, frame.maxHeight)
     return {
       children: allChildren,
-      width: primaryAxisSizing === 'hug' || counterAxisSizing === 'hug'
-        ? Math.min(frame.width, Math.max(w, frame.width))
-        : frame.width,
-      height: primaryAxisSizing === 'hug' || counterAxisSizing === 'hug'
-        ? Math.min(frame.height, Math.max(h, frame.height))
-        : frame.height,
+      width:
+        primaryAxisSizing === 'hug' || counterAxisSizing === 'hug'
+          ? Math.min(frame.width, Math.max(w, frame.width))
+          : frame.width,
+      height:
+        primaryAxisSizing === 'hug' || counterAxisSizing === 'hug'
+          ? Math.min(frame.height, Math.max(h, frame.height))
+          : frame.height,
     }
   }
 
   // ---------- 1. Resolve child sizes ----------
   type SizedItem = { el: DesignElement; mainSizing: AxisSizing; crossSizing: AxisSizing }
   const legacyStretch = alignItems === 'stretch'
-  const sized: SizedItem[] = inFlow.map(child => {
+  const sized: SizedItem[] = inFlow.map((child) => {
     const out = { ...child }
     const mainSizing: AxisSizing = (isHorizontal ? out.layoutSizingH : out.layoutSizingV) || 'fixed'
-    const crossSizing: AxisSizing = (isHorizontal ? out.layoutSizingV : out.layoutSizingH) || (legacyStretch ? 'fill' : 'fixed')
+    const crossSizing: AxisSizing =
+      (isHorizontal ? out.layoutSizingV : out.layoutSizingH) || (legacyStretch ? 'fill' : 'fixed')
     // main-axis hug now (fill resolved later once leftovers are known)
     if (mainSizing === 'hug') {
       if (isHorizontal) out.width = childHugSize(out, 'w')
@@ -178,9 +180,13 @@ export function computeAutoLayout(frame: DesignElement): AutoLayoutResult {
   let frameW = frame.width
   let frameH = frame.height
 
-  const mainContentSingleLine = sized.reduce((sum, s) => sum + (isHorizontal ? s.el.width : s.el.height), 0)
-    + gap * Math.max(0, sized.length - 1)
-  const maxCrossSingle = sized.reduce((m, s) => Math.max(m, isHorizontal ? s.el.height : s.el.width), 0)
+  const mainContentSingleLine =
+    sized.reduce((sum, s) => sum + (isHorizontal ? s.el.width : s.el.height), 0) +
+    gap * Math.max(0, sized.length - 1)
+  const maxCrossSingle = sized.reduce(
+    (m, s) => Math.max(m, isHorizontal ? s.el.height : s.el.width),
+    0,
+  )
 
   if (primaryAxisSizing === 'hug') {
     if (isHorizontal) frameW = paddingLeft + mainContentSingleLine + paddingRight
@@ -198,10 +204,12 @@ export function computeAutoLayout(frame: DesignElement): AutoLayoutResult {
 
   // ---------- 3. Main-axis fill distribution (before wrap, so fills take the
   // full inner extent when they own the line) ----------
-  const fillMain = sized.filter(s => s.mainSizing === 'fill')
+  const fillMain = sized.filter((s) => s.mainSizing === 'fill')
   if (fillMain.length > 0 && primaryAxisSizing !== 'hug') {
-    const fixedMain = sized.reduce((sum, s) =>
-      sum + (s.mainSizing === 'fill' ? 0 : (isHorizontal ? s.el.width : s.el.height)), 0)
+    const fixedMain = sized.reduce(
+      (sum, s) => sum + (s.mainSizing === 'fill' ? 0 : isHorizontal ? s.el.width : s.el.height),
+      0,
+    )
     const gaps = gap * Math.max(0, sized.length - 1)
     const leftover = Math.max(0, innerMain - fixedMain - gaps)
     const share = leftover / fillMain.length
@@ -243,7 +251,7 @@ export function computeAutoLayout(frame: DesignElement): AutoLayoutResult {
   }
 
   // ---------- 5. Cross-axis fill per line + line extents ----------
-  const lineExtents = lines.map(line => {
+  const lineExtents = lines.map((line) => {
     let extent = 0
     for (const s of line) {
       if (s.crossSizing === 'fill') {
@@ -290,8 +298,9 @@ export function computeAutoLayout(frame: DesignElement): AutoLayoutResult {
     const lineExtent = lineExtents[li]
 
     // main-axis offsets per justifyContent (per line)
-    const lineMain = line.reduce((sum, s) => sum + (isHorizontal ? s.el.width : s.el.height), 0)
-      + gap * Math.max(0, line.length - 1)
+    const lineMain =
+      line.reduce((sum, s) => sum + (isHorizontal ? s.el.width : s.el.height), 0) +
+      gap * Math.max(0, line.length - 1)
     const lineAvail = primaryAxisSizing === 'hug' ? 0 : Math.max(0, innerMain - lineMain)
     let lead: number
     let between = gap
@@ -351,8 +360,8 @@ export function computeAutoLayout(frame: DesignElement): AutoLayoutResult {
   frameH = clampDim(Math.round(frameH), frame.minHeight, frame.maxHeight)
 
   // ---------- 9. Merge back (invisible + absolute keep authored positions) ----------
-  const positionedMap = new Map(positioned.map(p => [p.id, p]))
-  const children = allChildren.map(child => {
+  const positionedMap = new Map(positioned.map((p) => [p.id, p]))
+  const children = allChildren.map((child) => {
     const hit = positionedMap.get(child.id)
     if (hit) {
       // re-apply clamped min/max on children

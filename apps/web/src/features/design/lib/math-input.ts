@@ -54,7 +54,10 @@ function parse(tokens: Token[]): number | null {
   function primary(): number | null {
     const tk = peek()
     if (!tk) return null
-    if (tk.t === 'num') { pos++; return tk.v }
+    if (tk.t === 'num') {
+      pos++
+      return tk.v
+    }
     if (tk.t === 'paren' && tk.v === '(') {
       pos++
       const v = expr()
@@ -128,10 +131,14 @@ export function evaluateMathExpression(raw: string, current?: number): number | 
     if (rel) {
       const operand = parseFloat(rel[2])
       switch (rel[1]) {
-        case '+': return current + operand
-        case '-': return current - operand
-        case '*': return current * operand
-        case '/': return operand === 0 ? null : current / operand
+        case '+':
+          return current + operand
+        case '-':
+          return current - operand
+        case '*':
+          return current * operand
+        case '/':
+          return operand === 0 ? null : current / operand
       }
     }
   }

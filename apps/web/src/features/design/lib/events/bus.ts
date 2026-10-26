@@ -90,7 +90,10 @@ export function subscribeToProject(projectId: string, listener: Listener): () =>
 }
 
 /** Broadcast a change event to all subscribers of that project. */
-export function publishProjectEvent(projectId: string, event: Omit<ProjectEvent, 'projectId' | 'at'>): void {
+export function publishProjectEvent(
+  projectId: string,
+  event: Omit<ProjectEvent, 'projectId' | 'at'>,
+): void {
   const bus = getBus()
   bus.counter += 1
   const full: ProjectEvent = { ...event, projectId, at: Date.now() }

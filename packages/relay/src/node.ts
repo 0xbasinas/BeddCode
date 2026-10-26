@@ -151,8 +151,7 @@ export async function startRelay(options: RelayOptions): Promise<RunningRelay> {
       }
     }
     const now = Date.now()
-    for (const [id, room] of rooms)
-      if (!room.host && now - room.lastUsed > ttl) rooms.delete(id)
+    for (const [id, room] of rooms) if (!room.host && now - room.lastUsed > ttl) rooms.delete(id)
   }, PING_MS)
   sweep.unref()
 

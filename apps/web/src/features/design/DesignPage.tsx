@@ -44,7 +44,11 @@ export function DesignPage() {
     <main className="panel design-main">
       <div className="design-bar">
         {entries.length > 1 && (
-          <Select aria-label="Design host" value={selected} onChange={(e) => setHostKey(e.target.value)}>
+          <Select
+            aria-label="Design host"
+            value={selected}
+            onChange={(e) => setHostKey(e.target.value)}
+          >
             {entries.map((entry) => (
               <option key={entry.key} value={entry.key}>
                 {entry.key === LOCAL_HOST_KEY
@@ -82,7 +86,8 @@ export function DesignPage() {
           aria-label="Delete this design"
           disabled={!currentId || designs.length === 0}
           onClick={() => {
-            if (currentId && window.confirm('Delete this design from the host?')) void remove(currentId)
+            if (currentId && window.confirm('Delete this design from the host?'))
+              void remove(currentId)
           }}
         >
           <Trash2 size={14} />

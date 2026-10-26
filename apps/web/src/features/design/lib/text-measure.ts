@@ -32,7 +32,9 @@ function getCtx(): CanvasRenderingContext2D | null {
   return measureCanvas.getContext('2d')
 }
 
-export function fontString(p: Pick<TextStyleParams, 'fontFamily' | 'fontSize' | 'fontWeight' | 'fontStyle'>): string {
+export function fontString(
+  p: Pick<TextStyleParams, 'fontFamily' | 'fontSize' | 'fontWeight' | 'fontStyle'>,
+): string {
   const italic = p.fontStyle === 'italic' ? 'italic ' : ''
   return `${italic}${p.fontWeight} ${p.fontSize}px ${p.fontFamily}, Inter, system-ui, sans-serif`
 }
@@ -49,7 +51,10 @@ export function measureLine(line: string, p: TextStyleParams): number {
 export function wrapText(text: string, p: TextStyleParams, maxWidth: number): string[] {
   const out: string[] = []
   for (const rawLine of text.split('\n')) {
-    if (rawLine.length === 0) { out.push(''); continue }
+    if (rawLine.length === 0) {
+      out.push('')
+      continue
+    }
     const words = rawLine.split(/(\s+)/) // keep whitespace runs so joins are exact
     let current = ''
     for (const w of words) {
@@ -81,26 +86,36 @@ export interface MeasuredText {
 export function measureText(
   p: TextStyleParams,
   mode: 'fixed' | 'hug' | 'grow',
-  boxWidth: number
+  boxWidth: number,
 ): MeasuredText {
   const lineH = p.fontSize * p.lineHeight
   if (mode === 'hug') {
     const rawLines = p.text.split('\n')
     let w = 0
     for (const l of rawLines) w = Math.max(w, measureLine(l, p))
-    return { lines: rawLines, width: Math.max(1, Math.ceil(w)), height: Math.max(lineH, Math.ceil(rawLines.length * lineH)) }
+    return {
+      lines: rawLines,
+      width: Math.max(1, Math.ceil(w)),
+      height: Math.max(lineH, Math.ceil(rawLines.length * lineH)),
+    }
   }
   const lines = wrapText(p.text, p, Math.max(1, boxWidth))
   return { lines, width: boxWidth, height: Math.max(lineH, Math.ceil(lines.length * lineH)) }
 }
 
 /** Apply textCase to a string for rendering. */
-export function applyTextCase(text: string, textCase: 'original' | 'upper' | 'lower' | 'title' | undefined): string {
+export function applyTextCase(
+  text: string,
+  textCase: 'original' | 'upper' | 'lower' | 'title' | undefined,
+): string {
   if (!textCase || textCase === 'original') return text
   if (textCase === 'upper') return text.toUpperCase()
   if (textCase === 'lower') return text.toLowerCase()
   // title case: capitalize first letter of each word
-  return text.replace(/\p{L}[\p{L}\p{M}]*/gu, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+  return text.replace(
+    /\p{L}[\p{L}\p{M}]*/gu,
+    (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(),
+  )
 }
 
 /**
@@ -135,13 +150,19 @@ export interface BuildTextLinesOpts {
   boxWidth?: number
 }
 
-export function buildTextLines(p: TextStyleParams, opts: BuildTextLinesOpts = {}): TextDisplayLine[] {
+export function buildTextLines(
+  p: TextStyleParams,
+  opts: BuildTextLinesOpts = {},
+): TextDisplayLine[] {
   const { listType = 'none', listIndent = 0, autoResize = 'fixed', boxWidth = 0 } = opts
   const rawLines = p.text.split('\n')
   // PHASE 19: absolute char start of each raw line (\n = 1 char)
   const rawStarts: number[] = []
   let acc = 0
-  for (const rl of rawLines) { rawStarts.push(acc); acc += rl.length + 1 }
+  for (const rl of rawLines) {
+    rawStarts.push(acc)
+    acc += rl.length + 1
+  }
   if (listType === 'none') {
     if (autoResize === 'hug') {
       return rawLines.map((l, i) => ({ text: l, x: 0, contentStart: rawStarts[i] }))
@@ -150,7 +171,8 @@ export function buildTextLines(p: TextStyleParams, opts: BuildTextLinesOpts = {}
     for (let pi = 0; pi < rawLines.length; pi++) {
       const l = rawLines[pi]
       const ranges = wrapTextRanges(l, p, Math.max(1, boxWidth))
-      for (const r of ranges) wrapped.push({ text: r.text, x: 0, contentStart: rawStarts[pi] + r.start })
+      for (const r of ranges)
+        wrapped.push({ text: r.text, x: 0, contentStart: rawStarts[pi] + r.start })
     }
     return wrapped
   }
@@ -175,7 +197,14 @@ export function buildTextLines(p: TextStyleParams, opts: BuildTextLinesOpts = {}
       const wrapWidth = Math.max(1, boxWidth - textX)
       const ranges = wrapTextRanges(para, p, wrapWidth)
       ranges.forEach((r, i) => {
-        if (i === 0) out.push({ text: r.text, x: textX, prefix, prefixX: indent, contentStart: paraStart + r.start })
+        if (i === 0)
+          out.push({
+            text: r.text,
+            x: textX,
+            prefix,
+            prefixX: indent,
+            contentStart: paraStart + r.start,
+          })
         else out.push({ text: r.text, x: textX, contentStart: paraStart + r.start })
       })
     }
@@ -189,7 +218,11 @@ export function buildTextLines(p: TextStyleParams, opts: BuildTextLinesOpts = {}
  * algorithm but also reports each emitted chunk's start index within the
  * input line (whitespace runs consumed between chunks are accounted for).
  */
-export function wrapTextRanges(text: string, p: TextStyleParams, maxWidth: number): { text: string; start: number }[] {
+export function wrapTextRanges(
+  text: string,
+  p: TextStyleParams,
+  maxWidth: number,
+): { text: string; start: number }[] {
   const out: { text: string; start: number }[] = []
   let cursor = 0 // absolute index in `text`
   const words = text.split(/(\s+)/) // keep whitespace runs (same as wrapText)
@@ -203,7 +236,11 @@ export function wrapTextRanges(text: string, p: TextStyleParams, maxWidth: numbe
     currentStart = -1
   }
   for (const w of words) {
-    if (/^\s+$/.test(w)) { current += w; cursor += w.length; continue } // whitespace run appended (same accumulation); cursor advanced
+    if (/^\s+$/.test(w)) {
+      current += w
+      cursor += w.length
+      continue
+    } // whitespace run appended (same accumulation); cursor advanced
     if (currentStart < 0) currentStart = cursor
     const candidate = current + w
     if (measureLine(candidate.trimEnd(), p) <= maxWidth || current.length === 0) {

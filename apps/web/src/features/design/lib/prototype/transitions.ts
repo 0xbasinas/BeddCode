@@ -10,11 +10,7 @@
  * Smart-animate keyframes live in smart-animate.ts (DECISION-005).
  */
 
-import type {
-  PrototypeAnimation,
-  PrototypeDirection,
-  PrototypeEasing,
-} from '../../types/prototype'
+import type { PrototypeAnimation, PrototypeDirection, PrototypeEasing } from '../../types/prototype'
 
 /** Figma's named easing curves, expressed as cubic-bezier where possible. */
 const EASING_BEZIERS: Record<Exclude<PrototypeEasing, 'custom-bezier'>, string> = {
@@ -28,7 +24,10 @@ const EASING_BEZIERS: Record<Exclude<PrototypeEasing, 'custom-bezier'>, string> 
   bouncy: 'cubic-bezier(0.68, -0.55, 0.265, 1.55)',
 }
 
-export function easingCss(easing: PrototypeEasing, bezier?: [number, number, number, number]): string {
+export function easingCss(
+  easing: PrototypeEasing,
+  bezier?: [number, number, number, number],
+): string {
   if (easing === 'custom-bezier' && bezier) {
     return `cubic-bezier(${bezier.join(', ')})`
   }
@@ -49,7 +48,7 @@ export const IDENTITY = 'translate(0px, 0px)'
 export function enterFrom(
   animation: PrototypeAnimation,
   direction: PrototypeDirection,
-  distance: { width: number; height: number }
+  distance: { width: number; height: number },
 ): React.CSSProperties {
   const d = animation.direction ?? direction
   switch (animation.type) {
@@ -58,22 +57,26 @@ export function enterFrom(
     case 'move-in':
     case 'slide-in': {
       const off =
-        d === 'left' ? `translateX(${OFFSCREEN(distance.width)}px)` :
-        d === 'right' ? `translateX(${-OFFSCREEN(distance.width)}px)` :
-        d === 'top' ? `translateY(${OFFSCREEN(distance.height)}px)` :
-        `translateY(${-OFFSCREEN(distance.height)}px)`
-      return animation.type === 'slide-in'
-        ? { transform: off }
-        : { transform: off, opacity: 0 }
+        d === 'left'
+          ? `translateX(${OFFSCREEN(distance.width)}px)`
+          : d === 'right'
+            ? `translateX(${-OFFSCREEN(distance.width)}px)`
+            : d === 'top'
+              ? `translateY(${OFFSCREEN(distance.height)}px)`
+              : `translateY(${-OFFSCREEN(distance.height)}px)`
+      return animation.type === 'slide-in' ? { transform: off } : { transform: off, opacity: 0 }
     }
     case 'push':
       // push: both frames move; the incoming one comes from the direction side
       return {
         transform:
-          d === 'left' ? `translateX(${OFFSCREEN(distance.width)}px)` :
-          d === 'right' ? `translateX(${-OFFSCREEN(distance.width)}px)` :
-          d === 'top' ? `translateY(${OFFSCREEN(distance.height)}px)` :
-          `translateY(${-OFFSCREEN(distance.height)}px)`,
+          d === 'left'
+            ? `translateX(${OFFSCREEN(distance.width)}px)`
+            : d === 'right'
+              ? `translateX(${-OFFSCREEN(distance.width)}px)`
+              : d === 'top'
+                ? `translateY(${OFFSCREEN(distance.height)}px)`
+                : `translateY(${-OFFSCREEN(distance.height)}px)`,
       }
     default:
       // instant / smart-animate / move-out / slide-out: nothing to pre-apply
@@ -88,7 +91,7 @@ export function enterFrom(
 export function exitTo(
   animation: PrototypeAnimation,
   direction: PrototypeDirection,
-  distance: { width: number; height: number }
+  distance: { width: number; height: number },
 ): React.CSSProperties | null {
   const d = animation.direction ?? direction
   switch (animation.type) {
@@ -97,10 +100,13 @@ export function exitTo(
     case 'push':
       return {
         transform:
-          d === 'left' ? `translateX(${-OFFSCREEN(distance.width)}px)` :
-          d === 'right' ? `translateX(${OFFSCREEN(distance.width)}px)` :
-          d === 'top' ? `translateY(${-OFFSCREEN(distance.height)}px)` :
-          `translateY(${OFFSCREEN(distance.height)}px)`,
+          d === 'left'
+            ? `translateX(${-OFFSCREEN(distance.width)}px)`
+            : d === 'right'
+              ? `translateX(${OFFSCREEN(distance.width)}px)`
+              : d === 'top'
+                ? `translateY(${-OFFSCREEN(distance.height)}px)`
+                : `translateY(${OFFSCREEN(distance.height)}px)`,
       }
     default:
       return null
@@ -112,15 +118,14 @@ export function transitionCss(animation: PrototypeAnimation): string {
   if (animation.type === 'instant') return 'none'
   const dur = Math.max(0, animation.durationMs)
   const ez = easingCss(animation.easing, animation.bezier)
-  const smartProps = animation.type === 'smart-animate'
-    ? 'transform, opacity, width, height, border-radius, fill, stroke'
-    : 'transform, opacity'
+  const smartProps =
+    animation.type === 'smart-animate'
+      ? 'transform, opacity, width, height, border-radius, fill, stroke'
+      : 'transform, opacity'
   return `${smartProps} ${dur}ms ${ez}`
 }
 
 /** Default direction for a given animation type (Figma defaults). */
-export function defaultDirectionFor(
-  type: PrototypeAnimation['type']
-): PrototypeDirection {
+export function defaultDirectionFor(type: PrototypeAnimation['type']): PrototypeDirection {
   return type === 'push' ? 'left' : 'right'
 }

@@ -3,7 +3,13 @@ import { useCallback, useRef, useState, useEffect } from 'react'
 import { useEditorStore, generateId, createDefaultElement } from '../../../store/editor-store'
 import type { DesignElement } from '../../../store/editor-store'
 import { calculateSnapLines, constrainToAngle, type SnapLine } from '../../../lib/snap-utils'
-import { findElementInList, simplifyPath, smoothPointsToPathPoints, pathPointsToVectorNetwork, findAncestors } from '../../../lib/element-utils'
+import {
+  findElementInList,
+  simplifyPath,
+  smoothPointsToPathPoints,
+  pathPointsToVectorNetwork,
+  findAncestors,
+} from '../../../lib/element-utils'
 // PHASE 18 — parametric shape → vector conversion on edit-entry
 import { isShapeToVectorCandidate } from '../../../lib/shape-to-vector'
 import { loadImageAsBase64, createImageElement, isImageFile } from '../../../lib/image-utils'
@@ -34,7 +40,12 @@ interface UseElementInteractionsParams {
  * change is that the path-editing drag math now delegates to
  * pathEditing.updatePathDrag / finishPathDrag.
  */
-export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: UseElementInteractionsParams) {
+export function useElementInteractions({
+  viewport,
+  hitTest,
+  pen,
+  pathEditing,
+}: UseElementInteractionsParams) {
   const elements = useEditorStore((s) => s.elements)
   const selectedElementIds = useEditorStore((s) => s.selectedElementIds)
   const activeTool = useEditorStore((s) => s.activeTool)
@@ -47,12 +58,30 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
   const currentFrameId = useEditorStore((s) => s.currentFrameId)
   const setSelectedElementIds = useEditorStore((s) => s.setSelectedElementIds)
 
-  const { containerRef, containerSize, isPanning, setIsPanning, panStartRef, spaceHeld, screenToCanvas } = viewport
+  const {
+    containerRef,
+    containerSize,
+    isPanning,
+    setIsPanning,
+    panStartRef,
+    spaceHeld,
+    screenToCanvas,
+  } = viewport
   const { findResizeHandle, findElementAtPosition, findParentFrameAtPosition } = hitTest
   const {
-    penPoints, setPenPoints, penElementIdRef, penDragStart, setPenDragStart,
-    setPenCursorPos, syncPenElement, finishPenPath,
-    isPencilDrawing, setIsPencilDrawing, pencilPoints, setPencilPoints, pencilRafRef,
+    penPoints,
+    setPenPoints,
+    penElementIdRef,
+    penDragStart,
+    setPenDragStart,
+    setPenCursorPos,
+    syncPenElement,
+    finishPenPath,
+    isPencilDrawing,
+    setIsPencilDrawing,
+    pencilPoints,
+    setPencilPoints,
+    pencilRafRef,
   } = pen
   const { editingPathId, updatePathDrag, finishPathDrag } = pathEditing
 
@@ -62,37 +91,44 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
   // PHASE 19 (T9) — PLACE_IMAGE queue (source: editMode PLACE_IMAGE,
   // "toolbar-place-image": click or drag to place). Esc cancels the rest.
   const pendingImagesRef = useRef<string[]>([])
-  const placeNextPending = useCallback(async (cx: number, cy: number, rect: { x: number; y: number; w: number; h: number } | null) => {
-    const next = pendingImagesRef.current.shift()
-    if (!next) {
-      pendingImagesRef.current = []
-      return
-    }
-    const imgEl = await createImageElement(next, 0, 0)
-    let width = imgEl.width
-    let height = imgEl.height
-    let x: number
-    let y: number
-    if (rect && rect.w > 8 && rect.h > 8) {
-      // drag: fit the rect, aspect kept, centered in the rect
-      const s = Math.min(rect.w / imgEl.width, rect.h / imgEl.height)
-      width = Math.max(8, Math.round(imgEl.width * s))
-      height = Math.max(8, Math.round(imgEl.height * s))
-      x = rect.x + (rect.w - width) / 2
-      y = rect.y + (rect.h - height) / 2
-    } else {
-      // click: natural size (already capped by createImageElement) centered on the point
-      x = cx - width / 2
-      y = cy - height / 2
-    }
-    const state = useEditorStore.getState()
-    state.addElement({ ...imgEl, x, y, width, height })
-    state.setSelectedElementIds([imgEl.id])
-    state.pushHistory()
-    const rest = pendingImagesRef.current.length
-    if (rest > 0) toast({ title: `Placed · ${rest} left`, description: 'Click or drag to place the next image (Esc to cancel).' })
-    else toast({ title: 'Placed all images.' })
-  }, [])
+  const placeNextPending = useCallback(
+    async (cx: number, cy: number, rect: { x: number; y: number; w: number; h: number } | null) => {
+      const next = pendingImagesRef.current.shift()
+      if (!next) {
+        pendingImagesRef.current = []
+        return
+      }
+      const imgEl = await createImageElement(next, 0, 0)
+      let width = imgEl.width
+      let height = imgEl.height
+      let x: number
+      let y: number
+      if (rect && rect.w > 8 && rect.h > 8) {
+        // drag: fit the rect, aspect kept, centered in the rect
+        const s = Math.min(rect.w / imgEl.width, rect.h / imgEl.height)
+        width = Math.max(8, Math.round(imgEl.width * s))
+        height = Math.max(8, Math.round(imgEl.height * s))
+        x = rect.x + (rect.w - width) / 2
+        y = rect.y + (rect.h - height) / 2
+      } else {
+        // click: natural size (already capped by createImageElement) centered on the point
+        x = cx - width / 2
+        y = cy - height / 2
+      }
+      const state = useEditorStore.getState()
+      state.addElement({ ...imgEl, x, y, width, height })
+      state.setSelectedElementIds([imgEl.id])
+      state.pushHistory()
+      const rest = pendingImagesRef.current.length
+      if (rest > 0)
+        toast({
+          title: `Placed · ${rest} left`,
+          description: 'Click or drag to place the next image (Esc to cancel).',
+        })
+      else toast({ title: 'Placed all images.' })
+    },
+    [],
+  )
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && pendingImagesRef.current.length > 0) {
@@ -110,8 +146,10 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
   // lets live verification drive the PLACE_IMAGE queue without a native
   // file dialog. No-op outside tests.
   useEffect(() => {
-    (window as unknown as Record<string, unknown>).__openfigmaPlaceImages = {
-      setQueue: (list: string[]) => { pendingImagesRef.current = list },
+    ;(window as unknown as Record<string, unknown>).__openfigmaPlaceImages = {
+      setQueue: (list: string[]) => {
+        pendingImagesRef.current = list
+      },
       remaining: () => pendingImagesRef.current.length,
       probe: () => ({
         remaining: pendingImagesRef.current.length,
@@ -123,7 +161,9 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
         isPanning,
       }),
     }
-    return () => { delete (window as unknown as Record<string, unknown>).__openfigmaPlaceImages }
+    return () => {
+      delete (window as unknown as Record<string, unknown>).__openfigmaPlaceImages
+    }
   }, [isDrawing, drawStart, drawCurrent])
 
   const [isDragging, setIsDragging] = useState(false)
@@ -134,7 +174,15 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
 
   const [isResizing, setIsResizing] = useState(false)
   const [activeResizeHandle, setActiveResizeHandle] = useState<string | null>(null)
-  const resizeStartRef = useRef<{ x: number; y: number; elX: number; elY: number; elW: number; elH: number; fontSize?: number } | null>(null)
+  const resizeStartRef = useRef<{
+    x: number
+    y: number
+    elX: number
+    elY: number
+    elW: number
+    elH: number
+    fontSize?: number
+  } | null>(null)
   const resizeElementIdRef = useRef<string | null>(null)
 
   // PHASE 11 — Scale tool state: anchor = opposite bbox corner; originals are
@@ -159,7 +207,12 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
     bottomGap: number | null
   } | null>(null)
 
-  const [rubberBand, setRubberBand] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null)
+  const [rubberBand, setRubberBand] = useState<{
+    startX: number
+    startY: number
+    endX: number
+    endY: number
+  } | null>(null)
   const rubberBandStartRef = useRef<{ x: number; y: number } | null>(null)
 
   // Eyedropper state
@@ -169,7 +222,11 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
 
   const [editingTextId, setEditingTextId] = useState<string | null>(null)
   // PHASE 15 — table cell being edited { elementId, row, col }
-  const [editingTableCell, setEditingTableCell] = useState<{ elementId: string; row: number; col: number } | null>(null)
+  const [editingTableCell, setEditingTableCell] = useState<{
+    elementId: string
+    row: number
+    col: number
+  } | null>(null)
   const [snapLines, setSnapLines] = useState<SnapLine[]>([])
   const [hoveredElementId, setHoveredElementId] = useState<string | null>(null)
   const elementCounterRef = useRef(0)
@@ -187,7 +244,10 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
   /** Absolute bbox of a set of elements (handles frame-relative children). */
   const selectionBBox = (ids: string[]) => {
     const state = useEditorStore.getState()
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity
     const items: { el: DesignElement; parentX: number; parentY: number }[] = []
     const walk = (els: DesignElement[], parentX: number, parentY: number) => {
       for (const el of els) {
@@ -227,11 +287,14 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
           anchorX: c.ax,
           anchorY: c.ay,
           startDist,
-          originals: bbox.items.map((it) => ({
-            el: JSON.parse(JSON.stringify(it.el)) as DesignElement,
-            parentX: it.parentX,
-            parentY: it.parentY,
-          } as { el: DesignElement; parentX: number; parentY: number })),
+          originals: bbox.items.map(
+            (it) =>
+              ({
+                el: JSON.parse(JSON.stringify(it.el)) as DesignElement,
+                parentX: it.parentX,
+                parentY: it.parentY,
+              }) as { el: DesignElement; parentX: number; parentY: number },
+          ),
         }
         setIsScaling(true)
         return true
@@ -254,7 +317,24 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
       // When pen, pencil, eyedropper, or drawing tools are active, don't intercept clicks
       // Let the canvas handleMouseDown process these tools
       const state = useEditorStore.getState()
-      if (['pen', 'pencil', 'eyedropper', 'rectangle', 'ellipse', 'line', 'frame', 'polygon', 'star', 'arrow', 'text', 'image', 'comment', 'slice'].includes(state.activeTool)) {
+      if (
+        [
+          'pen',
+          'pencil',
+          'eyedropper',
+          'rectangle',
+          'ellipse',
+          'line',
+          'frame',
+          'polygon',
+          'star',
+          'arrow',
+          'text',
+          'image',
+          'comment',
+          'slice',
+        ].includes(state.activeTool)
+      ) {
         // Don't stop propagation - let canvas handler process the tool
         return
       }
@@ -295,7 +375,15 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
         resizeElementIdRef.current = handleInfo.elementId
         const el = findElementInList(currentState.elements, handleInfo.elementId)
         if (el) {
-          resizeStartRef.current = { x: canvasPos.x, y: canvasPos.y, elX: el.x, elY: el.y, elW: el.width, elH: el.height, fontSize: el.fontSize }
+          resizeStartRef.current = {
+            x: canvasPos.x,
+            y: canvasPos.y,
+            elX: el.x,
+            elY: el.y,
+            elW: el.width,
+            elH: el.height,
+            fontSize: el.fontSize,
+          }
         }
         return
       }
@@ -321,24 +409,21 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
       }
       dragElementStartsRef.current = starts
     },
-    [screenToCanvas, findResizeHandle, setSelectedElementIds]
+    [screenToCanvas, findResizeHandle, setSelectedElementIds],
   )
 
   // Handle double click on elements (enter frame, edit text)
-  const handleElementDoubleClick = useCallback(
-    (element: DesignElement, e: React.MouseEvent) => {
-      e.stopPropagation()
-      const state = useEditorStore.getState()
-      // Only handle double-click for move tool
-      if (state.activeTool !== 'move') return
-      if ((element.type === 'frame' || element.type === 'group' || element.type === 'section')) {
-        useEditorStore.getState().enterFrame(element.id)
-      } else if (element.type === 'text') {
-        setEditingTextId(element.id)
-      }
-    },
-    []
-  )
+  const handleElementDoubleClick = useCallback((element: DesignElement, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const state = useEditorStore.getState()
+    // Only handle double-click for move tool
+    if (state.activeTool !== 'move') return
+    if (element.type === 'frame' || element.type === 'group' || element.type === 'section') {
+      useEditorStore.getState().enterFrame(element.id)
+    } else if (element.type === 'text') {
+      setEditingTextId(element.id)
+    }
+  }, [])
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -380,12 +465,22 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
           resizeElementIdRef.current = handleInfo.elementId
           const el = findElementInList(useEditorStore.getState().elements, handleInfo.elementId)
           if (el) {
-            resizeStartRef.current = { x: canvasPos.x, y: canvasPos.y, elX: el.x, elY: el.y, elW: el.width, elH: el.height, fontSize: el.fontSize }
+            resizeStartRef.current = {
+              x: canvasPos.x,
+              y: canvasPos.y,
+              elX: el.x,
+              elY: el.y,
+              elW: el.width,
+              elH: el.height,
+              fontSize: el.fontSize,
+            }
           }
           return
         }
       }
-      if (['rectangle', 'ellipse', 'line', 'frame', 'polygon', 'star', 'arrow'].includes(activeTool)) {
+      if (
+        ['rectangle', 'ellipse', 'line', 'frame', 'polygon', 'star', 'arrow'].includes(activeTool)
+      ) {
         setDrawStart(canvasPos)
         setDrawCurrent(canvasPos)
         setIsDrawing(true)
@@ -408,13 +503,39 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
         const autoWidth = Math.max(100, text.length * approxCharWidth + 20)
         const autoHeight = Math.round(fontSize * 1.4 * 2)
         const newEl: DesignElement = {
-          id, name: 'Text', type: 'text',
-          x: Math.round(canvasPos.x - autoWidth / 2), y: Math.round(canvasPos.y - autoHeight / 2), width: autoWidth, height: autoHeight,
-          fill: 'transparent', stroke: 'transparent', strokeWidth: 0, strokeStyle: 'solid', strokeAlign: 'center',
-          cornerRadius: 0, cornerRadiusTL: 0, cornerRadiusTR: 0, cornerRadiusBL: 0, cornerRadiusBR: 0,
-          opacity: 100, rotation: 0, visible: true, locked: false,
-          blendMode: 'normal', flipH: false, flipV: false, clipContent: false,
-          textContent: text, fontFamily: 'Inter', fontSize, fontWeight: 400, textAlign: 'center', textColor: '#ffffff', lineHeight: 1.4, letterSpacing: 0,
+          id,
+          name: 'Text',
+          type: 'text',
+          x: Math.round(canvasPos.x - autoWidth / 2),
+          y: Math.round(canvasPos.y - autoHeight / 2),
+          width: autoWidth,
+          height: autoHeight,
+          fill: 'transparent',
+          stroke: 'transparent',
+          strokeWidth: 0,
+          strokeStyle: 'solid',
+          strokeAlign: 'center',
+          cornerRadius: 0,
+          cornerRadiusTL: 0,
+          cornerRadiusTR: 0,
+          cornerRadiusBL: 0,
+          cornerRadiusBR: 0,
+          opacity: 100,
+          rotation: 0,
+          visible: true,
+          locked: false,
+          blendMode: 'normal',
+          flipH: false,
+          flipV: false,
+          clipContent: false,
+          textContent: text,
+          fontFamily: 'Inter',
+          fontSize,
+          fontWeight: 400,
+          textAlign: 'center',
+          textColor: '#ffffff',
+          lineHeight: 1.4,
+          letterSpacing: 0,
         }
         state.addElement(newEl)
         // Auto-detect if inside a frame (addElement already handles currentFrameId)
@@ -438,9 +559,13 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
             // Close the path
             syncPenElement(penPoints, true)
             if (penElementIdRef.current) {
-              const parentFrame = findParentFrameAtPosition(penPoints[0].x, penPoints[0].y, [penElementIdRef.current])
+              const parentFrame = findParentFrameAtPosition(penPoints[0].x, penPoints[0].y, [
+                penElementIdRef.current,
+              ])
               if (parentFrame && parentFrame.id !== currentFrameId) {
-                useEditorStore.getState().moveElementToFrame(penElementIdRef.current, parentFrame.id)
+                useEditorStore
+                  .getState()
+                  .moveElementToFrame(penElementIdRef.current, parentFrame.id)
               }
               useEditorStore.getState().setSelectedElementIds([penElementIdRef.current])
               useEditorStore.getState().pushHistory()
@@ -496,13 +621,42 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
           setSelectedElementIds([])
         }
         rubberBandStartRef.current = canvasPos
-        setRubberBand({ startX: canvasPos.x, startY: canvasPos.y, endX: canvasPos.x, endY: canvasPos.y })
+        setRubberBand({
+          startX: canvasPos.x,
+          startY: canvasPos.y,
+          endX: canvasPos.x,
+          endY: canvasPos.y,
+        })
         return
       }
 
       setSelectedElementIds([])
     },
-    [activeTool, spaceHeld, panX, panY, screenToCanvas, findResizeHandle, selectedElementIds, findElementAtPosition, handleElementMouseDown, setSelectedElementIds, penPoints, penDragStart, zoom, currentFrameId, findParentFrameAtPosition, syncPenElement, penElementIdRef, setPenPoints, setPenDragStart, setPenCursorPos, safeZoom, setIsPencilDrawing, setPencilPoints]
+    [
+      activeTool,
+      spaceHeld,
+      panX,
+      panY,
+      screenToCanvas,
+      findResizeHandle,
+      selectedElementIds,
+      findElementAtPosition,
+      handleElementMouseDown,
+      setSelectedElementIds,
+      penPoints,
+      penDragStart,
+      zoom,
+      currentFrameId,
+      findParentFrameAtPosition,
+      syncPenElement,
+      penElementIdRef,
+      setPenPoints,
+      setPenDragStart,
+      setPenCursorPos,
+      safeZoom,
+      setIsPencilDrawing,
+      setPencilPoints,
+    ],
   )
 
   const handleMouseMove = useCallback(
@@ -530,7 +684,12 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
         return
       }
 
-      if (isResizing && resizeStartRef.current && resizeElementIdRef.current && activeResizeHandle) {
+      if (
+        isResizing &&
+        resizeStartRef.current &&
+        resizeElementIdRef.current &&
+        activeResizeHandle
+      ) {
         const canvasPos = screenToCanvas(e.clientX, e.clientY)
         const start = resizeStartRef.current
         const handle = activeResizeHandle
@@ -540,15 +699,21 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
         const altKey = e.altKey
 
         if (handle === 'rotate') {
-          const el = findElementInList(useEditorStore.getState().elements, resizeElementIdRef.current)
+          const el = findElementInList(
+            useEditorStore.getState().elements,
+            resizeElementIdRef.current,
+          )
           if (el) {
             const centerX = el.x + el.width / 2
             const centerY = el.y + el.height / 2
-            let angle = Math.atan2(canvasPos.y - centerY, canvasPos.x - centerX) * (180 / Math.PI) + 90
+            let angle =
+              Math.atan2(canvasPos.y - centerY, canvasPos.x - centerX) * (180 / Math.PI) + 90
             if (shiftHeld) {
               angle = Math.round(angle / 15) * 15
             }
-            useEditorStore.getState().updateElement(resizeElementIdRef.current, { rotation: Math.round(angle) % 360 })
+            useEditorStore
+              .getState()
+              .updateElement(resizeElementIdRef.current, { rotation: Math.round(angle) % 360 })
           }
           return
         }
@@ -591,7 +756,10 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
           }
         }
 
-        if (shiftHeld && (handle === 'nw' || handle === 'ne' || handle === 'se' || handle === 'sw')) {
+        if (
+          shiftHeld &&
+          (handle === 'nw' || handle === 'ne' || handle === 'se' || handle === 'sw')
+        ) {
           const aspect = start.elW / start.elH
           if (Math.abs(dx) > Math.abs(dy)) {
             newH = newW / aspect
@@ -602,13 +770,24 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
           }
         }
 
-        if (newW < 2) { newW = 2; if (handle.includes('w')) newX = start.elX + start.elW - 2 }
-        if (newH < 2) { newH = 2; if (handle.includes('n')) newY = start.elY + start.elH - 2 }
+        if (newW < 2) {
+          newW = 2
+          if (handle.includes('w')) newX = start.elX + start.elW - 2
+        }
+        if (newH < 2) {
+          newH = 2
+          if (handle.includes('n')) newY = start.elY + start.elH - 2
+        }
 
         // Text elements: scale fontSize proportionally with resize (Figma behavior)
         const resizeId = resizeElementIdRef.current
         const resizeEl = findElementInList(useEditorStore.getState().elements, resizeId)
-        const resizeUpdates: Record<string, number> = { x: newX, y: newY, width: newW, height: newH }
+        const resizeUpdates: Record<string, number> = {
+          x: newX,
+          y: newY,
+          width: newW,
+          height: newH,
+        }
         // PHASE 8: honor snap-to-pixels view option during resize
         if (useEditorStore.getState().snapToPixels !== false) {
           resizeUpdates.x = Math.round(newX)
@@ -633,8 +812,14 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
             for (const { id, updates: u } of pendingDragUpdate.current) {
               // PHASE 9: resizing a frame repositions/resizes children by constraints
               const el = findElementInList(s.elements, id)
-              if (el && el.type === 'frame' && el.children && el.children.length > 0 &&
-                  !el.autoLayout && ('width' in u || 'height' in u)) {
+              if (
+                el &&
+                el.type === 'frame' &&
+                el.children &&
+                el.children.length > 0 &&
+                !el.autoLayout &&
+                ('width' in u || 'height' in u)
+              ) {
                 const geo = u as { x?: number; y?: number; width: number; height: number }
                 s.resizeFrameWithConstraints(id, {
                   ...(geo.x !== undefined ? { x: geo.x } : {}),
@@ -664,8 +849,16 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
             void startPos
             const el = findElementInList(state.elements, id)
             if (el) {
-              const dup = { ...JSON.parse(JSON.stringify(el)), id: generateId(el.type), name: `${el.name} copy` }
-              if (dup.children) dup.children = dup.children.map((c: DesignElement) => ({ ...c, id: generateId(c.type) }))
+              const dup = {
+                ...JSON.parse(JSON.stringify(el)),
+                id: generateId(el.type),
+                name: `${el.name} copy`,
+              }
+              if (dup.children)
+                dup.children = dup.children.map((c: DesignElement) => ({
+                  ...c,
+                  id: generateId(c.type),
+                }))
               dups.push(dup)
             }
           })
@@ -679,7 +872,14 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
           const primaryEl = findElementInList(state.elements, primaryId)
           if (primaryEl) {
             const tempEl = { ...primaryEl, x: primaryStart.x + dx, y: primaryStart.y + dy }
-            const snap = calculateSnapLines(tempEl, state.elements, state.selectedElementIds, gridSize, snapToGrid, snapToElements)
+            const snap = calculateSnapLines(
+              tempEl,
+              state.elements,
+              state.selectedElementIds,
+              gridSize,
+              snapToGrid,
+              snapToElements,
+            )
             setSnapLines(snap.snapLines)
 
             const actualDx = snap.snapX !== null ? snap.snapX - primaryStart.x : dx
@@ -693,7 +893,10 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
             Object.entries(dragElementStartsRef.current).forEach(([id, startPos]) => {
               const nx = startPos.x + actualDx
               const ny = startPos.y + actualDy
-              updates.push({ id, updates: { x: pixelSnap ? Math.round(nx) : nx, y: pixelSnap ? Math.round(ny) : ny } })
+              updates.push({
+                id,
+                updates: { x: pixelSnap ? Math.round(nx) : nx, y: pixelSnap ? Math.round(ny) : ny },
+              })
             })
             cancelAnimationFrame(dragRafRef.current)
             pendingDragUpdate.current = updates
@@ -715,9 +918,16 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
           let foundFrame: DesignElement | null = null
           for (let i = state.elements.length - 1; i >= 0; i--) {
             const el = state.elements[i]
-            if (((el.type === 'frame' || el.type === 'group' || el.type === 'section')) && !selectedElementIds.includes(el.id)) {
-              if (canvasPos.x >= el.x && canvasPos.x <= el.x + el.width &&
-                  canvasPos.y >= el.y && canvasPos.y <= el.y + el.height) {
+            if (
+              (el.type === 'frame' || el.type === 'group' || el.type === 'section') &&
+              !selectedElementIds.includes(el.id)
+            ) {
+              if (
+                canvasPos.x >= el.x &&
+                canvasPos.x <= el.x + el.width &&
+                canvasPos.y >= el.y &&
+                canvasPos.y <= el.y + el.height
+              ) {
                 foundFrame = el
                 break
               }
@@ -744,7 +954,7 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
         const canvasPos = screenToCanvas(e.clientX, e.clientY)
         cancelAnimationFrame(pencilRafRef.current)
         pencilRafRef.current = requestAnimationFrame(() => {
-          setPencilPoints(prev => [...prev, canvasPos])
+          setPencilPoints((prev) => [...prev, canvasPos])
         })
       }
 
@@ -755,7 +965,7 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
           // Dragging to create bezier handles
           const dx = canvasPos.x - penDragStart.x
           const dy = canvasPos.y - penDragStart.y
-          setPenPoints(prev => {
+          setPenPoints((prev) => {
             const updated = [...prev]
             const idx = penDragStart.pointIndex
             if (idx < updated.length) {
@@ -793,23 +1003,40 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
         setHoveredElementId(hoveredEl ? hoveredEl.id : null)
 
         // PHASE 11 — alt+hover distance measurement (single selection + another element)
-        if (e.altKey && selectedElementIds.length === 1 && hoveredEl && hoveredEl.id !== selectedElementIds[0]) {
+        if (
+          e.altKey &&
+          selectedElementIds.length === 1 &&
+          hoveredEl &&
+          hoveredEl.id !== selectedElementIds[0]
+        ) {
           const state = useEditorStore.getState()
-          const sel = state.elements.find((x) => x.id === selectedElementIds[0]) ||
-            state.elements.flatMap((x) => x.children || []).find((c) => c.id === selectedElementIds[0])
+          const sel =
+            state.elements.find((x) => x.id === selectedElementIds[0]) ||
+            state.elements
+              .flatMap((x) => x.children || [])
+              .find((c) => c.id === selectedElementIds[0])
           if (sel && hoveredEl) {
             // absolute boxes (both may be children → one level of parent offset is enough for our tree)
             const absOf = (el: DesignElement): { x: number; y: number; w: number; h: number } => {
-              let px = 0, py = 0
+              let px = 0,
+                py = 0
               for (const top of state.elements) {
                 if (top.children) {
                   const c = top.children.find((cc) => cc.id === el.id)
-                  if (c) { px = top.x; py = top.y; break }
+                  if (c) {
+                    px = top.x
+                    py = top.y
+                    break
+                  }
                   // depth 2
                   for (const c1 of top.children) {
                     if (c1.children) {
                       const c2 = c1.children.find((cc) => cc.id === el.id)
-                      if (c2) { px = top.x + c1.x; py = top.y + c1.y; break }
+                      if (c2) {
+                        px = top.x + c1.x
+                        py = top.y + c1.y
+                        break
+                      }
                     }
                   }
                 }
@@ -821,9 +1048,18 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
             const overlapY = selBox.y < hovBox.y + hovBox.h && hovBox.y < selBox.y + selBox.h
             const overlapX = selBox.x < hovBox.x + hovBox.w && hovBox.x < selBox.x + selBox.w
             setHoverDistances({
-              selBox, hovBox,
-              dx: overlapY ? null : Math.round(Math.max(hovBox.x - (selBox.x + selBox.w), selBox.x - (hovBox.x + hovBox.w))),
-              dy: overlapX ? null : Math.round(Math.max(hovBox.y - (selBox.y + selBox.h), selBox.y - (hovBox.y + hovBox.h))),
+              selBox,
+              hovBox,
+              dx: overlapY
+                ? null
+                : Math.round(
+                    Math.max(hovBox.x - (selBox.x + selBox.w), selBox.x - (hovBox.x + hovBox.w)),
+                  ),
+              dy: overlapX
+                ? null
+                : Math.round(
+                    Math.max(hovBox.y - (selBox.y + selBox.h), selBox.y - (hovBox.y + hovBox.h)),
+                  ),
               leftGap: overlapY ? Math.round(selBox.x - (hovBox.x + hovBox.w)) : null,
               rightGap: overlapY ? Math.round(hovBox.x - (selBox.x + selBox.w)) : null,
               topGap: overlapX ? Math.round(selBox.y - (hovBox.y + hovBox.h)) : null,
@@ -848,7 +1084,31 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
         })
       }
     },
-    [isPanning, isResizing, isDragging, isDrawing, drawStart, activeTool, screenToCanvas, zoom, snapToGrid, snapToElements, gridSize, dragDuplicates, isPencilDrawing, selectedElementIds, penDragStart, penPoints, updatePathDrag, findElementAtPosition, setActiveResizeHandle, setPenPoints, setPenCursorPos, setPencilPoints, pencilRafRef]
+    [
+      isPanning,
+      isResizing,
+      isDragging,
+      isDrawing,
+      drawStart,
+      activeTool,
+      screenToCanvas,
+      zoom,
+      snapToGrid,
+      snapToElements,
+      gridSize,
+      dragDuplicates,
+      isPencilDrawing,
+      selectedElementIds,
+      penDragStart,
+      penPoints,
+      updatePathDrag,
+      findElementAtPosition,
+      setActiveResizeHandle,
+      setPenPoints,
+      setPenCursorPos,
+      setPencilPoints,
+      pencilRafRef,
+    ],
   )
 
   const handleMouseUp = useCallback(
@@ -866,14 +1126,20 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
       // Finish pen drag operation if active
       if (activeTool === 'pen' && penDragStart) {
         // If drag distance was very small, remove the bezier handles (treat as a simple click)
-        setPenPoints(prev => {
+        setPenPoints((prev) => {
           const updated = [...prev]
           const idx = penDragStart.pointIndex
           if (idx < updated.length) {
             const pt = updated[idx]
             // Check if handles are essentially at the same position as the point (no meaningful drag)
-            const handleDist1 = pt.cx1 !== undefined && pt.cy1 !== undefined ? Math.sqrt((pt.cx1 - pt.x) ** 2 + (pt.cy1 - pt.y) ** 2) : 0
-            const handleDist2 = pt.cx2 !== undefined && pt.cy2 !== undefined ? Math.sqrt((pt.cx2 - pt.x) ** 2 + (pt.cy2 - pt.y) ** 2) : 0
+            const handleDist1 =
+              pt.cx1 !== undefined && pt.cy1 !== undefined
+                ? Math.sqrt((pt.cx1 - pt.x) ** 2 + (pt.cy1 - pt.y) ** 2)
+                : 0
+            const handleDist2 =
+              pt.cx2 !== undefined && pt.cy2 !== undefined
+                ? Math.sqrt((pt.cx2 - pt.x) ** 2 + (pt.cy2 - pt.y) ** 2)
+                : 0
             if (handleDist1 < 2 / safeZoom && handleDist2 < 2 / safeZoom) {
               // Remove handles - this was a simple click, not a drag
               const { cx1, cy1, cx2, cy2, ...rest } = pt
@@ -918,7 +1184,10 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
         if (dropTargetFrameId) {
           const state = useEditorStore.getState()
           const frame = findElementInList(state.elements, dropTargetFrameId)
-          if (frame && ((frame.type === 'frame' || frame.type === 'group' || frame.type === 'section'))) {
+          if (
+            frame &&
+            (frame.type === 'frame' || frame.type === 'group' || frame.type === 'section')
+          ) {
             for (const id of state.selectedElementIds) {
               state.moveElementToFrame(id, dropTargetFrameId)
             }
@@ -934,8 +1203,13 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
           if (primaryId) {
             const chain = findAncestors(s.elements, primaryId)
             const parent = chain[0]
-            if (parent && parent.type === 'frame' && parent.autoLayout && parent.children &&
-                parent.id !== dropTargetFrameId) {
+            if (
+              parent &&
+              parent.type === 'frame' &&
+              parent.autoLayout &&
+              parent.children &&
+              parent.id !== dropTargetFrameId
+            ) {
               // frame absolute position (children coords are parent-relative)
               let frameAbsX = parent.x
               let frameAbsY = parent.y
@@ -947,20 +1221,25 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
               const relX = pt.x - frameAbsX
               const relY = pt.y - frameAbsY
               const isH = parent.autoLayout.direction === 'horizontal'
-              const inFlow = parent.children.filter(c => c.visible && c.layoutPositioning !== 'absolute')
+              const inFlow = parent.children.filter(
+                (c) => c.visible && c.layoutPositioning !== 'absolute',
+              )
               let insertAt = inFlow.length
               for (let i = 0; i < inFlow.length; i++) {
                 const c = inFlow[i]
                 const center = isH ? c.x + c.width / 2 : c.y + c.height / 2
                 const pointer = isH ? relX : relY
-                if (pointer < center) { insertAt = i; break }
+                if (pointer < center) {
+                  insertAt = i
+                  break
+                }
               }
               // convert in-flow position to full-children index
               let targetIndex = parent.children.length
               if (insertAt < inFlow.length) {
-                targetIndex = parent.children.findIndex(c => c.id === inFlow[insertAt].id)
+                targetIndex = parent.children.findIndex((c) => c.id === inFlow[insertAt].id)
               }
-              const currentIndex = parent.children.findIndex(c => c.id === primaryId)
+              const currentIndex = parent.children.findIndex((c) => c.id === primaryId)
               if (currentIndex !== -1 && targetIndex !== currentIndex) {
                 s.reorderChild(parent.id, primaryId, targetIndex)
               } else {
@@ -985,8 +1264,11 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
         const simplified = simplifyPath(pencilPoints, 2)
 
         // Calculate bounding box
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-        simplified.forEach(pt => {
+        let minX = Infinity,
+          minY = Infinity,
+          maxX = -Infinity,
+          maxY = -Infinity
+        simplified.forEach((pt) => {
           minX = Math.min(minX, pt.x)
           minY = Math.min(minY, pt.y)
           maxX = Math.max(maxX, pt.x)
@@ -995,7 +1277,7 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
 
         if (maxX - minX > 2 || maxY - minY > 2) {
           // Convert to local coordinates then smooth via Catmull-Rom
-          const localPoints = simplified.map(pt => ({
+          const localPoints = simplified.map((pt) => ({
             x: pt.x - minX,
             y: pt.y - minY,
           }))
@@ -1006,14 +1288,33 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
           const pencilVectorNetwork = pathPointsToVectorNetwork(pathPoints, false)
 
           const newEl: DesignElement = {
-            id: generateId('path'), name: 'Pencil Path', type: 'path',
-            x: Math.round(minX), y: Math.round(minY),
-            width: Math.round(maxX - minX), height: Math.round(maxY - minY),
-            fill: 'transparent', stroke: '#000000', strokeWidth: 2, strokeStyle: 'solid', strokeAlign: 'center',
-            cornerRadius: 0, cornerRadiusTL: 0, cornerRadiusTR: 0, cornerRadiusBL: 0, cornerRadiusBR: 0,
-            opacity: 100, rotation: 0, visible: true, locked: false,
-            blendMode: 'normal', flipH: false, flipV: false, clipContent: false,
-            pathPoints, pathClosed: false,
+            id: generateId('path'),
+            name: 'Pencil Path',
+            type: 'path',
+            x: Math.round(minX),
+            y: Math.round(minY),
+            width: Math.round(maxX - minX),
+            height: Math.round(maxY - minY),
+            fill: 'transparent',
+            stroke: '#000000',
+            strokeWidth: 2,
+            strokeStyle: 'solid',
+            strokeAlign: 'center',
+            cornerRadius: 0,
+            cornerRadiusTL: 0,
+            cornerRadiusTR: 0,
+            cornerRadiusBL: 0,
+            cornerRadiusBR: 0,
+            opacity: 100,
+            rotation: 0,
+            visible: true,
+            locked: false,
+            blendMode: 'normal',
+            flipH: false,
+            flipV: false,
+            clipContent: false,
+            pathPoints,
+            pathClosed: false,
             vectorNetwork: pencilVectorNetwork,
           }
           const state = useEditorStore.getState()
@@ -1056,7 +1357,11 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
                   const pixel = ctx.getImageData(Math.round(px), Math.round(py), 1, 1)
                   if (pixel && pixel.data[3] > 0) {
                     const [r, g, b] = pixel.data
-                    const hex = '#' + r.toString(16).padStart(2, '0') + g.toString(16).padStart(2, '0') + b.toString(16).padStart(2, '0')
+                    const hex =
+                      '#' +
+                      r.toString(16).padStart(2, '0') +
+                      g.toString(16).padStart(2, '0') +
+                      b.toString(16).padStart(2, '0')
                     // Apply to selected element's fill
                     const state = useEditorStore.getState()
                     if (state.selectedElementIds.length > 0) {
@@ -1089,13 +1394,31 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
           if (activeTool === 'line') {
             elementCounterRef.current++
             const newEl: DesignElement = {
-              id: generateId('line'), name: `Line ${elementCounterRef.current}`, type: 'line',
-              x: Math.round(drawStart.x), y: Math.round(drawStart.y),
-              width: Math.round(drawCurrent.x - drawStart.x), height: Math.round(drawCurrent.y - drawStart.y),
-              fill: 'transparent', stroke: '#000000', strokeWidth: 2, strokeStyle: 'solid', strokeAlign: 'center',
-              cornerRadius: 0, cornerRadiusTL: 0, cornerRadiusTR: 0, cornerRadiusBL: 0, cornerRadiusBR: 0,
-              opacity: 100, rotation: 0, visible: true, locked: false,
-              blendMode: 'normal', flipH: false, flipV: false, clipContent: false,
+              id: generateId('line'),
+              name: `Line ${elementCounterRef.current}`,
+              type: 'line',
+              x: Math.round(drawStart.x),
+              y: Math.round(drawStart.y),
+              width: Math.round(drawCurrent.x - drawStart.x),
+              height: Math.round(drawCurrent.y - drawStart.y),
+              fill: 'transparent',
+              stroke: '#000000',
+              strokeWidth: 2,
+              strokeStyle: 'solid',
+              strokeAlign: 'center',
+              cornerRadius: 0,
+              cornerRadiusTL: 0,
+              cornerRadiusTR: 0,
+              cornerRadiusBL: 0,
+              cornerRadiusBR: 0,
+              opacity: 100,
+              rotation: 0,
+              visible: true,
+              locked: false,
+              blendMode: 'normal',
+              flipH: false,
+              flipV: false,
+              clipContent: false,
             }
             state.addElement(newEl)
             // Auto-detect if inside a frame (addElement already handles currentFrameId)
@@ -1107,13 +1430,31 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
           } else if (activeTool === 'arrow') {
             elementCounterRef.current++
             const newEl: DesignElement = {
-              id: generateId('arrow'), name: `Arrow ${elementCounterRef.current}`, type: 'arrow',
-              x: Math.round(drawStart.x), y: Math.round(drawStart.y),
-              width: Math.round(drawCurrent.x - drawStart.x), height: Math.round(drawCurrent.y - drawStart.y),
-              fill: 'transparent', stroke: '#000000', strokeWidth: 2, strokeStyle: 'solid', strokeAlign: 'center',
-              cornerRadius: 0, cornerRadiusTL: 0, cornerRadiusTR: 0, cornerRadiusBL: 0, cornerRadiusBR: 0,
-              opacity: 100, rotation: 0, visible: true, locked: false,
-              blendMode: 'normal', flipH: false, flipV: false, clipContent: false,
+              id: generateId('arrow'),
+              name: `Arrow ${elementCounterRef.current}`,
+              type: 'arrow',
+              x: Math.round(drawStart.x),
+              y: Math.round(drawStart.y),
+              width: Math.round(drawCurrent.x - drawStart.x),
+              height: Math.round(drawCurrent.y - drawStart.y),
+              fill: 'transparent',
+              stroke: '#000000',
+              strokeWidth: 2,
+              strokeStyle: 'solid',
+              strokeAlign: 'center',
+              cornerRadius: 0,
+              cornerRadiusTL: 0,
+              cornerRadiusTR: 0,
+              cornerRadiusBL: 0,
+              cornerRadiusBR: 0,
+              opacity: 100,
+              rotation: 0,
+              visible: true,
+              locked: false,
+              blendMode: 'normal',
+              flipH: false,
+              flipV: false,
+              clipContent: false,
               arrowHeadStyle: 'arrow',
             }
             state.addElement(newEl)
@@ -1123,7 +1464,11 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
               state.moveElementToFrame(newEl.id, parentFrame.id)
             }
             state.setSelectedElementIds([newEl.id])
-          } else if (activeTool === 'section' || activeTool === 'table' || activeTool === 'sticky') {
+          } else if (
+            activeTool === 'section' ||
+            activeTool === 'table' ||
+            activeTool === 'sticky'
+          ) {
             // PHASE 15 — section / table / sticky: store defaults + drag size
             // (table size derives from tableData sums, not the drag)
             elementCounterRef.current++
@@ -1132,9 +1477,16 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
               ...d15,
               id: `${activeTool}-${Date.now()}`,
               name: `${activeTool.charAt(0).toUpperCase() + activeTool.slice(1)} ${elementCounterRef.current}`,
-              x: Math.round(x), y: Math.round(y),
-              width: activeTool === 'table' ? (d15.tableData?.colWidths.reduce((a, b) => a + b, 0) || d15.width) : Math.round(width),
-              height: activeTool === 'table' ? (d15.tableData?.rowHeights.reduce((a, b) => a + b, 0) || d15.height) : Math.round(height),
+              x: Math.round(x),
+              y: Math.round(y),
+              width:
+                activeTool === 'table'
+                  ? d15.tableData?.colWidths.reduce((a, b) => a + b, 0) || d15.width
+                  : Math.round(width),
+              height:
+                activeTool === 'table'
+                  ? d15.tableData?.rowHeights.reduce((a, b) => a + b, 0) || d15.height
+                  : Math.round(height),
             }
             state.addElement(newEl)
             const parentFrame15 = findParentFrameAtPosition(x, y, [newEl.id])
@@ -1143,28 +1495,60 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
             }
             state.setSelectedElementIds([newEl.id])
           } else {
-            const defaults: Record<string, { fill: string; stroke: string; strokeWidth: number; sides?: number; innerRadius?: number }> = {
+            const defaults: Record<
+              string,
+              {
+                fill: string
+                stroke: string
+                strokeWidth: number
+                sides?: number
+                innerRadius?: number
+              }
+            > = {
               rectangle: { fill: '#D9D9D9', stroke: 'transparent', strokeWidth: 0 },
               ellipse: { fill: '#D9D9D9', stroke: 'transparent', strokeWidth: 0 },
               frame: { fill: '#FFFFFF', stroke: '#E0E0E0', strokeWidth: 1 },
               polygon: { fill: '#D9D9D9', stroke: 'transparent', strokeWidth: 0, sides: 6 },
-              star: { fill: '#FFD93D', stroke: 'transparent', strokeWidth: 0, sides: 5, innerRadius: 40 },
+              star: {
+                fill: '#FFD93D',
+                stroke: 'transparent',
+                strokeWidth: 0,
+                sides: 5,
+                innerRadius: 40,
+              },
             }
-            const td = defaults[activeTool] || { fill: '#D9D9D9', stroke: 'transparent', strokeWidth: 0 }
+            const td = defaults[activeTool] || {
+              fill: '#D9D9D9',
+              stroke: 'transparent',
+              strokeWidth: 0,
+            }
             elementCounterRef.current++
             const newEl: DesignElement = {
               id: `${activeTool}-${Date.now()}`,
               name: `${activeTool.charAt(0).toUpperCase() + activeTool.slice(1)} ${elementCounterRef.current}`,
               type: activeTool as DesignElement['type'],
-              x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height),
-              fill: td.fill, stroke: td.stroke, strokeWidth: td.strokeWidth, strokeStyle: 'solid', strokeAlign: 'center',
+              x: Math.round(x),
+              y: Math.round(y),
+              width: Math.round(width),
+              height: Math.round(height),
+              fill: td.fill,
+              stroke: td.stroke,
+              strokeWidth: td.strokeWidth,
+              strokeStyle: 'solid',
+              strokeAlign: 'center',
               cornerRadius: activeTool === 'frame' ? 8 : 0,
               cornerRadiusTL: activeTool === 'frame' ? 8 : 0,
               cornerRadiusTR: activeTool === 'frame' ? 8 : 0,
               cornerRadiusBL: activeTool === 'frame' ? 8 : 0,
               cornerRadiusBR: activeTool === 'frame' ? 8 : 0,
-              opacity: 100, rotation: 0, visible: true, locked: false,
-              blendMode: 'normal', flipH: false, flipV: false, clipContent: activeTool === 'frame',
+              opacity: 100,
+              rotation: 0,
+              visible: true,
+              locked: false,
+              blendMode: 'normal',
+              flipH: false,
+              flipV: false,
+              clipContent: activeTool === 'frame',
               ...(td.sides !== undefined ? { sides: td.sides } : {}),
               ...(td.innerRadius !== undefined ? { innerRadius: td.innerRadius } : {}),
             }
@@ -1198,9 +1582,15 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
         if (pendingImagesRef.current.length > 0) {
           // queue active: drag rect (if any) sizes the placement; point centers it
           const pos = screenToCanvas(clientX, clientY)
-          const rect = drawStart && drawCurrent
-            ? { x: Math.min(drawStart.x, drawCurrent.x), y: Math.min(drawStart.y, drawCurrent.y), w: Math.abs(drawCurrent.x - drawStart.x), h: Math.abs(drawCurrent.y - drawStart.y) }
-            : null
+          const rect =
+            drawStart && drawCurrent
+              ? {
+                  x: Math.min(drawStart.x, drawCurrent.x),
+                  y: Math.min(drawStart.y, drawCurrent.y),
+                  w: Math.abs(drawCurrent.x - drawStart.x),
+                  h: Math.abs(drawCurrent.y - drawStart.y),
+                }
+              : null
           void placeNextPending(pos.x, pos.y, rect)
           setIsDrawing(false)
           setDrawStart(null)
@@ -1232,7 +1622,10 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
             } else {
               // multi: enter PLACE_IMAGE queue
               pendingImagesRef.current = loaded
-              toast({ title: `Placing 1/${loaded.length}`, description: 'Click or drag on the canvas (Esc to cancel).' })
+              toast({
+                title: `Placing 1/${loaded.length}`,
+                description: 'Click or drag on the canvas (Esc to cancel).',
+              })
             }
           } catch (err) {
             console.error('Failed to load image:', err)
@@ -1254,13 +1647,17 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
             if (!el.visible || el.locked) return
             const absX = el.x + parentX
             const absY = el.y + parentY
-            if (absX + el.width > rbMinX && absX < rbMaxX &&
-                absY + el.height > rbMinY && absY < rbMaxY) {
+            if (
+              absX + el.width > rbMinX &&
+              absX < rbMaxX &&
+              absY + el.height > rbMinY &&
+              absY < rbMaxY
+            ) {
               selectedIds.push(el.id)
             }
-            if (el.children) el.children.forEach(c => addSelected(c, absX, absY))
+            if (el.children) el.children.forEach((c) => addSelected(c, absX, absY))
           }
-          state.elements.forEach(el => addSelected(el))
+          state.elements.forEach((el) => addSelected(el))
           if (e.shiftKey) {
             state.setSelectedElementIds([...new Set([...state.selectedElementIds, ...selectedIds])])
           } else {
@@ -1271,7 +1668,30 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
         rubberBandStartRef.current = null
       }
     },
-    [isPanning, isResizing, isDragging, isDrawing, drawStart, drawCurrent, rubberBand, activeTool, isPencilDrawing, pencilPoints, eyedropperPos, dropTargetFrameId, selectedElementIds, safeZoom, penDragStart, setPenPoints, setPenDragStart, finishPathDrag, screenToCanvas, findParentFrameAtPosition, currentFrameId, containerRef]
+    [
+      isPanning,
+      isResizing,
+      isDragging,
+      isDrawing,
+      drawStart,
+      drawCurrent,
+      rubberBand,
+      activeTool,
+      isPencilDrawing,
+      pencilPoints,
+      eyedropperPos,
+      dropTargetFrameId,
+      selectedElementIds,
+      safeZoom,
+      penDragStart,
+      setPenPoints,
+      setPenDragStart,
+      finishPathDrag,
+      screenToCanvas,
+      findParentFrameAtPosition,
+      currentFrameId,
+      containerRef,
+    ],
   )
 
   const handleDoubleClick = useCallback(
@@ -1280,8 +1700,16 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
       const clickedEl = findElementAtPosition(canvasPos.x, canvasPos.y)
 
       // Enter frame/group on double-click
-      if (!clickedEl || clickedEl.type === 'frame' || clickedEl.type === 'group' || clickedEl.type === 'section') {
-        if (clickedEl && (clickedEl.type === 'frame' || clickedEl.type === 'group' || clickedEl.type === 'section')) {
+      if (
+        !clickedEl ||
+        clickedEl.type === 'frame' ||
+        clickedEl.type === 'group' ||
+        clickedEl.type === 'section'
+      ) {
+        if (
+          clickedEl &&
+          (clickedEl.type === 'frame' || clickedEl.type === 'group' || clickedEl.type === 'section')
+        ) {
           useEditorStore.getState().enterFrame(clickedEl.id)
         }
         return
@@ -1320,19 +1748,39 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
       // (local point within the table element → row/col)
       if (clickedEl.type === 'table' && clickedEl.tableData) {
         const ancestors = findAncestors(useEditorStore.getState().elements, clickedEl.id)
-        let ax = clickedEl.x, ay = clickedEl.y
-        for (const a of ancestors) { ax += a.x; ay += a.y }
+        let ax = clickedEl.x,
+          ay = clickedEl.y
+        for (const a of ancestors) {
+          ax += a.x
+          ay += a.y
+        }
         const lx = canvasPos.x - ax
         const ly = canvasPos.y - ay
         const td15 = clickedEl.tableData
-        let col = 0, cxAcc = 0
-        for (let i = 0; i < td15.colWidths.length; i++) { cxAcc += td15.colWidths[i]; if (lx < cxAcc) { col = i; break } col = i }
-        let row = 0, ryAcc = 0
-        for (let i = 0; i < td15.rowHeights.length; i++) { ryAcc += td15.rowHeights[i]; if (ly < ryAcc) { row = i; break } row = i }
+        let col = 0,
+          cxAcc = 0
+        for (let i = 0; i < td15.colWidths.length; i++) {
+          cxAcc += td15.colWidths[i]
+          if (lx < cxAcc) {
+            col = i
+            break
+          }
+          col = i
+        }
+        let row = 0,
+          ryAcc = 0
+        for (let i = 0; i < td15.rowHeights.length; i++) {
+          ryAcc += td15.rowHeights[i]
+          if (ly < ryAcc) {
+            row = i
+            break
+          }
+          row = i
+        }
         setEditingTableCell({ elementId: clickedEl.id, row, col })
       }
     },
-    [screenToCanvas, findElementAtPosition, pathEditing, setEditingTableCell]
+    [screenToCanvas, findElementAtPosition, pathEditing, setEditingTableCell],
   )
 
   // Handle file drop (PHASE 4: unified router — SVG → editable elements,
@@ -1350,7 +1798,7 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
       const { importFiles } = await import('../../../lib/import/handlers')
       await importFiles(files, canvasPos)
     },
-    [screenToCanvas]
+    [screenToCanvas],
   )
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -1360,18 +1808,37 @@ export function useElementInteractions({ viewport, hitTest, pen, pathEditing }: 
 
   const getCursor = (): string => {
     if (isPanning || spaceHeld) return 'grabbing'
-    if (isResizing && activeResizeHandle) return handleCursors[activeResizeHandle as keyof typeof handleCursors]
+    if (isResizing && activeResizeHandle)
+      return handleCursors[activeResizeHandle as keyof typeof handleCursors]
     if (isScaling) return 'nwse-resize'
     if (isDragging) return 'move'
     switch (activeTool) {
-      case 'hand': return 'grab'
-      case 'move': return 'default'
-      case 'rectangle': case 'ellipse': case 'line': case 'frame': case 'polygon': case 'star': case 'pen': case 'pencil': case 'comment': case 'slice': case 'arrow': case 'image': return 'crosshair'
-      case 'text': return 'text'
-      case 'eyedropper': return 'crosshair'
+      case 'hand':
+        return 'grab'
+      case 'move':
+        return 'default'
+      case 'rectangle':
+      case 'ellipse':
+      case 'line':
+      case 'frame':
+      case 'polygon':
+      case 'star':
+      case 'pen':
+      case 'pencil':
+      case 'comment':
+      case 'slice':
+      case 'arrow':
+      case 'image':
+        return 'crosshair'
+      case 'text':
+        return 'text'
+      case 'eyedropper':
+        return 'crosshair'
       // PHASE 11 — scale tool: corner-resize feel over the selection
-      case 'scale': return selectedElementIds.length > 0 ? 'nwse-resize' : 'default'
-      default: return 'default'
+      case 'scale':
+        return selectedElementIds.length > 0 ? 'nwse-resize' : 'default'
+      default:
+        return 'default'
     }
   }
 

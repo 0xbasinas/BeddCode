@@ -50,7 +50,10 @@ export function useCanvasViewport() {
     const state = useEditorStore.getState()
     const allElements = state.elements
     if (allElements.length === 0 || size.width < 200 || size.height < 200) return
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity
     const processElement = (el: DesignElement, parentX = 0, parentY = 0) => {
       const absX = el.x + parentX
       const absY = el.y + parentY
@@ -58,7 +61,7 @@ export function useCanvasViewport() {
       minY = Math.min(minY, absY)
       maxX = Math.max(maxX, absX + el.width)
       maxY = Math.max(maxY, absY + el.height)
-      if (el.children) el.children.forEach(c => processElement(c, absX, absY))
+      if (el.children) el.children.forEach((c) => processElement(c, absX, absY))
     }
     allElements.forEach((el) => processElement(el))
     const contentWidth = maxX - minX
@@ -97,11 +100,14 @@ export function useCanvasViewport() {
   const zoomToSelection = useCallback(() => {
     const state = useEditorStore.getState()
     const selected = state.selectedElementIds
-      .map(id => findElementInList(state.elements, id))
+      .map((id) => findElementInList(state.elements, id))
       .filter(Boolean) as DesignElement[]
     if (selected.length === 0) return
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-    selected.forEach(el => {
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity
+    selected.forEach((el) => {
       minX = Math.min(minX, el.x)
       minY = Math.min(minY, el.y)
       maxX = Math.max(maxX, el.x + el.width)
@@ -110,7 +116,11 @@ export function useCanvasViewport() {
     const cw = maxX - minX
     const ch = maxY - minY
     const pad = 100
-    const nz = Math.min((containerSize.width - pad * 2) / cw, (containerSize.height - pad * 2) / ch, 4)
+    const nz = Math.min(
+      (containerSize.width - pad * 2) / cw,
+      (containerSize.height - pad * 2) / ch,
+      4,
+    )
     state.setZoom(nz)
     state.setPan(-(minX + cw / 2) * nz, -(minY + ch / 2) * nz)
   }, [containerSize])
@@ -126,7 +136,7 @@ export function useCanvasViewport() {
       const y = (clientY - rect.top - cy) / safeZoom
       return { x: isFinite(x) ? x : 0, y: isFinite(y) ? y : 0 }
     },
-    [zoom, panX, panY, containerSize]
+    [zoom, panX, panY, containerSize],
   )
 
   const handleWheel = useCallback(
@@ -168,7 +178,7 @@ export function useCanvasViewport() {
         setPan(panX - e.deltaX, panY - e.deltaY)
       }
     },
-    [zoom, panX, panY, setZoom, setPan, containerSize]
+    [zoom, panX, panY, setZoom, setPan, containerSize],
   )
 
   return {

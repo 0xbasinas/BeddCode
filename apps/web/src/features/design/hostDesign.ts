@@ -85,9 +85,7 @@ export function useHostDesign(hostKey: string) {
         const list = await refreshList()
         const wanted = remembered(hostKey)
         const first =
-          list.find((d) => d.id === wanted)?.id ??
-          list[0]?.id ??
-          (await createFirst(hostKey))
+          list.find((d) => d.id === wanted)?.id ?? list[0]?.id ?? (await createFirst(hostKey))
         if (cancelled) return
         await open(first)
         if (!list.some((d) => d.id === first)) void refreshList()
@@ -182,11 +180,14 @@ export function useHostDesign(hostKey: string) {
         }
         if (frame.id !== current.current || frame.origin === clientId || frame.rev <= rev.current)
           return
-        void hostRequest(hostKey, 'design.get', { id: frame.id }).then((design) => {
-          if (design.id !== current.current || design.rev <= rev.current) return
-          rev.current = design.rev
-          useEditorStore.getState().applyRemoteProject(design.project)
-        }, () => {})
+        void hostRequest(hostKey, 'design.get', { id: frame.id }).then(
+          (design) => {
+            if (design.id !== current.current || design.rev <= rev.current) return
+            rev.current = design.rev
+            useEditorStore.getState().applyRemoteProject(design.project)
+          },
+          () => {},
+        )
       }),
     [hostKey, refreshList],
   )

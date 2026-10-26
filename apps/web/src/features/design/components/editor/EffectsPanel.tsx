@@ -1,7 +1,12 @@
 // @ts-nocheck
 import React from 'react'
 import { Plus, Trash2, Eye, EyeOff } from 'lucide-react'
-import { useEditorStore, type ShadowEffect, type BlurEffect, type DesignElement } from '../../store/editor-store'
+import {
+  useEditorStore,
+  type ShadowEffect,
+  type BlurEffect,
+  type DesignElement,
+} from '../../store/editor-store'
 import { ColorPicker } from './ColorPicker'
 
 interface EffectsPanelProps {
@@ -74,7 +79,10 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
       )}
 
       {shadows.map((shadow, i) => (
-        <div key={`shadow-${i}`} className="bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] rounded p-2 mb-1.5">
+        <div
+          key={`shadow-${i}`}
+          className="bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] rounded p-2 mb-1.5"
+        >
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] font-medium text-[color:var(--dc-text2)]">
               {shadow.type === 'drop-shadow' ? 'Drop Shadow' : 'Inner Shadow'}
@@ -91,7 +99,10 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
                 )}
               </button>
               <button
-                onClick={() => { pushHistory(); removeEffect(element.id, i) }}
+                onClick={() => {
+                  pushHistory()
+                  removeEffect(element.id, i)
+                }}
                 className="flex items-center justify-center w-5 h-5 rounded hover:bg-[color:var(--dc-hover)]"
               >
                 <Trash2 className="w-3 h-3 text-[#F44336]" />
@@ -161,14 +172,19 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
       ))}
 
       {blurs.map((blur, i) => (
-        <div key={`blur-${i}`} className="bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] rounded p-2 mb-1.5">
+        <div
+          key={`blur-${i}`}
+          className="bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] rounded p-2 mb-1.5"
+        >
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] font-medium text-[color:var(--dc-text2)]">
               {blur.type === 'blur' ? 'Blur' : 'Background Blur'}
             </span>
             <div className="flex items-center gap-1">
               <button
-                onClick={() => updateEffect(element.id, shadows.length + i, { visible: !blur.visible })}
+                onClick={() =>
+                  updateEffect(element.id, shadows.length + i, { visible: !blur.visible })
+                }
                 className="flex items-center justify-center w-5 h-5 rounded hover:bg-[color:var(--dc-hover)]"
               >
                 {blur.visible ? (
@@ -178,7 +194,10 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
                 )}
               </button>
               <button
-                onClick={() => { pushHistory(); removeEffect(element.id, shadows.length + i) }}
+                onClick={() => {
+                  pushHistory()
+                  removeEffect(element.id, shadows.length + i)
+                }}
                 className="flex items-center justify-center w-5 h-5 rounded hover:bg-[color:var(--dc-hover)]"
               >
                 <Trash2 className="w-3 h-3 text-[#F44336]" />
@@ -193,7 +212,9 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
               min="0"
               max="50"
               value={blur.radius}
-              onChange={(e) => updateEffect(element.id, shadows.length + i, { radius: parseInt(e.target.value) })}
+              onChange={(e) =>
+                updateEffect(element.id, shadows.length + i, { radius: parseInt(e.target.value) })
+              }
               className="flex-1 h-1 accent-[color:var(--dc-accent)] cursor-pointer"
             />
             <input

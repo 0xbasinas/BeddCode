@@ -17,7 +17,12 @@ import { isBooleanOperandType } from '../../lib/boolean-ops'
 import { isOutlineStrokeCandidate } from '../../lib/outline-stroke'
 import { toast } from '../../hooks/use-toast'
 // PHASE 23 (F1–F4) — clipboard exports (source: 5018 design ctx menu)
-import { copyAsPngToClipboard, copyAsSvgToClipboard, copyTextToClipboard, copyLayerNameToClipboard } from '../../lib/clipboard-io'
+import {
+  copyAsPngToClipboard,
+  copyAsSvgToClipboard,
+  copyTextToClipboard,
+  copyLayerNameToClipboard,
+} from '../../lib/clipboard-io'
 
 interface CanvasContextMenuProps {
   children: React.ReactNode
@@ -64,9 +69,8 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
     addVariantToSet,
   } = useEditorStore()
 
-  const selectedElement = selectedElementIds.length === 1
-    ? findElementInList(elements, selectedElementIds[0])
-    : null
+  const selectedElement =
+    selectedElementIds.length === 1 ? findElementInList(elements, selectedElementIds[0]) : null
 
   const handleAction = (action: string) => {
     switch (action) {
@@ -141,19 +145,19 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
         }
         break
       case 'bring-forward':
-        selectedElementIds.forEach(id => bringForward(id))
+        selectedElementIds.forEach((id) => bringForward(id))
         pushHistory()
         break
       case 'send-backward':
-        selectedElementIds.forEach(id => sendBackward(id))
+        selectedElementIds.forEach((id) => sendBackward(id))
         pushHistory()
         break
       case 'bring-to-front':
-        selectedElementIds.forEach(id => bringToFront(id))
+        selectedElementIds.forEach((id) => bringToFront(id))
         pushHistory()
         break
       case 'send-to-back':
-        selectedElementIds.forEach(id => sendToBack(id))
+        selectedElementIds.forEach((id) => sendToBack(id))
         pushHistory()
         break
       case 'make-component':
@@ -170,19 +174,19 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
         break
       case 'flip-h':
         if (selectedElementIds.length > 0) {
-          selectedElementIds.forEach(id => flipHorizontal(id))
+          selectedElementIds.forEach((id) => flipHorizontal(id))
           pushHistory()
         }
         break
       case 'flip-v':
         if (selectedElementIds.length > 0) {
-          selectedElementIds.forEach(id => flipVertical(id))
+          selectedElementIds.forEach((id) => flipVertical(id))
           pushHistory()
         }
         break
       case 'lock':
         if (selectedElementIds.length > 0) {
-          selectedElementIds.forEach(id => {
+          selectedElementIds.forEach((id) => {
             const el = findElementInList(useEditorStore.getState().elements, id)
             if (el) updateElement(id, { locked: !el.locked })
           })
@@ -191,14 +195,23 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
         break
       case 'unlock':
         if (selectedElementIds.length > 0) {
-          selectedElementIds.forEach(id => updateElement(id, { locked: false }))
+          selectedElementIds.forEach((id) => updateElement(id, { locked: false }))
           pushHistory()
         }
         break
       case 'add-auto-layout':
         if (selectedElementIds.length === 1 && selectedElement?.type === 'frame') {
           updateElement(selectedElement.id, {
-            autoLayout: { direction: 'vertical', gap: 10, paddingTop: 10, paddingBottom: 10, paddingLeft: 10, paddingRight: 10, alignItems: 'start', justifyContent: 'start' }
+            autoLayout: {
+              direction: 'vertical',
+              gap: 10,
+              paddingTop: 10,
+              paddingBottom: 10,
+              paddingLeft: 10,
+              paddingRight: 10,
+              alignItems: 'start',
+              justifyContent: 'start',
+            },
           })
           pushHistory()
         }
@@ -218,7 +231,11 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
         pushHistory()
         const res = applyBooleanOperation(op)
         if (!res.ok) {
-          toast({ title: 'Boolean operation failed', description: res.reason, variant: 'destructive' })
+          toast({
+            title: 'Boolean operation failed',
+            description: res.reason,
+            variant: 'destructive',
+          })
         }
         break
       }
@@ -233,14 +250,24 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
       case 'outline-stroke': {
         pushHistory()
         const n = outlineStrokeSelection()
-        if (n === 0) toast({ title: 'Nothing to outline', description: 'Select shapes with a visible stroke.', variant: 'destructive' })
+        if (n === 0)
+          toast({
+            title: 'Nothing to outline',
+            description: 'Select shapes with a visible stroke.',
+            variant: 'destructive',
+          })
         break
       }
       // PHASE 17 (P3) — flatten (source: FLATTEN_SELECTION)
       case 'flatten': {
         pushHistory()
         const n = flattenSelection()
-        if (n === 0) toast({ title: 'Nothing to flatten', description: 'Select a boolean group (live boolean result).', variant: 'destructive' })
+        if (n === 0)
+          toast({
+            title: 'Nothing to flatten',
+            description: 'Select a boolean group (live boolean result).',
+            variant: 'destructive',
+          })
         break
       }
       // PHASE 20 (PR13) — flow starting points on frames
@@ -262,7 +289,12 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
       case 'split-vector': {
         pushHistory()
         const n = splitVectorSelection()
-        if (n === 0) toast({ title: 'Nothing to split', description: 'Select a multi-contour path (flatten / outline result).', variant: 'destructive' })
+        if (n === 0)
+          toast({
+            title: 'Nothing to split',
+            description: 'Select a multi-contour path (flatten / outline result).',
+            variant: 'destructive',
+          })
         break
       }
     }
@@ -274,9 +306,10 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
     .map((id) => findElementInList(elements, id))
     .filter((el): el is NonNullable<typeof el> => !!el && isBooleanOperandType(el))
   const canBoolean = booleanEligible.length >= 2
-  const maskCandidate = selectedElement && !selectedElement.isMask && isBooleanOperandType(selectedElement)
-    ? selectedElement
-    : null
+  const maskCandidate =
+    selectedElement && !selectedElement.isMask && isBooleanOperandType(selectedElement)
+      ? selectedElement
+      : null
   const unmaskCandidate = selectedElement?.isMask ? selectedElement : null
 
   // PHASE 23 (F7) — unlock-all shows only when something is actually locked
@@ -286,91 +319,147 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger asChild>
-        {children}
-      </ContextMenuTrigger>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent className="bg-[color:var(--dc-raised)] border-[color:var(--dc-hover)] text-[color:var(--dc-text2)] min-w-[220px]">
         {/* Copy/Paste section */}
         {hasSelection && (
           <>
-            <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('copy')}>
+            <ContextMenuItem
+              className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+              onClick={() => handleAction('copy')}
+            >
               Copy
               <ContextMenuShortcut>⌘C</ContextMenuShortcut>
             </ContextMenuItem>
             {/* PHASE 23 (F1–F4) — copy-as entries (source: 5018 design/dev ctx
                 menu: copy-as-png / copy-as-svg / copy-text / copy-layer-name) */}
-            <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => { if (selectedElement) copyAsPngToClipboard(selectedElement, 2) }}>
+            <ContextMenuItem
+              className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+              onClick={() => {
+                if (selectedElement) copyAsPngToClipboard(selectedElement, 2)
+              }}
+            >
               Copy as PNG
               <ContextMenuShortcut>⇧⌘C</ContextMenuShortcut>
             </ContextMenuItem>
-            <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => { if (selectedElement) copyAsSvgToClipboard(selectedElement) }}>
+            <ContextMenuItem
+              className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+              onClick={() => {
+                if (selectedElement) copyAsSvgToClipboard(selectedElement)
+              }}
+            >
               Copy as SVG
             </ContextMenuItem>
             {selectedElement?.type === 'text' && (
-              <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => { if (selectedElement) copyTextToClipboard(selectedElement) }}>
+              <ContextMenuItem
+                className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                onClick={() => {
+                  if (selectedElement) copyTextToClipboard(selectedElement)
+                }}
+              >
                 Copy Text
               </ContextMenuItem>
             )}
-            <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => { if (selectedElement) copyLayerNameToClipboard(selectedElement) }}>
+            <ContextMenuItem
+              className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+              onClick={() => {
+                if (selectedElement) copyLayerNameToClipboard(selectedElement)
+              }}
+            >
               Copy Layer Name
             </ContextMenuItem>
             {/* PHASE 23 (F5) — copy/paste properties (source: copy-properties /
                 paste-properties, 5018 ctx menu) */}
-            <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('copy-properties')}>
+            <ContextMenuItem
+              className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+              onClick={() => handleAction('copy-properties')}
+            >
               Copy Properties
             </ContextMenuItem>
             {propertyClipboard && (
-              <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('paste-properties')}>
+              <ContextMenuItem
+                className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                onClick={() => handleAction('paste-properties')}
+              >
                 Paste Properties
               </ContextMenuItem>
             )}
-            <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('paste')}>
+            <ContextMenuItem
+              className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+              onClick={() => handleAction('paste')}
+            >
               Paste
               <ContextMenuShortcut>⌘V</ContextMenuShortcut>
             </ContextMenuItem>
             {clipboard.length > 0 && (
-              <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('paste-here')}>
+              <ContextMenuItem
+                className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                onClick={() => handleAction('paste-here')}
+              >
                 {/* PHASE 23 (F6) — paste here (source: paste-here) */}
                 Paste Here
               </ContextMenuItem>
             )}
             {clipboard.length > 0 && (
-              <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('paste-over')}>
+              <ContextMenuItem
+                className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                onClick={() => handleAction('paste-over')}
+              >
                 Paste Over Selection
                 <ContextMenuShortcut>⇧⌘V</ContextMenuShortcut>
               </ContextMenuItem>
             )}
-            <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('duplicate')}>
+            <ContextMenuItem
+              className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+              onClick={() => handleAction('duplicate')}
+            >
               Duplicate
               <ContextMenuShortcut>⌘D</ContextMenuShortcut>
             </ContextMenuItem>
-            <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)] text-[#F44336]" onClick={() => handleAction('delete')}>
+            <ContextMenuItem
+              className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)] text-[#F44336]"
+              onClick={() => handleAction('delete')}
+            >
               Delete
               <ContextMenuShortcut>⌫</ContextMenuShortcut>
             </ContextMenuItem>
             {/* PHASE 21 (E15) — select similar / inverse + select-all-with submenu
                 (source children: select-same-{style,fill,stroke,effect,text,font,instance,variant}) */}
             <ContextMenuSeparator className="bg-[color:var(--dc-hover)]" />
-            <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('select-similar')}>
+            <ContextMenuItem
+              className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+              onClick={() => handleAction('select-similar')}
+            >
               Select Similar
             </ContextMenuItem>
-            <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('select-inverse')}>
+            <ContextMenuItem
+              className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+              onClick={() => handleAction('select-inverse')}
+            >
               Select Inverse
             </ContextMenuItem>
             <ContextMenuSub>
-              <ContextMenuSubTrigger className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]">Select All With</ContextMenuSubTrigger>
+              <ContextMenuSubTrigger className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]">
+                Select All With
+              </ContextMenuSubTrigger>
               <ContextMenuSubContent className="bg-[color:var(--dc-raised)] border-[color:var(--dc-hover)] text-[color:var(--dc-text2)] min-w-[190px]">
-                {([
-                  ['style', 'Same style'],
-                  ['fill', 'Same fill'],
-                  ['stroke', 'Same stroke'],
-                  ['effect', 'Same effect'],
-                  ['text', 'Same type'],
-                  ['font', 'Same font'],
-                  ['instance', 'Same instance'],
-                  ['variant', 'Same variant'],
-                ] as const).map(([key, label]) => (
-                  <ContextMenuItem key={key} className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => selectSimilar(key)}>
+                {(
+                  [
+                    ['style', 'Same style'],
+                    ['fill', 'Same fill'],
+                    ['stroke', 'Same stroke'],
+                    ['effect', 'Same effect'],
+                    ['text', 'Same type'],
+                    ['font', 'Same font'],
+                    ['instance', 'Same instance'],
+                    ['variant', 'Same variant'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <ContextMenuItem
+                    key={key}
+                    className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                    onClick={() => selectSimilar(key)}
+                  >
                     {label}
                   </ContextMenuItem>
                 ))}
@@ -383,18 +472,27 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
         {/* Paste when no selection */}
         {!hasSelection && (
           <>
-            <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('paste')}>
+            <ContextMenuItem
+              className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+              onClick={() => handleAction('paste')}
+            >
               Paste
               <ContextMenuShortcut>⌘V</ContextMenuShortcut>
             </ContextMenuItem>
             {clipboard.length > 0 && (
-              <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('paste-here')}>
+              <ContextMenuItem
+                className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                onClick={() => handleAction('paste-here')}
+              >
                 {/* PHASE 23 (F6) — paste here (source: paste-here) */}
                 Paste Here
               </ContextMenuItem>
             )}
             {anyLocked && (
-              <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('unlock-all')}>
+              <ContextMenuItem
+                className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                onClick={() => handleAction('unlock-all')}
+              >
                 {/* PHASE 23 (F7) — unlock all (source: unlock-all) */}
                 Unlock All
               </ContextMenuItem>
@@ -407,32 +505,47 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
         {hasSelection && (
           <>
             {selectedElementIds.length >= 2 && (
-              <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('group')}>
+              <ContextMenuItem
+                className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                onClick={() => handleAction('group')}
+              >
                 Group
                 <ContextMenuShortcut>⌘G</ContextMenuShortcut>
               </ContextMenuItem>
             )}
             {/* PHASE 23 (F10) — frame selection (source: frame-selection) */}
             {selectedElementIds.length >= 1 && (
-              <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('frame-selection')}>
+              <ContextMenuItem
+                className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                onClick={() => handleAction('frame-selection')}
+              >
                 Frame Selection
                 <ContextMenuShortcut>⌥⌘G</ContextMenuShortcut>
               </ContextMenuItem>
             )}
             {/* PHASE 23 (F15) — add variant (source: add-variant, figma_app ×16) */}
             {selectedElement?.isComponentSet && (
-              <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('add-variant')}>
+              <ContextMenuItem
+                className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                onClick={() => handleAction('add-variant')}
+              >
                 Add Variant
               </ContextMenuItem>
             )}
             {anyLocked && hasSelection && (
-              <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('unlock-all')}>
+              <ContextMenuItem
+                className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                onClick={() => handleAction('unlock-all')}
+              >
                 {/* PHASE 23 (F7) — unlock all (source: unlock-all) */}
                 Unlock All
               </ContextMenuItem>
             )}
             {selectedElement?.type === 'group' && (
-              <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('ungroup')}>
+              <ContextMenuItem
+                className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                onClick={() => handleAction('ungroup')}
+              >
                 Ungroup
                 <ContextMenuShortcut>⌘⇧G</ContextMenuShortcut>
               </ContextMenuItem>
@@ -449,19 +562,31 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
                 Boolean Operations
               </ContextMenuSubTrigger>
               <ContextMenuSubContent className="bg-[color:var(--dc-raised)] border-[color:var(--dc-hover)] text-[color:var(--dc-text2)] min-w-[180px]">
-                <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('boolean-union')}>
+                <ContextMenuItem
+                  className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                  onClick={() => handleAction('boolean-union')}
+                >
                   Union
                   <ContextMenuShortcut>⌥⌘U</ContextMenuShortcut>
                 </ContextMenuItem>
-                <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('boolean-subtract')}>
+                <ContextMenuItem
+                  className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                  onClick={() => handleAction('boolean-subtract')}
+                >
                   Subtract
                   <ContextMenuShortcut>⌥⌘S</ContextMenuShortcut>
                 </ContextMenuItem>
-                <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('boolean-intersect')}>
+                <ContextMenuItem
+                  className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                  onClick={() => handleAction('boolean-intersect')}
+                >
                   Intersect
                   <ContextMenuShortcut>⌥⌘I</ContextMenuShortcut>
                 </ContextMenuItem>
-                <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('boolean-exclude')}>
+                <ContextMenuItem
+                  className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                  onClick={() => handleAction('boolean-exclude')}
+                >
                   Exclude
                   <ContextMenuShortcut>⌥⌘E</ContextMenuShortcut>
                 </ContextMenuItem>
@@ -472,7 +597,10 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
         {(maskCandidate || unmaskCandidate) && (
           <>
             <ContextMenuSeparator className="bg-[color:var(--dc-hover)]" />
-            <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('toggle-mask')}>
+            <ContextMenuItem
+              className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+              onClick={() => handleAction('toggle-mask')}
+            >
               {unmaskCandidate ? 'Remove Mask' : 'Set as Mask'}
               <ContextMenuShortcut>⌃⌘M</ContextMenuShortcut>
             </ContextMenuItem>
@@ -481,47 +609,68 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
 
         {/* PHASE 17: outline stroke + flatten (source: OUTLINE_STROKE=233 /
             FLATTEN_SELECTION; gated on real eligibility) */}
-        {hasSelection && (() => {
-          const selected = selectedElementIds
-            .map((id) => findElementInList(elements, id))
-            .filter((el): el is NonNullable<typeof el> => !!el)
-          const outlineable = selected.filter((el) => isOutlineStrokeCandidate(el)).length > 0
-          const flattenable = selected.some((el) => el.type === 'boolean')
-          const splittable = selected.some((el) => el.type === 'path' && el.booleanContours && el.booleanContours.length > 1)
-          if (!outlineable && !flattenable && !splittable) return null
-          return (
-            <>
-              <ContextMenuSeparator className="bg-[color:var(--dc-hover)]" />
-              {outlineable && (
-                <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('outline-stroke')}>
-                  Outline Stroke
-                </ContextMenuItem>
-              )}
-              {flattenable && (
-                <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('flatten')}>
-                  Flatten
-                </ContextMenuItem>
-              )}
-              {splittable && (
-                <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('split-vector')}>
-                  Split Vector
-                </ContextMenuItem>
-              )}
-              {selectedElement?.type === 'frame' && (() => {
-                const hasStart = useEditorStore.getState().flowStartingPoints.some((f) => f.frameId === selectedElement.id)
-                return hasStart ? (
-                  <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('remove-flow-start')}>
-                    Remove Flow Start
+        {hasSelection &&
+          (() => {
+            const selected = selectedElementIds
+              .map((id) => findElementInList(elements, id))
+              .filter((el): el is NonNullable<typeof el> => !!el)
+            const outlineable = selected.filter((el) => isOutlineStrokeCandidate(el)).length > 0
+            const flattenable = selected.some((el) => el.type === 'boolean')
+            const splittable = selected.some(
+              (el) => el.type === 'path' && el.booleanContours && el.booleanContours.length > 1,
+            )
+            if (!outlineable && !flattenable && !splittable) return null
+            return (
+              <>
+                <ContextMenuSeparator className="bg-[color:var(--dc-hover)]" />
+                {outlineable && (
+                  <ContextMenuItem
+                    className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                    onClick={() => handleAction('outline-stroke')}
+                  >
+                    Outline Stroke
                   </ContextMenuItem>
-                ) : (
-                  <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('add-flow-start')}>
-                    Add Flow Start ▶
+                )}
+                {flattenable && (
+                  <ContextMenuItem
+                    className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                    onClick={() => handleAction('flatten')}
+                  >
+                    Flatten
                   </ContextMenuItem>
-                )
-              })()}
-            </>
-          )
-        })()}
+                )}
+                {splittable && (
+                  <ContextMenuItem
+                    className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                    onClick={() => handleAction('split-vector')}
+                  >
+                    Split Vector
+                  </ContextMenuItem>
+                )}
+                {selectedElement?.type === 'frame' &&
+                  (() => {
+                    const hasStart = useEditorStore
+                      .getState()
+                      .flowStartingPoints.some((f) => f.frameId === selectedElement.id)
+                    return hasStart ? (
+                      <ContextMenuItem
+                        className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                        onClick={() => handleAction('remove-flow-start')}
+                      >
+                        Remove Flow Start
+                      </ContextMenuItem>
+                    ) : (
+                      <ContextMenuItem
+                        className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                        onClick={() => handleAction('add-flow-start')}
+                      >
+                        Add Flow Start ▶
+                      </ContextMenuItem>
+                    )
+                  })()}
+              </>
+            )
+          })()}
 
         {/* Z-order */}
         {hasSelection && (
@@ -532,20 +681,32 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
                 Arrange
               </ContextMenuSubTrigger>
               <ContextMenuSubContent className="bg-[color:var(--dc-raised)] border-[color:var(--dc-hover)] text-[color:var(--dc-text2)] min-w-[180px]">
-                <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('bring-to-front')}>
+                <ContextMenuItem
+                  className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                  onClick={() => handleAction('bring-to-front')}
+                >
                   Bring to Front
                   <ContextMenuShortcut>⌘⇧]</ContextMenuShortcut>
                 </ContextMenuItem>
-                <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('bring-forward')}>
+                <ContextMenuItem
+                  className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                  onClick={() => handleAction('bring-forward')}
+                >
                   Bring Forward
                   <ContextMenuShortcut>⌘]</ContextMenuShortcut>
                 </ContextMenuItem>
                 <ContextMenuSeparator className="bg-[color:var(--dc-hover)]" />
-                <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('send-backward')}>
+                <ContextMenuItem
+                  className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                  onClick={() => handleAction('send-backward')}
+                >
                   Send Backward
                   <ContextMenuShortcut>⌘[</ContextMenuShortcut>
                 </ContextMenuItem>
-                <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('send-to-back')}>
+                <ContextMenuItem
+                  className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                  onClick={() => handleAction('send-to-back')}
+                >
                   Send to Back
                   <ContextMenuShortcut>⌘⇧[</ContextMenuShortcut>
                 </ContextMenuItem>
@@ -558,7 +719,10 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
         {hasSelection && !selectedElement?.isComponent && !selectedElement?.componentId && (
           <>
             <ContextMenuSeparator className="bg-[color:var(--dc-hover)]" />
-            <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('make-component')}>
+            <ContextMenuItem
+              className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+              onClick={() => handleAction('make-component')}
+            >
               Create Component
               <ContextMenuShortcut>⌥⌘K</ContextMenuShortcut>
             </ContextMenuItem>
@@ -568,7 +732,10 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
         {selectedElement?.componentId && (
           <>
             <ContextMenuSeparator className="bg-[color:var(--dc-hover)]" />
-            <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('detach-instance')}>
+            <ContextMenuItem
+              className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+              onClick={() => handleAction('detach-instance')}
+            >
               Detach Instance
             </ContextMenuItem>
           </>
@@ -583,11 +750,17 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
                 Flip
               </ContextMenuSubTrigger>
               <ContextMenuSubContent className="bg-[color:var(--dc-raised)] border-[color:var(--dc-hover)] text-[color:var(--dc-text2)] min-w-[160px]">
-                <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('flip-h')}>
+                <ContextMenuItem
+                  className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                  onClick={() => handleAction('flip-h')}
+                >
                   Flip Horizontal
                   <ContextMenuShortcut>⇧H</ContextMenuShortcut>
                 </ContextMenuItem>
-                <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('flip-v')}>
+                <ContextMenuItem
+                  className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                  onClick={() => handleAction('flip-v')}
+                >
                   Flip Vertical
                   <ContextMenuShortcut>⇧V</ContextMenuShortcut>
                 </ContextMenuItem>
@@ -601,12 +774,18 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
           <>
             <ContextMenuSeparator className="bg-[color:var(--dc-hover)]" />
             {selectedElement.autoLayout ? (
-              <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('remove-auto-layout')}>
+              <ContextMenuItem
+                className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                onClick={() => handleAction('remove-auto-layout')}
+              >
                 Remove Auto Layout
                 <ContextMenuShortcut>⇧A</ContextMenuShortcut>
               </ContextMenuItem>
             ) : (
-              <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('add-auto-layout')}>
+              <ContextMenuItem
+                className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+                onClick={() => handleAction('add-auto-layout')}
+              >
                 Add Auto Layout
                 <ContextMenuShortcut>⇧A</ContextMenuShortcut>
               </ContextMenuItem>
@@ -618,7 +797,10 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
         {hasSelection && (
           <>
             <ContextMenuSeparator className="bg-[color:var(--dc-hover)]" />
-            <ContextMenuItem className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]" onClick={() => handleAction('lock')}>
+            <ContextMenuItem
+              className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)]"
+              onClick={() => handleAction('lock')}
+            >
               {selectedElement?.locked ? 'Unlock' : 'Lock'}
               <ContextMenuShortcut>⌘L</ContextMenuShortcut>
             </ContextMenuItem>

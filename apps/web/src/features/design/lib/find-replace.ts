@@ -46,7 +46,11 @@ function escapeRegExp(s: string): string {
 }
 
 /** All match ranges of `query` inside `text` honoring the options. */
-export function findMatches(text: string, query: string, opts: SearchOptions): { start: number; end: number }[] {
+export function findMatches(
+  text: string,
+  query: string,
+  opts: SearchOptions,
+): { start: number; end: number }[] {
   if (!query) return []
   const flags = opts.matchCase ? 'g' : 'gi'
   const body = opts.wholeWord ? `\\b${escapeRegExp(query)}\\b` : escapeRegExp(query)
@@ -74,12 +78,13 @@ function collectFromElement(
   pageName: string,
   query: string,
   opts: SearchOptions,
-  out: SearchHit[]
+  out: SearchHit[],
 ): void {
   if (el.type === 'text' && el.textContent) {
     for (const m of findMatches(el.textContent, query, opts)) {
       out.push({
-        pageId, pageName,
+        pageId,
+        pageName,
         elementId: el.id,
         elementName: el.name || 'Text',
         field: 'text',
@@ -92,7 +97,8 @@ function collectFromElement(
   if (opts.includeLayerNames && el.name) {
     for (const m of findMatches(el.name, query, opts)) {
       out.push({
-        pageId, pageName,
+        pageId,
+        pageName,
         elementId: el.id,
         elementName: el.name,
         field: 'name',
@@ -117,12 +123,18 @@ export interface SearchablePage {
 export function searchPage(page: SearchablePage, query: string, opts: SearchOptions): SearchHit[] {
   const out: SearchHit[] = []
   if (!query) return out
-  for (const el of page.elements) collectFromElement(el, page.pageId, page.pageName, query, opts, out)
+  for (const el of page.elements)
+    collectFromElement(el, page.pageId, page.pageName, query, opts, out)
   return out
 }
 
 /** Replace one match range inside a string. */
-export function replaceRange(text: string, start: number, end: number, replacement: string): string {
+export function replaceRange(
+  text: string,
+  start: number,
+  end: number,
+  replacement: string,
+): string {
   return text.slice(0, start) + replacement + text.slice(end)
 }
 
@@ -131,7 +143,7 @@ export function replaceAllInText(
   text: string,
   query: string,
   replacement: string,
-  opts: SearchOptions
+  opts: SearchOptions,
 ): { text: string; count: number } {
   const matches = findMatches(text, query, opts)
   if (matches.length === 0) return { text, count: 0 }

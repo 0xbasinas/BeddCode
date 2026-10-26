@@ -53,7 +53,5 @@ Samples older than 30 days are dropped, and the store stops accepting new ones a
 
 ## Tests
 
-
-
 `pnpm --filter @beddcode/relay test` runs against the Node relay. To run the same suite against the Worker, start
 `wrangler dev --port 8788 --ip 127.0.0.1 -c worker/wrangler.toml` and set `RELAY_TEST_PORT=8788`.

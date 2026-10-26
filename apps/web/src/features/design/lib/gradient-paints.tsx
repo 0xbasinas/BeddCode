@@ -22,7 +22,11 @@ import type { GradientStop } from '../store/editor-store'
 
 function hexToRgb(hex: string): [number, number, number] {
   let h = hex.replace('#', '')
-  if (h.length === 3) h = h.split('').map(c => c + c).join('')
+  if (h.length === 3)
+    h = h
+      .split('')
+      .map((c) => c + c)
+      .join('')
   const n = parseInt(h || '000000', 16)
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
@@ -47,7 +51,10 @@ export function colorAt(stops: GradientStop[], pos: number): { color: string; op
     const b = sorted[i + 1]
     if (pos >= a.offset && pos <= b.offset) {
       const t = b.offset === a.offset ? 0 : (pos - a.offset) / (b.offset - a.offset)
-      return { color: mixHex(a.color, b.color, t), opacity: a.opacity + (b.opacity - a.opacity) * t }
+      return {
+        color: mixHex(a.color, b.color, t),
+        opacity: a.opacity + (b.opacity - a.opacity) * t,
+      }
     }
   }
   return { color: last.color, opacity: last.opacity }
@@ -64,7 +71,11 @@ export interface PieSlice {
  * Pie slices reproducing a conic sweep. `angleDeg` rotates the start
  * (Figma: 0° at 12 o'clock, clockwise — matches the linear angle convention).
  */
-export function angularSlices(stops: GradientStop[], angleDeg: number, subdivPerPair = 8): PieSlice[] {
+export function angularSlices(
+  stops: GradientStop[],
+  angleDeg: number,
+  subdivPerPair = 8,
+): PieSlice[] {
   const sorted = [...stops].sort((a, b) => a.offset - b.offset)
   if (sorted.length < 2) return []
   const cx = 0.5
@@ -81,7 +92,7 @@ export function angularSlices(stops: GradientStop[], angleDeg: number, subdivPer
     const b = sorted[i + 1]
     const span = b.offset - a.offset
     if (span <= 0) continue
-    const steps = Math.max(2, Math.ceil(span * 360 / 12)) // ~12° per slice max
+    const steps = Math.max(2, Math.ceil((span * 360) / 12)) // ~12° per slice max
     for (let s = 0; s < steps; s++) {
       const f1 = a.offset + (span * s) / steps
       const f2 = a.offset + (span * (s + 1)) / steps
@@ -129,7 +140,13 @@ export function diamondQuads(idBase: string): DiamondQuad[] {
 }
 
 /** Angular pattern content (render inside a unit <pattern>). */
-export function AngularPatternContent({ stops, angleDeg }: { stops: GradientStop[]; angleDeg: number }): React.ReactNode {
+export function AngularPatternContent({
+  stops,
+  angleDeg,
+}: {
+  stops: GradientStop[]
+  angleDeg: number
+}): React.ReactNode {
   return (
     <>
       {angularSlices(stops, angleDeg).map((s, i) => (
@@ -140,15 +157,28 @@ export function AngularPatternContent({ stops, angleDeg }: { stops: GradientStop
 }
 
 /** Diamond pattern content (render inside a unit <pattern>). */
-export function DiamondPatternContent({ stops, idBase }: { stops: GradientStop[]; idBase: string }): React.ReactNode {
+export function DiamondPatternContent({
+  stops,
+  idBase,
+}: {
+  stops: GradientStop[]
+  idBase: string
+}): React.ReactNode {
   return (
     <>
-      {diamondQuads(idBase).map(q => (
+      {diamondQuads(idBase).map((q) => (
         <React.Fragment key={q.gid}>
           {/* objectBoundingBox units relative to the quad rect itself —
               userSpaceOnUse gradients inside objectBoundingBox patterns fail
               to resolve in Chromium (verified live during PHASE 14). */}
-          <linearGradient id={q.gid} gradientUnits="objectBoundingBox" x1={q.gx1} y1={q.gy1} x2={q.gx2} y2={q.gy2}>
+          <linearGradient
+            id={q.gid}
+            gradientUnits="objectBoundingBox"
+            x1={q.gx1}
+            y1={q.gy1}
+            x2={q.gx2}
+            y2={q.gy2}
+          >
             {stops.map((s, i) => (
               <stop key={i} offset={s.offset} stopColor={s.color} stopOpacity={s.opacity} />
             ))}
@@ -162,9 +192,10 @@ export function DiamondPatternContent({ stops, idBase }: { stops: GradientStop[]
 
 /** CSS preview approximations for the property panel swatches. */
 export function gradientPreviewCSS(type: string, stops: GradientStop[], angleDeg: number): string {
-  const ramp = stops.map(s => `${s.color} ${s.offset * 100}%`).join(', ')
+  const ramp = stops.map((s) => `${s.color} ${s.offset * 100}%`).join(', ')
   if (type === 'angular-gradient') return `conic-gradient(from ${angleDeg}deg, ${ramp})`
-  if (type === 'diamond-gradient') return `conic-gradient(from ${angleDeg + 45}deg, ${ramp}, ${stops[0]?.color || '#000'} 100%)`
+  if (type === 'diamond-gradient')
+    return `conic-gradient(from ${angleDeg + 45}deg, ${ramp}, ${stops[0]?.color || '#000'} 100%)`
   if (type === 'radial-gradient') return `radial-gradient(${ramp})`
   return `linear-gradient(${angleDeg}deg, ${ramp})`
 }

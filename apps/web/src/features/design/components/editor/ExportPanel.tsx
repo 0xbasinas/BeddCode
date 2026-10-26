@@ -28,7 +28,10 @@ export function ExportPanel({ element }: ExportPanelProps) {
   const exportSettings = element.exportSettings || []
   const [busyIndex, setBusyIndex] = React.useState<number | null>(null)
 
-  const setSetting = (i: number, patch: Partial<{ format: string; scale: number; quality: number }>) => {
+  const setSetting = (
+    i: number,
+    patch: Partial<{ format: string; scale: number; quality: number }>,
+  ) => {
     const newSettings = exportSettings.map((s, idx) => (idx === i ? { ...s, ...patch } : s))
     pushHistory()
     updateElement(element.id, { exportSettings: newSettings })
@@ -41,7 +44,7 @@ export function ExportPanel({ element }: ExportPanelProps) {
 
   const handleExport = async (
     setting: { format: string; scale: number; quality?: number },
-    index: number
+    index: number,
   ) => {
     setBusyIndex(index)
     try {
@@ -61,7 +64,10 @@ export function ExportPanel({ element }: ExportPanelProps) {
   return (
     <div>
       {exportSettings.map((setting, i) => (
-        <div key={i} className="mb-1.5 bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] rounded p-1.5 space-y-1">
+        <div
+          key={i}
+          className="mb-1.5 bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] rounded p-1.5 space-y-1"
+        >
           <div className="flex items-center gap-1.5">
             <select
               value={setting.format}
@@ -70,7 +76,9 @@ export function ExportPanel({ element }: ExportPanelProps) {
               title="Export format"
             >
               {EXPORT_FORMATS.map((f) => (
-                <option key={f} value={f}>{f}</option>
+                <option key={f} value={f}>
+                  {f}
+                </option>
               ))}
             </select>
 
@@ -97,7 +105,10 @@ export function ExportPanel({ element }: ExportPanelProps) {
             </button>
 
             <button
-              onClick={() => { pushHistory(); removeExportSetting(element.id, i) }}
+              onClick={() => {
+                pushHistory()
+                removeExportSetting(element.id, i)
+              }}
               className="flex items-center justify-center w-5 h-5 rounded hover:bg-[color:var(--dc-hover)]"
               title="Remove export setting"
             >
@@ -131,7 +142,9 @@ export function ExportPanel({ element }: ExportPanelProps) {
             style={{ fontFamily: 'var(--fig-font-family-mono)' }}
           >
             {element.name}
-            {setting.scale && setting.format !== 'SVG' && setting.format !== 'PDF' ? `@${setting.scale}x` : ''}
+            {setting.scale && setting.format !== 'SVG' && setting.format !== 'PDF'
+              ? `@${setting.scale}x`
+              : ''}
             .{setting.format.toLowerCase()}
           </div>
         </div>

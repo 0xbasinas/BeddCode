@@ -139,7 +139,9 @@ export async function layoutForAgent(hostKey: string, designId: string) {
   return Promise.all(
     (project.pages ?? []).map(async (page) => ({
       id: page.id,
-      elements: await Promise.all((page.elements ?? []).map((e) => layoutTree(normalizeServerElement(e)))),
+      elements: await Promise.all(
+        (page.elements ?? []).map((e) => layoutTree(normalizeServerElement(e))),
+      ),
     })),
   )
 }

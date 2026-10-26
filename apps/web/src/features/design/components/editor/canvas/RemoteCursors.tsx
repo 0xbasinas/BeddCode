@@ -72,7 +72,7 @@ export function RemoteCursors() {
                 {p.name}
               </span>
             </div>
-          ) : null
+          ) : null,
         )}
 
       {/* remote selections */}
@@ -90,7 +90,7 @@ export function RemoteCursors() {
               opacity: 0.9,
             }}
           />
-        ) : null
+        ) : null,
       )}
 
       {/* remote cursors (multiplayer_cursors--cursorImage + name chip) */}
@@ -118,7 +118,7 @@ export function RemoteCursors() {
                 {p.name}
               </span>
             </div>
-          ) : null
+          ) : null,
         )}
     </div>
   )

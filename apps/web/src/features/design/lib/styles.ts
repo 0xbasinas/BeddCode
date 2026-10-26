@@ -66,8 +66,13 @@ export function countStyleUsage(elements: DesignElement[], styleId: string): num
   let n = 0
   const walk = (els: DesignElement[]) => {
     for (const el of els) {
-      if (el.fillStyleId === styleId || el.strokeStyleId === styleId ||
-          el.textStyleId === styleId || el.effectStyleId === styleId) n++
+      if (
+        el.fillStyleId === styleId ||
+        el.strokeStyleId === styleId ||
+        el.textStyleId === styleId ||
+        el.effectStyleId === styleId
+      )
+        n++
       if (el.children) walk(el.children)
     }
   }
@@ -166,7 +171,8 @@ export function detachStyleUpdates(el: DesignElement, styleId: string): Partial<
 export function styleSwatchStyle(style: ProjectStyle): string {
   if (style.kind === 'paint' && style.paint) {
     if (style.paint.type === 'solid') return style.paint.color
-    if (style.paint.type === 'image') return 'repeating-linear-gradient(45deg,#666,#666 3px,#999 3px,#999 6px)'
+    if (style.paint.type === 'image')
+      return 'repeating-linear-gradient(45deg,#666,#666 3px,#999 3px,#999 6px)'
     return `linear-gradient(135deg, ${(style.paint.gradientStops || []).map((s) => s.color).join(', ')})`
   }
   if (style.kind === 'text') return style.text?.textColor || '#FFF'

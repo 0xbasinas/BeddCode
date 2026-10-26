@@ -63,8 +63,16 @@ export function pointInRegion(p: Pt, loops: Poly[]): boolean {
  * evenodd; integrate by… using signed areas of odd-coverage via decomposition is
  * overkill — we only need point tests + rendering parity. Kept for tests via
  * Monte-Carlo in the test script instead.) */
-export function regionBounds(loops: Poly[]): { minX: number; minY: number; maxX: number; maxY: number } {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+export function regionBounds(loops: Poly[]): {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+} {
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity
   for (const l of loops) {
     if (l.length < 3) continue
     for (const p of l) {
@@ -81,7 +89,10 @@ export function regionBounds(loops: Poly[]): { minX: number; minY: number; maxX:
 function jitterPt(p: Pt, seed: number): Pt {
   const h1 = Math.sin(seed * 127.1 + 311.7) * 43758.5453
   const h2 = Math.sin(seed * 269.5 + 183.3) * 22578.1449
-  return { x: p.x + (h1 - Math.floor(h1) - 0.5) * JITTER, y: p.y + (h2 - Math.floor(h2) - 0.5) * JITTER }
+  return {
+    x: p.x + (h1 - Math.floor(h1) - 0.5) * JITTER,
+    y: p.y + (h2 - Math.floor(h2) - 0.5) * JITTER,
+  }
 }
 
 interface INode {
@@ -100,7 +111,12 @@ interface FlatList {
 
 function buildFlatList(poly: Poly): FlatList {
   const nodes: INode[] = poly.map((pt, i) => ({
-    pt, isIsect: false, entry: false, visited: false, twin: null, listIndex: i,
+    pt,
+    isIsect: false,
+    entry: false,
+    visited: false,
+    twin: null,
+    listIndex: i,
   }))
   return { nodes, isects: [] }
 }
@@ -132,8 +148,22 @@ function insertIntersections(A: FlatList, B: FlatList): number {
       if (bi.isIsect || bj.isIsect) continue
       const hit = segCross(ai.pt, aj.pt, bi.pt, bj.pt)
       if (!hit) continue
-      const na: INode = { pt: hit.pt, isIsect: true, entry: false, visited: false, twin: null, listIndex: -1 }
-      const nb: INode = { pt: hit.pt, isIsect: true, entry: false, visited: false, twin: null, listIndex: -1 }
+      const na: INode = {
+        pt: hit.pt,
+        isIsect: true,
+        entry: false,
+        visited: false,
+        twin: null,
+        listIndex: -1,
+      }
+      const nb: INode = {
+        pt: hit.pt,
+        isIsect: true,
+        entry: false,
+        visited: false,
+        twin: null,
+        listIndex: -1,
+      }
       na.twin = nb
       nb.twin = na
       insertsA.push({ afterIdx: i, node: na, alpha: hit.ta })
@@ -210,7 +240,10 @@ function ghChains(A: FlatList, B: FlatList): Poly[] | null {
         steps++
         idx = (idx + 1) % list.nodes.length
         const nd = list.nodes[idx]
-        if (nd.isIsect) { next = nd; break }
+        if (nd.isIsect) {
+          next = nd
+          break
+        }
         chain.push(nd.pt)
       }
       if (!next) return null
@@ -313,9 +346,7 @@ function jitterPoly(poly: Poly, seed: number): Poly {
 /** Canonical key for duplicate-loop detection (grid-rounded point set). */
 function loopKey(poly: Poly): string {
   const norm = ensureCCW(poly)
-  const pts = norm
-    .map((p) => `${Math.round(p.x * 100)},${Math.round(p.y * 100)}`)
-    .sort()
+  const pts = norm.map((p) => `${Math.round(p.x * 100)},${Math.round(p.y * 100)}`).sort()
   return pts.join('|')
 }
 
@@ -359,9 +390,13 @@ export function ghIntersectRegion(loopsA: Poly[], b: Poly): Poly[] | null {
 export function foldOp(acc: Poly[], b: Poly, op: BooleanOp): Poly[] | null {
   if (b.length < 3) {
     switch (op) {
-      case 'intersect': return []
-      case 'subtract': return acc
-      case 'union': case 'exclude': return [...acc, b]
+      case 'intersect':
+        return []
+      case 'subtract':
+        return acc
+      case 'union':
+      case 'exclude':
+        return [...acc, b]
     }
   }
   switch (op) {

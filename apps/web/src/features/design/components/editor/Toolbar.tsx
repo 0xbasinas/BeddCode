@@ -78,15 +78,11 @@ const toolGroups: ToolGroup[] = [
   },
   {
     label: 'Text',
-    tools: [
-      { type: 'text', icon: Type, label: 'Text', shortcut: 'T' },
-    ],
+    tools: [{ type: 'text', icon: Type, label: 'Text', shortcut: 'T' }],
   },
   {
     label: 'Image',
-    tools: [
-      { type: 'image', icon: Image, label: 'Image', shortcut: 'Shift+I' },
-    ],
+    tools: [{ type: 'image', icon: Image, label: 'Image', shortcut: 'Shift+I' }],
   },
   {
     label: 'Tools',
@@ -105,7 +101,20 @@ const toolGroups: ToolGroup[] = [
 type EditorMode = 'design' | 'prototype' | 'dev'
 
 // Contextual tool options shown above toolbar when a tool is active
-const toolOptions: Partial<Record<ToolType, { label: string; options: { id: string; label: string; type: 'toggle' | 'button' | 'select'; items?: string[] }[] }>> = {
+const toolOptions: Partial<
+  Record<
+    ToolType,
+    {
+      label: string
+      options: {
+        id: string
+        label: string
+        type: 'toggle' | 'button' | 'select'
+        items?: string[]
+      }[]
+    }
+  >
+> = {
   pen: {
     label: 'Pen',
     options: [
@@ -116,15 +125,11 @@ const toolOptions: Partial<Record<ToolType, { label: string; options: { id: stri
   },
   pencil: {
     label: 'Pencil',
-    options: [
-      { id: 'pencil-smooth', label: 'Smooth', type: 'toggle' },
-    ],
+    options: [{ id: 'pencil-smooth', label: 'Smooth', type: 'toggle' }],
   },
   rectangle: {
     label: 'Rectangle',
-    options: [
-      { id: 'rect-corner', label: 'Corner Radius', type: 'button' },
-    ],
+    options: [{ id: 'rect-corner', label: 'Corner Radius', type: 'button' }],
   },
   text: {
     label: 'Text',
@@ -135,21 +140,15 @@ const toolOptions: Partial<Record<ToolType, { label: string; options: { id: stri
   },
   move: {
     label: 'Move',
-    options: [
-      { id: 'move-deep', label: 'Deep Select', type: 'toggle' },
-    ],
+    options: [{ id: 'move-deep', label: 'Deep Select', type: 'toggle' }],
   },
   ellipse: {
     label: 'Ellipse',
-    options: [
-      { id: 'ellipse-pie', label: 'Pie', type: 'toggle' },
-    ],
+    options: [{ id: 'ellipse-pie', label: 'Pie', type: 'toggle' }],
   },
   line: {
     label: 'Line',
-    options: [
-      { id: 'line-arrow', label: 'Arrow', type: 'toggle' },
-    ],
+    options: [{ id: 'line-arrow', label: 'Arrow', type: 'toggle' }],
   },
   hand: {
     label: 'Hand',
@@ -186,20 +185,43 @@ export function Toolbar() {
 
   // Check if any tool in a group or its moreTools is active
   const isGroupActive = (group: ToolGroup) => {
-    return group.tools.some(t => t.type === activeTool) || (group.moreTools?.some(t => t.type === activeTool) ?? false)
+    return (
+      group.tools.some((t) => t.type === activeTool) ||
+      (group.moreTools?.some((t) => t.type === activeTool) ?? false)
+    )
   }
 
   // Tool-specific options for the "more" dropdown
-  const getToolSpecificOptions = (): { id: string; label: string; checked: boolean; onToggle: () => void }[] => {
+  const getToolSpecificOptions = (): {
+    id: string
+    label: string
+    checked: boolean
+    onToggle: () => void
+  }[] => {
     switch (activeTool) {
       case 'pen':
         return [
-          { id: 'pen-bezier', label: 'Bezier Curve', checked: penBezierEnabled, onToggle: () => setPenBezierEnabled(!penBezierEnabled) },
-          { id: 'pen-mirror', label: 'Mirror Handles', checked: penMirrorEnabled, onToggle: () => setPenMirrorEnabled(!penMirrorEnabled) },
+          {
+            id: 'pen-bezier',
+            label: 'Bezier Curve',
+            checked: penBezierEnabled,
+            onToggle: () => setPenBezierEnabled(!penBezierEnabled),
+          },
+          {
+            id: 'pen-mirror',
+            label: 'Mirror Handles',
+            checked: penMirrorEnabled,
+            onToggle: () => setPenMirrorEnabled(!penMirrorEnabled),
+          },
         ]
       case 'pencil':
         return [
-          { id: 'pencil-smooth', label: 'Smooth Path', checked: pencilSmoothEnabled, onToggle: () => setPencilSmoothEnabled(!pencilSmoothEnabled) },
+          {
+            id: 'pencil-smooth',
+            label: 'Smooth Path',
+            checked: pencilSmoothEnabled,
+            onToggle: () => setPencilSmoothEnabled(!pencilSmoothEnabled),
+          },
         ]
       default:
         return []
@@ -235,7 +257,7 @@ export function Toolbar() {
           ))}
           {/* Active tool indicator dot */}
           <div className="w-1.5 h-1.5 rounded-full bg-[color:var(--dc-accent)] ml-1" />
-          
+
           {/* More options dropdown for tool-specific settings */}
           {toolOptionsMenuOpen && toolSpecificOptions.length > 0 && (
             <div className="absolute top-full left-0 mt-1 bg-[color:var(--dc-raised)] rounded-md border border-[color:var(--dc-border)] p-0.5 min-w-[180px] z-[200] shadow-lg shadow-black/30">
@@ -245,13 +267,23 @@ export function Toolbar() {
               {toolSpecificOptions.map((opt) => (
                 <button
                   key={opt.id}
-                  onClick={() => { opt.onToggle() }}
+                  onClick={() => {
+                    opt.onToggle()
+                  }}
                   className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-[11px] text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-hover)] transition-colors duration-100"
                 >
-                  <div className={`w-3 h-3 rounded border flex items-center justify-center ${opt.checked ? 'bg-[color:var(--dc-accent)] border-[color:var(--dc-accent)]' : 'border-[color:var(--dc-faint)]'}`}>
+                  <div
+                    className={`w-3 h-3 rounded border flex items-center justify-center ${opt.checked ? 'bg-[color:var(--dc-accent)] border-[color:var(--dc-accent)]' : 'border-[color:var(--dc-faint)]'}`}
+                  >
                     {opt.checked && (
                       <svg className="w-2 h-2 text-white" viewBox="0 0 12 12" fill="none">
-                        <path d="M2 6l3 3 5-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path
+                          d="M2 6l3 3 5-6"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
                       </svg>
                     )}
                   </div>
@@ -263,7 +295,11 @@ export function Toolbar() {
         </div>
       )}
 
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 [scale:0.88] origin-bottom z-[100] max-w-[calc(100%-12px)] flex items-center rounded-[13px] bg-fig-surface border border-fig-border overflow-visible" style={{ boxShadow: 'var(--fig-shadow-400)' }} ref={menuRef}>
+      <div
+        className="absolute bottom-3 left-1/2 -translate-x-1/2 [scale:0.88] origin-bottom z-[100] max-w-[calc(100%-12px)] flex items-center rounded-[13px] bg-fig-surface border border-fig-border overflow-visible"
+        style={{ boxShadow: 'var(--fig-shadow-400)' }}
+        ref={menuRef}
+      >
         {/* Tool groups */}
         {toolGroups.map((group, groupIdx) => (
           <React.Fragment key={groupIdx}>
@@ -315,14 +351,23 @@ export function Toolbar() {
                         return (
                           <button
                             key={tool.type}
-                            onClick={() => { setActiveTool(tool.type); setOpenMenuIdx(null) }}
+                            onClick={() => {
+                              setActiveTool(tool.type)
+                              setOpenMenuIdx(null)
+                            }}
                             className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-[11px] transition-colors duration-100 ${
-                              isActive ? 'bg-[color:var(--dc-accent)]/15 text-[color:var(--dc-accent)]' : 'text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-hover)]'
+                              isActive
+                                ? 'bg-[color:var(--dc-accent)]/15 text-[color:var(--dc-accent)]'
+                                : 'text-[color:var(--dc-text2)] hover:bg-[color:var(--dc-hover)]'
                             }`}
                           >
                             <Icon className="w-3.5 h-3.5" />
                             <span className="flex-1 text-left">{tool.label}</span>
-                            {tool.shortcut && <span className="text-[10px] text-[color:var(--dc-border-strong)]">{tool.shortcut}</span>}
+                            {tool.shortcut && (
+                              <span className="text-[10px] text-[color:var(--dc-border-strong)]">
+                                {tool.shortcut}
+                              </span>
+                            )}
                           </button>
                         )
                       })}
@@ -348,7 +393,10 @@ export function Toolbar() {
             <Minus className="w-2.5 h-2.5" />
           </button>
           <button
-            onClick={() => { setZoom(1); setPan(0, 0) }}
+            onClick={() => {
+              setZoom(1)
+              setPan(0, 0)
+            }}
             className="flex items-center justify-center rounded-md text-[10px] text-fig-text-tertiary hover:bg-fig-surface-hover hover:text-white transition-colors duration-100 tabular-nums min-w-[34px]"
             style={{ height: 'var(--fig-toolbar-btn)', fontFamily: 'var(--fig-font-family-mono)' }}
             title="Reset zoom to 100%"
@@ -362,7 +410,12 @@ export function Toolbar() {
             title="Zoom in"
           >
             <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none">
-              <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <path
+                d="M6 1v10M1 6h10"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
             </svg>
           </button>
         </div>
@@ -375,7 +428,13 @@ export function Toolbar() {
             style={{ height: 'var(--fig-toolbar-btn)' }}
             title="View options"
           >
-            <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2">
+            <svg
+              className="w-3 h-3"
+              viewBox="0 0 12 12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.2"
+            >
               <path d="M1.5 3.5h9M1.5 6h9M1.5 8.5h9" />
               <circle cx="4" cy="3.5" r="1" fill="currentColor" stroke="none" />
               <circle cx="8" cy="6" r="1" fill="currentColor" stroke="none" />
