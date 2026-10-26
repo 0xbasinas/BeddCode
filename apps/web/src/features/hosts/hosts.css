@@ -792,3 +792,31 @@
   font-size: 12px;
   line-height: 1.5;
 }
+
+.hosts-peek {
+  position: relative;
+  display: inline-flex;
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.hosts-peek .hosts-input {
+  width: 100%;
+  padding-right: calc(34px * var(--ui-scale));
+}
+.hosts-peek-button {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  width: calc(34px * var(--ui-scale));
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: var(--hosts-muted);
+  cursor: pointer;
+}
+.hosts-peek-button:hover,
+.hosts-peek-button:active {
+  color: var(--text);
+}

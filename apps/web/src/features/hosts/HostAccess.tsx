@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Clock, Monitor, RefreshCw, Trash2 } from 'lucide-react'
+import { Clock, Eye, Monitor, RefreshCw, Trash2 } from 'lucide-react'
 import type { Device, PairingCode, RelaySettings } from '@beddcode/contracts'
 import { hostRequest, useHostStore } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY, parsePairLink } from '../../stores/hostCatalog.ts'
@@ -149,6 +149,7 @@ function RelaySetting({ onChange }: { onChange(): void }) {
   const [settings, setSettings] = useState<RelaySettings>()
   const [value, setValue] = useState('')
   const [password, setPassword] = useState('')
+  const [peeking, setPeeking] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const alive = useHostMounted()
@@ -222,18 +223,37 @@ function RelaySetting({ onChange }: { onChange(): void }) {
           {busy && <HostSpinner />}
           Save
         </button>
-        <input
-          className="hosts-input"
-          type="password"
-          value={password}
-          placeholder={
-            settings.passwordSet ? 'Password set (type to change)' : 'Password (optional)'
-          }
-          onChange={(e) => setPassword(e.target.value)}
-          disabled={busy}
-          autoComplete="off"
-          aria-label="Relay password"
-        />
+        <span className="hosts-peek">
+          <input
+            className="hosts-input"
+            type={peeking ? 'text' : 'password'}
+            value={password}
+            placeholder={
+              settings.passwordSet ? 'Password set (type to change)' : 'Password (optional)'
+            }
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={busy}
+            autoComplete="off"
+            aria-label="Relay password"
+          />
+          {password && (
+            <button
+              type="button"
+              className="hosts-peek-button"
+              aria-label="Hold to show the password"
+              title="Hold to show"
+              onPointerDown={() => setPeeking(true)}
+              onPointerUp={() => setPeeking(false)}
+              onPointerLeave={() => setPeeking(false)}
+              onPointerCancel={() => setPeeking(false)}
+              onBlur={() => setPeeking(false)}
+              onKeyDown={(e) => (e.key === ' ' || e.key === 'Enter') && setPeeking(true)}
+              onKeyUp={() => setPeeking(false)}
+            >
+              <Eye size={15} />
+            </button>
+          )}
+        </span>
         {settings.url && (
           <button
             className="hosts-button destructive"
