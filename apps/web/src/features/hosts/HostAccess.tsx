@@ -266,28 +266,39 @@ function RelaySetting({ onChange }: { onChange(): void }) {
           </button>
         )}
       </form>
-      {settings.url && settings.passwordSet && (
-        <label className="hosts-check">
-          <input
-            type="checkbox"
-            checked={settings.telemetry}
-            disabled={busy}
-            onChange={(e) => void save(settings.url ?? null, undefined, e.target.checked)}
-          />
-          <span>
-            Keep anonymous speed measurements on my relay. Only timings and counts, never your code,
-            messages or file names. See them with <code>beddcode metrics</code>, or{' '}
-            <a
-              href={`${settings.url.replace(/^ws/, 'http')}/metrics/dashboard`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              open the dashboard
-            </a>
-            .
-          </span>
-        </label>
-      )}
+      {(() => {
+        const ready = Boolean(settings.url && settings.passwordSet)
+        return (
+          <label className="hosts-check">
+            <input
+              type="checkbox"
+              checked={ready && settings.telemetry}
+              disabled={busy || !ready}
+              onChange={(e) => void save(settings.url ?? null, undefined, e.target.checked)}
+            />
+            <span>
+              Keep anonymous speed measurements on my relay. Only timings and counts, never your
+              code, messages or file names.
+              {ready ? (
+                <>
+                  {' '}
+                  See them with <code>beddcode metrics</code>, or{' '}
+                  <a
+                    href={`${settings.url!.replace(/^ws/, 'http')}/metrics/dashboard`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    open the dashboard
+                  </a>
+                  .
+                </>
+              ) : (
+                ' Needs a relay address and password above first.'
+              )}
+            </span>
+          </label>
+        )
+      })()}
       {error && <HostNote tone="error">{error}</HostNote>}
     </div>
   )
