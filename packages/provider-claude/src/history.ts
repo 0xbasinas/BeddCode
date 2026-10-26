@@ -70,7 +70,8 @@ export interface GroupedTurn extends HistoryTurn {
 export function groupTurns(messages: SessionMessage[], cwd?: string): GroupedTurn[] {
   const turns: GroupedTurn[] = []
   // The live mapper turns stored messages into the same message, tool and edit events.
-  const mapper = new ClaudeEventMapper('history', { cwd })
+  let at = Date.now()
+  const mapper = new ClaudeEventMapper('history', { cwd, now: () => at })
   for (const m of messages) {
     // Subagents and system rows are not part of the visible conversation.
     if (m.parent_tool_use_id !== null || m.parent_agent_id) continue
@@ -85,6 +86,8 @@ export function groupTurns(messages: SessionMessage[], cwd?: string): GroupedTur
     const current = turns.at(-1)
     if (!current) continue
     current.lastUuid = m.uuid
+    const written = (m as { timestamp?: unknown }).timestamp
+    if (typeof written === 'number' && Number.isFinite(written)) at = written
     if (m.type === 'assistant' || m.type === 'user') {
       for (const event of mapper.map(m as unknown as SDKMessage)) {
         if (KEPT.has(event.type)) current.events!.push(event)

@@ -62,6 +62,8 @@ export async function readTranscript(file: string): Promise<SessionMessage[]> {
       uuid: entry.uuid,
       session_id: String(entry.sessionId ?? ''),
       message: shorten(entry.message),
+      // When it was written, so imported tool calls keep their real durations.
+      timestamp: typeof entry.timestamp === 'string' ? Date.parse(entry.timestamp) : undefined,
       parent_tool_use_id: null,
       parent_agent_id: null,
     } as SessionMessage)

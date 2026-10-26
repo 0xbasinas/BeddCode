@@ -77,7 +77,8 @@ export function turnEvents(turn: { items?: Obj[] }, cwd: string): SessionEvent[]
   for (const item of turn.items ?? []) {
     if (item.type === 'userMessage') continue
     for (const method of ['item/started', 'item/completed']) {
-      for (const event of mapper.map(method, { item })) if (kept.has(event.type)) events.push(event)
+      for (const event of mapper.map(method, { item }))
+        if (kept.has(event.type)) events.push({ ...event, at: 0 })
     }
   }
   return events

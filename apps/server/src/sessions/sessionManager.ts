@@ -1168,9 +1168,25 @@ export class SessionManager {
       this.deps.store.append({ ...base, type: 'turn.started' })
       if (turn.events?.length) {
         // Tool ids only have to be unique within a turn where they came from.
+        const open = new Set<string>()
+        let last = at
         for (const event of turn.events) {
           const toolId = 'toolId' in event ? { toolId: `${turnId}:${event.toolId}` } : {}
-          this.deps.store.append({ ...event, ...toolId, ...base } as SessionEvent)
+          // Keep the time the agent's own record gives, so tool calls show how long they took.
+          if (event.at > 0) last = event.at
+          if (event.type === 'tool.started') open.add(event.toolId)
+          if (event.type === 'tool.completed') open.delete(event.toolId)
+          this.deps.store.append({ ...event, ...toolId, ...base, at: last } as SessionEvent)
+        }
+        // A tool still running when the conversation was stored never finished; it must not spin.
+        for (const toolId of open) {
+          this.deps.store.append({
+            ...base,
+            at: last,
+            type: 'tool.completed',
+            toolId: `${turnId}:${toolId}`,
+            ok: false,
+          })
         }
       } else if (turn.assistant) {
         this.deps.store.append({

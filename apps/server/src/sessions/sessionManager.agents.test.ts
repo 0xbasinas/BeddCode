@@ -251,6 +251,36 @@ describe('history, import and fork', () => {
     const log = events(sessionId)
     const ids = log.flatMap((e) => (e.type === 'tool.started' ? [e.toolId] : []))
     expect(ids).toEqual(['turn-1:item-1', 'turn-2:item-1'])
+    // Written times are kept, and a tool that never finished is closed instead of left spinning.
+    const timed = [
+      {
+        id: 'old-3',
+        title: 'Timed',
+        turns: [
+          {
+            user: 'go',
+            assistant: '',
+            events: [
+              { type: 'tool.started', toolId: 'x', kind: 'command', title: 'Running', at: 1000 },
+            ],
+          },
+        ],
+      },
+    ] as never
+    const second = setup({ advanced: true, history: timed })
+    const timedId = (
+      await second.manager.importSession({
+        instanceId: 'fake',
+        providerSessionId: 'old-3',
+        cwd: second.dir,
+      })
+    ).sessionId
+    const timedLog = second.events(timedId)
+    expect(timedLog.find((e) => e.type === 'tool.started')).toMatchObject({ at: 1000 })
+    expect(timedLog.find((e) => e.type === 'tool.completed')).toMatchObject({
+      toolId: 'turn-1:x',
+      ok: false,
+    })
     const kinds = log.filter((e) => e.turnId === 'turn-2').map((e) => e.type)
     expect(kinds).toEqual([
       'message.delta',
