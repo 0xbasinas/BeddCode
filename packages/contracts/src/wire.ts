@@ -35,7 +35,15 @@ export const ClientFrame = z.discriminatedUnion('t', [
   z.object({ t: z.literal('fs.watch'), cwd: z.string() }),
   z.object({ t: z.literal('fs.unwatch'), cwd: z.string() }),
   /** Subscribe to the event log, resuming after `afterSeq`. */
-  z.object({ t: z.literal('subscribe'), afterSeq: z.number().int().nonnegative() }),
+  z.object({
+    t: z.literal('subscribe'),
+    afterSeq: z.number().int().nonnegative(),
+    /**
+     * The client understands a compact replay: streamed text joined into one event and superseded
+     * state left out. The state it builds is the same; far fewer frames cross the wire.
+     */
+    compact: z.boolean().optional(),
+  }),
   /**
    * Whether this client can run agents' browser tools (the desktop app can), and which session
    * it shows, so the host picks the right one. Sent again whenever either changes.
@@ -92,6 +100,11 @@ export const HostInfo = z.object({
   version: z.string(),
   /** Legacy default folder for clients that omit cwd without requesting a projectless session. */
   defaultCwd: z.string().optional(),
+  /**
+   * Which event log this is. It changes if the host's database is replaced, so a device that
+   * saved its copy of the history knows when that copy no longer belongs to the host.
+   */
+  logId: z.string().optional(),
 })
 export type HostInfo = z.infer<typeof HostInfo>
 

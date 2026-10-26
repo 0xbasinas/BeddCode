@@ -565,6 +565,47 @@ describe('server', () => {
     expect(replayed.map((e) => e.seq)).toEqual([lastSeen + 1])
     expect(replayed[0]?.event.type).toBe('error')
   })
+
+  it('sends a compact replay to a client that asks, and tells it where the replay ended', async () => {
+    const { server, store } = await boot()
+    store.append({
+      type: 'session.created',
+      sessionId: 's',
+      at: 1,
+      title: 'T',
+      cwd: '/p',
+      instanceId: 'fake',
+    })
+    for (const word of ['a', 'b', 'c', 'd'])
+      store.append({
+        type: 'message.delta',
+        sessionId: 's',
+        at: 2,
+        turnId: 't',
+        role: 'assistant',
+        text: word,
+      })
+    const last = store.readAfter(0).at(-1)!.seq
+
+    const plain = await Client.connect(server.port)
+    plain.send({ t: 'subscribe', afterSeq: 0 })
+    await plain.until((fs) => fs.some((f) => f.t === 'caught-up'))
+    const compact = await Client.connect(server.port)
+    compact.send({ t: 'subscribe', afterSeq: 0, compact: true })
+    await compact.until((fs) => fs.some((f) => f.t === 'caught-up'))
+
+    expect(plain.events()).toHaveLength(5)
+    const joined = compact.events()
+    expect(joined).toHaveLength(2)
+    const delta = joined[1]!.event
+    expect(delta.type === 'message.delta' && delta.text).toBe('abcd')
+    expect(compact.frames.find((f) => f.t === 'caught-up')).toMatchObject({ seq: last })
+  })
+
+  it('says which log it is in the welcome', async () => {
+    const { server, store } = await boot()
+    expect(server.hostInfo.logId).toBe(store.logId)
+  })
 })
 
 describe('silent connections', () => {

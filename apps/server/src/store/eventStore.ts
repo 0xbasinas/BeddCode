@@ -3,6 +3,7 @@ import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { SessionEvent, type StoredEvent } from '@beddcode/contracts'
 import { migrations } from './migrations.ts'
+import { SUPERSEDED_TYPES } from './compact.ts'
 import { isSnapshot, snapshotKey } from './snapshots.ts'
 
 export type EventListener = (stored: StoredEvent) => void
@@ -19,6 +20,8 @@ export class EventStore {
   private readonly bySessionStmt
   private readonly lastSnapshotStmt
   private readonly listeners = new Set<EventListener>()
+  /** Identifies this log; a new database has a new one. Devices check it before trusting a saved copy. */
+  readonly logId: string
   /** The latest commands/config/modes event per session and type, to skip unchanged repeats. */
   private readonly snapshots = new Map<string, { seq: number; key: string }>()
 
@@ -28,6 +31,9 @@ export class EventStore {
     this.db = new DatabaseSync(file)
     if (file !== ':memory:') this.db.exec('PRAGMA journal_mode = WAL')
     this.migrate()
+    this.logId = (
+      this.db.prepare("SELECT value FROM meta WHERE key = 'logId'").get() as { value: string }
+    ).value
     this.insert = this.db.prepare(
       'INSERT INTO events (session_id, type, at, payload) VALUES (?, ?, ?, ?) RETURNING seq',
     )
@@ -99,6 +105,20 @@ export class EventStore {
   readAfter(afterSeq: number, limit = 1000): StoredEvent[] {
     const rows = this.readStmt.all(afterSeq, limit) as { seq: number; payload: string }[]
     return rows.map((r) => ({ seq: r.seq, event: SessionEvent.parse(JSON.parse(r.payload)) }))
+  }
+
+  /**
+   * The seq of the latest event of each state-like type (commands, settings, context, plan) per
+   * session after `afterSeq`. Earlier ones in that range say nothing that a later one does not.
+   */
+  latestStateSeqs(afterSeq: number): Set<number> {
+    const types = [...SUPERSEDED_TYPES]
+    const rows = this.db
+      .prepare(
+        `SELECT MAX(seq) AS seq FROM events WHERE seq > ? AND type IN (${types.map(() => '?').join(', ')}) GROUP BY session_id, type`,
+      )
+      .all(afterSeq, ...types) as { seq: number }[]
+    return new Set(rows.map((r) => r.seq))
   }
 
   /** Every event of one session, oldest first. Used to rebuild a session's identity on resume. */

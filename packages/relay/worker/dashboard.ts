@@ -55,7 +55,7 @@ th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:
   </header>
   <h2>The ones that matter</h2>
   <div class="grid" id="cards"></div>
-  <h2>First open vs reopen</h2>
+  <h2>Cold = first ever, Disk = saved copy on the device, Warm = reconnect</h2>
   <div class="grid" id="resume"></div>
   <h2>Everything</h2>
   <input id="filter" placeholder="Filter by name, platform or route" style="width:100%;margin-bottom:10px">
@@ -125,11 +125,12 @@ function draw(){
   KEY.forEach(function(k){
     var cold=merge(data.rows.filter(function(r){return r.name===k[0]&&r.resume==='cold'}));
     var warm=merge(data.rows.filter(function(r){return r.name===k[0]&&r.resume==='warm'}));
-    if(!cold&&!warm)return;
+    var disk=merge(data.rows.filter(function(r){return r.name===k[0]&&r.resume==='disk'}));
+    if(!cold&&!warm&&!disk)return;
     var c=el('div','card');c.appendChild(el('h3','',k[1]));
-    var max=Math.max(cold?cold.p50:0,warm?warm.p50:0)||1;
+    var max=Math.max(cold?cold.p50:0,warm?warm.p50:0,disk?disk.p50:0)||1;
     var box=el('div','vs');
-    [['Cold',cold,'var(--cold)'],['Warm',warm,'var(--warm)']].forEach(function(x){
+    [['Cold',cold,'var(--cold)'],['Disk',disk,'var(--accent)'],['Warm',warm,'var(--warm)']].forEach(function(x){
       var row=el('div','bar');row.appendChild(el('span','',x[0]));
       var track=el('div');var bar=el('i');bar.style.background=x[2];bar.style.width=(x[1]?Math.max(2,x[1].p50/max*100):0)+'%';track.appendChild(bar);
       row.appendChild(track);row.appendChild(el('span','',x[1]?ms(x[1].p50):'none'));box.appendChild(row);

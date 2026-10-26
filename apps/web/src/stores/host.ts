@@ -6,6 +6,9 @@ import {
   applyEvent,
   retryWhileCurrent,
   emptyReplica,
+  decodeSnapshot,
+  ReplicaSaver,
+  SNAPSHOT_VERSION,
   type ConnectionState,
   type ReplicaState,
   type SessionView,
@@ -23,6 +26,7 @@ import type {
   ServerFrame,
   StoredEvent,
 } from '@beddcode/contracts'
+import { readReplica, writeReplica } from './replicaDb.ts'
 import {
   LOCAL_HOST_KEY,
   loadRemoteHosts,
@@ -176,9 +180,13 @@ function loadHostLists(hostKey: string, client: HostClient) {
   })
 }
 
+/** Saves each host's history shortly after it changes (see replicaCache.ts). */
+const savers = new Map<string, ReplicaSaver>()
+
 function startHost(entry: HostEntry) {
   clients.get(entry.key)?.stop()
   telemetryStops.get(entry.key)?.()
+  savers.get(entry.key)?.cancel()
   patchRuntime(entry.key, () => emptyRuntime())
 
   const queue: StoredEvent[] = []
@@ -189,9 +197,23 @@ function startHost(entry: HostEntry) {
     const batch = queue.splice(0)
     // A queued animation frame may outlive removing or re-pairing this host.
     if (clients.get(entry.key) !== client) return
-    if (batch.length)
+    if (batch.length) {
       patchRuntime(entry.key, (r) => ({ replica: batch.reduce(applyEvent, r.replica) }))
+      saver.touch()
+    }
   }
+  const saver = new ReplicaSaver({
+    write: (raw) => writeReplica(entry.key, raw),
+    snapshot() {
+      const logId = client.log
+      const replica = useHostStore.getState().runtimes[entry.key]?.replica
+      if (!logId || !replica) return null
+      // Events still waiting to be applied are not in the copy, so it must resume before them.
+      const seq = queue.length ? replica.lastSeq : Math.max(client.seq, replica.lastSeq)
+      return { v: SNAPSHOT_VERSION, logId, seq, replica }
+    },
+  })
+  savers.set(entry.key, saver)
 
   const client = new HostClient({
     url: entry.routes,
@@ -250,6 +272,11 @@ function startHost(entry: HostEntry) {
     onCaughtUp() {
       flush()
       patchRuntime(entry.key, () => ({ synced: true }))
+      saver.touch()
+    },
+    onReset() {
+      queue.length = 0
+      patchRuntime(entry.key, () => ({ replica: emptyReplica(), synced: false }))
     },
     onState(connection, host) {
       patchRuntime(entry.key, (r) => ({
@@ -267,7 +294,16 @@ function startHost(entry: HostEntry) {
   )
   client.offerBrowser(browserOffer())
   client.offerDesign({ canRender: true, ...designViews.get(entry.key) })
-  client.start()
+  // Show the history saved last time straight away, and ask the host only for what came after.
+  void readReplica(entry.key).then((raw) => {
+    if (clients.get(entry.key) !== client) return
+    const saved = decodeSnapshot(raw)
+    if (saved) {
+      client.restore(saved.seq, saved.logId)
+      patchRuntime(entry.key, () => ({ replica: saved.replica }))
+    }
+    client.start()
+  })
 }
 
 // -- browser use -------------------------------------------------------------
@@ -342,6 +378,9 @@ export function removeRemoteHost(hostKey: string) {
   clients.delete(hostKey)
   telemetryStops.get(hostKey)?.()
   telemetryStops.delete(hostKey)
+  savers.get(hostKey)?.cancel()
+  savers.delete(hostKey)
+  void writeReplica(hostKey, null)
   frameListeners.delete(hostKey)
   const entries = useHostStore.getState().entries.filter((e) => e.key !== hostKey)
   useHostStore.setState((s) => {

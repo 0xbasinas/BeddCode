@@ -28,6 +28,10 @@ export interface HostClientOptions {
   probeTimeoutMs?: number
   /** Resume point, e.g. restored from a persisted replica. */
   initialSeq?: number
+  /** The host log that `initialSeq` belongs to. A host with another log gets a full replay. */
+  resumeLogId?: string
+  /** The host's log is not the one this client was following: forget what was built from it. */
+  onReset?(): void
   onEvent(stored: StoredEvent): void
   onCaughtUp?(seq: number): void
   /** Terminal output and file-change notifications: live data that is not part of the event log. */
@@ -79,10 +83,14 @@ export class HostClient {
   private ws: WebSocket | null = null
   private state: ConnectionState = 'connecting'
   private lastSeq: number
+  /** The log being followed; learned at the first welcome, or given by a restored copy. */
+  private logId: string | undefined
+  /** True until the first replay ends, when the history held at the start came from disk. */
+  private restored: boolean
   /** Measurements of this connection (connect and replay times), see perf.ts. */
   readonly perf = new Recorder()
   private connectStartedAt = 0
-  private replay: { start: number; events: number; bytes: number; cold: boolean } | null = null
+  private replay: { start: number; events: number; bytes: number; resume: string } | null = null
   private attempt = 0
   private route = 0
   private nextId = 1
@@ -99,6 +107,21 @@ export class HostClient {
 
   constructor(private readonly options: HostClientOptions) {
     this.lastSeq = options.initialSeq ?? 0
+    this.logId = options.resumeLogId
+    this.restored = this.lastSeq > 0
+  }
+
+  /** Continues from a saved copy of the history. Only before `start`. */
+  restore(seq: number, logId: string) {
+    if (this.ws || this.lastSeq > 0) return
+    this.lastSeq = seq
+    this.logId = logId
+    this.restored = seq > 0
+  }
+
+  /** Which host log this follows (undefined until connected, or for an older host). */
+  get log(): string | undefined {
+    return this.logId
   }
 
   private get routes(): string[] {
@@ -320,6 +343,13 @@ export class HostClient {
           return
         }
         welcomed = true
+        // A host whose database was replaced has a different log; what we hold is not part of it.
+        if (this.logId !== undefined && frame.host.logId !== this.logId) {
+          this.lastSeq = 0
+          this.restored = false
+          this.options.onReset?.()
+        }
+        this.logId = frame.host.logId
         if (this.connectTimer) clearTimeout(this.connectTimer)
         this.connectTimer = null
         this.awaitingPong = false
@@ -348,9 +378,14 @@ export class HostClient {
         {
           const route = isRelayRoute(this.activeUrl) ? 'relay' : 'direct'
           this.perf.record('connect.ms', now() - this.connectStartedAt, { route })
-          this.replay = { start: now(), events: 0, bytes: 0, cold: this.lastSeq === 0 }
+          this.replay = {
+            start: now(),
+            events: 0,
+            bytes: 0,
+            resume: this.lastSeq === 0 ? 'cold' : this.restored ? 'disk' : 'warm',
+          }
         }
-        ws.send(JSON.stringify({ t: 'subscribe', afterSeq: this.lastSeq }))
+        ws.send(JSON.stringify({ t: 'subscribe', afterSeq: this.lastSeq, compact: true }))
         if (this.browserOffer) ws.send(JSON.stringify(this.browserOffer))
         if (this.designView) ws.send(JSON.stringify(this.designView))
         for (const wake of [...this.waiting]) wake()
@@ -373,16 +408,16 @@ export class HostClient {
         break
       case 'caught-up':
         if (this.replay) {
-          const { start, events, bytes, cold } = this.replay
-          const tags = {
-            route: isRelayRoute(this.activeUrl) ? 'relay' : 'direct',
-            resume: cold ? 'cold' : 'warm',
-          }
+          const { start, events, bytes, resume } = this.replay
+          const tags = { route: isRelayRoute(this.activeUrl) ? 'relay' : 'direct', resume }
           this.perf.record('replay.ms', now() - start, tags)
           this.perf.record('replay.events', events, tags)
           this.perf.record('replay.kb', bytes / 1024, tags)
           this.replay = null
         }
+        this.restored = false
+        // The replay may have joined its last events into earlier ones; this is where it really ended.
+        if (frame.seq > this.lastSeq) this.lastSeq = frame.seq
         this.options.onCaughtUp?.(frame.seq)
         break
       case 'term.out':

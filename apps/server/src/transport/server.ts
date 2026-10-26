@@ -1,3 +1,4 @@
+import { ReplayCompactor } from '../store/compact.ts'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import os from 'node:os'
 import { WebSocketServer, type ServerOptions, type WebSocket } from 'ws'
@@ -162,6 +163,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       process.platform === 'win32' || process.platform === 'darwin' ? process.platform : 'linux',
     version: VERSION,
     defaultCwd: options.defaultCwd,
+    logId: store.logId,
   }
   const guard = options.guard ?? defaultGuard()
   let listeningPort = options.port
@@ -519,10 +521,14 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
           // Replay and attach the live listener in one synchronous step: appends are synchronous,
           // so no event can slip between the last replayed row and the first live one.
           let cursor = frame.afterSeq
+          const compactor = frame.compact
+            ? new ReplayCompactor(store.latestStateSeqs(frame.afterSeq))
+            : undefined
           for (;;) {
             const batch = store.readAfter(cursor, REPLAY_BATCH)
-            for (const stored of batch) send({ t: 'event', stored })
-            replayed += batch.length
+            const sent = compactor ? compactor.compact(batch) : batch
+            for (const stored of sent) send({ t: 'event', stored })
+            replayed += sent.length
             if (batch.length < REPLAY_BATCH) {
               cursor = batch.at(-1)?.seq ?? cursor
               break

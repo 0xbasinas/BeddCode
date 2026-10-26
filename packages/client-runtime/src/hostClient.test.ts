@@ -150,7 +150,7 @@ describe('HostClient', () => {
     const second = FakeSocket.instances[1]!
     second.open()
     second.receive(welcome)
-    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 7 })
+    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 7, compact: true })
     client.stop()
   })
 
@@ -182,7 +182,7 @@ describe('HostClient', () => {
     const ws = FakeSocket.instances[0]!
     ws.open()
     ws.receive(welcome)
-    expect(ws.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 0 })
+    expect(ws.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 0, compact: true })
 
     ws.receive({ t: 'event', stored: ev(1) })
     ws.receive({ t: 'event', stored: ev(2) })
@@ -218,7 +218,7 @@ describe('HostClient', () => {
     const second = FakeSocket.instances[1]!
     second.open()
     second.receive(welcome)
-    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 3 })
+    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 3, compact: true })
     client.stop()
   })
 
@@ -267,7 +267,7 @@ describe('HostClient', () => {
     const second = FakeSocket.instances[1]!
     second.open()
     second.receive(welcome)
-    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 5 })
+    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 5, compact: true })
     second.receive({ t: 'event', stored: ev(5) })
     second.receive({ t: 'event', stored: ev(6) })
     expect(seen).toEqual([5, 6])
@@ -431,5 +431,68 @@ describe('HostClient', () => {
     FakeSocket.instances[1]!.drop()
     vi.advanceTimersByTime(200)
     expect(FakeSocket.instances[2]!.url).toBe('ws://100.1.2.3/ws')
+  })
+  it('resumes from a saved copy of the history of the same log', () => {
+    const client = new HostClient({
+      url: 'ws://host/ws',
+      onEvent: () => {},
+      createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
+      initialSeq: 40,
+      resumeLogId: 'log-1',
+    })
+    client.start()
+    const socket = FakeSocket.instances[0]!
+    socket.open()
+    socket.receive({ ...welcome, host: { ...host, logId: 'log-1' } })
+    expect(socket.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 40, compact: true })
+    socket.receive({ t: 'caught-up', seq: 40 })
+    expect(client.perf.drain(50).find((r) => r.name === 'replay.ms')?.tags?.resume).toBe('disk')
+  })
+
+  it('forgets a saved copy that belongs to another log, and asks for everything', () => {
+    const reset = vi.fn()
+    const client = new HostClient({
+      url: 'ws://host/ws',
+      onEvent: () => {},
+      onReset: reset,
+      createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
+      initialSeq: 40,
+      resumeLogId: 'old-log',
+    })
+    client.start()
+    const socket = FakeSocket.instances[0]!
+    socket.open()
+    socket.receive({ ...welcome, host: { ...host, logId: 'new-log' } })
+    expect(reset).toHaveBeenCalledOnce()
+    expect(socket.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 0, compact: true })
+    expect(client.log).toBe('new-log')
+  })
+
+  it('treats a host without a log id as a different log than a saved copy', () => {
+    const reset = vi.fn()
+    const client = new HostClient({
+      url: 'ws://host/ws',
+      onEvent: () => {},
+      onReset: reset,
+      createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
+      initialSeq: 9,
+      resumeLogId: 'log-1',
+    })
+    client.start()
+    const socket = FakeSocket.instances[0]!
+    socket.open()
+    socket.receive(welcome)
+    expect(reset).toHaveBeenCalledOnce()
+  })
+
+  it('resumes from where the replay ended, not from its last event', () => {
+    const client = makeClient(() => {})
+    client.start()
+    const first = FakeSocket.instances[0]!
+    first.open()
+    first.receive(welcome)
+    first.receive({ t: 'event', stored: ev(3) })
+    first.receive({ t: 'caught-up', seq: 9 })
+    expect(client.seq).toBe(9)
   })
 })
