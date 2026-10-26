@@ -2,8 +2,9 @@ name: Android
 
 # Builds the phone app as installable APKs. Pushing a tag such as v0.2.0 builds both the release
 # (standalone) and the debug (development) APK and attaches them to that release, next to the
-# desktop installers. "Run workflow" builds just the one you choose and keeps it as a downloadable
-# artifact. The debug build loads the app from `pnpm --filter @beddcode/mobile start` instead of
+# desktop installers. "Run workflow" builds just the one you choose, keeps it as a downloadable
+# artifact and publishes it to a prerelease with a fixed tag, release-dev or debug-dev, which each
+# run replaces so the link to the latest build never changes. The debug build loads the app from `pnpm --filter @beddcode/mobile start` instead of
 # carrying it inside.
 #
 # The APK is signed with the debug key unless these repository secrets are set, which signs it with
@@ -140,3 +141,15 @@ jobs:
         run: |
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --draft --title "${TAG#v}" --notes "" || true
           gh release upload "$TAG" "$APK" --clobber
+
+      # A manual run publishes to a fixed tag per variant. The release is recreated so the tag moves
+      # to the commit that was built.
+      - name: Publish it to the rolling release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ matrix.variant }}-dev
+          APK: ${{ steps.apk.outputs.name }}
+        run: |
+          gh release delete "$TAG" --cleanup-tag --yes || true
+          gh release create "$TAG" "$APK" --prerelease --target "$GITHUB_SHA"             --title "$TAG" --notes "Built from $GITHUB_SHA by run $GITHUB_RUN_NUMBER. Replaced by the next manual run."
