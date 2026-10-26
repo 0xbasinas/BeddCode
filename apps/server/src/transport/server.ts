@@ -1,4 +1,5 @@
 import { ReplayCompactor } from '../store/compact.ts'
+import { LiveCoalescer } from './liveCoalescer.ts'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import os from 'node:os'
 import { WebSocketServer, type ServerOptions, type WebSocket } from 'ws'
@@ -558,7 +559,13 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
           const resume = frame.afterSeq === 0 ? 'cold' : 'warm'
           options.telemetryRecorder?.('host.replay.ms', performance.now() - replayStart, { resume })
           options.telemetryRecorder?.('host.replay.events', replayed, { resume })
-          unsubscribe = store.subscribe((stored) => send({ t: 'event', stored }))
+          // Streamed text goes out a few times a second, not once per token.
+          const live = new LiveCoalescer((stored) => send({ t: 'event', stored }))
+          const stop = store.subscribe((stored) => live.push(stored))
+          unsubscribe = () => {
+            stop()
+            live.dispose()
+          }
           break
         }
       }

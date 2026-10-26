@@ -8,6 +8,7 @@ import {
   toolDuration,
   toolLabel,
   toolPhase,
+  splitStreamingMarkdown,
   totalChanges,
   type EditedFile,
   type SessionView,
@@ -371,13 +372,29 @@ interface RowProps {
   onAnswer(requestId: string, answers?: Record<string, string[]>): Promise<void>
   /** Appeared after the thread was first shown, so it eases in. */
   fresh: boolean
+  /** The message still being written: its settled paragraphs are drawn once, only the end again. */
+  live?: boolean
 }
+
+const StreamingText = memo(function StreamingText({ text }: { text: string }) {
+  const [head, tail] = splitStreamingMarkdown(text)
+  return (
+    <>
+      {head ? <SettledMarkdown>{head}</SettledMarkdown> : null}
+      <Markdown style={markdownStyles}>{tail}</Markdown>
+    </>
+  )
+})
+
+const SettledMarkdown = memo(function SettledMarkdown({ children }: { children: string }) {
+  return <Markdown style={markdownStyles}>{children}</Markdown>
+})
 
 /** Rows that have already eased in, so scrolling back to one does not play it again. */
 const played = new Set<string>()
 
 const Row = memo(
-  function Row({ entry, cwd, sessionId, hostKey, onApprove, onAnswer, fresh }: RowProps) {
+  function Row({ entry, cwd, sessionId, hostKey, onApprove, onAnswer, fresh, live }: RowProps) {
     const body = (() => {
       if (entry.kind === 'tools') return <ToolGroup tools={entry.tools} />
       if (entry.kind === 'agent-tool')
@@ -397,6 +414,8 @@ const Row = memo(
                 </Faint>
               ))}
             </View>
+          ) : live ? (
+            <StreamingText text={item.text} />
           ) : (
             <Markdown style={markdownStyles}>{item.text}</Markdown>
           )
@@ -431,6 +450,7 @@ const Row = memo(
   },
   (a, b) =>
     a.fresh === b.fresh &&
+    a.live === b.live &&
     a.cwd === b.cwd &&
     a.sessionId === b.sessionId &&
     a.hostKey === b.hostKey &&
@@ -543,6 +563,7 @@ export function Transcript({
           onApprove={approve}
           onAnswer={answer}
           fresh={fresh.current.has(entry.id)}
+          live={session.status === 'running' && entry.id === all[all.length - 1]?.id}
         />
       )}
     />
