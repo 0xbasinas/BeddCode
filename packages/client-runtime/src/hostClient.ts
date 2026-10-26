@@ -322,7 +322,14 @@ export class HostClient {
 
     ws.onopen = () => {
       if (this.ws !== ws) return
-      ws.send(JSON.stringify({ t: 'hello', protocol: PROTOCOL_VERSION, token: this.options.token }))
+      ws.send(
+        JSON.stringify({
+          t: 'hello',
+          protocol: PROTOCOL_VERSION,
+          token: this.options.token,
+          z: true,
+        }),
+      )
     }
     ws.onmessage = (msg) => {
       if (this.ws !== ws) return
@@ -385,7 +392,9 @@ export class HostClient {
             resume: this.lastSeq === 0 ? 'cold' : this.restored ? 'disk' : 'warm',
           }
         }
-        ws.send(JSON.stringify({ t: 'subscribe', afterSeq: this.lastSeq, compact: true }))
+        ws.send(
+          JSON.stringify({ t: 'subscribe', afterSeq: this.lastSeq, compact: true, batch: true }),
+        )
         if (this.browserOffer) ws.send(JSON.stringify(this.browserOffer))
         if (this.designView) ws.send(JSON.stringify(this.designView))
         for (const wake of [...this.waiting]) wake()
@@ -400,11 +409,10 @@ export class HostClient {
         this.probeTimer = null
         break
       case 'event':
-        if (this.replay) this.replay.events++
-        if (frame.stored.seq > this.lastSeq) {
-          this.lastSeq = frame.stored.seq
-          this.options.onEvent(frame.stored)
-        }
+        this.take(frame.stored)
+        break
+      case 'events':
+        for (const stored of frame.events) this.take(stored)
         break
       case 'caught-up':
         if (this.replay) {
@@ -447,6 +455,15 @@ export class HostClient {
         else p.reject(new Error(frame.error ?? 'request failed'))
         break
       }
+    }
+  }
+
+  /** One event from the host: counted, and passed on unless it is one we already hold. */
+  private take(stored: StoredEvent) {
+    if (this.replay) this.replay.events++
+    if (stored.seq > this.lastSeq) {
+      this.lastSeq = stored.seq
+      this.options.onEvent(stored)
     }
   }
 

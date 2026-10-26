@@ -517,6 +517,9 @@ importers:
       '@noble/hashes':
         specifier: ^2.4.0
         version: 2.4.0
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
 
   packages/contracts:
     dependencies:

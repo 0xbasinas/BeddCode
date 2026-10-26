@@ -35,6 +35,32 @@ describe('relay crypto', () => {
     expect(toBase64(new TextEncoder().encode('hello'))).toBe('aGVsbG8=')
   })
 
+  it('encodes base64 the way Node does, for big inputs too', () => {
+    const big = new Uint8Array(200_003)
+    for (let i = 0; i < big.length; i++) big[i] = (i * 31 + 7) & 255
+    expect(toBase64(big)).toBe(Buffer.from(big).toString('base64'))
+    expect([...fromBase64(Buffer.from(big).toString('base64'))]).toEqual([...big])
+    expect(() => fromBase64('ab$d')).toThrow()
+    expect(() => fromBase64('abcé')).toThrow()
+  })
+
+  it('compresses what is worth compressing, and any end can open it', () => {
+    const { client, host } = pair()
+    const text = JSON.stringify({
+      t: 'events',
+      events: Array(300).fill({ out: 'line of output ' }),
+    })
+    const plain = client.seal(text)
+    const packed = host.seal(text, true)
+    expect(packed.length).toBeLessThan(plain.length / 4)
+    // The other end opens it without being told: a squeezed message marks itself.
+    expect(client.open(packed)).toBe(text)
+    expect(host.open(plain)).toBe(text)
+    // Short messages are left alone, and unicode survives.
+    const tiny = host.seal('ok ✓', true)
+    expect(client.open(tiny)).toBe('ok ✓')
+  })
+
   it('carries messages both ways, in order', () => {
     const { client, host } = pair()
     expect(host.open(client.seal('one'))).toBe('one')

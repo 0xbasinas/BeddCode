@@ -1,4 +1,5 @@
 import { chacha20poly1305 } from '@noble/ciphers/chacha.js'
+import { deflateSync, inflateSync } from 'fflate'
 import { hkdf } from '@noble/hashes/hkdf.js'
 import { sha256 } from '@noble/hashes/sha2.js'
 
@@ -20,28 +21,46 @@ export function randomBytes(n: number): Uint8Array {
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
+const B64_CODES = Array.from(B64, (ch) => ch.charCodeAt(0))
+/** Character code to 6-bit value; 255 marks a character that is not base64. */
+const B64_VALUE = new Uint8Array(128).fill(255)
+B64_CODES.forEach((code, value) => (B64_VALUE[code] = value))
+
 export function toBase64(bytes: Uint8Array): string {
-  let out = ''
-  for (let i = 0; i < bytes.length; i += 3) {
-    const a = bytes[i]!
-    const b = bytes[i + 1]
-    const c = bytes[i + 2]
-    out += B64[a >> 2]! + B64[((a & 3) << 4) | ((b ?? 0) >> 4)]!
-    out += b === undefined ? '=' : B64[((b & 15) << 2) | ((c ?? 0) >> 6)]!
-    out += c === undefined ? '=' : B64[c & 63]!
+  // Built in slices of char codes: far quicker than one string append per character on a phone.
+  const parts: string[] = []
+  const SLICE = 3 * 4096
+  for (let start = 0; start < bytes.length; start += SLICE) {
+    const end = Math.min(bytes.length, start + SLICE)
+    const codes: number[] = []
+    for (let i = start; i < end; i += 3) {
+      const a = bytes[i]!
+      const b = bytes[i + 1]
+      const c = bytes[i + 2]
+      codes.push(
+        B64_CODES[a >> 2]!,
+        B64_CODES[((a & 3) << 4) | ((b ?? 0) >> 4)]!,
+        b === undefined ? 61 : B64_CODES[((b & 15) << 2) | ((c ?? 0) >> 6)]!,
+        c === undefined ? 61 : B64_CODES[c & 63]!,
+      )
+    }
+    parts.push(String.fromCharCode.apply(null, codes))
   }
-  return out
+  return parts.join('')
 }
 
 export function fromBase64(text: string): Uint8Array {
-  const clean = text.replace(/=+$/, '')
-  if (/[^A-Za-z0-9+/]/.test(clean)) throw new Error('bad base64')
-  const out = new Uint8Array(Math.floor((clean.length * 3) / 4))
+  let end = text.length
+  while (end > 0 && text.charCodeAt(end - 1) === 61) end--
+  const out = new Uint8Array(Math.floor((end * 3) / 4))
   let bits = 0
   let acc = 0
   let o = 0
-  for (const ch of clean) {
-    acc = ((acc << 6) | B64.indexOf(ch)) & 0xffffff
+  for (let i = 0; i < end; i++) {
+    const code = text.charCodeAt(i)
+    const value = code < 128 ? B64_VALUE[code]! : 255
+    if (value === 255) throw new Error('bad base64')
+    acc = ((acc << 6) | value) & 0xffffff
     bits += 6
     if (bits >= 8) {
       bits -= 8
@@ -74,6 +93,11 @@ export function roomFromKey(key: Uint8Array): { room: string; auth: string } {
   }
 }
 
+/** First byte of a message that was compressed before it was encrypted. */
+const ZIPPED = 1
+/** Messages shorter than this are sent as they are: compressing them gains nothing. */
+const COMPRESS_FROM = 512
+
 export type Role = 'client' | 'host'
 
 /** One connection's two directions of encrypted messages. */
@@ -100,10 +124,24 @@ export class SecureChannel {
     return n
   }
 
-  /** Encrypts one message; the result is base64 text safe to put in a JSON frame. */
-  seal(text: string): string {
+  /**
+   * Encrypts one message; the result is base64 text safe to put in a JSON frame. With `compress`
+   * a message of any size worth it is squeezed first (the other end must be able to open it, which
+   * `open` always can). Text never starts with byte 1, so that byte marks a squeezed message.
+   */
+  seal(text: string, compress = false): string {
     const nonce = SecureChannel.nonce(this.sent++)
-    return toBase64(chacha20poly1305(this.sendKey, nonce).encrypt(enc.encode(text)))
+    let plain = enc.encode(text)
+    if (compress && plain.length >= COMPRESS_FROM) {
+      const packed = deflateSync(plain, { level: 6 })
+      if (packed.length + 1 < plain.length) {
+        const marked = new Uint8Array(packed.length + 1)
+        marked[0] = ZIPPED
+        marked.set(packed, 1)
+        plain = marked
+      }
+    }
+    return toBase64(chacha20poly1305(this.sendKey, nonce).encrypt(plain))
   }
 
   /** Decrypts the next message. Throws when it was altered, replayed, or arrived out of order. */
@@ -111,7 +149,7 @@ export class SecureChannel {
     const nonce = SecureChannel.nonce(this.received)
     const plain = chacha20poly1305(this.recvKey, nonce).decrypt(fromBase64(data))
     this.received++
-    return dec.decode(plain)
+    return dec.decode(plain[0] === ZIPPED ? inflateSync(plain.subarray(1)) : plain)
   }
 }
 

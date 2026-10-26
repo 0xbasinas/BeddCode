@@ -602,6 +602,33 @@ describe('server', () => {
     expect(compact.frames.find((f) => f.t === 'caught-up')).toMatchObject({ seq: last })
   })
 
+  it('sends a replay in groups to a client that asks, and one by one to one that does not', async () => {
+    const { server, store } = await boot()
+    store.append({
+      type: 'session.created',
+      sessionId: 's',
+      at: 1,
+      title: 'T',
+      cwd: '/p',
+      instanceId: 'fake',
+    })
+    for (let i = 0; i < 250; i++)
+      store.append({ type: 'error', sessionId: 's', at: 2 + i, message: `e${i}` })
+
+    const grouped = await Client.connect(server.port)
+    grouped.send({ t: 'subscribe', afterSeq: 0, batch: true })
+    await grouped.until((fs) => fs.some((f) => f.t === 'caught-up'))
+    const groups = grouped.frames.filter((f) => f.t === 'events')
+    expect(groups.map((g) => g.t === 'events' && g.events.length)).toEqual([100, 100, 51])
+    expect(grouped.frames.some((f) => f.t === 'event')).toBe(false)
+
+    const single = await Client.connect(server.port)
+    single.send({ t: 'subscribe', afterSeq: 0 })
+    await single.until((fs) => fs.some((f) => f.t === 'caught-up'))
+    expect(single.frames.filter((f) => f.t === 'event')).toHaveLength(251)
+    expect(single.frames.some((f) => f.t === 'events')).toBe(false)
+  })
+
   it('says which log it is in the welcome', async () => {
     const { server, store } = await boot()
     expect(server.hostInfo.logId).toBe(store.logId)
@@ -1079,6 +1106,23 @@ describe('automation', () => {
     expect(entry).toMatchObject({ key: 'host-1', routes: [route] })
     expect(host.tokens.list().map((d) => d.name)).toContain('Phone')
 
+    // A long history, so the replay crosses the relay squeezed and in groups.
+    host.store.append({
+      type: 'session.created',
+      sessionId: 'long',
+      at: 1,
+      title: 'Long',
+      cwd: '/p',
+      instanceId: 'fake',
+    })
+    for (let i = 0; i < 300; i++)
+      host.store.append({
+        type: 'error',
+        sessionId: 'long',
+        at: 2 + i,
+        message: `line ${i}: ${'repeated output '.repeat(20)}`,
+      })
+
     // Then use it like any other connection.
     let replica = emptyReplica()
     const states: string[] = []
@@ -1096,6 +1140,7 @@ describe('automation', () => {
     await vi.waitFor(() => expect(client.connectionState).toBe('connected'))
     const providers = await client.request('providers.list', {})
     expect(providers.some((p) => p.id === 'fake')).toBe(true)
+    await vi.waitFor(() => expect(replica.sessions['long']?.items).toHaveLength(300))
 
     const { sessionId } = await client.request('sessions.create', {
       instanceId: 'fake',

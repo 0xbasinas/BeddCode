@@ -25,6 +25,8 @@ type FromRelay =
 class DeviceSocket extends EventEmitter implements ConnSocket {
   readonly OPEN = 1
   readyState = 0
+  /** The device said it can open compressed messages (see `hello.z`). */
+  compress = false
   channel?: SecureChannel
   readonly pieces = new Reassembler()
 
@@ -47,7 +49,7 @@ class DeviceSocket extends EventEmitter implements ConnSocket {
 
   send(data: string) {
     if (!this.channel || this.readyState !== 1) return
-    for (const part of chunks(this.channel.seal(data)))
+    for (const part of chunks(this.channel.seal(data, this.compress)))
       this.out({ t: 'm', c: this.cid, d: part.d, f: part.f })
   }
 

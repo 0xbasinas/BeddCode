@@ -150,7 +150,7 @@ describe('HostClient', () => {
     const second = FakeSocket.instances[1]!
     second.open()
     second.receive(welcome)
-    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 7, compact: true })
+    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 7, compact: true, batch: true })
     client.stop()
   })
 
@@ -182,7 +182,7 @@ describe('HostClient', () => {
     const ws = FakeSocket.instances[0]!
     ws.open()
     ws.receive(welcome)
-    expect(ws.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 0, compact: true })
+    expect(ws.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 0, compact: true, batch: true })
 
     ws.receive({ t: 'event', stored: ev(1) })
     ws.receive({ t: 'event', stored: ev(2) })
@@ -218,7 +218,7 @@ describe('HostClient', () => {
     const second = FakeSocket.instances[1]!
     second.open()
     second.receive(welcome)
-    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 3, compact: true })
+    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 3, compact: true, batch: true })
     client.stop()
   })
 
@@ -267,7 +267,7 @@ describe('HostClient', () => {
     const second = FakeSocket.instances[1]!
     second.open()
     second.receive(welcome)
-    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 5, compact: true })
+    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 5, compact: true, batch: true })
     second.receive({ t: 'event', stored: ev(5) })
     second.receive({ t: 'event', stored: ev(6) })
     expect(seen).toEqual([5, 6])
@@ -444,7 +444,7 @@ describe('HostClient', () => {
     const socket = FakeSocket.instances[0]!
     socket.open()
     socket.receive({ ...welcome, host: { ...host, logId: 'log-1' } })
-    expect(socket.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 40, compact: true })
+    expect(socket.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 40, compact: true, batch: true })
     socket.receive({ t: 'caught-up', seq: 40 })
     expect(client.perf.drain(50).find((r) => r.name === 'replay.ms')?.tags?.resume).toBe('disk')
   })
@@ -464,7 +464,7 @@ describe('HostClient', () => {
     socket.open()
     socket.receive({ ...welcome, host: { ...host, logId: 'new-log' } })
     expect(reset).toHaveBeenCalledOnce()
-    expect(socket.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 0, compact: true })
+    expect(socket.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 0, compact: true, batch: true })
     expect(client.log).toBe('new-log')
   })
 

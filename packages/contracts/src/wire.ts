@@ -9,7 +9,13 @@ export const ClientFrame = z.discriminatedUnion('t', [
   z.object({ t: z.literal('ping') }),
   /** Pair this device using a one-time code, over a connection that has no HTTP (a relay). */
   z.object({ t: z.literal('pair'), code: z.string().max(32), deviceName: z.string().max(80) }),
-  z.object({ t: z.literal('hello'), protocol: z.number().int(), token: z.string().optional() }),
+  z.object({
+    t: z.literal('hello'),
+    protocol: z.number().int(),
+    token: z.string().optional(),
+    /** This client can open compressed relay messages, so the host may send them. */
+    z: z.boolean().optional(),
+  }),
   z.object({
     t: z.literal('req'),
     id: z.string(),
@@ -43,6 +49,8 @@ export const ClientFrame = z.discriminatedUnion('t', [
      * state left out. The state it builds is the same; far fewer frames cross the wire.
      */
     compact: z.boolean().optional(),
+    /** The client understands `events` frames: the replay comes in groups, not one by one. */
+    batch: z.boolean().optional(),
   }),
   /**
    * Whether this client can run agents' browser tools (the desktop app can), and which session
@@ -119,6 +127,8 @@ export const ServerFrame = z.discriminatedUnion('t', [
     error: z.string().optional(),
   }),
   z.object({ t: z.literal('event'), stored: StoredEvent }),
+  /** Several events at once (a replay, sent to a client that asked for `batch`), in seq order. */
+  z.object({ t: z.literal('events'), events: z.array(StoredEvent) }),
   /** The host refused this connection (missing or wrong token). It closes right after. */
   z.object({ t: z.literal('denied'), reason: z.enum(['auth', 'origin', 'network']) }),
   /** The answer to `pair` when the code was right: this device's token, shown once. */

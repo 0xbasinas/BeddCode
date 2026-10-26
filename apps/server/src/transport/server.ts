@@ -130,6 +130,8 @@ export interface ConnSocket {
   readonly readyState: number
   readonly OPEN: number
   readonly bufferedAmount: number
+  /** Set when the client can open compressed messages; only sockets that compress themselves have it. */
+  compress?: boolean
   send(data: string): void
   close(code?: number, reason?: string): void
   terminate(): void
@@ -147,6 +149,8 @@ export interface RunningServer {
 }
 
 const REPLAY_BATCH = 1000
+/** Events per frame when a client asks for a replay in groups. */
+const GROUP = 100
 /** How long a repeated request (same `rid`) still gets the first answer. */
 const REPEAT_TTL_MS = 5 * 60_000
 const REPEAT_MAX = 1000
@@ -301,7 +305,17 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       return done(false, 403, 'origin')
     done(true)
   }
-  const wss = new WebSocketServer({ noServer: true, verifyClient })
+  // Direct connections squeeze what is big (a replay, a diff); small frames go as they are.
+  const wss = new WebSocketServer({
+    noServer: true,
+    verifyClient,
+    perMessageDeflate: {
+      threshold: 1024,
+      serverNoContextTakeover: true,
+      clientNoContextTakeover: true,
+      zlibDeflateOptions: { level: 4 },
+    },
+  })
   // The desktop app's port forwarding for its browser pane (see tunnel.ts).
   const tunnels = new WebSocketServer({ noServer: true, verifyClient, perMessageDeflate: false })
   http.on('upgrade', (req, socket, head) => {
@@ -446,6 +460,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
             ws.close(1002, 'protocol version')
             return
           }
+          if (frame.z && 'compress' in ws) ws.compress = true
           send({ t: 'welcome', protocol: PROTOCOL_VERSION, host: hostInfo })
           break
         case 'req': {
@@ -527,7 +542,11 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
           for (;;) {
             const batch = store.readAfter(cursor, REPLAY_BATCH)
             const sent = compactor ? compactor.compact(batch) : batch
-            for (const stored of sent) send({ t: 'event', stored })
+            if (frame.batch) {
+              for (let i = 0; i < sent.length; i += GROUP) {
+                send({ t: 'events', events: sent.slice(i, i + GROUP) })
+              }
+            } else for (const stored of sent) send({ t: 'event', stored })
             replayed += sent.length
             if (batch.length < REPLAY_BATCH) {
               cursor = batch.at(-1)?.seq ?? cursor
