@@ -290,13 +290,13 @@ function ChangesCard({ item }: { item: ChangesItem }) {
 }
 
 /** How many rows are drawn at first; earlier ones are added as the reader scrolls up to them. */
-const FIRST_ROWS = 12
+const FIRST_ROWS = 6
 // Adding older rows in steps after the thread opened re-laid the list out every few frames, which
 // felt like lag inside the thread. It now draws the newest rows once and adds more only on scrolling up.
 const OPENING_ROWS = FIRST_ROWS
 const OPENING_STEP = 6
 const OPENING_PAUSE_MS = 120
-const MORE_ROWS = 40
+const MORE_ROWS = 12
 
 /** Same row, same content: nothing to draw again (the entries are rebuilt on every event). */
 function sameEntry(a: Entry, b: Entry): boolean {
