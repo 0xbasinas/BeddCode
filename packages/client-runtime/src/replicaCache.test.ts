@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { emptyReplica } from './replica.ts'
+import { applyEvent, emptyReplica } from './replica.ts'
 import {
   decodeSnapshot,
   encodeSnapshot,
@@ -18,6 +18,39 @@ const snap = (over: Partial<ReplicaSnapshot> = {}): ReplicaSnapshot => ({
 })
 
 describe('snapshot', () => {
+  it('preserves normal session data across unchanged saves and immutable updates', () => {
+    const initial = applyEvent(emptyReplica(), {
+      seq: 1,
+      event: {
+        type: 'session.created',
+        sessionId: 's',
+        at: 1,
+        cwd: '/work',
+        instanceId: 'fake',
+        title: 'Demo',
+      },
+    })
+    const first = snap({ replica: initial })
+    encodeSnapshot(first)
+    expect(JSON.parse(encodeSnapshot(first)!)).toEqual(JSON.parse(JSON.stringify(first)))
+    const changed = snap({
+      replica: applyEvent(initial, {
+        seq: 2,
+        event: {
+          type: 'message.delta',
+          sessionId: 's',
+          at: 2,
+          role: 'assistant',
+          text: 'New content',
+        },
+      }),
+    })
+    expect(decodeSnapshot(encodeSnapshot(changed))?.replica.sessions.s?.items).toMatchObject([
+      { text: 'New content' },
+    ])
+    expect(decodeSnapshot(encodeSnapshot(first))?.replica.sessions.s?.items).toEqual([])
+  })
+
   it('survives a round trip', () => {
     expect(decodeSnapshot(encodeSnapshot(snap()))).toEqual(snap())
   })
@@ -86,5 +119,30 @@ describe('ReplicaSaver', () => {
     saver.cancel()
     await vi.advanceTimersByTimeAsync(10_000)
     expect(writes).toHaveLength(0)
+  })
+
+  it('retains only the newest pending snapshot while a slow write is in flight', async () => {
+    const writes: number[] = []
+    let release!: () => void
+    let seq = 1
+    const { saver } = make({
+      snapshot: () => snap({ seq, replica: { ...emptyReplica(), lastSeq: seq } }),
+      write: async (raw) => {
+        writes.push(JSON.parse(raw!).seq)
+        if (writes.length === 1)
+          await new Promise<void>((resolve) => {
+            release = resolve
+          })
+      },
+    })
+    const done = saver.flush()
+    await vi.advanceTimersByTimeAsync(0)
+    seq = 2
+    void saver.flush()
+    seq = 3
+    void saver.flush()
+    release()
+    await done
+    expect(writes).toEqual([1, 3])
   })
 })

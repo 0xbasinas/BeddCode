@@ -10,18 +10,16 @@ export interface EditedFile {
 export type Block =
   { kind: 'item'; item: TranscriptItem } | { kind: 'edits'; id: string; files: EditedFile[] }
 
-const sameFile = (a: string, b: string) => a.replace(/\\/g, '/') === b.replace(/\\/g, '/')
-
 /**
  * Prepares a transcript for display. Each turn's file diffs are collected into one "Edited N
  * files" block, placed where that turn's last diff arrived; a file edited twice counts once with
  * its changes added together. Once the host has recorded what a turn really changed (a `changes`
  * item), that card stands in for the turn's diffs.
  */
-export function buildBlocks(items: TranscriptItem[]): Block[] {
+export function buildBlocks(items: TranscriptItem[], turnOffset = 0): Block[] {
   // Index of the last diff in each turn; a user message starts a new turn.
   const lastDiffOfTurn = new Map<number, number>()
-  let turn = 0
+  let turn = turnOffset
   const turnOf: number[] = []
   // Turns the host recorded the real changes of: their card replaces the agent's own diffs.
   const recorded = new Set<number>()
@@ -32,17 +30,23 @@ export function buildBlocks(items: TranscriptItem[]): Block[] {
     if (item.kind === 'changes') recorded.add(turn)
   })
 
-  const filesByTurn = new Map<number, EditedFile[]>()
+  const filesByTurn = new Map<number, Map<string, EditedFile>>()
   items.forEach((item, i) => {
     if (item.kind !== 'diff') return
-    const files = filesByTurn.get(turnOf[i]!) ?? []
-    const existing = files.find((f) => sameFile(f.path, item.path))
+    const files = filesByTurn.get(turnOf[i]!) ?? new Map<string, EditedFile>()
+    const key = item.path.replace(/\\/g, '/')
+    const existing = files.get(key)
     if (existing) {
       existing.added += item.added
       existing.removed += item.removed
       existing.patch = `${existing.patch}\n${item.patch}`
     } else {
-      files.push({ path: item.path, added: item.added, removed: item.removed, patch: item.patch })
+      files.set(key, {
+        path: item.path,
+        added: item.added,
+        removed: item.removed,
+        patch: item.patch,
+      })
     }
     filesByTurn.set(turnOf[i]!, files)
   })
@@ -66,10 +70,48 @@ export function buildBlocks(items: TranscriptItem[]): Block[] {
     const t = turnOf[i]!
     if (lastDiffOfTurn.get(t) === i && !recorded.has(t)) {
       // Copy, so later renders never see a list that grew after this block was built.
-      blocks.push({ kind: 'edits', id: `edits-${t}`, files: [...filesByTurn.get(t)!] })
+      blocks.push({ kind: 'edits', id: `edits-${t}`, files: [...filesByTurn.get(t)!.values()] })
     }
   })
   return blocks
+}
+
+/** Retain completed turns until an item in them changes. Owned by one transcript component. */
+export function createBlockBuilder() {
+  let previous: TranscriptItem[] = []
+  let blocks: Block[] = []
+  let turns: { start: number; block: number; offset: number }[] = []
+  return (items: TranscriptItem[]): Block[] => {
+    if (items === previous) return blocks
+    let changed = 0
+    while (
+      changed < Math.min(previous.length, items.length) &&
+      previous[changed] === items[changed]
+    )
+      changed++
+    // Rebuild the turn containing the first changed item, including when a new turn starts.
+    let keep = turns.length - 1
+    while (keep >= 0 && turns[keep]!.start > changed) keep--
+    const boundary = keep >= 0 ? turns[keep]! : { start: 0, block: 0, offset: 0 }
+    const prefix = blocks.slice(0, boundary.block)
+    blocks = prefix.concat(buildBlocks(items.slice(boundary.start), boundary.offset))
+    turns = turns.slice(0, Math.max(0, keep))
+    const blockIndex = new Map<TranscriptItem, number>()
+    for (let i = boundary.block; i < blocks.length; i++) {
+      const block = blocks[i]!
+      if (block.kind === 'item') blockIndex.set(block.item, i)
+    }
+    let turn = boundary.offset
+    for (let i = boundary.start; i < items.length; i++) {
+      const item = items[i]!
+      if (item.kind !== 'message' || item.role !== 'user') continue
+      // A user message is always a block, so its stable item identity locates the boundary.
+      const block = blockIndex.get(item)!
+      turns.push({ start: i, block, offset: turn++ })
+    }
+    previous = items
+    return blocks
+  }
 }
 
 /** Lines added and removed in a session: recorded turn changes, else the agent's own diffs. */

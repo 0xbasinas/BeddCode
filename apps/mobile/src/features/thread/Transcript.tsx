@@ -1,6 +1,7 @@
 import {
   isAgentTool,
   buildBlocks,
+  createBlockBuilder,
   defaultOpen,
   formatDuration,
   summarizeTools,
@@ -49,9 +50,9 @@ type Entry =
   | { kind: 'edits'; id: string; files: EditedFile[] }
 
 /** Runs of consecutive tool calls read as one group, like the desktop transcript. */
-function entries(items: TranscriptItem[]): Entry[] {
+function entries(items: TranscriptItem[], build = buildBlocks): Entry[] {
   const out: Entry[] = []
-  for (const block of buildBlocks(items)) {
+  for (const block of build(items)) {
     if (block.kind === 'edits') {
       out.push({ kind: 'edits', id: block.id, files: block.files })
     } else if (block.item.kind === 'tool' && isAgentTool(block.item)) {
@@ -383,7 +384,10 @@ const Row = memo(
       }
     })()
     useEffect(() => {
-      played.add(`${sessionId}:${entry.id}`)
+      const key = `${sessionId}:${entry.id}`
+      played.delete(key)
+      played.add(key)
+      if (played.size > 4000) played.delete(played.values().next().value!)
     }, [sessionId, entry.id])
     return <FadeIn enabled={fresh && !played.has(`${sessionId}:${entry.id}`)}>{body}</FadeIn>
   },
@@ -420,7 +424,8 @@ export function Transcript({
   /** Called once, when the first rows of the thread have been laid out. */
   onFirstLayout?(): void
 }) {
-  const all = useMemo(() => entries(session.items), [session.items])
+  const build = useMemo(() => createBlockBuilder(), [session.id])
+  const all = useMemo(() => entries(session.items, build), [session.items, build])
   const list = useRef<FlatList<Entry>>(null)
   const laidOut = useRef(false)
   // Tables and code blocks settle their size a moment after they are drawn; the list stays hidden

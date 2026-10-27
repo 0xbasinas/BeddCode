@@ -2,6 +2,8 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useDeferredValue,
+  useMemo,
   useId,
   useRef,
   useState,
@@ -192,6 +194,8 @@ export function Sidebar() {
     return () => cancelAnimationFrame(frame)
   }, [searchOpen])
   const hosted = useAllSessions()
+  const deferredHosted = useDeferredValue(hosted)
+  const deferredQuery = useDeferredValue(query)
   const selectedHost = entries.some((e) => e.key === hostFilter) ? hostFilter : 'all'
   const all = hosted
     .filter((h) => selectedHost === 'all' || h.hostKey === selectedHost)
@@ -203,12 +207,22 @@ export function Sidebar() {
   const needsYou = all.filter((s) => s.status === 'needs-you').length
   const searching = searchOpen && query.trim() !== ''
   // Searching looks at what was said in each session too, and shows the matching words.
-  const messageHits = new Map(
-    searching
-      ? searchSessions(all, query, { limit: 500, snippetChars: 44 })
-          .filter((m) => m.field === 'message')
-          .map((m) => [m.sessionId, m])
-      : [],
+  const messageHits = useMemo(
+    () =>
+      new Map(
+        searching
+          ? searchSessions(
+              deferredHosted
+                .filter((h) => selectedHost === 'all' || h.hostKey === selectedHost)
+                .map((h) => h.session),
+              deferredQuery,
+              { limit: 500, snippetChars: 44 },
+            )
+              .filter((m) => m.field === 'message')
+              .map((m) => [m.sessionId, m])
+          : [],
+      ),
+    [searching, deferredHosted, deferredQuery, selectedHost],
   )
   const visible = all
     .filter(
@@ -238,7 +252,10 @@ ${s.projectless ? 'no-project' : s.projectPath}`
   const pinned = showPinned ? visible.filter((s) => s.pinned) : []
   for (const s of visible) {
     if (showPinned && s.pinned) continue
-    groups.set(groupKey(s), [...(groups.get(groupKey(s)) ?? []), s])
+    const key = groupKey(s)
+    const group = groups.get(key)
+    if (group) group.push(s)
+    else groups.set(key, [s])
   }
 
   // Added folders show up straight away, before any session runs in them.

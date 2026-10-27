@@ -78,7 +78,20 @@ const toPosix = (p: string) => p.replace(/\\/g, '/')
 /** Everything the app needs from git, by shelling out to the user's own `git`. */
 export class GitService {
   private readonly writes = new Map<string, Promise<unknown>>()
+  private readonly reads = new Map<string, Promise<unknown>>()
   constructor(private readonly run: Runner = defaultRunner) {}
+
+  private read<T>(key: string, action: () => Promise<T>): Promise<T> {
+    const existing = this.reads.get(key) as Promise<T> | undefined
+    if (existing) return existing
+    const pending = action()
+    this.reads.set(key, pending)
+    const clear = () => {
+      if (this.reads.get(key) === pending) this.reads.delete(key)
+    }
+    void pending.then(clear, clear)
+    return pending
+  }
 
   private async write<T>(root: string, action: () => Promise<T>): Promise<T> {
     const previous = this.writes.get(root) ?? Promise.resolve()
@@ -121,24 +134,27 @@ export class GitService {
     await this.git(cwd, ['init', '-q'])
   }
 
-  async info(cwd: string): Promise<GitInfo> {
+  info(cwd: string): Promise<GitInfo> {
+    return this.read(`info:${path.resolve(cwd)}`, () => this.readInfo(cwd))
+  }
+
+  private async readInfo(cwd: string): Promise<GitInfo> {
     if (!isDirectory(cwd)) throw new GitError(`Folder does not exist: ${cwd}`)
     const inside = await this.gitRaw(cwd, ['rev-parse', '--is-inside-work-tree'])
     if (inside.code !== 0 || inside.stdout.trim() !== 'true') return { isRepo: false }
 
-    const root = path.resolve((await this.git(cwd, ['rev-parse', '--show-toplevel'])).trim())
-    const common = path.resolve(
-      (await this.git(cwd, ['rev-parse', '--path-format=absolute', '--git-common-dir'])).trim(),
-    )
+    const [rootText, commonText, headRes, upstreamRes, defaultBranch] = await Promise.all([
+      this.git(cwd, ['rev-parse', '--show-toplevel']),
+      this.git(cwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']),
+      this.gitRaw(cwd, ['symbolic-ref', '--short', '-q', 'HEAD']),
+      this.gitRaw(cwd, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']),
+      this.defaultBranch(cwd, undefined),
+    ])
+    const root = path.resolve(rootText.trim())
+    const common = path.resolve(commonText.trim())
     const mainRoot = path.basename(common) === '.git' ? path.dirname(common) : root
 
-    const head = (await this.gitRaw(cwd, ['symbolic-ref', '--short', '-q', 'HEAD'])).stdout.trim()
-    const upstreamRes = await this.gitRaw(cwd, [
-      'rev-parse',
-      '--abbrev-ref',
-      '--symbolic-full-name',
-      '@{u}',
-    ])
+    const head = headRes.stdout.trim()
     const upstream = upstreamRes.code === 0 ? upstreamRes.stdout.trim() : undefined
 
     let ahead: number | undefined
@@ -159,7 +175,7 @@ export class GitService {
       upstream,
       ahead,
       behind,
-      defaultBranch: await this.defaultBranch(cwd, head || undefined),
+      defaultBranch: defaultBranch ?? (head || undefined),
     }
   }
 
@@ -196,7 +212,11 @@ export class GitService {
     return head.code === 0 ? 'HEAD' : EMPTY_TREE
   }
 
-  async status(cwd: string): Promise<GitStatus> {
+  status(cwd: string): Promise<GitStatus> {
+    return this.read(`status:${path.resolve(cwd)}`, () => this.readStatus(cwd))
+  }
+
+  private async readStatus(cwd: string): Promise<GitStatus> {
     const root = await this.root(cwd)
     const [info, porcelain, stats] = await Promise.all([
       this.info(root),

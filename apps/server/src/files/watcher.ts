@@ -22,6 +22,8 @@ const MAX_PATHS = 300
 export class FileWatchers {
   private readonly watches = new Map<string, Watch>()
 
+  constructor(private readonly changed?: (cwd: string) => void) {}
+
   /** Starts (or joins) watching `cwd`. Returns the function that stops listening. */
   acquire(cwd: string, listener: ChangeListener): () => void {
     const key = path.resolve(cwd)
@@ -66,6 +68,7 @@ export class FileWatchers {
       watch.pending.add(path.relative(root, file).split(path.sep).join('/'))
       watch.timer ??= setTimeout(() => {
         watch.timer = null
+        this.changed?.(root)
         const paths = [...watch.pending]
         watch.pending.clear()
         const out = paths.length > MAX_PATHS ? ['.'] : paths

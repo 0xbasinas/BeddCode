@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPoller } from '@beddcode/client-runtime'
 
 export interface Polled<T> {
   data: T | undefined
@@ -21,36 +22,33 @@ export function usePolled<T>(
   const [data, setData] = useState<T>()
   const [error, setError] = useState<string>()
   const [loading, setLoading] = useState(true)
-  const latest = useRef(0)
   const loadRef = useRef(load)
   loadRef.current = load
+  const poller = useRef<ReturnType<typeof createPoller<T>> | null>(null)
+  const run = useCallback(() => poller.current?.refresh(), [])
 
-  const run = useCallback(() => {
-    const id = ++latest.current
-    loadRef.current().then(
-      (value) => {
-        if (id !== latest.current) return
+  useEffect(() => {
+    if (!active) return
+    const current = createPoller({
+      load: () => loadRef.current(),
+      value: (value) => {
         setData(value)
         setError(undefined)
         setLoading(false)
       },
-      (err: unknown) => {
-        if (id !== latest.current) return
-        setError(err instanceof Error ? err.message : String(err))
+      error: (error) => {
+        setError(error instanceof Error ? error.message : String(error))
         setLoading(false)
       },
-    )
-  }, [])
-
-  useEffect(() => {
-    if (active) run()
-  }, [run, refreshKey, active])
-
-  useEffect(() => {
-    if (!active || intervalMs <= 0) return
-    const timer = setInterval(run, intervalMs)
-    return () => clearInterval(timer)
-  }, [run, active, intervalMs])
+      intervalMs,
+    })
+    poller.current = current
+    current.refresh()
+    return () => {
+      current.stop()
+      if (poller.current === current) poller.current = null
+    }
+  }, [refreshKey, active, intervalMs])
 
   return { data, error, loading, refresh: run }
 }

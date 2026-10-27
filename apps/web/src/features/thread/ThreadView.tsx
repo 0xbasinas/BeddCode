@@ -44,7 +44,7 @@ import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { folderName } from '../../ui/format.ts'
 import { Transcript } from './Transcript.tsx'
 import { ChildAgentsBar, StartedByBanner } from './AgentToolCard.tsx'
-import { endedByDecline, handoffPrompt, sessionChanges } from '@beddcode/client-runtime'
+import { endedByDecline, handoffPrompt } from '@beddcode/client-runtime'
 import { setHandoff } from '../../stores/handoff.ts'
 import { useFollowEnd } from './useFollowEnd.ts'
 import { MessageNav } from './MessageNav.tsx'
@@ -105,8 +105,8 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
     [session?.items],
   )
   const stats = useMemo(
-    () => (session ? sessionChanges(session.items) : { added: 0, removed: 0 }),
-    [session?.items],
+    () => ({ added: session?.added ?? 0, removed: session?.removed ?? 0 }),
+    [session?.added, session?.removed],
   )
   const busy = session?.status === 'running' || session?.status === 'needs-you'
   const changes = useMemo(
@@ -334,6 +334,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
           </div>
           {session.parent && <StartedByBanner session={session} hostKey={hostKey} />}
           <Transcript
+            live={session.status === 'running'}
             items={session.items}
             cwd={session.cwd}
             sessionId={sessionId}

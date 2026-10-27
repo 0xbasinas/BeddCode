@@ -19,14 +19,33 @@ export interface ReplicaSnapshot {
   replica: ReplicaState
 }
 
+// Session views are immutable. Serialize unchanged sessions once, rather than all history per save.
+const encodedSessions = new WeakMap<object, string>()
 export function encodeSnapshot(snapshot: ReplicaSnapshot): string | null {
-  const raw = JSON.stringify(snapshot)
-  return raw.length > MAX_SNAPSHOT_CHARS ? null : raw
+  const { lastSeq, order, sessions } = snapshot.replica
+  const head = `{"v":${snapshot.v},"logId":${JSON.stringify(snapshot.logId)},"seq":${snapshot.seq},"replica":{"lastSeq":${lastSeq},"order":${JSON.stringify(order)},"sessions":{`
+  let length = head.length + 3
+  if (length > MAX_SNAPSHOT_CHARS) return null
+  const parts: string[] = []
+  for (const [id, session] of Object.entries(sessions)) {
+    let raw =
+      typeof session === 'object' && session !== null ? encodedSessions.get(session) : undefined
+    if (raw === undefined) {
+      raw = JSON.stringify(session)
+      if (typeof session === 'object' && session !== null && raw.length <= MAX_SNAPSHOT_CHARS)
+        encodedSessions.set(session, raw)
+    }
+    const key = JSON.stringify(id)
+    length += key.length + 1 + raw.length + (parts.length ? 1 : 0)
+    if (length > MAX_SNAPSHOT_CHARS) return null
+    parts.push(`${key}:${raw}`)
+  }
+  return `${head}${parts.join(',')}}}}`
 }
 
 /** The saved copy, or null when there is none or it cannot be trusted. */
 export function decodeSnapshot(raw: string | null | undefined): ReplicaSnapshot | null {
-  if (!raw) return null
+  if (!raw || raw.length > MAX_SNAPSHOT_CHARS) return null
   try {
     const s = JSON.parse(raw) as Partial<ReplicaSnapshot>
     const r = s.replica
@@ -66,7 +85,8 @@ export interface ReplicaSaverOptions {
 export class ReplicaSaver {
   private timer: ReturnType<typeof setTimeout> | null = null
   private dirtySince = 0
-  private writing: Promise<void> = Promise.resolve()
+  private writing: Promise<void> | null = null
+  private pending: ReplicaSnapshot | null | undefined
 
   constructor(private readonly options: ReplicaSaverOptions) {}
 
@@ -94,15 +114,30 @@ export class ReplicaSaver {
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
     this.dirtySince = 0
-    const snapshot = this.options.snapshot()
-    const raw = snapshot ? encodeSnapshot(snapshot) : null
-    this.writing = this.writing.then(() => this.options.write(raw).catch(() => {}))
+    this.pending = this.options.snapshot()
+    if (!this.writing) this.writing = this.drain()
     return this.writing
+  }
+
+  private async drain(): Promise<void> {
+    // Defer serialization so repeated flushes in this turn retain only the latest snapshot.
+    await Promise.resolve()
+    try {
+      while (this.pending !== undefined) {
+        const snapshot = this.pending
+        this.pending = undefined
+        const raw = snapshot ? encodeSnapshot(snapshot) : null
+        await this.options.write(raw).catch(() => {})
+      }
+    } finally {
+      this.writing = null
+    }
   }
 
   cancel() {
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
     this.dirtySince = 0
+    this.pending = undefined
   }
 }

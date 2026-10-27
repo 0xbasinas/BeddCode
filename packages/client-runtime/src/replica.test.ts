@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionEvent, StoredEvent } from '@beddcode/contracts'
-import { applyEvent, emptyReplica, type ReplicaState } from './replica.ts'
+import { applyEvent, applyEvents, emptyReplica, type ReplicaState } from './replica.ts'
 
 const base = { sessionId: 's1', at: 1 }
 type Draft<E = SessionEvent> = E extends unknown ? Omit<E, 'sessionId' | 'at'> : never
@@ -20,6 +20,32 @@ const created = {
   cwd: '/work/demo',
   instanceId: 'fake',
 }
+
+it('batch application matches individual events, including reconnect duplicates and tool boundaries', () => {
+  const events: SessionEvent[] = [
+    { ...base, ...created },
+    { ...base, type: 'turn.started', turnId: 't' },
+    ...Array.from({ length: 300 }, (_, n) => ({
+      ...base,
+      at: n + 2,
+      type: 'message.delta' as const,
+      role: 'assistant' as const,
+      text: `${n} `,
+      turnId: 't',
+    })),
+    { ...base, type: 'tool.started', toolId: 'tool', title: 'Read', kind: 'read' },
+    { ...base, type: 'message.delta', role: 'assistant', text: 'After tool', turnId: 't' },
+    { ...base, type: 'turn.completed', reason: 'done', turnId: 't' },
+  ]
+  const stored = events.map((event, n) => ({ seq: n + 1, event }))
+  const initial = emptyReplica()
+  const expected = stored.reduce(applyEvent, initial)
+  expect(applyEvents(initial, stored)).toEqual(expected)
+  expect(initial).toEqual(emptyReplica())
+  const warm = stored.slice(0, 120).reduce(applyEvent, initial)
+  expect(applyEvents(warm, stored)).toEqual(expected)
+  expect(applyEvents(expected, stored)).toBe(expected)
+})
 
 describe('replica', () => {
   it('keeps no-project grouping on replay and names it from the first message', () => {

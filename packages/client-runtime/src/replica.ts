@@ -163,6 +163,44 @@ export interface ReplicaState {
 
 export const emptyReplica = (): ReplicaState => ({ lastSeq: 0, order: [], sessions: {} })
 
+/** Fold a received burst, copying a streaming message's history only once per contiguous run. */
+export function applyEvents(state: ReplicaState, events: readonly StoredEvent[]): ReplicaState {
+  let next = state
+  for (let i = 0; i < events.length; i++) {
+    const stored = events[i]!
+    if (stored.seq <= next.lastSeq) continue
+    const e = stored.event
+    if (e.type !== 'message.delta' || e.role !== 'assistant') {
+      next = applyEvent(next, stored)
+      continue
+    }
+    const parts = [e.text]
+    let last = stored
+    while (i + 1 < events.length) {
+      const following = events[i + 1]!
+      const f = following.event
+      if (following.seq <= last.seq) break
+      if (
+        f.type !== 'message.delta' ||
+        f.role !== 'assistant' ||
+        f.sessionId !== e.sessionId ||
+        f.turnId !== e.turnId
+      )
+        break
+      parts.push(f.text)
+      last = following
+      i++
+    }
+    // Keep the first sequence as the message id; the last is the reconnect cursor.
+    next = applyEvent(next, {
+      seq: stored.seq,
+      event: { ...e, text: parts.join(''), at: last.event.at },
+    })
+    if (last !== stored) next = { ...next, lastSeq: last.seq }
+  }
+  return next
+}
+
 /** Is anything open that the agent is waiting on the user for? */
 function waiting(items: TranscriptItem[]): boolean {
   return items.some(

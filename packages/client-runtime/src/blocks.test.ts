@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TranscriptItem } from './replica.ts'
-import { buildBlocks, sessionChanges, totalChanges } from './blocks.ts'
+import { buildBlocks, createBlockBuilder, sessionChanges, totalChanges } from './blocks.ts'
 
 const user = (id: string): TranscriptItem => ({ kind: 'message', id, role: 'user', text: id })
 const text = (id: string): TranscriptItem => ({ kind: 'message', id, role: 'assistant', text: id })
@@ -11,6 +11,28 @@ const diff = (id: string, path: string, added: number, removed: number): Transcr
   added,
   removed,
   patch: `+${id}`,
+})
+
+it('incremental blocks match a full rebuild through streaming, older edits, truncation and reset', () => {
+  const build = createBlockBuilder()
+  let items: TranscriptItem[] = []
+  for (let turn = 0; turn < 25; turn++) {
+    items = [...items, user(`u${turn}`), diff(`d${turn}`, 'a.ts', 1, 0), text(`a${turn}`)]
+    expect(build(items)).toEqual(buildBlocks(items))
+    const before = build(items)
+    items = [...items.slice(0, -1), { ...items.at(-1)!, text: 'streaming' } as TranscriptItem]
+    const after = build(items)
+    expect(after).toEqual(buildBlocks(items))
+    if (turn > 0) expect(after[0]).toBe(before[0])
+  }
+  items = items.map((item, i) => (i === 2 ? text('older change') : item))
+  expect(build(items)).toEqual(buildBlocks(items))
+  items = items.slice(0, 4)
+  expect(build(items)).toEqual(buildBlocks(items))
+  expect(build([])).toEqual([])
+  expect(build([text('intro'), user('u'), diff('d', 'a.ts', 1, 0)])).toEqual(
+    buildBlocks([text('intro'), user('u'), diff('d', 'a.ts', 1, 0)]),
+  )
 })
 
 describe('buildBlocks', () => {

@@ -1,5 +1,31 @@
 import { describe, expect, it } from 'vitest'
-import { dailySeries, percentile, summarize, validateBatch } from './metrics.ts'
+import { dailySeries, metricSummarySql, percentile, summarize, validateBatch } from './metrics.ts'
+import { DatabaseSync } from 'node:sqlite'
+
+it('SQLite aggregation preserves exact percentiles, counts and daily grouping', () => {
+  const db = new DatabaseSync(':memory:')
+  db.exec(
+    'CREATE TABLE samples (t INTEGER, name TEXT, platform TEXT, route TEXT, tags TEXT, value REAL)',
+  )
+  const insert = db.prepare('INSERT INTO samples VALUES (?, ?, ?, ?, ?, ?)')
+  const rows = Array.from({ length: 207 }, (_, n) => ({
+    t: Date.UTC(2026, 9, (n % 3) + 1),
+    name: n % 2 ? 'replay.ms' : 'rpc.ms',
+    platform: 'mobile',
+    route: n % 3 ? 'relay' : null,
+    resume: n % 4 ? 'warm' : null,
+    value: n % 19,
+  }))
+  for (const r of rows)
+    insert.run(r.t, r.name, r.platform, r.route, JSON.stringify({ resume: r.resume }), r.value)
+  const order = (a: unknown[]) =>
+    a.sort((x, y) => JSON.stringify(x).localeCompare(JSON.stringify(y)))
+  const summary = db.prepare(metricSummarySql()).all(0)
+  expect(order(summary)).toEqual(order(summarize(rows)))
+  expect(order(db.prepare(metricSummarySql(true)).all(0))).toEqual(order(dailySeries(rows)))
+  expect(db.prepare(metricSummarySql()).all(Date.UTC(2027, 0))).toEqual([])
+  db.close()
+})
 
 const ok = {
   host: 'abc123',

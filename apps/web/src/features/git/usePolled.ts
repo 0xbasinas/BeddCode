@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPoller } from '@beddcode/client-runtime'
 
 export interface Polled<T> {
   data: T | undefined
@@ -10,7 +11,7 @@ export interface Polled<T> {
 
 /**
  * Loads data now, whenever `refreshKey` changes, and on an interval while the page is visible.
- * Out-of-order responses are dropped, so a slow old request never overwrites a newer one.
+ * Requests never overlap within a poller, and responses from a previous key are ignored.
  */
 export function usePolled<T>(
   load: () => Promise<T>,
@@ -20,39 +21,33 @@ export function usePolled<T>(
   const [data, setData] = useState<T>()
   const [error, setError] = useState<string>()
   const [loading, setLoading] = useState(true)
-  const latest = useRef(0)
   const loadRef = useRef(load)
   loadRef.current = load
+  const poller = useRef<ReturnType<typeof createPoller<T>> | null>(null)
+  const run = useCallback(() => poller.current?.refresh(), [])
 
-  const run = useCallback(() => {
-    const id = ++latest.current
-    loadRef.current().then(
-      (value) => {
-        if (id !== latest.current) return
+  useEffect(() => {
+    const current = createPoller({
+      load: () => loadRef.current(),
+      value: (value) => {
         setData(value)
         setError(undefined)
         setLoading(false)
       },
-      (err: unknown) => {
-        if (id !== latest.current) return
-        setError(err instanceof Error ? err.message : String(err))
+      error: (error) => {
+        setError(error instanceof Error ? error.message : String(error))
         setLoading(false)
       },
-    )
-  }, [])
-
-  // Refreshes keep the data on screen; only the very first load shows a loading state.
-  useEffect(() => {
-    run()
-  }, [run, refreshKey])
-
-  useEffect(() => {
-    if (intervalMs <= 0) return
-    const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') run()
-    }, intervalMs)
-    return () => clearInterval(timer)
-  }, [run, intervalMs])
+      intervalMs,
+      visible: () => document.visibilityState === 'visible',
+    })
+    poller.current = current
+    current.refresh()
+    return () => {
+      current.stop()
+      if (poller.current === current) poller.current = null
+    }
+  }, [refreshKey, intervalMs])
 
   return { data, error, loading, refresh: run }
 }
