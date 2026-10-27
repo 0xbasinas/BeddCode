@@ -59,7 +59,7 @@ const styles = StyleSheet.create({
   box: {
     position: 'absolute',
     right: 6,
-    bottom: 64,
+    bottom: 170,
     backgroundColor: 'rgba(0,0,0,0.75)',
     borderRadius: 6,
     paddingHorizontal: 6,
