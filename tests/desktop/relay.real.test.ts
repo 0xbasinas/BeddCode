@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { ElectronApplication } from 'playwright-core'
+import type { ElectronApplication, Page } from 'playwright-core'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { Host } from '../shared/hostClient.ts'
 import { desktopEnv, launchDesktop, root, type DesktopEnv } from './launch.ts'
@@ -78,6 +78,7 @@ test('percentile', () => {
 
 let env: DesktopEnv
 let app: ElectronApplication
+let page: Page
 let host: Host
 let approving = true
 let repo = ''
@@ -101,6 +102,7 @@ beforeAll(async () => {
   env = await desktopEnv(true)
   const launched = await launchDesktop(env, true)
   app = launched.app
+  page = launched.page
   await launched.page
     .getByRole('heading', { name: 'Welcome to BeddCode' })
     .waitFor({ timeout: 90_000 })
@@ -109,6 +111,27 @@ beforeAll(async () => {
   await host.connect()
   // Everyone's approvals are answered; what is measured is the relay, not the permission prompts.
   const answered = new Set<string>()
+  // A live trail, so a run that stalls or is stopped can still be read.
+  const logDir = path.join(root, '.e2e', 'desktop-stats')
+  mkdirSync(logDir, { recursive: true })
+  const logFile = path.join(logDir, `relay-${parent}-live.log`)
+  writeFileSync(logFile, '')
+  let logged = 0
+  const title = (id: string) => String(created(id)?.title ?? id).slice(0, 12)
+  void (async () => {
+    while (approving) {
+      for (const { event: e } of host.events.slice(logged)) {
+        if (/^(turn\.|tool\.|approval\.|session\.(created|result)|error)/.test(e.type))
+          appendFileSync(
+            logFile,
+            `${new Date(e.at).toISOString().slice(11, 19)} ${title(e.sessionId)} ${e.type} ${String(e.title ?? e.name ?? e.reason ?? e.status ?? e.summary ?? e.message ?? '').slice(0, 120)}
+`,
+          )
+      }
+      logged = host.events.length
+      await new Promise((r) => setTimeout(r, 1000))
+    }
+  })()
   void (async () => {
     while (approving) {
       for (const { event } of host.events) {
@@ -274,7 +297,27 @@ describe(`a long relay led by ${parent}`, () => {
       turns,
     })
 
+    // The window shows each start as its own helper and names the target of every send and wait.
+    await page.goto(`http://127.0.0.1:${env.port}/#/session/${sessionId}`)
+    await page.getByText('Started').first().waitFor({ timeout: 30_000 })
+    const shown = await page.locator('body').innerText()
+    report.window = {
+      // By agent, not title: an agent may rename its own session (Grok does).
+      sent: ['Claude Code', 'Codex', 'Grok'].map((n) => [
+        n,
+        new RegExp(`Sent a message to\\s*${n}\\b`).test(shown),
+      ]),
+      unnamedWaits: (shown.match(/Waited for Agent/g) ?? []).length,
+      unnamedSends: (shown.match(/Sent a message to\s*$/gm) ?? []).length,
+    }
+    await page.screenshot({ path: path.join(root, '.e2e', 'desktop-stats', `relay-${parent}.png`) })
+
     expect(report.parentEnd).toBe('done')
+    expect(
+      report.window.sent.every(([, ok]: [string, boolean]) => ok),
+      JSON.stringify(report.window),
+    ).toBe(true)
+    expect(report.window.unnamedWaits).toBe(0)
     expect(text(sessionId)).toContain(`${marker} rounds=`)
     expect(ownTests).toMatch(/fail 0/)
     expect(passed, accepted.slice(-1500)).toEqual(

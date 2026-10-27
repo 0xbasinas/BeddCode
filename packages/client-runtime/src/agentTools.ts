@@ -29,11 +29,17 @@ export function agentToolName(tool: Pick<Tool, 'title' | 'input'>): AgentToolNam
   const title = tool.title.trim()
   const hit = TITLE.exec(title)
   if (hit) return hit[1]!.toLowerCase() as AgentToolName
+  // Grok's use_tool before its title catches up: the name is in the input.
+  if (/^use_tool$/i.test(title)) {
+    const named = looseJson(tool.input).tool_name
+    const inner = typeof named === 'string' ? TITLE.exec(named) : null
+    if (inner) return inner[1]!.toLowerCase() as AgentToolName
+  }
   // A bare name ("stop") could be anyone's tool; take it only with arguments that fit ours.
   const bare = BARE.exec(title)
   if (!bare) return undefined
   const name = bare[1]!.toLowerCase() as AgentToolName
-  const args = looseJson(tool.input)
+  const args = toolArgs(tool.input)
   const fits =
     name === 'start_session'
       ? typeof args.agent === 'string' && typeof args.prompt === 'string'
@@ -48,6 +54,20 @@ export function isAgentTool(tool: Pick<Tool, 'title' | 'input'>): boolean {
 }
 
 type Json = Record<string, unknown>
+
+/** The arguments of a call. Grok sends them inside its use_tool: { tool_name, tool_input: {…} }. */
+function toolArgs(input: string | undefined): Json {
+  const given = looseJson(input)
+  const inner = given.tool_input ?? given.toolInput
+  return inner && typeof inner === 'object' && !Array.isArray(inner) ? (inner as Json) : given
+}
+
+/** What a call brought back. Grok wraps it: { type: "MCP", output: { OkayOutput: "<the JSON>" } }. */
+function toolResult(output: string | undefined): Json {
+  const outer = looseJson(output)
+  const wrapped = outer.output && typeof outer.output === 'object' ? (outer.output as Json) : outer
+  return typeof wrapped.OkayOutput === 'string' ? looseJson(wrapped.OkayOutput) : outer
+}
 
 /**
  * Reads a JSON object even when the provider cut it short (they cap tool output at a few
@@ -66,7 +86,8 @@ export function looseJson(text: string | undefined): Json {
     // fall through to field by field
   }
   const out: Json = {}
-  const field = /"([a-z_]+)"\s*:\s*(?:"((?:[^"\\]|\\.)*)("?)|(-?\d+(?:\.\d+)?)|(true|false|null))/g
+  const field =
+    /"([A-Za-z_]+)"\s*:\s*(?:"((?:[^"\\]|\\.)*)("?)|(-?\d+(?:\.\d+)?)|(true|false|null))/g
   for (let m = field.exec(trimmed); m; m = field.exec(trimmed)) {
     const key = m[1]!
     if (key in out) continue
@@ -243,9 +264,9 @@ export function agentToolView(
   const name = agentToolName(tool)
   if (!name) return undefined
   const sessions = options.sessions ?? {}
-  const args = looseJson(tool.input)
+  const args = toolArgs(tool.input)
   const failed = tool.status === 'failed'
-  const result = failed ? {} : looseJson(tool.output)
+  const result = failed ? {} : toolResult(tool.output)
   const pending = tool.status === 'running'
   const [running, done] = VERBS[name]
   const view: AgentToolView = {
@@ -294,9 +315,12 @@ export function agentToolView(
   // A start still under way has no answer yet: its session is the parent's newest child since.
   if (!id && starts && options.parentId && !failed) {
     const since = (tool.startedAt ?? tool.at ?? 0) - 2_000
-    id = Object.values(sessions)
+    const fresh = Object.values(sessions)
       .filter((s) => s.parent?.sessionId === options.parentId && s.createdAt >= since)
-      .sort((a, b) => a.createdAt - b.createdAt)[0]?.id
+      .sort((a, b) => a.createdAt - b.createdAt)
+    // Starts made together each pick their own child by the title they gave.
+    const title = text(args.title)
+    id = (fresh.find((s) => title && s.title === title) ?? fresh[0])?.id
   }
   const live = id ? sessions[id] : undefined
   const resultPhase = phaseOfStatus(result.status)

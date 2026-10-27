@@ -321,3 +321,65 @@ describe('review_changes and waiting on several', () => {
     ])
   })
 })
+
+describe('calls made through Grok’s use_tool', () => {
+  const wrap = (name: string, input: object, answer?: object) => ({
+    title: 'use_tool',
+    input: JSON.stringify({ tool_name: `beddcode__${name}`, tool_input: input }),
+    ...(answer
+      ? {
+          output: JSON.stringify({
+            type: 'MCP',
+            tool_name: name,
+            server_name: 'beddcode',
+            output: { OkayOutput: JSON.stringify(answer, null, 2) },
+          }),
+        }
+      : {}),
+  })
+
+  it('knows the call from its input while the title is still use_tool', () => {
+    expect(agentToolName(wrap('wait_for', { session_id: 'a' }))).toBe('wait_for')
+    expect(
+      agentToolName({ title: 'use_tool', input: '{"tool_name":"github__stop"}' }),
+    ).toBeUndefined()
+  })
+
+  it('reads the session from the wrapped arguments and answer', () => {
+    const view = agentToolView(
+      tool({
+        ...wrap(
+          'wait_for',
+          { session_id: 'kid' },
+          { session_id: 'kid', title: 'Builder', agent: 'claude', status: 'idle', reply: 'ok' },
+        ),
+      }),
+    )!
+    expect(view.child).toMatchObject({ id: 'kid', title: 'Builder', agent: 'claude' })
+    expect(view.reply).toBe('ok')
+    const sent = agentToolView(
+      tool({ ...wrap('send_message', { session_id: 'kid', text: 'go' }) }),
+    )!
+    expect(sent.child?.id).toBe('kid')
+    expect(sent.prompt).toBe('go')
+  })
+
+  it('gives parallel starts each their own child by title', () => {
+    const kids = ['Builder', 'Reviewer', 'Tester'].map((title, i) =>
+      session({ id: title, title, parent: { sessionId: 'p', depth: 1 }, createdAt: 10_000 + i }),
+    )
+    const sessions = Object.fromEntries(kids.map((k) => [k.id, k]))
+    const ids = ['Builder', 'Reviewer', 'Tester'].map(
+      (title) =>
+        agentToolView(
+          tool({
+            ...wrap('start_session', { agent: 'claude', prompt: 'x', title }),
+            startedAt: 10_000,
+            status: 'running',
+          }),
+          { parentId: 'p', sessions },
+        )!.child?.id,
+    )
+    expect(ids).toEqual(['Builder', 'Reviewer', 'Tester'])
+  })
+})
