@@ -52,7 +52,8 @@ import { folderId, useFiles } from '../files/filesStore.ts'
 import { useUiStore } from '../../stores/ui.ts'
 import { EnvironmentButton, SessionChip } from './SessionPanel.tsx'
 import { RenameSessionDialog } from './RenameSessionDialog.tsx'
-import { threadKey, useThreadDrafts } from './threadState.ts'
+import { threadKey } from './threadState.ts'
+import { useComposerDrafts } from '../composer/drafts.ts'
 
 export function ThreadView({ sessionId }: { sessionId: string }) {
   const navigate = useNavigate()
@@ -71,9 +72,9 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
     Object.values(s.runtimes).some((r) => r.connection !== 'connected'),
   )
   const memoryKey = threadKey(hostKey, sessionId)
-  const text = useThreadDrafts((s) => s.drafts[memoryKey] ?? '')
+  const text = useComposerDrafts((s) => s.drafts[memoryKey] ?? '')
   const setText = useCallback(
-    (value: string) => useThreadDrafts.getState().setDraft(memoryKey, value),
+    (value: string) => useComposerDrafts.getState().setDraft(memoryKey, value),
     [memoryKey],
   )
   const [renaming, setRenaming] = useState(false)
@@ -402,7 +403,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
           try {
             await prompt(sessionId, value, attachments)
           } catch (err) {
-            useThreadDrafts.getState().restoreDraft(memoryKey, text)
+            useComposerDrafts.getState().restoreDraft(memoryKey, text)
             throw err
           }
         }}

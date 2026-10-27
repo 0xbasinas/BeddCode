@@ -280,73 +280,86 @@ ${s.projectless ? 'no-project' : s.projectPath}`
   const hostLabel = (hostKey: string) =>
     hostKey === LOCAL_HOST_KEY ? 'This PC' : (runtimes[hostKey]?.host?.name ?? 'Remote host')
 
-  const sessionRow = (s: SessionView, depth = 0) => (
-    <Link
-      key={s.id}
-      to="/session/$sessionId"
-      params={{ sessionId: s.id }}
-      activeOptions={{ exact: true, includeSearch: false }}
-      className={depth > 0 ? 'session-row child' : 'session-row'}
-      style={depth > 0 ? { ['--nest' as string]: Math.min(depth, 3) } : undefined}
-      onContextMenu={(e) => {
-        e.preventDefault()
-        setMenu({ x: e.clientX, y: e.clientY, session: s })
-      }}
-      activeProps={{ className: 'session-row active' }}
-      onClick={() => {
-        if (searchOpen) {
-          setQuery('')
-          setSearchOpen(false)
-        }
-      }}
-    >
-      {s.status === 'idle' && s.items.length > 0 && s.lastTurnReason !== 'cancelled' ? (
-        <Check className="session-done" size={12} />
-      ) : (
-        <span className={`dot ${s.lastTurnReason === 'cancelled' ? 'cancelled' : s.status}`} />
-      )}
-      <span className="session-main">
-        <span className="session-top">
-          <span className="session-title" title={s.title}>
-            {s.title}
-          </span>
-          <span className="session-time">{timeAgo(s.updatedAt)}</span>
-        </span>
-        <span className="session-meta">
-          {sessionNote(s) && (
-            <span className={`session-note ${s.status}`} title={sessionNote(s)}>
-              {sessionNote(s)}
-            </span>
-          )}
+  const sessionRow = (s: SessionView, depth = 0) => {
+    const note = sessionNote(s)
+    return (
+      <Link
+        key={s.id}
+        to="/session/$sessionId"
+        params={{ sessionId: s.id }}
+        data-status={s.status}
+        activeOptions={{ exact: true, includeSearch: false }}
+        className={depth > 0 ? 'session-row child' : 'session-row'}
+        style={depth > 0 ? { ['--nest' as string]: Math.min(depth, 3) } : undefined}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          setMenu({ x: e.clientX, y: e.clientY, session: s })
+        }}
+        activeProps={{ className: 'session-row active' }}
+        onClick={() => {
+          if (searchOpen) {
+            setQuery('')
+            setSearchOpen(false)
+          }
+        }}
+      >
+        {s.status === 'idle' && s.items.length > 0 && s.lastTurnReason !== 'cancelled' ? (
+          <Check className="session-done" size={12} />
+        ) : (
           <span
-            className="session-where"
-            title={[s.branch, agentLabel(s)].filter(Boolean).join(' · ')}
-          >
-            {s.branch && (
-              <>
-                <GitBranch size={11} /> <code>{s.branch}</code> ·{' '}
-              </>
-            )}
-            {s.schedule && <CalendarClock size={11} aria-label={`Scheduled: ${s.schedule.name}`} />}
-            {s.parent && <Bot size={11} aria-label="Started by another session" />}
-            {agentLabel(s)}
+            className={`dot ${s.status === 'idle' && s.lastTurnReason === 'cancelled' ? 'cancelled' : s.status}`}
+            title={s.status === 'running' ? 'Working' : undefined}
+            role={s.status === 'running' ? 'img' : undefined}
+            aria-label={s.status === 'running' ? 'Working' : undefined}
+          />
+        )}
+        <span className="session-main">
+          <span className="session-top">
+            <span className="session-title" title={s.title}>
+              {s.title}
+            </span>
+            <span className="session-time">{timeAgo(s.updatedAt)}</span>
           </span>
-          {s.pinned && !showPinned && <Pin className="session-pin" size={11} aria-label="Pinned" />}
-          {(s.added > 0 || s.removed > 0) && (
-            <span className="stat">
-              <span className="add">+{s.added}</span> <span className="del">−{s.removed}</span>
+          <span className="session-meta">
+            {note && !(s.status === 'running' && note === 'Working…') && (
+              <span className={`session-note ${s.status}`} title={note}>
+                {note}
+              </span>
+            )}
+            <span
+              className="session-where"
+              title={[s.branch, agentLabel(s)].filter(Boolean).join(' · ')}
+            >
+              {s.branch && (
+                <>
+                  <GitBranch size={11} /> <code>{s.branch}</code> ·{' '}
+                </>
+              )}
+              {s.schedule && (
+                <CalendarClock size={11} aria-label={`Scheduled: ${s.schedule.name}`} />
+              )}
+              {s.parent && <Bot size={11} aria-label="Started by another session" />}
+              {agentLabel(s)}
+            </span>
+            {s.pinned && !showPinned && (
+              <Pin className="session-pin" size={11} aria-label="Pinned" />
+            )}
+            {(s.added > 0 || s.removed > 0) && (
+              <span className="stat">
+                <span className="add">+{s.added}</span> <span className="del">−{s.removed}</span>
+              </span>
+            )}
+          </span>
+          {messageHits.get(s.id)?.snippet && (
+            <span className="session-snippet" title={messageHits.get(s.id)?.snippet}>
+              {messageHits.get(s.id)?.role === 'user' ? 'You: ' : ''}
+              {messageHits.get(s.id)?.snippet}
             </span>
           )}
         </span>
-        {messageHits.get(s.id)?.snippet && (
-          <span className="session-snippet" title={messageHits.get(s.id)?.snippet}>
-            {messageHits.get(s.id)?.role === 'user' ? 'You: ' : ''}
-            {messageHits.get(s.id)?.snippet}
-          </span>
-        )}
-      </span>
-    </Link>
-  )
+      </Link>
+    )
+  }
 
   /** A folder's sessions: the list, then its Done section (closed until asked for). */
   const renderGroup = (list: SessionView[], groupKey: string) => {
@@ -670,10 +683,11 @@ ${s.projectless ? 'no-project' : s.projectPath}`
             path={projectPath}
             projectless={projectless}
             project={projectsOf(hostKey).find((p) => samePath(p.path, projectPath))}
-            hostName={hostLabel(hostKey)}
+            hostName={entries.length > 1 ? hostLabel(hostKey) : undefined}
             collapsed={!searching && collapsedProjects.has(key)}
             onToggle={() => toggleProject(key)}
             sessionCount={list.length}
+            workingCount={list.filter((s) => s.status === 'running').length}
           >
             {renderGroup(list, key)}
           </FolderGroup>
@@ -684,7 +698,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
             hostKey={hostKey}
             path={project.path}
             project={project}
-            hostName={hostLabel(hostKey)}
+            hostName={entries.length > 1 ? hostLabel(hostKey) : undefined}
             collapsed={collapsedProjects.has(`${hostKey}\n${project.path}`)}
             onToggle={() => toggleProject(`${hostKey}\n${project.path}`)}
           />
@@ -725,6 +739,7 @@ function FolderGroup({
   collapsed,
   onToggle,
   sessionCount,
+  workingCount = 0,
   children,
 }: {
   hostKey: string
@@ -735,6 +750,7 @@ function FolderGroup({
   collapsed: boolean
   onToggle(): void
   sessionCount?: number
+  workingCount?: number
   children?: ReactNode
 }) {
   const navigate = useNavigate()
@@ -770,6 +786,7 @@ function FolderGroup({
           aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${projectless ? 'sessions without a project' : `project ${name}`}`}
           aria-expanded={!collapsed}
           aria-controls={contentId}
+          aria-describedby={collapsed && workingCount > 0 ? `${contentId}-working` : undefined}
           onClick={onToggle}
         >
           <ChevronRight size={12} className={`folder-chevron ${collapsed ? '' : 'open'}`} />
@@ -783,6 +800,15 @@ function FolderGroup({
           <span className="group-name">{name}</span>
           {collapsed && Boolean(sessionCount) && (
             <span className="folder-session-count">{sessionCount}</span>
+          )}
+          {collapsed && workingCount > 0 && (
+            <span
+              className="folder-working"
+              id={`${contentId}-working`}
+              role="img"
+              title={`${workingCount} ${workingCount === 1 ? 'session' : 'sessions'} working`}
+              aria-label={`${workingCount} ${workingCount === 1 ? 'session' : 'sessions'} working`}
+            />
           )}
         </button>
         {project && !project.isRepo && <span className="folder-chip faint">no git</span>}

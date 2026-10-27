@@ -8,7 +8,7 @@ Download the installer for your system from the [latest release](https://github.
 
 On Windows, the package is also being added to [winget](https://learn.microsoft.com/windows/package-manager/) as `BeddCode.BeddCode`. Once the [submission](https://github.com/microsoft/winget-pkgs/pull/460891) is merged, `winget install BeddCode.BeddCode` will work; `packaging/winget/` holds the manifests and the steps (see its README).
 
-Agent CLIs (`claude`, `codex`, `grok`, …) are not bundled; install them and sign in on each machine that runs sessions.
+The agent CLIs (`claude`, `codex`, `grok`, …) aren't bundled. Install them and sign in on every machine that runs sessions.
 
 ### The `beddcode` command
 

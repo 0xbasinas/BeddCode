@@ -736,6 +736,8 @@ kbd {
 .composer {
   display: flex;
   flex-direction: column;
+  cursor: text;
+  -webkit-app-region: no-drag;
   gap: calc(8px * var(--ui-scale));
   padding: calc(14px * var(--ui-scale)) calc(14px * var(--ui-scale)) calc(12px * var(--ui-scale))
     calc(16px * var(--ui-scale));
@@ -3723,6 +3725,38 @@ button.tcall-row:hover .tcall-chevron,
   flex: none;
   font-size: calc(11.5px * var(--ui-scale));
 }
+.session-row .dot.running {
+  background: var(--running);
+  animation: session-working-pulse 2.4s ease-in-out infinite;
+}
+.group-title .folder-working {
+  display: inline-block;
+  flex: none;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--running);
+  animation: session-working-pulse 2.4s ease-in-out infinite;
+}
+@keyframes session-working-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+[data-motion='reduced'] .session-row .dot.running,
+[data-motion='reduced'] .folder-working {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .session-row .dot.running,
+  .folder-working {
+    animation: none;
+  }
+}
 .session-meta {
   display: flex;
   align-items: center;
@@ -4566,13 +4600,55 @@ button.tcall-row:hover .tcall-chevron,
   }
 }
 
-/* The new-session switch that lets a session start other agents. */
-.agent-tools-chip.on {
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+/* Compact capability switches keep their full hit areas even in a narrow composer. */
+.footer-bar .capability-toggles {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: calc(2px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: calc(9px * var(--ui-scale));
+  background: var(--bg-card);
 }
-button.agent-tools-chip.on:hover {
+.capability-toggle {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: calc(28px * var(--ui-scale));
+  height: calc(26px * var(--ui-scale));
+  padding: 0;
+  border-radius: calc(6px * var(--ui-scale));
+  color: var(--text-muted);
+}
+.footer-bar .capability-toggle svg {
+  width: calc(15px * var(--ui-scale));
+  height: calc(15px * var(--ui-scale));
+}
+.capability-toggle:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.capability-toggle[aria-pressed='true'] {
   color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.capability-toggle[aria-pressed='true']::after {
+  content: '';
+  position: absolute;
+  right: calc(4px * var(--ui-scale));
+  bottom: calc(3px * var(--ui-scale));
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--accent);
+  pointer-events: none;
+}
+.capability-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 /* Agent tools: a session's agent starting and managing others. A start or a wait is a card that

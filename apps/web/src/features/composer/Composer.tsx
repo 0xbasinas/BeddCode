@@ -88,19 +88,20 @@ export function Composer(props: ComposerProps) {
   const hasContent = props.text.trim().length > 0 || files.length > 0
   // Enter (or Send) while the host is still connecting or the agent or an upload is still loading
   // is not dropped: the message goes out as soon as it can.
-  const [armed, setArmed] = useState(false)
-  const waitingToSend = armed && hasContent
+  const [armed, setArmed] = useState<string>()
+  const waitingToSend = armed === draft && hasContent
   useEffect(() => {
-    if (armed && !hasContent) setArmed(false)
-  }, [armed, hasContent])
+    if (armed !== undefined && (armed !== draft || !hasContent)) setArmed(undefined)
+  }, [armed, draft, hasContent])
+  useEffect(() => setError(null), [draft])
   const trySend = () => {
     if (canSend) void send()
-    else if (hasContent && !sending) setArmed(true)
+    else if (hasContent && !sending) setArmed(draft)
   }
 
   const send = async () => {
     if (!canSend || sendingRef.current) return
-    setArmed(false)
+    setArmed(undefined)
     sendingRef.current = true
     setSending(true)
     setError(null)
@@ -128,7 +129,8 @@ export function Composer(props: ComposerProps) {
         ready.map((f) => f.key),
       )
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not send')
+      if (mounted.current && latest.current.draft === draft)
+        setError(err instanceof Error ? err.message : 'Could not send')
     } finally {
       sendingRef.current = false
       setSending(false)
@@ -136,8 +138,8 @@ export function Composer(props: ComposerProps) {
   }
 
   useEffect(() => {
-    if (armed && canSend) void send()
-  }, [armed, canSend])
+    if (waitingToSend && canSend) void send()
+  }, [waitingToSend, canSend])
 
   const matches = matchCommands(props.text, props.commands)
   const [slashIndex, setSlashIndex] = useState(0)
@@ -167,6 +169,16 @@ export function Composer(props: ComposerProps) {
       {props.above}
       <div
         className={`composer ${dragging ? 'dragging' : ''}`}
+        onClick={(event) => {
+          // The whole writing area focuses the input; its controls keep their own focus.
+          if (
+            event.target instanceof Element &&
+            !event.target.closest(
+              'button, input, textarea, select, a, [role="menu"], [role="listbox"]',
+            )
+          )
+            box.current?.focus()
+        }}
         onDragOver={(e) => {
           e.preventDefault()
           setDragging(true)
@@ -219,6 +231,7 @@ export function Composer(props: ComposerProps) {
         )}
         <textarea
           ref={box}
+          aria-label="Message"
           value={props.text}
           placeholder={props.placeholder}
           rows={2}
@@ -254,7 +267,7 @@ export function Composer(props: ComposerProps) {
             }
             if (e.key === 'Escape' && waitingToSend) {
               e.preventDefault()
-              setArmed(false)
+              setArmed(undefined)
             }
           }}
         />
@@ -318,7 +331,7 @@ export function Composer(props: ComposerProps) {
           <span className="spinner-dot" aria-hidden />
           Sends as soon as{' '}
           {props.disabledReason ?? (pending ? 'your files are uploaded' : 'it can')}
-          <button className="link-btn" onClick={() => setArmed(false)}>
+          <button className="link-btn" onClick={() => setArmed(undefined)}>
             Cancel
           </button>
         </div>

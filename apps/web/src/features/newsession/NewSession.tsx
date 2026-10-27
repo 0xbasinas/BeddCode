@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import {
   Bot,
@@ -41,6 +41,7 @@ import { chooseFolder } from '../folders/folderFlow.ts'
 import { useAppPreferences } from '../../stores/appPreferences.ts'
 import { modelChoice } from '../../ui/models.ts'
 import { projectDraftId, useComposerWorkspace } from '../../stores/composerWorkspace.ts'
+import { composerDraftKey, useComposerDrafts } from '../composer/drafts.ts'
 import {
   agentDefaults,
   defaultAgent,
@@ -72,11 +73,13 @@ export function NewSession({
   const entries = useHostStore((s) => s.entries)
   const defaultHostKey = useAppPreferences((s) => s.values.defaultHostKey)
   const defaultWorkspace = useAppPreferences((s) => s.values.defaultWorkspace)
-  const [hostKey, setHostKey] = useState(
-    entries.some((e) => e.key === (initialHost ?? defaultHostKey))
-      ? (initialHost ?? defaultHostKey)
-      : LOCAL_HOST_KEY,
-  )
+  const resumeDraft = initialHost === undefined && initialProject === undefined
+  const savedDestination = useComposerDrafts.getState().lastNewSession
+  const [hostKey, setHostKey] = useState(() => {
+    const preferred =
+      initialHost ?? (resumeDraft ? savedDestination?.hostKey : undefined) ?? defaultHostKey
+    return entries.some((e) => e.key === preferred) ? preferred : LOCAL_HOST_KEY
+  })
   const { providers, connection, host, replica, projects, synced, loadError } = useRuntime(hostKey)
   // The welcome checklist stays up until the first session, so adding a folder never jumps
   // straight into a composer; its last step starts the session.
@@ -84,9 +87,6 @@ export function NewSession({
     Object.values(s.runtimes).some((r) => r.replica.order.length > 0),
   )
   const [setupSkipped, setSetupSkipped] = useState(setupWasSkipped)
-  // "Continue with another agent" leaves a summary of the old session to start from.
-  const [text, setText] = useState(() => peekHandoff(hostKey) ?? '')
-  useEffect(() => clearHandoff(), [])
   const [instanceId, setInstanceId] = useState<string>()
   const defaults = usePreferences((s) => hostDefaults(s.hosts, host?.hostId ?? hostKey))
   const [selection, setSelection] = useState<{
@@ -94,7 +94,11 @@ export function NewSession({
     modeId?: string
     choice: ModelChoice
   }>()
-  const [chosenFolder, setChosenFolder] = useState(initialProject ?? '')
+  const [chosenFolder, setChosenFolder] = useState(
+    () =>
+      initialProject ??
+      (resumeDraft && savedDestination?.hostKey === hostKey ? savedDestination.folder : ''),
+  )
   const [workspace, setWorkspace] = useState<Workspace>({ mode: 'local' })
   const [agentTools, setAgentTools] = useState(false)
   const [browserTools, setBrowserTools] = useState(false)
@@ -128,6 +132,28 @@ export function NewSession({
   const folder = chosenFolder
   const welcome = showWelcome({ initialProject, compose, synced, hasSessions, setupSkipped })
   const draftId = projectDraftId(folder)
+  const memoryKey = composerDraftKey(hostKey, draftId)
+  const text = useComposerDrafts((s) => s.drafts[memoryKey] ?? '')
+  const setText = useCallback(
+    (value: string) => useComposerDrafts.getState().setDraft(memoryKey, value),
+    [memoryKey],
+  )
+  const activeDraft = useRef<string | undefined>(memoryKey)
+  useLayoutEffect(() => {
+    activeDraft.current = memoryKey
+    // An explicit handoff supplies the starting message once; returning restores the edited draft.
+    const handoff = peekHandoff(hostKey)
+    if (handoff !== undefined) {
+      useComposerDrafts.getState().setDraft(memoryKey, handoff)
+      clearHandoff()
+    }
+    return () => {
+      activeDraft.current = undefined
+    }
+  }, [hostKey, memoryKey])
+  useEffect(() => {
+    useComposerDrafts.getState().rememberNewSession({ hostKey, folder })
+  }, [hostKey, folder])
 
   useEffect(() => {
     useComposerWorkspace.setState({
@@ -245,21 +271,27 @@ export function NewSession({
   const send = async (value: string, attachments: string[]) => {
     if (!agent) throw new Error('No agent is ready on this host')
     const useWorktree = folder && repo && repo !== 'loading' && workspace.mode === 'worktree'
-    const sessionId = await createSession(hostKey, {
-      instanceId: agent.id,
-      cwd: folder || undefined,
-      projectless: !folder || undefined,
-      permissionMode: validModeId,
-      model: choice.model,
-      effort: choice.effort,
-      config: Object.keys(configValues).length > 0 ? configValues : undefined,
-      workspace: useWorktree ? { mode: 'worktree', baseBranch: workspace.baseBranch } : undefined,
-      agentTools: agentTools || undefined,
-      browserTools: browserTools || undefined,
-      designTools: designTools || undefined,
-    })
-    await prompt(sessionId, value, attachments)
-    void navigate({ to: '/session/$sessionId', params: { sessionId } })
+    try {
+      const sessionId = await createSession(hostKey, {
+        instanceId: agent.id,
+        cwd: folder || undefined,
+        projectless: !folder || undefined,
+        permissionMode: validModeId,
+        model: choice.model,
+        effort: choice.effort,
+        config: Object.keys(configValues).length > 0 ? configValues : undefined,
+        workspace: useWorktree ? { mode: 'worktree', baseBranch: workspace.baseBranch } : undefined,
+        agentTools: agentTools || undefined,
+        browserTools: browserTools || undefined,
+        designTools: designTools || undefined,
+      })
+      await prompt(sessionId, value, attachments)
+      if (activeDraft.current === memoryKey)
+        void navigate({ to: '/session/$sessionId', params: { sessionId } })
+    } catch (err) {
+      useComposerDrafts.getState().restoreDraft(memoryKey, text)
+      throw err
+    }
   }
 
   if (welcome)
@@ -357,42 +389,35 @@ export function NewSession({
                 }}
               />
               <span className="spacer" />
-              <button
-                className={`chip-lite agent-tools-chip ${agentTools ? 'on' : ''}`}
-                aria-pressed={agentTools}
-                title={
-                  agentTools
-                    ? 'This session can start other agents, nested under it. You still answer their approvals.'
-                    : 'Let this session start and manage other agents'
-                }
-                onClick={() => setAgentTools((v) => !v)}
-              >
-                <Bot size={14} /> <span className="chip-text">Can start agents</span>
-              </button>
-              <button
-                className={`chip-lite agent-tools-chip ${browserTools ? 'on' : ''}`}
-                aria-pressed={browserTools}
-                title={
-                  browserTools
-                    ? 'The agent can open and use pages in the desktop app’s browser pane, in tabs of its own. You can take over at any time.'
-                    : 'Let this session’s agent use the browser pane (desktop app)'
-                }
-                onClick={() => setBrowserTools((v) => !v)}
-              >
-                <Globe size={14} /> <span className="chip-text">Can use browser</span>
-              </button>
-              <button
-                className={`chip-lite agent-tools-chip ${designTools ? 'on' : ''}`}
-                aria-pressed={designTools}
-                title={
-                  designTools
-                    ? 'The agent can read and draw on this host’s design canvases. You see its changes live in the Design screen.'
-                    : 'Let this session’s agent draw on the design canvas'
-                }
-                onClick={() => setDesignTools((v) => !v)}
-              >
-                <PenTool size={14} /> <span className="chip-text">Can design</span>
-              </button>
+              <div className="capability-toggles" role="group" aria-label="Agent capabilities">
+                <button
+                  className="capability-toggle"
+                  aria-label="Start other agents"
+                  aria-pressed={agentTools}
+                  title={`Start other agents: ${agentTools ? 'on' : 'off'}. Approvals still come to you.`}
+                  onClick={() => setAgentTools((v) => !v)}
+                >
+                  <Bot size={15} aria-hidden="true" />
+                </button>
+                <button
+                  className="capability-toggle"
+                  aria-label="Use browser"
+                  aria-pressed={browserTools}
+                  title={`Use browser: ${browserTools ? 'on' : 'off'}. Let the agent use browser tabs in the desktop app.`}
+                  onClick={() => setBrowserTools((v) => !v)}
+                >
+                  <Globe size={15} aria-hidden="true" />
+                </button>
+                <button
+                  className="capability-toggle"
+                  aria-label="Design canvases"
+                  aria-pressed={designTools}
+                  title={`Design canvases: ${designTools ? 'on' : 'off'}. Let the agent read and edit designs.`}
+                  onClick={() => setDesignTools((v) => !v)}
+                >
+                  <PenTool size={15} aria-hidden="true" />
+                </button>
+              </div>
               {repo && repo !== 'loading' && (
                 <WorkspaceChip repo={repo} workspace={workspace} onChange={setWorkspace} />
               )}

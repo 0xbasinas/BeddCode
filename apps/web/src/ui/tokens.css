@@ -42,6 +42,7 @@
   --text-faint: #6a6a6a;
   --accent: #e9a23b;
   --success: #7cc48a;
+  --running: #a1b7ab;
   --danger: #e0716c;
   --radius-panel: calc(10px * var(--ui-scale));
   --radius-control: calc(8px * var(--ui-scale));

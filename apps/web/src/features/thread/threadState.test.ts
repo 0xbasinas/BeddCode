@@ -1,42 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import {
-  readingPosition,
-  rememberReadingPosition,
-  threadKey,
-  useThreadDrafts,
-} from './threadState.ts'
-
-beforeEach(() => useThreadDrafts.setState({ drafts: {} }))
-
-describe('chat drafts', () => {
-  it('keeps drafts separate across chats and hosts, and clears only the sent draft', () => {
-    const a = threadKey('local', 'a')
-    const b = threadKey('local', 'b')
-    const remote = threadKey('remote', 'a')
-    const { setDraft } = useThreadDrafts.getState()
-    setDraft(a, 'First task')
-    setDraft(b, 'Second task')
-    setDraft(remote, 'Remote task')
-    expect(useThreadDrafts.getState().drafts[a]).toBe('First task')
-    setDraft(a, '')
-    expect(useThreadDrafts.getState().drafts).toEqual({
-      [b]: 'Second task',
-      [remote]: 'Remote task',
-    })
-  })
-
-  it('recovers a failed send after switching chats without overwriting newer text', () => {
-    const key = threadKey('local', 'failed-send')
-    const { setDraft, restoreDraft } = useThreadDrafts.getState()
-    setDraft(key, 'Original message')
-    setDraft(key, '')
-    restoreDraft(key, 'Original message')
-    expect(useThreadDrafts.getState().drafts[key]).toBe('Original message')
-    setDraft(key, 'Newer message')
-    restoreDraft(key, 'Original message')
-    expect(useThreadDrafts.getState().drafts[key]).toBe('Newer message')
-  })
-})
+import { describe, expect, it } from 'vitest'
+import { readingPosition, rememberReadingPosition, threadKey } from './threadState.ts'
 
 describe('chat reading position', () => {
   it('remembers earlier messages along with the scroll position independently per chat', () => {
