@@ -51,7 +51,7 @@ export interface SessionManagerDeps {
 
 /** Where a session came from, when not straight from the user. */
 export interface SessionOrigin {
-  parent?: { sessionId: string; depth: number }
+  parent?: { sessionId: string; depth: number; requestId?: string }
   schedule?: { id: string; name: string }
 }
 
@@ -671,12 +671,38 @@ export class SessionManager {
     return state
   }
 
-  async interrupt(sessionId: string): Promise<void> {
+  /**
+   * Stops the current turn. Sessions this one's agent started keep working unless asked, because
+   * stopping a turn is often just a change of direction; `includeChildren` stops them too.
+   */
+  async interrupt(sessionId: string, options: { includeChildren?: boolean } = {}): Promise<void> {
+    const stopChildren = options.includeChildren
+      ? this.descendants(sessionId).map((id) => this.interruptOne(id).catch(() => undefined))
+      : []
+    await this.interruptOne(sessionId)
+    await Promise.all(stopChildren)
+  }
+
+  private async interruptOne(sessionId: string): Promise<void> {
     this.dropAsks(sessionId)
     const { session } = this.requireLive(sessionId)
     // A stop pressed while the message is still on its way to the agent waits for it to arrive.
     await this.turnState(sessionId).starting
     return session.interrupt()
+  }
+
+  /** Every session started, directly or not, by this session's agent that is still live. */
+  private descendants(sessionId: string): string[] {
+    const found: string[] = []
+    const queue = [sessionId]
+    while (queue.length > 0) {
+      for (const child of this.deps.store.childrenOf(queue.shift()!)) {
+        if (child === sessionId || found.includes(child)) continue
+        found.push(child)
+        queue.push(child)
+      }
+    }
+    return found.filter((id) => this.live.has(id))
   }
 
   rename(sessionId: string, title: string): void {
@@ -696,6 +722,8 @@ export class SessionManager {
    */
   async delete(sessionId: string): Promise<void> {
     if (!this.createdEvent(sessionId)) throw new Error(`Unknown session: ${sessionId}`)
+    // Nothing is left working for a session that no longer exists.
+    for (const id of this.descendants(sessionId)) await this.interruptOne(id).catch(() => undefined)
     const live = this.live.get(sessionId)
     if (live) {
       this.live.delete(sessionId)

@@ -25,6 +25,8 @@ export function recoverInterruptedTurns(store: EventStore) {
     cursor = events.at(-1)!.seq
   }
   for (const [sessionId, { turnId }] of active) {
+    // An agent that started other sessions should know which of them were cut off too.
+    const lost = store.childrenOf(sessionId).filter((id) => active.has(id))
     store.append({
       type: 'turn.completed',
       sessionId,
@@ -32,7 +34,10 @@ export function recoverInterruptedTurns(store: EventStore) {
       at: Date.now(),
       reason: 'cancelled',
       message:
-        'The host restarted before this turn finished. Send a message to continue this session.',
+        'The host restarted before this turn finished. Send a message to continue this session.' +
+        (lost.length > 0
+          ? ` ${lost.length} session${lost.length === 1 ? '' : 's'} it started stopped too; check list_children before starting more.`
+          : ''),
     })
   }
 }

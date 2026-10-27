@@ -92,12 +92,17 @@ export function createAutomation(deps: AutomationDeps) {
       childrenOf: (id) => store.childrenOf(id),
       subscribe,
       projectPaths: async () => (await workspace.projects.list()).map((p) => p.path),
+      report: (sessionId, status, summary) =>
+        void store.append({ type: 'session.result', sessionId, at: Date.now(), status, summary }),
     },
     { file: writeBridge(home), url: () => `http://127.0.0.1:${deps.port()}/agent-tools` },
     browser,
     new DesignTools(designs, designLink),
   )
-  const stopAlerts = store.subscribe((stored) => alerts.onEvent(stored))
+  const stopAlerts = store.subscribe((stored) => {
+    alerts.onEvent(stored)
+    if (stored.event.type === 'session.deleted') agentTools.forget(stored.event.sessionId)
+  })
   return {
     schedules,
     alerts,

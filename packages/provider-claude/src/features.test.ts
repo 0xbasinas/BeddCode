@@ -112,6 +112,38 @@ describe('steering', () => {
   })
 })
 
+describe('host tools that only report back', () => {
+  it('lets a tool the host marked autoAllow run without asking, and asks for every other', async () => {
+    const sdk = manualSdk()
+    const session = new ClaudeSession(
+      {
+        sessionId: 's1',
+        cwd: '/w',
+        permissionMode: 'plan',
+        mcpServers: [
+          { name: 'beddcode', command: 'node', args: [], env: {}, autoAllow: ['report_result'] },
+        ],
+      },
+      { queryFn: sdk.queryFn, log, modes: claudeCapabilities.permissionModes },
+    )
+    const events = collect(session)
+    session.prompt({ text: 'go' }).catch(() => {})
+    await flush()
+
+    expect(await sdk.canUse('mcp__beddcode__report_result', { status: 'done' })).toMatchObject({
+      behavior: 'allow',
+      updatedInput: { status: 'done' },
+    })
+    expect(events.some((e) => e.type === 'approval.requested')).toBe(false)
+
+    void sdk.canUse('mcp__beddcode__start_session', { agent: 'codex' })
+    void sdk.canUse('mcp__other__report_result', {})
+    await flush()
+    expect(events.filter((e) => e.type === 'approval.requested')).toHaveLength(2)
+    await session.close()
+  })
+})
+
 describe('plan approval', () => {
   it('shows the plan and offers to approve it, with or without auto-accepting edits', async () => {
     const sdk = manualSdk()

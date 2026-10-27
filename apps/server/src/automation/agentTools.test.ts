@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ProviderInstance, SessionEvent, StoredEvent } from '@beddcode/contracts'
 import {
   AgentTools,
@@ -50,6 +50,8 @@ function fakeHost(parentProjectless = false) {
   }
   const created: { params: Record<string, unknown>; origin: unknown }[] = []
   const prompts: [string, string][] = []
+  const interrupts: [string, { includeChildren?: boolean } | undefined][] = []
+  const failPrompt = new Set<string>()
   let n = 0
   const host: AgentToolsHost = {
     async create(params, origin) {
@@ -70,11 +72,15 @@ function fakeHost(parentProjectless = false) {
       return { sessionId }
     },
     async prompt(sessionId, text) {
+      if (failPrompt.has(sessionId)) throw new Error('the agent is gone')
       prompts.push([sessionId, text])
       append({ type: 'turn.started', sessionId, at: 0 })
       return { state: 'started' }
     },
-    async interrupt() {},
+    async interrupt(sessionId, options) {
+      interrupts.push([sessionId, options])
+      append({ type: 'turn.completed', sessionId, at: 0, reason: 'cancelled' })
+    },
     isBusy: () => false,
     currentMode: (id) => {
       const c = logs.get(id)?.find((e) => e.event.type === 'session.created')?.event
@@ -94,6 +100,8 @@ function fakeHost(parentProjectless = false) {
       return () => listeners.delete(l)
     },
     projectPaths: async () => ['/projects/other'],
+    report: (sessionId, status, summary) =>
+      append({ type: 'session.result', sessionId, at: 0, status, summary }),
   }
   append({
     type: 'session.created',
@@ -118,7 +126,7 @@ function fakeHost(parentProjectless = false) {
     ],
     currentModeId: 'acceptEdits',
   })
-  return { host, append, created, prompts }
+  return { host, append, created, prompts, interrupts, failPrompt }
 }
 
 const tools = (host: AgentToolsHost) =>
@@ -132,6 +140,8 @@ const call = async (t: AgentTools, session: string, name: string, args: object) 
   if (r.isError) throw new Error(text(r))
   return JSON.parse(text(r)) as Record<string, unknown>
 }
+
+afterEach(() => vi.useRealTimers())
 
 describe('AgentTools', () => {
   it('gives each session its own key and lists the tools', async () => {
@@ -205,6 +215,188 @@ describe('AgentTools', () => {
     expect(await call(t, 'parent', 'get_status', { session_id: 'child-1' })).toMatchObject({
       status: 'running',
     })
+  })
+
+  it('lets a child report how its task ended, and hands that to the parent', async () => {
+    const { host, append } = fakeHost()
+    const t = tools(host)
+    await call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'go' })
+    await call(t, 'child-1', 'start_session', { agent: 'codex', prompt: 'deeper' })
+
+    const names = async (id: string) =>
+      ((await t.handle(id, 'tools/list', {})) as { tools: { name: string }[] }).tools.map(
+        (x) => x.name,
+      )
+    expect(await names('parent')).not.toContain('report_result')
+    expect(await names('child-1')).toEqual(
+      expect.arrayContaining(['start_session', 'report_result']),
+    )
+    // The deepest level cannot start sessions, but can still report.
+    expect(await names('child-2')).toEqual(['report_result'])
+
+    await expect(
+      call(t, 'parent', 'report_result', { status: 'done', summary: 'x' }),
+    ).rejects.toThrow(/started/)
+    await expect(
+      call(t, 'child-1', 'report_result', { status: 'great', summary: 'x' }),
+    ).rejects.toThrow(/one of done, blocked, failed/)
+    await call(t, 'child-1', 'report_result', { status: 'blocked', summary: 'Needs the API key' })
+    append({ type: 'turn.completed', sessionId: 'child-1', at: 0, reason: 'done' })
+    expect(await call(t, 'parent', 'wait_for', { session_id: 'child-1' })).toMatchObject({
+      done: true,
+      result: { status: 'blocked', summary: 'Needs the API key' },
+    })
+
+    // A follow-up starts a new task, so the old outcome is dropped.
+    await call(t, 'parent', 'send_message', { session_id: 'child-1', text: 'here is the key' })
+    append({ type: 'turn.completed', sessionId: 'child-1', at: 0, reason: 'done' })
+    expect(await call(t, 'parent', 'wait_for', { session_id: 'child-1' })).not.toHaveProperty(
+      'result',
+    )
+  })
+
+  it('keeps a child’s result in its log, so a new AgentTools still has it', async () => {
+    const { host, append } = fakeHost()
+    await call(tools(host), 'parent', 'start_session', { agent: 'codex', prompt: 'go' })
+    await call(tools(host), 'child-1', 'report_result', { status: 'done', summary: 'Shipped' })
+    append({ type: 'turn.completed', sessionId: 'child-1', at: 0, reason: 'done' })
+    // A restarted host builds a fresh AgentTools over the same log.
+    const restarted = tools(host)
+    expect(await call(restarted, 'parent', 'wait_for', { session_id: 'child-1' })).toMatchObject({
+      result: { status: 'done', summary: 'Shipped' },
+      data_notice: expect.stringContaining('data'),
+    })
+    expect(await call(restarted, 'parent', 'list_children', {})).toEqual([
+      expect.objectContaining({ session_id: 'child-1', reported: 'done' }),
+    ])
+  })
+
+  it('returns the same session for a repeated request_id instead of starting a second', async () => {
+    const { host, created, prompts } = fakeHost()
+    const t = tools(host)
+    const first = await call(t, 'parent', 'start_session', {
+      agent: 'codex',
+      prompt: 'go',
+      request_id: 'job-1',
+    })
+    const again = await call(t, 'parent', 'start_session', {
+      agent: 'codex',
+      prompt: 'go',
+      request_id: 'job-1',
+    })
+    expect(again).toMatchObject({ session_id: first.session_id, already_started: true })
+    const other = await call(t, 'parent', 'start_session', {
+      agent: 'codex',
+      prompt: 'go',
+      request_id: 'job-2',
+    })
+    expect(other.session_id).not.toBe(first.session_id)
+    expect(created).toHaveLength(2)
+    expect(prompts).toHaveLength(2)
+    expect(created[0]!.origin).toMatchObject({ parent: { requestId: 'job-1' } })
+  })
+
+  it('checks limits one start at a time, so parallel calls cannot overshoot', async () => {
+    const { host, created } = fakeHost()
+    const t = tools(host)
+    const results = await Promise.allSettled(
+      Array.from({ length: 8 }, (_, i) =>
+        call(t, 'parent', 'start_session', { agent: 'codex', prompt: String(i) }),
+      ),
+    )
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(5)
+    expect(results.filter((r) => r.status === 'rejected')).toHaveLength(3)
+    expect(created).toHaveLength(5)
+  })
+
+  it('does not start a second session for two parallel calls with one request_id', async () => {
+    const { host, created } = fakeHost()
+    const t = tools(host)
+    const [a, b] = await Promise.all([
+      call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'go', request_id: 'same' }),
+      call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'go', request_id: 'same' }),
+    ])
+    expect(a.session_id).toBe(b.session_id)
+    expect(created).toHaveLength(1)
+  })
+
+  it('stops a child whose turn runs too long, with what it started, and says why', async () => {
+    vi.useFakeTimers()
+    const { host, interrupts } = fakeHost()
+    const t = tools(host)
+    await call(t, 'parent', 'start_session', {
+      agent: 'codex',
+      prompt: 'go',
+      timeout_minutes: 2,
+    })
+    await vi.advanceTimersByTimeAsync(119_000)
+    expect(interrupts).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(interrupts).toEqual([['child-1', { includeChildren: true }]])
+    expect(await call(t, 'parent', 'get_status', { session_id: 'child-1' })).toMatchObject({
+      result: { status: 'failed', summary: expect.stringContaining('longer than 2 minutes') },
+    })
+  })
+
+  it('leaves a child alone once its turn is over, and limits the longest wait', async () => {
+    vi.useFakeTimers()
+    const { host, append, interrupts } = fakeHost()
+    const t = tools(host)
+    await call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'a', timeout_minutes: 1 })
+    append({ type: 'turn.completed', sessionId: 'child-1', at: 0, reason: 'done' })
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(interrupts).toHaveLength(0)
+
+    await call(t, 'parent', 'start_session', {
+      agent: 'codex',
+      prompt: 'b',
+      timeout_minutes: 100_000,
+    })
+    await vi.advanceTimersByTimeAsync(479 * 60_000)
+    expect(interrupts).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(2 * 60_000)
+    expect(interrupts).toEqual([['child-2', { includeChildren: true }]])
+  })
+
+  it('restarts the clock on a follow-up message instead of using the old one', async () => {
+    vi.useFakeTimers()
+    const { host, append, interrupts } = fakeHost()
+    const t = tools(host)
+    await call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'a', timeout_minutes: 10 })
+    await vi.advanceTimersByTimeAsync(9 * 60_000)
+    append({ type: 'turn.completed', sessionId: 'child-1', at: 0, reason: 'done' })
+    await call(t, 'parent', 'send_message', { session_id: 'child-1', text: 'more' })
+    await vi.advanceTimersByTimeAsync(2 * 60_000)
+    expect(interrupts).toHaveLength(0)
+  })
+
+  it('reports a session whose first message could not be sent, and says how to recover', async () => {
+    const { host, failPrompt, created } = fakeHost()
+    failPrompt.add('child-1')
+    const t = tools(host)
+    await expect(
+      call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'go' }),
+    ).rejects.toThrow(/child-1.*could not send its first message.*the agent is gone/)
+    expect(created).toHaveLength(1)
+    failPrompt.clear()
+    expect(await call(t, 'parent', 'get_status', { session_id: 'child-1' })).toMatchObject({
+      result: { status: 'failed' },
+    })
+  })
+
+  it('stops a child together with what it started, and forgets a deleted session', async () => {
+    const { host, interrupts } = fakeHost()
+    const t = tools(host)
+    await call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'go' })
+    await call(t, 'parent', 'stop', { session_id: 'child-1' })
+    expect(interrupts).toEqual([['child-1', { includeChildren: true }]])
+
+    const [server] = t.serversFor('parent')
+    const token = server!.env.BEDDCODE_TOOLS_TOKEN
+    t.forget('parent')
+    expect(t.sessionFor(token)).toBeUndefined()
+    // A fresh key is made if the session is resumed later.
+    expect(t.serversFor('parent')[0]!.env.BEDDCODE_TOOLS_TOKEN).not.toBe(token)
   })
 
   it('caps how many children a session starts', async () => {

@@ -160,9 +160,13 @@ export class AlertService {
     // A child's finished turn is its parent agent's business; the user hears from the parent.
     if (kind === 'turnDone' && d?.parentSessionId) return undefined
     if (kind === 'turnDone' && d?.lastReply) body = d.lastReply.replace(/\s+/g, ' ').slice(0, 160)
+    // A child that needs the user or failed says whose helper it is, so the alert makes sense alone.
+    const parent = d?.parentSessionId
+      ? digest(this.options.readSession(d.parentSessionId))?.title
+      : undefined
     return {
       kind,
-      title: d?.title || 'Session',
+      title: parent ? `${d?.title || 'Session'} (for ${parent})` : d?.title || 'Session',
       body,
       sessionId: event.sessionId,
       hostId: this.options.hostId,

@@ -35,6 +35,8 @@ export interface SessionMcpServer {
   command: string
   args: string[]
   env: Record<string, string>
+  /** Tools of this server that never need the user's approval (they only report back). */
+  autoAllow?: string[]
 }
 
 export interface PromptInput {

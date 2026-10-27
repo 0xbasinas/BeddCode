@@ -531,7 +531,8 @@ export const RpcMethods = {
     result: z.object({}),
   },
   'sessions.interrupt': {
-    params: z.object({ sessionId: z.string() }),
+    /** `includeChildren` also stops the sessions this one's agent started. */
+    params: z.object({ sessionId: z.string(), includeChildren: z.boolean().optional() }),
     result: z.object({}),
   },
   'sessions.rename': {

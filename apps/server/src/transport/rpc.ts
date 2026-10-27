@@ -270,7 +270,7 @@ export function createRpcRouter(
       return {}
     },
     'sessions.interrupt': async (p) => {
-      await sessions.interrupt(p.sessionId)
+      await sessions.interrupt(p.sessionId, { includeChildren: p.includeChildren })
       return {}
     },
     'sessions.setPinned': async (p) => {
