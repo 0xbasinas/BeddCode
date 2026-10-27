@@ -22,6 +22,7 @@ import {
 } from '@/host/store'
 import { colors, radius } from '@/theme/tokens'
 import { Header } from '@/ui/Header'
+import { openMark } from '@/ui/openTiming'
 import { Icon } from '@/ui/Icon'
 import { MenuSheet, type MenuItem } from '@/ui/MenuSheet'
 import { Faint, Muted, Text } from '@/ui/Text'
@@ -140,13 +141,18 @@ export function ThreadPane({
       />
       <View style={{ flex: 1 }}>
         <Transcript
-          onFirstLayout={() =>
-            hostKey &&
-            recordMetric(hostKey, 'thread.open.ms', now() - openedAt.current, {
-              rows:
-                session.items.length < 50 ? 'lt50' : session.items.length < 500 ? 'lt500' : 'many',
-            })
-          }
+          onFirstLayout={() => {
+            openMark('rows')
+            if (hostKey)
+              recordMetric(hostKey, 'thread.open.ms', now() - openedAt.current, {
+                rows:
+                  session.items.length < 50
+                    ? 'lt50'
+                    : session.items.length < 500
+                      ? 'lt500'
+                      : 'many',
+              })
+          }}
           session={session}
           cwd={session.cwd}
           hostKey={hostKey}
