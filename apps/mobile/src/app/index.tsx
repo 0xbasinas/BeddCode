@@ -29,7 +29,7 @@ import {
   ArrowUUpLeft,
   X,
 } from 'phosphor-react-native'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native'
 
 import { deleteSession, setSessionDone, useAllSessions, useHostStore } from '@/host/store'
@@ -76,9 +76,11 @@ export default function SessionsScreen() {
   const entries = useHostStore((s) => s.entries)
   // While a thread is open on top, this list keeps what it last drew instead of redoing its
   // grouping and sorting for every update that thread streams.
-  const runtimes = useWhileFocused(useHostStore((s) => s.runtimes))
+  // Agents running on a host stream many updates a second. The list follows them at a lower
+  // priority (deferred), so a tap or a swipe is never queued behind a redraw of it.
+  const runtimes = useDeferredValue(useWhileFocused(useHostStore((s) => s.runtimes)))
   const ready = useHostStore((s) => s.ready)
-  const hosted = useWhileFocused(useAllSessions())
+  const hosted = useDeferredValue(useWhileFocused(useAllSessions()))
   const { openDone, collapsed, toggleDone, toggleCollapsed } = usePrefs()
 
   const [filter, setFilter] = useState<Filter>('all')
@@ -516,7 +518,12 @@ const SessionRow = memo(function SessionRow({
   const row = (
     <PressableScale
       scaleTo={0.985}
-      onPress={() => router.push({ pathname: '/session/[id]', params: { id: session.id } })}
+      // After the next frame, so the row's press feedback is on screen before the screen change.
+      onPress={() =>
+        requestAnimationFrame(() =>
+          router.push({ pathname: '/session/[id]', params: { id: session.id } }),
+        )
+      }
       onLongPress={() => onLongPress(session)}
       style={({ pressed }) => [
         styles.session,

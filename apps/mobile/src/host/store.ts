@@ -183,7 +183,11 @@ function startHost(entry: HostEntry) {
       saver.touch()
     }
   }
+  // Saving writes every session's history as one block, on the same thread that handles taps, so it
+  // is done rarely (the copy is also saved when the app leaves the foreground, below).
   const saver = new ReplicaSaver({
+    delayMs: 20_000,
+    maxWaitMs: 600_000,
     write: (raw) => writeReplica(entry.key, raw),
     snapshot() {
       const logId = client.log
@@ -204,7 +208,7 @@ function startHost(entry: HostEntry) {
       queue.push(stored)
       if (!scheduled) {
         scheduled = true
-        setTimeout(flush, useHostStore.getState().runtimes[entry.key]?.synced ? 50 : 250)
+        setTimeout(flush, useHostStore.getState().runtimes[entry.key]?.synced ? 100 : 250)
       }
     },
     onFrame(frame) {

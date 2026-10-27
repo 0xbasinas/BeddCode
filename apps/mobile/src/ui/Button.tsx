@@ -24,15 +24,15 @@ export function Button({
     <PressableScale
       accessibilityRole="button"
       disabled={disabled}
-      onPress={() => {
-        tap()
-        onPress?.()
-      }}
-      style={({ pressed }) => [
+      // The tick comes the moment the finger lands, not when it lifts.
+      onPressIn={tap}
+      onPress={onPress}
+      dimTo={disabled ? undefined : 0.8}
+      style={[
         styles.base,
         {
           backgroundColor: primary ? colors.primary : colors.hover,
-          opacity: disabled ? 0.45 : pressed ? 0.8 : 1,
+          ...(disabled ? { opacity: 0.45 } : null),
         },
         style,
       ]}
