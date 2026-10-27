@@ -8,7 +8,6 @@ import {
   toolDuration,
   toolLabel,
   toolPhase,
-  splitStreamingMarkdown,
   totalChanges,
   type EditedFile,
   type SessionView,
@@ -30,10 +29,9 @@ import {
 } from 'phosphor-react-native'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native'
-import Markdown from '@ronradtke/react-native-markdown-display'
 
-import { colors, fonts, radius } from '@/theme/tokens'
-import { sharedMarkdown } from './sharedMarkdown'
+import { colors, radius } from '@/theme/tokens'
+import { Message } from './Message'
 import { Diffstat } from '@/ui/Diffstat'
 import { FadeIn } from '@/ui/FadeIn'
 import { animateLayout } from '@/ui/layoutAnimation'
@@ -69,58 +67,6 @@ function entries(items: TranscriptItem[]): Entry[] {
   }
   return out
 }
-
-const markdownStyles = {
-  body: { color: colors.text, fontFamily: fonts.regular, fontSize: 14.5, lineHeight: 22 },
-  paragraph: { marginTop: 0, marginBottom: 10 },
-  code_inline: {
-    fontFamily: fonts.mono,
-    fontSize: 12.5,
-    backgroundColor: colors.hover,
-    color: colors.text,
-    borderWidth: 0,
-    borderRadius: 4,
-    paddingHorizontal: 3,
-    paddingVertical: 0,
-  },
-  code_block: {
-    fontFamily: fonts.mono,
-    fontSize: 12,
-    backgroundColor: colors.code,
-    color: colors.textSecondary,
-    borderColor: colors.borderSubtle,
-    borderRadius: radius.control,
-    padding: 10,
-  },
-  fence: {
-    fontFamily: fonts.mono,
-    fontSize: 12,
-    backgroundColor: colors.code,
-    color: colors.textSecondary,
-    borderColor: colors.borderSubtle,
-    borderRadius: radius.control,
-    padding: 10,
-  },
-  link: { color: colors.info },
-  heading1: { fontFamily: fonts.semibold, fontSize: 18, color: colors.text, marginBottom: 8 },
-  heading2: { fontFamily: fonts.semibold, fontSize: 16, color: colors.text, marginBottom: 6 },
-  heading3: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text, marginBottom: 4 },
-  bullet_list: { marginBottom: 6 },
-  ordered_list: { marginBottom: 6 },
-  blockquote: {
-    backgroundColor: 'transparent',
-    borderLeftColor: colors.border,
-    borderLeftWidth: 3,
-    paddingHorizontal: 10,
-  },
-  hr: { backgroundColor: colors.border },
-  table: { borderColor: colors.border },
-  th: { borderColor: colors.border },
-  td: { borderColor: colors.border },
-} as const
-
-// One parser and renderer for every message (see sharedMarkdown).
-const markdown = sharedMarkdown(markdownStyles)
 
 const TOOL_ICONS = {
   command: TerminalWindow,
@@ -386,20 +332,6 @@ interface RowProps {
   live?: boolean
 }
 
-const StreamingText = memo(function StreamingText({ text }: { text: string }) {
-  const [head, tail] = splitStreamingMarkdown(text)
-  return (
-    <>
-      {head ? <SettledMarkdown>{head}</SettledMarkdown> : null}
-      <Markdown {...markdown}>{tail}</Markdown>
-    </>
-  )
-})
-
-const SettledMarkdown = memo(function SettledMarkdown({ children }: { children: string }) {
-  return <Markdown {...markdown}>{children}</Markdown>
-})
-
 /** Rows that have already eased in, so scrolling back to one does not play it again. */
 const played = new Set<string>()
 
@@ -424,10 +356,8 @@ const Row = memo(
                 </Faint>
               ))}
             </View>
-          ) : live ? (
-            <StreamingText text={item.text} />
           ) : (
-            <Markdown {...markdown}>{item.text}</Markdown>
+            <Message text={item.text} live={live} />
           )
         case 'approval':
           return <ApprovalCard item={item} cwd={cwd} onApprove={onApprove} />

@@ -9,6 +9,9 @@ allowBuilds:
   electron-winstaller: false
   # Its install script only prints a funding message.
   core-js: false
+  # Its install script downloads native assets for the phone app's markdown; the "enriched-markdown"
+  # block in package.json skips the two large optional ones.
+  react-native-enriched-markdown: true
 
 minimumReleaseAgeExclude:
   - react-resizable-panels@4.14.8

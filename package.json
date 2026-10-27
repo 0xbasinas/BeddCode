@@ -6,6 +6,10 @@
   "engines": {
     "node": ">=22"
   },
+  "enriched-markdown": {
+    "enableCodeHighlight": false,
+    "enableMath": false
+  },
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
