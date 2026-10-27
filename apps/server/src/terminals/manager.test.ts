@@ -108,7 +108,8 @@ describe('TerminalManager (real pty)', () => {
     const m = track(new TerminalManager())
     const info = m.create({
       cwd: tmp(),
-      shell: node('process.stdout.write("A".repeat(400000) + "END-MARKER"); process.exit(0)'),
+      // Let Node drain stdout before exiting; process.exit() can truncate queued PTY output.
+      shell: node('process.stdout.write("A".repeat(400000) + "END-MARKER")'),
     })
     const c = new Collector()
     m.attach(info.id, c)
