@@ -9,6 +9,7 @@ export const AGENT_TOOL_NAMES = [
   'get_status',
   'read_transcript',
   'wait_for',
+  'review_changes',
   'stop',
   'list_children',
 ] as const
@@ -226,6 +227,7 @@ const VERBS: Record<AgentToolName, [string, string]> = {
   get_status: ['Checking on', 'Checked on'],
   read_transcript: ['Reading the conversation of', 'Read the conversation of'],
   wait_for: ['Waiting for', 'Waited for'],
+  review_changes: ['Starting a review of', 'Started a review of'],
   stop: ['Stopping', 'Stopped'],
   list_children: ['Listing its sessions', 'Listed its sessions'],
 }
@@ -269,9 +271,28 @@ export function agentToolView(
     return view
   }
 
-  let id = text(result.session_id) ?? text(args.session_id)
+  // Waiting on several sessions at once: one line listing them.
+  if (name === 'wait_for' && Array.isArray(args.session_ids)) {
+    const items = Array.isArray(result.sessions) ? (result.sessions as Json[]) : []
+    view.listed = items.map((item) => ({
+      label: text(item.title) ?? text(item.session_id) ?? '?',
+      detail: [text(item.agent), CHILD_PHASE_LABEL[phaseOfStatus(item.status) ?? 'done']]
+        .filter(Boolean)
+        .join(' · '),
+      sessionId: text(item.session_id),
+    }))
+    if (!pending && !failed) view.stillWorking = result.done === false
+    return view
+  }
+
+  // A review's own session is the one it starts; the session in the arguments is the one reviewed.
+  const starts = name === 'start_session' || name === 'review_changes'
+  let id =
+    name === 'review_changes'
+      ? text(result.session_id)
+      : (text(result.session_id) ?? text(args.session_id))
   // A start still under way has no answer yet: its session is the parent's newest child since.
-  if (!id && name === 'start_session' && options.parentId && !failed) {
+  if (!id && starts && options.parentId && !failed) {
     const since = (tool.startedAt ?? tool.at ?? 0) - 2_000
     id = Object.values(sessions)
       .filter((s) => s.parent?.sessionId === options.parentId && s.createdAt >= since)
@@ -285,9 +306,8 @@ export function agentToolView(
     ? resultPhase
     : live
       ? childPhase(live)
-      : (resultPhase ??
-        (failed ? 'failed' : pending && name === 'start_session' ? 'starting' : 'done'))
-  if (id || name === 'start_session') {
+      : (resultPhase ?? (failed ? 'failed' : pending && starts ? 'starting' : 'done'))
+  if (id || starts) {
     view.child = {
       id,
       known: live !== undefined,
@@ -307,6 +327,7 @@ export function agentToolView(
     }
   }
   if (name === 'start_session') view.prompt = text(args.prompt)
+  if (name === 'review_changes') view.prompt = text(args.focus)
   if (name === 'send_message') view.prompt = text(args.text)
   if (name === 'wait_for' || name === 'get_status') {
     view.reply = text(result.reply) ?? text(result.last_reply)
@@ -314,6 +335,42 @@ export function agentToolView(
   }
   if (name === 'read_transcript') view.transcript = text(result.transcript)
   return view
+}
+
+/** Files a session's turns changed that were not undone. */
+const changedFiles = (s: SessionView) =>
+  new Set(
+    s.items.flatMap((i) => (i.kind === 'changes' && !i.reverted ? i.files.map((f) => f.path) : [])),
+  )
+
+/** What a group of sessions has used so far, as their agents reported it. */
+export function childrenUsage(children: SessionView[]): { tokens: number; costUsd: number } {
+  return children.reduce(
+    (sum, c) => ({
+      tokens: sum.tokens + (c.usage?.tokens ?? 0),
+      costUsd: sum.costUsd + (c.usage?.costUsd ?? 0),
+    }),
+    { tokens: 0, costUsd: 0 },
+  )
+}
+
+/** For each session that changed files another one of the group also changed: who, and which. */
+export function childOverlaps(
+  children: SessionView[],
+): Record<string, { title: string; files: string[] }[]> {
+  const files = new Map(children.map((c) => [c.id, changedFiles(c)]))
+  const out: Record<string, { title: string; files: string[] }[]> = {}
+  for (const c of children) {
+    const mine = files.get(c.id)!
+    if (mine.size === 0) continue
+    const shared = children.flatMap((o) => {
+      if (o.id === c.id) return []
+      const both = [...files.get(o.id)!].filter((f) => mine.has(f))
+      return both.length > 0 ? [{ title: o.title, files: both.slice(0, 10) }] : []
+    })
+    if (shared.length > 0) out[c.id] = shared
+  }
+  return out
 }
 
 /** The sessions a session's agent started, oldest first. */

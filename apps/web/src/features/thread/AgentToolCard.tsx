@@ -20,8 +20,10 @@ import {
   agentDisplayName,
   agentToolView,
   childActivity,
+  childOverlaps,
   childPhase,
   childSessions,
+  childrenUsage,
   CHILD_PHASE_LABEL,
   formatDuration,
   preview,
@@ -31,8 +33,9 @@ import {
   type SessionView,
   type Tool,
 } from '@beddcode/client-runtime'
-import { useHostStore } from '../../stores/host.ts'
+import { interrupt, useHostStore } from '../../stores/host.ts'
 import { folderName } from '../../ui/format.ts'
+import { formatCost, formatTokens } from '../settings/usageFormat.ts'
 
 const NO_SESSIONS: Record<string, SessionView> = {}
 
@@ -187,8 +190,12 @@ export function AgentToolCard({
   if (!view) return null
   switch (view.name) {
     case 'start_session':
+    case 'review_changes':
       return <StartCard view={view} tool={tool} labels={labels} now={now} />
     case 'wait_for':
+      // Several sessions at once are one line; one session is a card with its reply.
+      if (view.listed) return <AgentToolRow view={view} tool={tool} labels={labels} now={now} />
+      return <ResultCard view={view} tool={tool} labels={labels} now={now} />
     case 'read_transcript':
       return <ResultCard view={view} tool={tool} labels={labels} now={now} />
     default:
@@ -340,17 +347,21 @@ function AgentToolRow({ view, tool, labels, now }: CardProps) {
   const child = view.child
   const ms = toolDuration(tool, now)
   const what =
-    view.name === 'list_agents'
-      ? view.listed?.map((l) => l.label).join(', ')
-      : view.name === 'list_children'
-        ? view.listed?.length
-          ? `${view.listed.length} · ${view.listed.map((l) => `${l.label} (${l.detail})`).join(', ')}`
-          : view.pending
-            ? undefined
-            : 'none yet'
-        : view.prompt
-          ? `“${preview(view.prompt, 120)}”`
-          : undefined
+    view.name === 'wait_for' && view.listed
+      ? view.listed.length > 0
+        ? `${view.listed.length} sessions · ${view.listed.map((l) => `${l.label} (${l.detail})`).join(', ')}`
+        : undefined
+      : view.name === 'list_agents'
+        ? view.listed?.map((l) => l.label).join(', ')
+        : view.name === 'list_children'
+          ? view.listed?.length
+            ? `${view.listed.length} · ${view.listed.map((l) => `${l.label} (${l.detail})`).join(', ')}`
+            : view.pending
+              ? undefined
+              : 'none yet'
+          : view.prompt
+            ? `“${preview(view.prompt, 120)}”`
+            : undefined
   return (
     <div className={`agent-row ${tool.status} ${view.error ? 'error' : ''}`}>
       <Icon size={13} className="agent-row-icon" />
@@ -417,8 +428,9 @@ export function StartedByBanner({ session, hostKey }: { session: SessionView; ho
 }
 
 /**
- * Above the composer of a session whose agent started others: each child, how it is doing and a
- * link to it, so the work under way is visible without scrolling back to the start call.
+ * Above the composer of a session whose agent started others: each child, how it is doing, what it
+ * reported, what it used and a way to stop it, so the work under way is visible and controllable
+ * without scrolling back to the start call.
  */
 export function ChildAgentsBar({ sessionId, hostKey }: { sessionId: string; hostKey: string }) {
   const sessions = useHostSessions(hostKey)
@@ -430,23 +442,43 @@ export function ChildAgentsBar({ sessionId, hostKey }: { sessionId: string; host
   if (children.length === 0) return null
   const working = children.filter((c) => LIVE.includes(childPhase(c))).length
   const needYou = children.filter((c) => childPhase(c) === 'needs-you').length
+  const used = childrenUsage(children)
+  const overlaps = childOverlaps(children)
+  const cost = [
+    used.tokens > 0 ? formatTokens(used.tokens) : undefined,
+    formatCost(used.costUsd),
+  ].filter(Boolean)
+  const stop = (id: string) => void interrupt(id, true).catch(() => {})
   return (
     <div className={`child-bar ${open ? 'open' : ''}`}>
-      <button
-        type="button"
-        className="child-bar-head"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <Bot size={13} />
-        <span>
-          {children.length} {children.length === 1 ? 'agent' : 'agents'} started here
-          {working > 0 ? ` · ${working} working` : ' · all finished'}
-          {needYou > 0 ? ` · ${needYou} need${needYou === 1 ? 's' : ''} you` : ''}
-        </span>
-        {anyLive && <Loader2 size={12} className="spin" />}
-        <ChevronRight size={12} className="child-bar-chevron" />
-      </button>
+      <div className="child-bar-top">
+        <button
+          type="button"
+          className="child-bar-head"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+        >
+          <Bot size={13} />
+          <span>
+            {children.length} {children.length === 1 ? 'agent' : 'agents'} started here
+            {working > 0 ? ` · ${working} working` : ' · all finished'}
+            {needYou > 0 ? ` · ${needYou} need${needYou === 1 ? 's' : ''} you` : ''}
+            {cost.length > 0 ? ` · ${cost.join(' · ')}` : ''}
+          </span>
+          {anyLive && <Loader2 size={12} className="spin" />}
+          <ChevronRight size={12} className="child-bar-chevron" />
+        </button>
+        {working > 0 && (
+          <button
+            type="button"
+            className="child-bar-stop-all"
+            title="Stop this session and every agent it started"
+            onClick={() => stop(sessionId)}
+          >
+            <Square size={11} /> Stop everything
+          </button>
+        )}
+      </div>
       {open && (
         <div className="child-bar-rows">
           {children.map((c) => {
@@ -454,23 +486,60 @@ export function ChildAgentsBar({ sessionId, hostKey }: { sessionId: string; host
             const label = agentDisplayName(c.instanceId, labels)
             const liveNow = LIVE.includes(phase)
             const activity = liveNow ? childActivity(c) : undefined
+            const clash = overlaps[c.id]
             return (
-              <Link
-                key={c.id}
-                to="/session/$sessionId"
-                params={{ sessionId: c.id }}
-                className="child-bar-row"
-              >
-                <AgentAvatar agent={c.instanceId} label={label} />
-                <span className="child-bar-name">
-                  <strong>{label}</strong> · {c.title}
-                  {activity && <span className="child-bar-activity"> — {activity}</span>}
-                </span>
-                <PhasePill
-                  phase={phase}
-                  elapsed={Math.max(0, (liveNow ? now : c.updatedAt) - c.createdAt)}
-                />
-              </Link>
+              <div key={c.id} className="child-bar-item">
+                <Link
+                  to="/session/$sessionId"
+                  params={{ sessionId: c.id }}
+                  className="child-bar-row"
+                >
+                  <AgentAvatar agent={c.instanceId} label={label} />
+                  <span className="child-bar-name">
+                    <strong>{label}</strong> · {c.title}
+                    {activity && <span className="child-bar-activity"> — {activity}</span>}
+                    {!liveNow && c.result && (
+                      <span
+                        className={`child-bar-result ${c.result.status}`}
+                        title={c.result.summary}
+                      >
+                        {' '}
+                        — reported {c.result.status}: {preview(c.result.summary, 90)}
+                      </span>
+                    )}
+                    {!liveNow && !c.result && phase === 'done' && c.parent && (
+                      <span className="child-bar-activity"> — no report</span>
+                    )}
+                    {clash && (
+                      <span
+                        className="child-bar-overlap"
+                        title={clash.map((o) => `${o.title}: ${o.files.join(', ')}`).join('\n')}
+                      >
+                        {' '}
+                        · same files as {clash.map((o) => o.title).join(', ')}
+                      </span>
+                    )}
+                  </span>
+                  {c.usage && c.usage.tokens > 0 && (
+                    <span className="child-bar-cost">{formatTokens(c.usage.tokens)}</span>
+                  )}
+                  <PhasePill
+                    phase={phase}
+                    elapsed={Math.max(0, (liveNow ? now : c.updatedAt) - c.createdAt)}
+                  />
+                </Link>
+                {liveNow && (
+                  <button
+                    type="button"
+                    className="child-bar-stop"
+                    aria-label={`Stop ${label}: ${c.title}`}
+                    title="Stop this agent and anything it started"
+                    onClick={() => stop(c.id)}
+                  >
+                    <Square size={11} />
+                  </button>
+                )}
+              </div>
             )
           })}
         </div>

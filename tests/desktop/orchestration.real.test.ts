@@ -1,4 +1,6 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import type { ElectronApplication, Page } from 'playwright-core'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
@@ -24,6 +26,8 @@ let host: Host
 const report: Record<string, any> = { startedAt: new Date().toISOString(), runs: {} }
 const approver = new Set<string>()
 let approving = true
+// Also answers the helpers' own approvals, for the test that has them write files.
+let approveEveryone = false
 
 const created = (id: string) =>
   host.events.find(({ event }) => event.type === 'session.created' && event.sessionId === id)?.event
@@ -44,7 +48,8 @@ async function approveParents() {
   const answered = new Set<string>()
   while (approving) {
     for (const { event } of host.events) {
-      if (event.type !== 'approval.requested' || !approver.has(event.sessionId)) continue
+      if (event.type !== 'approval.requested') continue
+      if (!approveEveryone && !approver.has(event.sessionId)) continue
       const key = `${event.sessionId}:${event.requestId}`
       if (answered.has(key)) continue
       answered.add(key)
@@ -62,10 +67,10 @@ async function approveParents() {
   }
 }
 
-async function startParent(name: Name, prompt: string, mode?: string) {
+async function startParent(name: Name, prompt: string, mode?: string, cwd?: string) {
   const { sessionId } = await host.rpc('sessions.create', {
     instanceId: agents[name].id,
-    projectless: true,
+    ...(cwd ? { cwd } : { projectless: true }),
     title: `Orchestrator ${name}`,
     agentTools: true,
     ...(mode ? { permissionMode: mode } : {}),
@@ -211,10 +216,120 @@ describe('stopping an orchestrator', () => {
     await new Promise((r) => setTimeout(r, 4_000))
     expect(ended(child!), 'the helper must not be cancelled by a plain stop').toBeUndefined()
 
-    // Asked to, the helper stops too.
-    await host.rpc('sessions.interrupt', { sessionId: id, includeChildren: true })
+    // Asked to, in the window itself, the helper stops too.
+    await page.goto(`http://127.0.0.1:${env.port}/#/session/${id}`)
+    await page.getByRole('button', { name: 'Stop everything' }).click({ timeout: 30_000 })
     await host.wait(() => ended(child!) !== undefined, 30_000)
     expect(ended(child!)?.reason).toBe('cancelled')
     report.stop = { helperEnd: ended(child!)?.reason, asked: asks().length }
+  })
+})
+
+describe('several helpers and a review', () => {
+  test('waits on two helpers in one call, then has another agent review one', async () => {
+    const marker = `MULTI-${crypto.randomUUID().slice(0, 8)}`
+    const repo = mkdtempSync(path.join(os.tmpdir(), 'beddcode-orch-repo-'))
+    const git = (...args: string[]) =>
+      execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t.test', ...args], {
+        cwd: repo,
+      })
+    git('init', '-q')
+    writeFileSync(path.join(repo, 'README.md'), '# demo\n')
+    git('add', '.')
+    git('commit', '-q', '-m', 'init')
+    approveEveryone = true
+    try {
+      const helper = (n: string, who: string, id: string) =>
+        `Call start_session with agent "${id}", worktree true, mode "ask", request_id "${marker}-${n}", title "${who} helper", and prompt: Create a file named notes-${marker}-${n}.md containing the word hello, then call report_result with status done.`
+      const id = await startParent(
+        'claude',
+        [
+          'This is an orchestration test. Use only the beddcode MCP tools. Do not use shell, file or web tools yourself.',
+          `1. ${helper('a', 'Codex', 'codex')}`,
+          `2. ${helper('b', 'Grok', 'acp:grok')}`,
+          '3. Call wait_for ONCE with session_ids set to both session ids, mode "all" and timeout_seconds 200. Repeat that same call only while it says done is false.',
+          '4. Call review_changes on the Codex helper, with focus "does the file exist and say hello". Name no agent.',
+          '5. Call wait_for on the review session until done.',
+          `6. End with one line: ${marker} verdict=<approve or request_changes> reported=<yes or no>`,
+        ].join('\n'),
+        'default',
+        repo,
+      )
+      await host.wait(() => ended(id) !== undefined, 900_000)
+
+      const kids = childrenOf(id).map((k) => ({ id: k, made: created(k)! }))
+      const helpers = kids.filter((k) => !String(k.made.title).startsWith('Review:'))
+      const review = kids.find((k) => String(k.made.title).startsWith('Review:'))
+      const waits = of(id).filter(
+        ({ event }) =>
+          event.type === 'tool.started' && String(event.input ?? '').includes('session_ids'),
+      )
+      report.multi = {
+        parentEnd: ended(id)?.reason,
+        finalLine: text(id).trim().split('\n').at(-1),
+        helpers: helpers.map((h) => ({
+          agent: h.made.instanceId,
+          worktree: Boolean(h.made.worktree),
+          end: ended(h.id)?.reason,
+          reported: of(h.id).find(({ event }) => event.type === 'session.result')?.event.status,
+        })),
+        review: review && {
+          agent: review.made.instanceId,
+          mode: review.made.permissionMode,
+          end: ended(review.id)?.reason,
+          verdict: text(review.id).slice(0, 200),
+        },
+        multiWaits: waits.length,
+      }
+
+      expect(ended(id)?.reason).toBe('done')
+      expect(helpers).toHaveLength(2)
+      expect(helpers.every((h) => h.made.worktree)).toBe(true)
+      expect(helpers.every((h) => ended(h.id)?.reason === 'done')).toBe(true)
+      for (const [n, h] of [
+        ['a', helpers[0]!],
+        ['b', helpers[1]!],
+      ] as const) {
+        const file = path.join(h.made.cwd, `notes-${marker}-${n}.md`)
+        expect(existsSync(file), `${file} written in the helper's worktree`).toBe(true)
+      }
+      // One wait covered both helpers.
+      expect(waits.length).toBeGreaterThan(0)
+
+      // The review: a third session, another agent than the one it reviews, told not to edit,
+      // and given the changes.
+      expect(review, 'a review session was started').toBeDefined()
+      const reviewed = helpers.find((h) => h.made.instanceId === 'codex')!
+      expect(review!.made.instanceId).not.toBe(reviewed.made.instanceId)
+      expect(review!.made.cwd).toBe(reviewed.made.cwd)
+      const brief = of(review!.id).find(
+        ({ event }) => event.type === 'message.delta' && event.role === 'user',
+      )?.event.text as string
+      expect(brief).toContain('Do not change any files')
+      expect(brief).toContain(`notes-${marker}-a.md`)
+      expect(ended(review!.id)?.reason).toBe('done')
+      expect(text(review!.id).toLowerCase()).toMatch(/approve|request_changes/)
+      expect(text(id)).toContain(`${marker} verdict=`)
+
+      // The window lists all three under the orchestrator, with what each reported.
+      await page.goto(`http://127.0.0.1:${env.port}/#/session/${id}`)
+      await page.getByRole('button', { name: /agents started here/ }).click({ timeout: 30_000 })
+      await page.locator('.child-bar-row').first().waitFor({ timeout: 30_000 })
+      const rows = await page.locator('.child-bar-row').count()
+      const dir = path.join(root, '.e2e', 'desktop-stats')
+      mkdirSync(dir, { recursive: true })
+      await page.screenshot({ path: path.join(dir, 'orchestration-multi.png') })
+      const bar = await page.locator('.child-bar').innerText()
+      report.multi.window = { rows, bar }
+      expect(rows).toBe(3)
+      expect(bar).toMatch(/3 agents started here/)
+    } finally {
+      approveEveryone = false
+      try {
+        rmSync(repo, { recursive: true, force: true })
+      } catch {
+        // The host may still hold the folder on Windows; the OS temp cleaner gets it.
+      }
+    }
   })
 })

@@ -3,8 +3,10 @@ import {
   agentToolName,
   agentToolView,
   childActivity,
+  childOverlaps,
   childPhase,
   childSessions,
+  childrenUsage,
   isAgentTool,
   latestReply,
   looseJson,
@@ -241,5 +243,81 @@ describe('childSessions', () => {
     const b = session({ id: 'b', createdAt: 2 })
     const c = session({ id: 'c', parent: undefined })
     expect(childSessions('parent', { a, b, c }).map((s) => s.id)).toEqual(['b', 'a'])
+  })
+})
+
+const changed = (after: string, paths: string[], reverted = false) =>
+  ({
+    kind: 'changes',
+    id: after,
+    turnId: 't',
+    before: 'b',
+    after,
+    files: paths.map((path) => ({ path, status: 'M', added: 1, removed: 0 })),
+    reverted,
+  }) as SessionView['items'][number]
+
+describe('helpers as a group', () => {
+  it('adds up what they used', () => {
+    expect(childrenUsage([])).toEqual({ tokens: 0, costUsd: 0 })
+    expect(
+      childrenUsage([
+        session({ id: 'a', usage: { tokens: 1200, costUsd: 0.02 } }),
+        session({ id: 'b', usage: { tokens: 300, costUsd: 0 } }),
+        session({ id: 'c' }),
+      ]),
+    ).toEqual({ tokens: 1500, costUsd: 0.02 })
+  })
+
+  it('finds files two helpers both changed, and ignores undone changes', () => {
+    const a = session({ id: 'a', title: 'Add login', items: [changed('1', ['x.ts', 'a.ts'])] })
+    const b = session({ id: 'b', title: 'Fix nav', items: [changed('2', ['x.ts'])] })
+    const c = session({ id: 'c', title: 'Docs', items: [changed('3', ['README.md'])] })
+    expect(childOverlaps([a, b, c])).toEqual({
+      a: [{ title: 'Fix nav', files: ['x.ts'] }],
+      b: [{ title: 'Add login', files: ['x.ts'] }],
+    })
+    const undone = session({ ...b, items: [changed('2', ['x.ts'], true)] })
+    expect(childOverlaps([a, undone, c])).toEqual({})
+  })
+})
+
+describe('review_changes and waiting on several', () => {
+  it('shows a review as a start of the reviewer, not of the session it reviews', () => {
+    const view = agentToolView(
+      tool({
+        title: 'Using beddcode · review_changes',
+        input: '{"session_id":"builder","focus":"tests"}',
+        output: JSON.stringify({ session_id: 'reviewer', agent: 'claude', reviewing: 'builder' }),
+      }),
+    )!
+    expect(view).toMatchObject({
+      name: 'review_changes',
+      verb: 'Started a review of',
+      prompt: 'tests',
+    })
+    expect(view.child).toMatchObject({ id: 'reviewer', agent: 'claude' })
+  })
+
+  it('lists the sessions of a wait on several, and whether they were done', () => {
+    const view = agentToolView(
+      tool({
+        title: 'Using beddcode · wait_for',
+        input: '{"session_ids":["a","b"],"mode":"all"}',
+        output: JSON.stringify({
+          done: false,
+          sessions: [
+            { session_id: 'a', title: 'One', agent: 'codex', status: 'idle', done: true },
+            { session_id: 'b', title: 'Two', agent: 'acp:grok', status: 'running', done: false },
+          ],
+        }),
+      }),
+    )!
+    expect(view.child).toBeUndefined()
+    expect(view.stillWorking).toBe(true)
+    expect(view.listed).toEqual([
+      { label: 'One', detail: 'codex · Done', sessionId: 'a' },
+      { label: 'Two', detail: 'acp:grok · Working', sessionId: 'b' },
+    ])
   })
 })

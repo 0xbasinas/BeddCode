@@ -100,6 +100,7 @@ function fakeHost(parentProjectless = false) {
       return () => listeners.delete(l)
     },
     projectPaths: async () => ['/projects/other'],
+    diff: async () => 'diff --git a/a.ts b/a.ts\n+changed line',
     report: (sessionId, status, summary) =>
       append({ type: 'session.result', sessionId, at: 0, status, summary }),
   }
@@ -419,6 +420,161 @@ describe('AgentTools', () => {
     expect(t.sessionFor(token)).toBeUndefined()
     // A fresh key is made if the session is resumed later.
     expect(t.serversFor('parent')[0]!.env.BEDDCODE_TOOLS_TOKEN).not.toBe(token)
+  })
+
+  it('waits on several sessions: the first to finish, or all of them', async () => {
+    const { host, append } = fakeHost()
+    const t = tools(host)
+    for (const prompt of ['a', 'b', 'c'])
+      await call(t, 'parent', 'start_session', { agent: 'codex', prompt })
+    const ids = ['child-1', 'child-2', 'child-3']
+    const done = (id: string) =>
+      append({ type: 'turn.completed', sessionId: id, at: Date.now(), reason: 'done' })
+
+    const any = call(t, 'parent', 'wait_for', { session_ids: ids, timeout_seconds: 5 })
+    done('child-2')
+    const first = (await any) as {
+      sessions: { session_id: string; done: boolean }[]
+      done: boolean
+    }
+    expect(first.done).toBe(false)
+    expect(first.sessions.map((s) => [s.session_id, s.done])).toEqual([
+      ['child-1', false],
+      ['child-2', true],
+      ['child-3', false],
+    ])
+
+    const all = call(t, 'parent', 'wait_for', { session_ids: ids, mode: 'all', timeout_seconds: 5 })
+    done('child-1')
+    await new Promise((r) => setTimeout(r, 120))
+    done('child-3')
+    expect(await all).toMatchObject({ done: true, data_notice: expect.stringContaining('data') })
+
+    // One that needs the user does not hold the others up forever.
+    await call(t, 'parent', 'send_message', { session_id: 'child-1', text: 'again' })
+    await call(t, 'parent', 'send_message', { session_id: 'child-2', text: 'again' })
+    const early = call(t, 'parent', 'wait_for', {
+      session_ids: ['child-1', 'child-2'],
+      mode: 'all',
+      timeout_seconds: 5,
+    })
+    append({
+      type: 'approval.requested',
+      sessionId: 'child-2',
+      at: Date.now(),
+      requestId: 'r',
+      title: 'Run it?',
+      options: [],
+    })
+    const woke = (await early) as { done: boolean; sessions: { status: string }[] }
+    expect(woke.done).toBe(false)
+    expect(woke.sessions.map((s) => s.status)).toEqual(['running', 'needs-you'])
+
+    await expect(call(t, 'parent', 'wait_for', { session_ids: ['parent'] })).rejects.toThrow(
+      /not a session you started/,
+    )
+  })
+
+  it('says plainly when a finished session never reported, and falls back to its reply', async () => {
+    const { host, append } = fakeHost()
+    const t = tools(host)
+    await call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'go' })
+    append({
+      type: 'message.delta',
+      sessionId: 'child-1',
+      at: 0,
+      role: 'assistant',
+      text: 'All done.',
+    })
+    append({ type: 'turn.completed', sessionId: 'child-1', at: 0, reason: 'done' })
+    const out = await call(t, 'parent', 'wait_for', { session_id: 'child-1' })
+    expect(out).toMatchObject({
+      done: true,
+      reported: 'none',
+      reply: 'All done.',
+      note: expect.stringContaining('report_result'),
+    })
+    expect(out).not.toHaveProperty('result')
+  })
+
+  it('shows which sessions changed the same files, ignoring undone changes', async () => {
+    const { host, append } = fakeHost()
+    const t = tools(host)
+    await call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'a' })
+    await call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'b' })
+    await call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'c' })
+    const changed = (id: string, after: string, ...paths: string[]) =>
+      append({
+        type: 'turn.changes',
+        sessionId: id,
+        at: 0,
+        before: 'b',
+        after,
+        files: paths.map((path) => ({ path, status: 'M', added: 1, removed: 0 })),
+      } as never)
+    changed('child-1', 'x1', 'src/a.ts', 'src/only1.ts')
+    changed('child-2', 'x2', 'src/a.ts')
+    changed('child-3', 'x3', 'src/other.ts')
+
+    const status = (id: string) => call(t, 'parent', 'get_status', { session_id: id })
+    expect(await status('child-1')).toMatchObject({
+      overlaps: [{ session_id: 'child-2', files: ['src/a.ts'] }],
+    })
+    expect(await status('child-3')).not.toHaveProperty('overlaps')
+    const listed = (await call(t, 'parent', 'list_children', {})) as unknown as {
+      session_id: string
+      overlaps?: unknown
+    }[]
+    expect(listed.filter((c) => c.overlaps).map((c) => c.session_id)).toEqual([
+      'child-1',
+      'child-2',
+    ])
+
+    append({ type: 'turn.reverted', sessionId: 'child-2', at: 0, after: 'x2' })
+    expect(await status('child-1')).not.toHaveProperty('overlaps')
+  })
+
+  it('has another agent review a session’s work, read only, with the changes in its prompt', async () => {
+    const { host, created, prompts } = fakeHost()
+    host.providers = async () => [
+      CODEX,
+      provider('claude', [
+        { id: 'default', label: 'Ask before edits' },
+        { id: 'plan', label: 'Plan mode' },
+      ]),
+    ]
+    const t = tools(host)
+    await call(t, 'parent', 'start_session', {
+      agent: 'codex',
+      prompt: 'build it',
+      title: 'Builder',
+    })
+    const reviewed = await call(t, 'parent', 'review_changes', {
+      session_id: 'child-1',
+      focus: 'error handling',
+    })
+    expect(reviewed).toMatchObject({
+      session_id: 'child-2',
+      reviewing: 'child-1',
+      agent: 'claude',
+      mode: 'plan',
+    })
+    expect(created[1]!.params).toMatchObject({ instanceId: 'claude', permissionMode: 'plan' })
+    const prompt = prompts.find(([id]) => id === 'child-2')![1]
+    expect(prompt).toContain('Do not change any files')
+    expect(prompt).toContain('Focus on: error handling')
+    expect(prompt).toContain('+changed line')
+    await expect(call(t, 'child-1', 'review_changes', { session_id: 'parent' })).rejects.toThrow(
+      /not a session you started/,
+    )
+    await expect(
+      call(t, 'parent', 'review_changes', { session_id: 'child-1', agent: 'nobody' }),
+    ).rejects.toThrow(/No agent/)
+  })
+
+  it('tells agents to use the exact, possibly prefixed, tool names', async () => {
+    const t = tools(fakeHost().host)
+    expect(await t.handle('parent', 'instructions', {})).toContain('beddcode__start_session')
   })
 
   it('caps how many children a session starts', async () => {

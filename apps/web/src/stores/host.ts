@@ -579,8 +579,12 @@ export async function importSession(
   return sessionId
 }
 
-export async function interrupt(sessionId: string) {
-  await sessionRequest(sessionId, 'sessions.interrupt', { sessionId })
+/** Stops the session's turn; `includeChildren` also stops the sessions its agent started. */
+export async function interrupt(sessionId: string, includeChildren?: boolean) {
+  await sessionRequest(sessionId, 'sessions.interrupt', {
+    sessionId,
+    ...(includeChildren ? { includeChildren } : {}),
+  })
 }
 
 /** Moves a session into the sidebar's Done section, or back out of it. */

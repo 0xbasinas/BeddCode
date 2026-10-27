@@ -5040,11 +5040,17 @@ button.tcall-row:hover .tcall-chevron,
   font-size: 12px;
   color: var(--text-muted);
 }
+.child-bar-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 .child-bar-head {
   display: flex;
   align-items: center;
   gap: 7px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 5px 10px;
   border-radius: 9px;
   color: inherit;
@@ -5091,6 +5097,45 @@ button.tcall-row:hover .tcall-chevron,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.child-bar-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.child-bar-item .child-bar-row {
+  flex: 1;
+}
+.child-bar-stop,
+.child-bar-stop-all {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 7px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+.child-bar-stop-all {
+  margin-right: 6px;
+}
+.child-bar-stop:hover,
+.child-bar-stop-all:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.child-bar-cost {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.child-bar-result.blocked,
+.child-bar-overlap {
+  color: var(--warn, #c98a2b);
+}
+.child-bar-result.failed {
+  color: var(--danger, #d95b5b);
 }
 .child-bar-activity {
   color: var(--text-faint);
