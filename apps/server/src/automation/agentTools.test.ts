@@ -74,7 +74,7 @@ function fakeHost(parentProjectless = false) {
     async prompt(sessionId, text) {
       if (failPrompt.has(sessionId)) throw new Error('the agent is gone')
       prompts.push([sessionId, text])
-      append({ type: 'turn.started', sessionId, at: 0 })
+      append({ type: 'turn.started', sessionId, at: Date.now() })
       return { state: 'started' }
     },
     async interrupt(sessionId, options) {
@@ -320,54 +320,76 @@ describe('AgentTools', () => {
     expect(created).toHaveLength(1)
   })
 
-  it('stops a child whose turn runs too long, with what it started, and says why', async () => {
+  it('stops a child that goes silent, with what it started, and says why', async () => {
     vi.useFakeTimers()
     const { host, interrupts } = fakeHost()
     const t = tools(host)
-    await call(t, 'parent', 'start_session', {
-      agent: 'codex',
-      prompt: 'go',
-      timeout_minutes: 2,
-    })
+    await call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'go', idle_minutes: 2 })
     await vi.advanceTimersByTimeAsync(119_000)
     expect(interrupts).toHaveLength(0)
     await vi.advanceTimersByTimeAsync(2_000)
     expect(interrupts).toEqual([['child-1', { includeChildren: true }]])
     expect(await call(t, 'parent', 'get_status', { session_id: 'child-1' })).toMatchObject({
-      result: { status: 'failed', summary: expect.stringContaining('longer than 2 minutes') },
+      result: { status: 'failed', summary: expect.stringContaining('no activity for 2 minutes') },
     })
   })
 
-  it('leaves a child alone once its turn is over, and limits the longest wait', async () => {
+  it('never stops a child that keeps working, or one waiting for the user', async () => {
     vi.useFakeTimers()
     const { host, append, interrupts } = fakeHost()
     const t = tools(host)
-    await call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'a', timeout_minutes: 1 })
-    append({ type: 'turn.completed', sessionId: 'child-1', at: 0, reason: 'done' })
-    await vi.advanceTimersByTimeAsync(120_000)
+    await call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'go', idle_minutes: 2 })
+    // Activity every minute for ten minutes: far past the limit, never silent for it.
+    for (let i = 0; i < 10; i++) {
+      await vi.advanceTimersByTimeAsync(60_000)
+      append({ type: 'tool.started', sessionId: 'child-1', at: Date.now() } as never)
+    }
     expect(interrupts).toHaveLength(0)
 
-    await call(t, 'parent', 'start_session', {
-      agent: 'codex',
-      prompt: 'b',
-      timeout_minutes: 100_000,
+    // Waiting on an approval is not being stuck.
+    append({
+      type: 'approval.requested',
+      sessionId: 'child-1',
+      at: Date.now(),
+      requestId: 'r',
+      title: 'Run it?',
+      options: [],
     })
-    await vi.advanceTimersByTimeAsync(479 * 60_000)
+    await vi.advanceTimersByTimeAsync(30 * 60_000)
     expect(interrupts).toHaveLength(0)
-    await vi.advanceTimersByTimeAsync(2 * 60_000)
-    expect(interrupts).toEqual([['child-2', { includeChildren: true }]])
   })
 
-  it('restarts the clock on a follow-up message instead of using the old one', async () => {
+  it('leaves a finished child alone, and lets the caller turn the limit off', async () => {
     vi.useFakeTimers()
     const { host, append, interrupts } = fakeHost()
     const t = tools(host)
-    await call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'a', timeout_minutes: 10 })
-    await vi.advanceTimersByTimeAsync(9 * 60_000)
-    append({ type: 'turn.completed', sessionId: 'child-1', at: 0, reason: 'done' })
+    await call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'a', idle_minutes: 1 })
+    append({ type: 'turn.completed', sessionId: 'child-1', at: Date.now(), reason: 'done' })
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+
+    await call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'b', idle_minutes: 0 })
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60_000)
+    expect(interrupts).toHaveLength(0)
+  })
+
+  it('applies the default limit, capped, and restarts the clock on a follow-up message', async () => {
+    vi.useFakeTimers()
+    const { host, append, interrupts } = fakeHost()
+    const t = tools(host)
+    await call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'a' })
+    await vi.advanceTimersByTimeAsync(29 * 60_000)
+    append({ type: 'turn.completed', sessionId: 'child-1', at: Date.now(), reason: 'done' })
     await call(t, 'parent', 'send_message', { session_id: 'child-1', text: 'more' })
-    await vi.advanceTimersByTimeAsync(2 * 60_000)
+    await vi.advanceTimersByTimeAsync(29 * 60_000)
     expect(interrupts).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(2 * 60_000)
+    expect(interrupts).toEqual([['child-1', { includeChildren: true }]])
+
+    await call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'b', idle_minutes: 99_999 })
+    await vi.advanceTimersByTimeAsync(239 * 60_000)
+    expect(interrupts).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(2 * 60_000)
+    expect(interrupts).toHaveLength(2)
   })
 
   it('reports a session whose first message could not be sent, and says how to recover', async () => {
