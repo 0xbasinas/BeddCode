@@ -25,6 +25,7 @@ type FromRelay =
 class DeviceSocket extends EventEmitter implements ConnSocket {
   readonly OPEN = 1
   readyState = 0
+  readonly relayed = true
   /** The device said it can open compressed messages (see `hello.z`). */
   compress = false
   channel?: SecureChannel

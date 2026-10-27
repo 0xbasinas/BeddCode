@@ -127,12 +127,17 @@ export interface StartServerOptions {
  * What a connection needs from its socket. A `ws` WebSocket does; so does the stand-in for a
  * device that arrives through a relay (see relay/agent.ts).
  */
+/** How long streamed text is held and joined for a device behind a relay (60 ms otherwise). */
+const RELAYED_LIVE_WINDOW_MS = 250
+
 export interface ConnSocket {
   readonly readyState: number
   readonly OPEN: number
   readonly bufferedAmount: number
   /** Set when the client can open compressed messages; only sockets that compress themselves have it. */
   compress?: boolean
+  /** Set on a connection that arrives through a relay, where every message costs more. */
+  readonly relayed?: boolean
   send(data: string): void
   close(code?: number, reason?: string): void
   terminate(): void
@@ -533,12 +538,20 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
         case 'subscribe': {
           unsubscribe?.()
           const replayStart = performance.now()
-          const resume = frame.afterSeq === 0 ? 'cold' : 'warm'
+          // A client that resumed from another log (it did not wait for our welcome) starts over.
+          const afterSeq =
+            frame.logId !== undefined && frame.logId !== store.logId ? 0 : frame.afterSeq
+          const resume = afterSeq === 0 ? 'cold' : 'warm'
           // Streamed text goes out a few times a second, not once per token.
-          const live = new LiveCoalescer((stored) => send({ t: 'event', stored }))
+          // Through a relay each frame is encrypted and framed on its own, and the trip is long
+          // anyway, so streamed text goes out in fewer, larger pieces.
+          const live = new LiveCoalescer(
+            (stored) => send({ t: 'event', stored }),
+            ws.relayed ? RELAYED_LIVE_WINDOW_MS : undefined,
+          )
           const stop = replaySubscription({
             store,
-            afterSeq: frame.afterSeq,
+            afterSeq,
             compact: frame.compact,
             batch: frame.batch,
             send,

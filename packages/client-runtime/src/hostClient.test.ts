@@ -113,12 +113,12 @@ describe('HostClient', () => {
     const wrong = FakeSocket.instances[0]!
     wrong.open()
     wrong.receive({ ...welcome, host: { ...host, hostId: 'different' } })
-    expect(wrong.sent.some((f) => f.t === 'subscribe')).toBe(false)
+    expect(client.connectionState).not.toBe('connected')
     vi.advanceTimersByTime(200)
     const old = FakeSocket.instances[1]!
     old.open()
     old.receive({ ...welcome, protocol: 99 })
-    expect(old.sent.some((f) => f.t === 'subscribe')).toBe(false)
+    expect(client.connectionState).not.toBe('connected')
     vi.advanceTimersByTime(200)
     const right = FakeSocket.instances[2]!
     right.open()
@@ -444,9 +444,30 @@ describe('HostClient', () => {
     const socket = FakeSocket.instances[0]!
     socket.open()
     socket.receive({ ...welcome, host: { ...host, logId: 'log-1' } })
-    expect(socket.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 40, compact: true, batch: true })
+    expect(socket.sent.find((f) => f.t === 'subscribe')).toEqual({
+      t: 'subscribe',
+      afterSeq: 40,
+      compact: true,
+      batch: true,
+      logId: 'log-1',
+    })
     socket.receive({ t: 'caught-up', seq: 40 })
     expect(client.perf.drain(50).find((r) => r.name === 'replay.ms')?.tags?.resume).toBe('disk')
+  })
+
+  it('subscribes right behind the hello, without waiting for the welcome', () => {
+    const client = new HostClient({
+      url: 'ws://host/ws',
+      token: 't',
+      onEvent: () => {},
+      createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
+    })
+    client.start()
+    const socket = FakeSocket.instances[0]!
+    socket.open()
+    expect(socket.sent.map((f) => f.t)).toEqual(['hello', 'subscribe'])
+    expect(socket.sent[1]).toMatchObject({ afterSeq: 0 })
+    expect(socket.sent[1]).not.toHaveProperty('logId', expect.anything())
   })
 
   it('forgets a saved copy that belongs to another log, and asks for everything', () => {
@@ -464,7 +485,12 @@ describe('HostClient', () => {
     socket.open()
     socket.receive({ ...welcome, host: { ...host, logId: 'new-log' } })
     expect(reset).toHaveBeenCalledOnce()
-    expect(socket.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 0, compact: true, batch: true })
+    // The subscription went out before the welcome, naming the old log; the host starts over for it.
+    expect(socket.sent.find((f) => f.t === 'subscribe')).toMatchObject({
+      afterSeq: 40,
+      logId: 'old-log',
+    })
+    expect(client.seq).toBe(0)
     expect(client.log).toBe('new-log')
   })
 

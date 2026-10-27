@@ -281,6 +281,12 @@ kbd {
   font-size: calc(13px * var(--ui-scale));
   line-height: 1.45;
 }
+/* A long sidebar lays out and paints only the rows near the screen (not nested rows: their thread
+   line sits outside the row, and painting is clipped to it). */
+.session-row:not(.child) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto calc(56px * var(--ui-scale));
+}
 .session-row:hover {
   background: var(--bg-card);
 }
@@ -5813,4 +5819,21 @@ button.tcall-row:hover .tcall-chevron,
 .message-nav-row[data-active='true'] .message-nav-tick {
   width: calc(14px * var(--ui-scale));
   background: var(--text);
+}
+
+.patch-more {
+  display: block;
+  width: 100%;
+  padding: calc(6px * var(--ui-scale));
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: calc(12px * var(--ui-scale));
+  cursor: pointer;
+}
+.patch-more:hover {
+  color: var(--text);
+  background: var(--bg-hover);
 }

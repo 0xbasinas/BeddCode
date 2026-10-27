@@ -166,3 +166,10 @@ Each run also counts bytes on every leg, per phase (`pairWire`, `cold.wire`, `re
 | 16 s idle            | ~0            | 0.1 KB each way          | 0.1 KB each way      |
 
 History is compressed about 8 times on the wire in both routes. The relay's extra comes from encrypting and framing every message, so it costs most on many small messages (streamed text, requests) and least on bulk replay. The host sends each byte to the relay once, and the relay forwards it unchanged, so the two legs match.
+
+#### Changes made after these measurements
+
+- **Fewer round trips per connect.** The client sends `subscribe` right behind `hello` instead of waiting for `welcome`, with the log id so a host with another log replays from the start. Simulated `mobile` / `poor` relay runs: first sync 1.52 s → 1.22 s and 3.6 s → 3.0 s; returning device 0.94 s → 0.70 s and 2.2 s → 1.6 s (direct returning device 0.44 s → 0.30 s).
+- **Streamed text through a relay** is joined into pieces every 250 ms instead of 60 ms (a few frames a second, not 19): 56 frames → 18 and 25 KB → 14 KB for 3 s of streaming, at most 250 ms later.
+- **Long diffs** in a thread show their first 120 lines and a button for the rest. The fully expanded 120-message thread drops from 26,500 to 16,300 DOM nodes, expanding from 570 ms to 420 ms, and the worst scroll frame from 540 ms to 350 ms. Sidebar rows outside the screen are no longer laid out (sidebar search 68 ms → 33 ms with 306 sessions).
+- **History size** (1,001 sessions, 34,000 events, over a simulated `good` relay): the first sync of a new device takes 3.2 s and 790 KB; a returning device 0.3 s. It grows linearly with history and only a device's first connection pays it, so nothing was changed.
