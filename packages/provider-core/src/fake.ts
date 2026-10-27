@@ -237,6 +237,78 @@ class FakeSession implements ProviderSession {
     if (this.advanced && input.text.includes('[slow]')) {
       await sleep(this.delayMs * 10, signal)
     }
+    // Stays working until the turn is interrupted: a session that is reliably "running" for tests.
+    if (this.advanced && input.text.includes('[hold]')) {
+      await sleep(30 * 60_000, signal)
+      if (signal.aborted) return this.finish(turnId, 'cancelled')
+    }
+
+    // Heavy content for rendering tests: a long command output, large diffs and a big reply.
+    if (this.advanced && input.text.includes('[heavy]')) {
+      const toolId = `tool-${++this.idCounter}`
+      this.emit(
+        { type: 'tool.started', toolId, kind: 'command', title: 'Running Bash: pnpm test' },
+        turnId,
+      )
+      const output = Array.from(
+        { length: 1500 },
+        (_, i) =>
+          `${String(i + 1).padStart(4, '0')} PASS test/case-${i}.spec.ts (${(i % 90) + 10} ms) ${'.'.repeat(i % 40)}`,
+      ).join('\n')
+      this.emit({ type: 'tool.completed', toolId, ok: true, output }, turnId)
+      const lines = Array.from({ length: 200 }, (_, i) => i)
+      for (const file of ['src/limiter/token-bucket.ts', 'src/limiter/window.ts']) {
+        this.emit(
+          {
+            type: 'diff',
+            path: file,
+            added: lines.length,
+            removed: lines.length,
+            patch: lines
+              .flatMap((i) => [
+                `-  const value${i} = compute(${i}, bucket.refillAt)`,
+                `+  const value${i} = compute(${i}, Math.max(0, bucket.refillAt))`,
+              ])
+              .join('\n'),
+          },
+          turnId,
+        )
+      }
+      const code = Array.from({ length: 120 }, (_, i) => `  const step${i} = await run(${i})`).join(
+        '\n',
+      )
+      const table = Array.from(
+        { length: 40 },
+        (_, i) => `| case ${i} | ${i * 3} ms | ${i % 2 ? 'pass' : 'skip'} |`,
+      ).join('\n')
+      const fence = '```'
+      this.emit(
+        {
+          type: 'message.delta',
+          role: 'assistant',
+          text: `## Findings\n\nThe refill clock can run backwards.\n\n${fence}ts\nasync function main() {\n${code}\n}\n${fence}\n\n| case | time | result |\n| --- | --- | --- |\n${table}\n\n`,
+        },
+        turnId,
+      )
+    }
+    // Keeps streaming text until the turn is interrupted, or for `[stream:N]` seconds (default 60).
+    if (this.advanced && input.text.includes('[stream')) {
+      const seconds = Number(/\[stream:(\d+)\]/.exec(input.text)?.[1]) || 60
+      const until = Date.now() + seconds * 1000
+      let n = 0
+      while (!signal.aborted && Date.now() < until) {
+        this.emit(
+          {
+            type: 'message.delta',
+            role: 'assistant',
+            text: `word${n++} streamed text with a few more words. `,
+          },
+          turnId,
+        )
+        await sleep(40, signal)
+      }
+      if (signal.aborted) return this.finish(turnId, 'cancelled')
+    }
 
     await say(`Looking into "${input.text}". Let me check the code first.`)
     await this.runTool(turnId, signal, 'command', 'Running Bash: grep -rn "refill" src/')

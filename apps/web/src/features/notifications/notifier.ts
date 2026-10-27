@@ -18,6 +18,21 @@ function viewingSession(): string | undefined {
 
 let audio: AudioContext | undefined
 
+/**
+ * Creating the audio context blocks the page for about half a second on Windows. Doing it here, once
+ * the app is idle after starting, keeps that pause away from the first chime, which otherwise lands
+ * in the middle of a streaming reply.
+ */
+function prepareSound() {
+  if (audio || typeof AudioContext === 'undefined') return
+  if (useNotificationPrefs.getState().values.sound === 'off') return
+  try {
+    audio = new AudioContext()
+  } catch {
+    // no sound is better than an error
+  }
+}
+
 /** A short sound; no files, so nothing to load and nothing to ship. */
 export function playSound(sound: NotificationSound) {
   if (sound === 'off' || typeof AudioContext === 'undefined') return
@@ -89,6 +104,11 @@ export function startNotifications(): () => void {
   const link = new Map<string, string>()
   const timers = new Map<string, ReturnType<typeof setTimeout>>()
 
+  const hasIdle = 'requestIdleCallback' in window
+  const idle = hasIdle
+    ? window.requestIdleCallback(prepareSound, { timeout: 5_000 })
+    : window.setTimeout(prepareSound, 2_000)
+
   const unsubscribe = useHostStore.subscribe((state) => {
     for (const [hostKey, runtime] of Object.entries(state.runtimes)) {
       // Until the first replay is done every session looks new; take stock without telling.
@@ -129,6 +149,8 @@ export function startNotifications(): () => void {
     }
   })
   return () => {
+    if (hasIdle) window.cancelIdleCallback(idle)
+    else window.clearTimeout(idle)
     unsubscribe()
     timers.forEach(clearTimeout)
   }

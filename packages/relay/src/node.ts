@@ -65,9 +65,12 @@ export async function startRelay(options: RelayOptions): Promise<RunningRelay> {
       socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n')
       return
     }
-    wss.handleUpgrade(req, socket, head, (ws) =>
-      target.role === 'host' ? onHost(ws, target.room) : onClient(ws, target.room),
-    )
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      // With a callback `ws` does not emit this itself; the liveness sweep below depends on it.
+      wss.emit('connection', ws, req)
+      if (target.role === 'host') onHost(ws, target.room)
+      else onClient(ws, target.room)
+    })
   })
 
   const send = (ws: WebSocket | undefined, frame: unknown) => {
