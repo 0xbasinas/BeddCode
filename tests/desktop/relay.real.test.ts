@@ -297,27 +297,37 @@ describe(`a long relay led by ${parent}`, () => {
       turns,
     })
 
-    // The window shows each start as its own helper and names the target of every send and wait.
+    // The window folds each run of agent calls into one line; opened, every step names its helper.
     await page.goto(`http://127.0.0.1:${env.port}/#/session/${sessionId}`)
-    await page.getByText('Started').first().waitFor({ timeout: 30_000 })
-    const shown = await page.locator('body').innerText()
+    await page.locator('.orch-head').first().waitFor({ timeout: 30_000 })
+    const shotDir = path.join(root, '.e2e', 'desktop-stats')
+    await page.screenshot({ path: path.join(shotDir, `relay-${parent}-folded.png`) })
+    const folded = await page.locator('.orch').count()
+    for (const head of await page.locator('.orch-head').all()) await head.click()
+    const steps = await page.locator('.orch-step').count()
+    await page.screenshot({ path: path.join(shotDir, `relay-${parent}-opened.png`) })
+    const shown = await page
+      .locator('.orch-steps')
+      .allInnerTexts()
+      .then((t) => t.join('\n'))
     report.window = {
+      runs: folded,
+      steps,
       // By agent, not title: an agent may rename its own session (Grok does).
-      sent: ['Claude Code', 'Codex', 'Grok'].map((n) => [
+      asked: ['Claude Code', 'Codex', 'Grok'].map((n) => [
         n,
-        new RegExp(`Sent a message to\\s*${n}\\b`).test(shown),
+        new RegExp(`Asked\\s*${n}\\b`).test(shown),
       ]),
-      unnamedWaits: (shown.match(/Waited for Agent/g) ?? []).length,
-      unnamedSends: (shown.match(/Sent a message to\s*$/gm) ?? []).length,
     }
-    await page.screenshot({ path: path.join(root, '.e2e', 'desktop-stats', `relay-${parent}.png`) })
 
     expect(report.parentEnd).toBe('done')
     expect(
-      report.window.sent.every(([, ok]: [string, boolean]) => ok),
+      report.window.asked.every(([, ok]: [string, boolean]) => ok),
       JSON.stringify(report.window),
     ).toBe(true)
-    expect(report.window.unnamedWaits).toBe(0)
+    // Many calls, few blocks: the log reads as steps.
+    expect(report.window.runs).toBeGreaterThan(0)
+    expect(report.window.steps).toBeGreaterThan(report.window.runs)
     expect(text(sessionId)).toContain(`${marker} rounds=`)
     expect(ownTests).toMatch(/fail 0/)
     expect(passed, accepted.slice(-1500)).toEqual(

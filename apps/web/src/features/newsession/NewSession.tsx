@@ -1,3 +1,5 @@
+import {} from '../../ui/AgentMark.tsx'
+import { AgentMark } from '../../ui/AgentMark.tsx'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import {
@@ -350,6 +352,7 @@ export function NewSession({
               <>
                 {loadingOffer && <span className="muted offer-note">Reading settings…</span>}
                 <ConfigMenu
+                  agent={agent.id}
                   options={configOptions}
                   onChange={(id, value) =>
                     setConfigState({
@@ -359,6 +362,7 @@ export function NewSession({
                   }
                 />
                 <ModelMenu
+                  agent={agent.id}
                   models={agent.capabilities.models ?? []}
                   efforts={agent.capabilities.efforts ?? []}
                   value={choice}
@@ -518,7 +522,7 @@ export function AgentChip({
     <Dropdown
       trigger={({ toggle }) => (
         <button className="chip-lite" onClick={toggle} aria-label="Agent">
-          <span className="avatar">{current ? initials(current.label) : '–'}</span>
+          <AgentMark agent={current?.id} label={current?.label ?? '–'} />
           <span className="chip-text">{current?.label ?? 'No agent'}</span>{' '}
           <ChevronDown size={13} />
         </button>
@@ -537,7 +541,7 @@ export function AgentChip({
                 close()
               }}
             >
-              <span className="avatar">{initials(a.label)}</span>
+              <AgentMark agent={a.id} label={a.label} />
               <span className="menu-text">
                 <span className="menu-title">{a.label}</span>
                 {a.status !== 'ready' && <span className="menu-desc">{statusText[a.status]}</span>}

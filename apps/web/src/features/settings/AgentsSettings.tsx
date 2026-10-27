@@ -1,3 +1,4 @@
+import { AgentIcon, agentKind } from '../../ui/AgentMark.tsx'
 import { useEffect, useState } from 'react'
 import { Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import type { AcpAgentSummary, AgentPreview, ProviderInstance } from '@beddcode/contracts'
@@ -173,7 +174,13 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                   setSelected(provider.id)
                 }}
               >
-                <span className="agent-avatar">{initials(provider.label)}</span>
+                <span className="agent-avatar" data-agent={agentKind(provider.id, provider.label)}>
+                  {agentKind(provider.id, provider.label) ? (
+                    <AgentIcon agent={provider.id} label={provider.label} size={16} />
+                  ) : (
+                    initials(provider.label)
+                  )}
+                </span>
                 <span className="setting-label">
                   <span>
                     {provider.label}

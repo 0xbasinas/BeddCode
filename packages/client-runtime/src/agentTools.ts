@@ -1,5 +1,5 @@
 import type { SessionView } from './replica.ts'
-import { toolLabel, type Tool } from './toolSummary.ts'
+import { toolDuration, toolLabel, type Tool } from './toolSummary.ts'
 
 /** The tools BeddCode gives an agent that may start other agents (see the host's agentTools). */
 export const AGENT_TOOL_NAMES = [
@@ -359,6 +359,111 @@ export function agentToolView(
   }
   if (name === 'read_transcript') view.transcript = text(result.transcript)
   return view
+}
+
+/** One line of the orchestration log: a start, a message with its answer, a wait. */
+export interface AgentStep {
+  /** The first call that made it up. */
+  id: string
+  kind: 'start' | 'ask' | 'wait' | 'other'
+  verb: string
+  child?: ChildInfo
+  /** The task given or the message sent. */
+  text?: string
+  /** What came back: the child's reply, or its conversation. */
+  reply?: string
+  /** For lists, stops and waits on several sessions: what they covered. */
+  what?: string
+  /** A call of the step is still going. */
+  pending: boolean
+  error?: string
+  /** Time the calls of the step ran. */
+  ms: number
+  calls: number
+  stillWorking?: boolean
+  /** Its answer is in: later waits for the same session are a step of their own. */
+  settled: boolean
+}
+
+const joinListed = (view: AgentToolView) =>
+  view.listed?.map((l) => (l.detail ? `${l.label} (${l.detail})` : l.label)).join(', ')
+
+/**
+ * A run of agent-tool calls as the steps a person would describe: a message and the waits that
+ * bring its answer are one step, however many times the agent had to wait again.
+ */
+export function agentSteps(
+  tools: Tool[],
+  options: { parentId?: string; sessions?: Record<string, SessionView>; now?: number } = {},
+): AgentStep[] {
+  const now = options.now ?? Date.now()
+  const steps: AgentStep[] = []
+  for (const tool of tools) {
+    const view = agentToolView(tool, options)
+    if (!view) continue
+    const ms = toolDuration(tool, now) ?? 0
+    const id = view.child?.id
+    const answered = !view.pending && !view.stillWorking && !view.error
+    if (view.name === 'wait_for' && !view.listed && id) {
+      const open = steps.findLast((s) => s.kind !== 'other' && s.child?.id === id)
+      if (open && !open.settled) {
+        open.calls++
+        open.ms += ms
+        open.pending = view.pending
+        open.reply = view.reply ?? open.reply
+        open.stillWorking = view.stillWorking
+        open.error = view.error ?? open.error
+        open.child = view.child ?? open.child
+        open.settled = answered
+        continue
+      }
+    }
+    const kind: AgentStep['kind'] =
+      view.name === 'start_session' || view.name === 'review_changes'
+        ? 'start'
+        : view.name === 'send_message'
+          ? 'ask'
+          : view.name === 'wait_for' && !view.listed
+            ? 'wait'
+            : 'other'
+    steps.push({
+      id: tool.id,
+      kind,
+      verb:
+        kind === 'ask'
+          ? view.pending
+            ? 'Asking'
+            : 'Asked'
+          : view.name === 'wait_for' && view.listed
+            ? `${view.verb} ${view.listed.length} sessions`
+            : view.verb,
+      child: view.child,
+      text: view.prompt,
+      reply: view.reply ?? view.transcript,
+      what: kind === 'other' ? joinListed(view) : undefined,
+      pending: view.pending,
+      error: view.error,
+      ms,
+      calls: 1,
+      stillWorking: view.stillWorking,
+      settled: kind === 'wait' && answered,
+    })
+  }
+  return steps
+}
+
+/** What a run of steps adds up to, for its one-line header. */
+export function agentRunStatus(
+  steps: AgentStep[],
+  sessions: Record<string, SessionView> = {},
+): { agents: number; pending?: AgentStep; needsYou: boolean; failed: number } {
+  const ids = new Set(steps.flatMap((s) => (s.child?.id ? [s.child.id] : [])))
+  return {
+    agents: ids.size,
+    pending: steps.findLast((s) => s.pending),
+    needsYou: [...ids].some((id) => sessions[id] && childPhase(sessions[id]!) === 'needs-you'),
+    failed: steps.filter((s) => s.error).length,
+  }
 }
 
 /** Files a session's turns changed that were not undone. */

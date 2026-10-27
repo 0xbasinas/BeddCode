@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  agentRunStatus,
+  agentSteps,
   agentToolName,
   agentToolView,
   childActivity,
@@ -381,5 +383,68 @@ describe('calls made through Grok’s use_tool', () => {
         )!.child?.id,
     )
     expect(ids).toEqual(['Builder', 'Reviewer', 'Tester'])
+  })
+})
+
+describe('a run of calls as steps', () => {
+  const call = (name: string, input: object, answer?: object, over: Partial<Tool> = {}) =>
+    tool({
+      id: `${name}-${Math.random()}`,
+      title: `Using beddcode · ${name}`,
+      input: JSON.stringify(input),
+      ...(answer ? { output: JSON.stringify(answer) } : {}),
+      ...over,
+    })
+  const kid = { session_id: 'kid', title: 'Builder', agent: 'claude' }
+
+  it('makes a message and every wait for its answer one step', () => {
+    const steps = agentSteps([
+      call('start_session', { agent: 'claude', prompt: 'go', title: 'Builder' }, kid),
+      call(
+        'wait_for',
+        { session_id: 'kid' },
+        { ...kid, status: 'idle', reply: 'READY', done: true },
+      ),
+      call('send_message', { session_id: 'kid', text: 'add mean' }, { ...kid, state: 'started' }),
+      call('wait_for', { session_id: 'kid' }, { ...kid, status: 'running', done: false }),
+      call(
+        'wait_for',
+        { session_id: 'kid' },
+        { ...kid, status: 'idle', reply: 'Added', done: true },
+      ),
+      call(
+        'wait_for',
+        { session_id: 'kid' },
+        { ...kid, status: 'idle', reply: 'Again', done: true },
+      ),
+    ])
+    expect(steps.map((s) => [s.kind, s.verb, s.calls, s.reply])).toEqual([
+      ['start', 'Started', 2, 'READY'],
+      ['ask', 'Asked', 3, 'Added'],
+      // The answer was in; a wait after it stands alone.
+      ['wait', 'Waited for', 1, 'Again'],
+    ])
+    expect(steps[1]!.text).toBe('add mean')
+  })
+
+  it('keeps lists and multi-waits as their own lines, and says what is going on', () => {
+    const steps = agentSteps([
+      call('list_agents', {}, { items: [{ agent: 'codex', label: 'Codex' }] }),
+      call('wait_for', { session_ids: ['a', 'b'] }, undefined, { status: 'running' }),
+      call('send_message', { session_id: 'kid', text: 'x' }, kid, { status: 'running' }),
+    ])
+    expect(steps.map((s) => s.kind)).toEqual(['other', 'other', 'ask'])
+    expect(steps[1]!.verb).toBe('Waiting for 0 sessions')
+    expect(steps[0]!.what).toBe('Codex (codex)')
+    const status = agentRunStatus(steps)
+    expect(status.pending?.id).toBe(steps[2]!.id)
+    expect(status).toMatchObject({ agents: 1, needsYou: false, failed: 0 })
+  })
+
+  it('counts failed steps', () => {
+    const steps = agentSteps([
+      call('stop', { session_id: 'kid' }, undefined, { status: 'failed', output: 'boom' }),
+    ])
+    expect(agentRunStatus(steps).failed).toBe(1)
   })
 })

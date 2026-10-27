@@ -1,3 +1,4 @@
+import {} from '../../ui/AgentMark.tsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
@@ -413,12 +414,14 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
         modelSlot={
           session.config.length > 0 ? (
             <ConfigMenu
+              agent={session.instanceId}
               options={session.config}
               onChange={(id, value) => setConfigOption(sessionId, id, value).catch(report)}
             />
           ) : (provider?.capabilities.models?.length ?? 0) > 0 ? (
             // Claude and Codex take a different model from the next message on.
             <ModelMenu
+              agent={session.instanceId}
               models={provider?.capabilities.models ?? []}
               efforts={provider?.capabilities.efforts ?? []}
               value={{ model: session.model, effort: session.effort }}
@@ -428,6 +431,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             />
           ) : (
             <ModelBadge
+              agent={session.instanceId}
               models={provider?.capabilities.models ?? []}
               model={session.model}
               effort={session.effort}

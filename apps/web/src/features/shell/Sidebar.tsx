@@ -1,3 +1,4 @@
+import { AgentIcon } from '../../ui/AgentMark.tsx'
 import {
   Fragment,
   useCallback,
@@ -339,6 +340,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
                 <CalendarClock size={11} aria-label={`Scheduled: ${s.schedule.name}`} />
               )}
               {s.parent && <Bot size={11} aria-label="Started by another session" />}
+              <AgentIcon agent={s.instanceId} label={agentLabel(s)} size={11} />
               {agentLabel(s)}
             </span>
             {s.pinned && !showPinned && (

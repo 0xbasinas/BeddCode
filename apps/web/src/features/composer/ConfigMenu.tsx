@@ -1,4 +1,5 @@
-import { Check, ChevronDown, Sparkles } from 'lucide-react'
+import { ModelIcon } from '../../ui/AgentMark.tsx'
+import { Check, ChevronDown } from 'lucide-react'
 import type { ConfigOption } from '@beddcode/contracts'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 
@@ -16,10 +17,12 @@ export function ConfigMenu({
   options,
   disabled,
   onChange,
+  agent,
 }: {
   options: ConfigOption[]
   disabled?: boolean
   onChange(optionId: string, value: string | boolean): void | Promise<void>
+  agent?: string
 }) {
   if (options.length === 0) return null
   return (
@@ -52,7 +55,7 @@ export function ConfigMenu({
                 aria-expanded={open}
                 title={option.description ?? option.name}
               >
-                {option.category === 'model' && <Sparkles size={15} />}
+                {option.category === 'model' && <ModelIcon agent={agent} />}
                 {option.category === 'model' ? (
                   valueLabel(option)
                 ) : (

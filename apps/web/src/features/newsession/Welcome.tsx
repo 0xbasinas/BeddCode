@@ -1,3 +1,4 @@
+import { AgentIcon, agentKind } from '../../ui/AgentMark.tsx'
 import { useState } from 'react'
 import { ArrowLeft, Check, FolderOpen, Loader2, Monitor, RefreshCw, Server } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
@@ -148,7 +149,13 @@ export function Welcome({ hostKey, onSkip }: { hostKey: string; onSkip(): void }
               )}
               {providers.map((p) => (
                 <div className={`wizard-row ${p.status === 'ready' ? '' : 'dim'}`} key={p.id}>
-                  <span className="wizard-icon">{initials(p.label)}</span>
+                  <span className="wizard-icon">
+                    {agentKind(p.id, p.label) ? (
+                      <AgentIcon agent={p.id} label={p.label} size={18} />
+                    ) : (
+                      initials(p.label)
+                    )}
+                  </span>
                   <div>
                     <strong>{p.label}</strong>
                     <small>

@@ -17,7 +17,7 @@ import { FileIcon } from '../files/FileIcon.tsx'
 import { ApprovalCard } from './ApprovalCard.tsx'
 import { QuestionCard } from './QuestionCard.tsx'
 import { ToolGroup } from './ToolCalls.tsx'
-import { AgentToolCard } from './AgentToolCard.tsx'
+import { AgentRunCard } from './AgentToolCard.tsx'
 import { isAgentTool, isBrowserTool } from '@beddcode/client-runtime'
 import { BrowserToolCard } from './BrowserToolCard.tsx'
 import { TurnChangesCard } from './TurnChanges.tsx'
@@ -160,10 +160,20 @@ export const Transcript = memo(function Transcript({
         if (block.item.kind === 'tool') {
           // Starting and managing other agents gets cards of its own, outside the runs of tools.
           if (isAgentTool(block.item)) {
+            // A run of them is one block.
+            const agentTool = (b: (typeof blocks)[number] | undefined) =>
+              b?.kind === 'item' && b.item.kind === 'tool' && isAgentTool(b.item)
+            if (agentTool(blocks[index - 1])) return null
+            const run: Extract<Item, { kind: 'tool' }>[] = []
+            for (let i = index; i < blocks.length; i++) {
+              const next = blocks[i]
+              if (!agentTool(next) || next?.kind !== 'item' || next.item.kind !== 'tool') break
+              run.push(next.item)
+            }
             return (
-              <AgentToolCard
+              <AgentRunCard
                 key={block.item.id}
-                tool={block.item}
+                tools={run}
                 parentId={sessionId}
                 hostKey={hostKey ?? changes?.hostKey}
               />
