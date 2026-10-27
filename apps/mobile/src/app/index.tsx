@@ -38,7 +38,6 @@ import { colors, fonts, radius } from '@/theme/tokens'
 import { Diffstat } from '@/ui/Diffstat'
 import { FadeIn } from '@/ui/FadeIn'
 import { animateLayout } from '@/ui/layoutAnimation'
-import { openStart } from '@/ui/openTiming'
 import { useWhileFocused } from '@/ui/useWhileFocused'
 import { PressableScale } from '@/ui/PressableScale'
 import { Icon } from '@/ui/Icon'
@@ -521,7 +520,6 @@ const SessionRow = memo(function SessionRow({
       scaleTo={0.985}
       // After the next frame, so the row's press feedback is on screen before the screen change.
       onPress={() => {
-        openStart()
         requestAnimationFrame(() =>
           router.push({ pathname: '/session/[id]', params: { id: session.id } }),
         )
