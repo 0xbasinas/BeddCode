@@ -20,6 +20,7 @@ export class EventStore {
   private readonly bySessionStmt
   private readonly lastSnapshotStmt
   private readonly listeners = new Set<EventListener>()
+  private notificationBatch: StoredEvent[] | null = null
   /** Identifies this log; a new database has a new one. Devices check it before trusting a saved copy. */
   readonly logId: string
   /** The latest commands/config/modes event per session and type, to skip unchanged repeats. */
@@ -38,7 +39,7 @@ export class EventStore {
       'INSERT INTO events (session_id, type, at, payload) VALUES (?, ?, ?, ?) RETURNING seq',
     )
     this.readStmt = this.db.prepare(
-      'SELECT seq, payload FROM events WHERE seq > ? ORDER BY seq LIMIT ?',
+      'SELECT seq, payload FROM events WHERE seq > ? AND seq <= ? ORDER BY seq LIMIT ?',
     )
     this.bySessionStmt = this.db.prepare(
       'SELECT seq, payload FROM events WHERE session_id = ? ORDER BY seq',
@@ -71,7 +72,32 @@ export class EventStore {
    * previous one is not stored or sent again; the stored original is returned instead.
    */
   append(event: SessionEvent): StoredEvent {
-    const parsed = SessionEvent.parse(event)
+    return this.writeEvent(SessionEvent.parse(event))
+  }
+
+  /** One durable transaction for an imported burst; listeners only see committed events. */
+  appendMany(events: SessionEvent[]): StoredEvent[] {
+    if (!events.length) return []
+    const parsed = events.map((event) => SessionEvent.parse(event))
+    const notifications: StoredEvent[] = []
+    this.db.exec('BEGIN')
+    this.notificationBatch = notifications
+    let stored: StoredEvent[]
+    try {
+      stored = parsed.map((event) => this.writeEvent(event))
+      this.db.exec('COMMIT')
+    } catch (err) {
+      this.db.exec('ROLLBACK')
+      this.snapshots.clear()
+      throw err
+    } finally {
+      this.notificationBatch = null
+    }
+    for (const event of notifications) for (const listener of this.listeners) listener(event)
+    return stored
+  }
+
+  private writeEvent(parsed: SessionEvent): StoredEvent {
     let snapshot: { slot: string; key: string } | undefined
     if (isSnapshot(parsed)) {
       const slot = `${parsed.sessionId}\n${parsed.type}`
@@ -88,7 +114,8 @@ export class EventStore {
     ) as { seq: number }
     const stored: StoredEvent = { seq: row.seq, event: parsed }
     if (snapshot) this.snapshots.set(snapshot.slot, { seq: row.seq, key: snapshot.key })
-    for (const listener of this.listeners) listener(stored)
+    if (this.notificationBatch) this.notificationBatch.push(stored)
+    else for (const listener of this.listeners) listener(stored)
     return stored
   }
 
@@ -102,8 +129,11 @@ export class EventStore {
   }
 
   /** Events with seq greater than `afterSeq`, oldest first. */
-  readAfter(afterSeq: number, limit = 1000): StoredEvent[] {
-    const rows = this.readStmt.all(afterSeq, limit) as { seq: number; payload: string }[]
+  readAfter(afterSeq: number, limit = 1000, throughSeq = Number.MAX_SAFE_INTEGER): StoredEvent[] {
+    const rows = this.readStmt.all(afterSeq, throughSeq, limit) as {
+      seq: number
+      payload: string
+    }[]
     return rows.map((r) => ({ seq: r.seq, event: SessionEvent.parse(JSON.parse(r.payload)) }))
   }
 
@@ -111,13 +141,13 @@ export class EventStore {
    * The seq of the latest event of each state-like type (commands, settings, context, plan) per
    * session after `afterSeq`. Earlier ones in that range say nothing that a later one does not.
    */
-  latestStateSeqs(afterSeq: number): Set<number> {
+  latestStateSeqs(afterSeq: number, throughSeq = Number.MAX_SAFE_INTEGER): Set<number> {
     const types = [...SUPERSEDED_TYPES]
     const rows = this.db
       .prepare(
-        `SELECT MAX(seq) AS seq FROM events WHERE seq > ? AND type IN (${types.map(() => '?').join(', ')}) GROUP BY session_id, type`,
+        `SELECT MAX(seq) AS seq FROM events WHERE seq > ? AND seq <= ? AND type IN (${types.map(() => '?').join(', ')}) GROUP BY session_id, type`,
       )
-      .all(afterSeq, ...types) as { seq: number }[]
+      .all(afterSeq, throughSeq, ...types) as { seq: number }[]
     return new Set(rows.map((r) => r.seq))
   }
 

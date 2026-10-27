@@ -1,4 +1,5 @@
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
   app,
@@ -249,7 +250,7 @@ export class BrowserViews {
         const dir = app.getPath('downloads')
         const name = uniqueFileName(`${base}.pdf`, (n) => existsSync(path.join(dir, n)))
         const file = path.join(dir, name)
-        writeFileSync(file, data)
+        await writeFile(file, data)
         const id = this.shared.rememberDownload(file)
         this.send({
           type: 'download',

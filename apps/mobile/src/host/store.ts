@@ -4,7 +4,7 @@ import { create } from 'zustand'
 import {
   HostClient,
   startTelemetry,
-  applyEvent,
+  applyEvents,
   retryWhileCurrent,
   emptyReplica,
   decodeSnapshot,
@@ -179,12 +179,12 @@ function startHost(entry: HostEntry) {
     // A queued animation frame may outlive removing or re-pairing this host.
     if (clients.get(entry.key) !== client) return
     if (batch.length) {
-      patchRuntime(entry.key, (r) => ({ replica: batch.reduce(applyEvent, r.replica) }))
+      patchRuntime(entry.key, (r) => ({ replica: applyEvents(r.replica, batch) }))
       saver.touch()
     }
   }
-  // Saving writes every session's history as one block, on the same thread that handles taps, so it
-  // is done rarely (the copy is also saved when the app leaves the foreground, below).
+  // Unchanged sessions reuse their serialized text. The full copy is still assembled in JS,
+  // so saves stay infrequent and also run when the app leaves the foreground, below.
   const saver = new ReplicaSaver({
     delayMs: 20_000,
     maxWaitMs: 600_000,

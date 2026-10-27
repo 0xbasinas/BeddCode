@@ -71,7 +71,9 @@ export async function startRelay(options: RelayOptions): Promise<RunningRelay> {
   })
 
   const send = (ws: WebSocket | undefined, frame: unknown) => {
-    if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(frame))
+    if (!ws || ws.readyState !== ws.OPEN) return
+    if (ws.bufferedAmount > 32 * 1024 * 1024) return ws.terminate()
+    ws.send(JSON.stringify(frame))
   }
 
   function onHost(ws: WebSocket, roomId: string) {

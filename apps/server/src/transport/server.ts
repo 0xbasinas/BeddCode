@@ -1,4 +1,4 @@
-import { ReplayCompactor } from '../store/compact.ts'
+import { replaySubscription } from './replay.ts'
 import { LiveCoalescer } from './liveCoalescer.ts'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import os from 'node:os'
@@ -149,9 +149,6 @@ export interface RunningServer {
   close(): Promise<void>
 }
 
-const REPLAY_BATCH = 1000
-/** Events per frame when a client asks for a replay in groups. */
-const GROUP = 100
 /** How long a repeated request (same `rid`) still gets the first answer. */
 const REPEAT_TTL_MS = 5 * 60_000
 const REPEAT_MAX = 1000
@@ -372,7 +369,10 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     let deviceId: string | undefined
     const context: RpcContext = { peer }
     const send = (frame: ServerFrame) => {
-      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(frame))
+      if (ws.readyState !== ws.OPEN) return
+      // A stalled connection can resume from its last sequence rather than retain unlimited frames.
+      if (ws.bufferedAmount > 32 * 1024 * 1024) return ws.terminate()
+      ws.send(JSON.stringify(frame))
     }
     const stopOnRevoke = options.tokens.onRevoke((id) => {
       if (id !== deviceId) return
@@ -533,35 +533,25 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
         case 'subscribe': {
           unsubscribe?.()
           const replayStart = performance.now()
-          let replayed = 0
-          // Replay and attach the live listener in one synchronous step: appends are synchronous,
-          // so no event can slip between the last replayed row and the first live one.
-          let cursor = frame.afterSeq
-          const compactor = frame.compact
-            ? new ReplayCompactor(store.latestStateSeqs(frame.afterSeq))
-            : undefined
-          for (;;) {
-            const batch = store.readAfter(cursor, REPLAY_BATCH)
-            const sent = compactor ? compactor.compact(batch) : batch
-            if (frame.batch) {
-              for (let i = 0; i < sent.length; i += GROUP) {
-                send({ t: 'events', events: sent.slice(i, i + GROUP) })
-              }
-            } else for (const stored of sent) send({ t: 'event', stored })
-            replayed += sent.length
-            if (batch.length < REPLAY_BATCH) {
-              cursor = batch.at(-1)?.seq ?? cursor
-              break
-            }
-            cursor = batch.at(-1)!.seq
-          }
-          send({ t: 'caught-up', seq: cursor })
           const resume = frame.afterSeq === 0 ? 'cold' : 'warm'
-          options.telemetryRecorder?.('host.replay.ms', performance.now() - replayStart, { resume })
-          options.telemetryRecorder?.('host.replay.events', replayed, { resume })
           // Streamed text goes out a few times a second, not once per token.
           const live = new LiveCoalescer((stored) => send({ t: 'event', stored }))
-          const stop = store.subscribe((stored) => live.push(stored))
+          const stop = replaySubscription({
+            store,
+            afterSeq: frame.afterSeq,
+            compact: frame.compact,
+            batch: frame.batch,
+            send,
+            backlog: () => ws.bufferedAmount,
+            live: (stored) => live.push(stored),
+            failed: () => ws.terminate(),
+            caughtUp: (replayed) => {
+              options.telemetryRecorder?.('host.replay.ms', performance.now() - replayStart, {
+                resume,
+              })
+              options.telemetryRecorder?.('host.replay.events', replayed, { resume })
+            },
+          })
           unsubscribe = () => {
             stop()
             live.dispose()

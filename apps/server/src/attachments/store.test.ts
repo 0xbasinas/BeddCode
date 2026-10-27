@@ -24,10 +24,12 @@ describe('safeFileName', () => {
 })
 
 describe('AttachmentStore', () => {
-  it('saves each upload in its own directory and returns its path', () => {
+  it('saves each upload in its own directory and returns its path', async () => {
     const store = new AttachmentStore(tmp())
-    const a = store.save('notes.txt', Buffer.from('one'))
-    const b = store.save('notes.txt', Buffer.from('two'))
+    const [a, b] = await Promise.all([
+      store.save('notes.txt', Buffer.from('one')),
+      store.save('notes.txt', Buffer.from('two')),
+    ])
     expect(a.path).not.toBe(b.path)
     expect(path.basename(a.path)).toBe('notes.txt')
     expect(readFileSync(a.path, 'utf8')).toBe('one')
@@ -35,8 +37,10 @@ describe('AttachmentStore', () => {
     expect(store.get('missing')).toBeUndefined()
   })
 
-  it('rejects files over the size limit', () => {
+  it('rejects files over the size limit', async () => {
     const store = new AttachmentStore(tmp())
-    expect(() => store.save('big.bin', Buffer.alloc(MAX_ATTACHMENT_BYTES + 1))).toThrow('larger')
+    await expect(store.save('big.bin', Buffer.alloc(MAX_ATTACHMENT_BYTES + 1))).rejects.toThrow(
+      'larger',
+    )
   })
 })

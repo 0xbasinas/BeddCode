@@ -231,11 +231,11 @@ export function createRpcRouter(
       return created
     },
     'attachments.upload': async (p) => {
-      const saved = attachments.save(p.name, Buffer.from(p.dataBase64, 'base64'))
+      const saved = await attachments.save(p.name, Buffer.from(p.dataBase64, 'base64'))
       return { id: saved.id, name: saved.name, size: saved.size }
     },
     'attachments.fromFile': async (p) => {
-      const saved = attachments.save(p.path, await files.readAttachment(p.cwd, p.path))
+      const saved = await attachments.save(p.path, await files.readAttachment(p.cwd, p.path))
       return { id: saved.id, name: saved.name, size: saved.size }
     },
     'sessions.prompt': (p) => sessions.prompt(p.sessionId, p.text, p.attachments, p.mode),

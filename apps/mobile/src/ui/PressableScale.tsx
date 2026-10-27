@@ -31,7 +31,8 @@ export function PressableScale({
   const reads = typeof style === 'function'
   // Animated ignores a style that is a function, which would leave the animated values unwired on
   // a plain view (and the button invisible). So the function is resolved here, to an ordinary style.
-  const resolved = reads ? style({ pressed, hovered: false }) : style
+  const state = { pressed, hovered: false }
+  const resolved = reads ? style(state) : style
   return (
     <AnimatedPressable
       {...rest}

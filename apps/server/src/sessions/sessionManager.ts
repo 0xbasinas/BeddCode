@@ -1178,10 +1178,11 @@ export class SessionManager {
   /** Writes stored exchanges into the log the way a live conversation would have. */
   private appendTurns(sessionId: string, turns: HistoryTurn[], at: number) {
     turns.forEach((turn, index) => {
+      const events: SessionEvent[] = []
       const turnId = `turn-${index + 1}`
       const base = { sessionId, at, turnId }
-      this.deps.store.append({ ...base, type: 'message.delta', role: 'user', text: turn.user })
-      this.deps.store.append({ ...base, type: 'turn.started' })
+      events.push({ ...base, type: 'message.delta', role: 'user', text: turn.user })
+      events.push({ ...base, type: 'turn.started' })
       if (turn.events?.length) {
         // Tool ids only have to be unique within a turn where they came from.
         const open = new Set<string>()
@@ -1192,11 +1193,11 @@ export class SessionManager {
           if (event.at > 0) last = event.at
           if (event.type === 'tool.started') open.add(event.toolId)
           if (event.type === 'tool.completed') open.delete(event.toolId)
-          this.deps.store.append({ ...event, ...toolId, ...base, at: last } as SessionEvent)
+          events.push({ ...event, ...toolId, ...base, at: last } as SessionEvent)
         }
         // A tool still running when the conversation was stored never finished; it must not spin.
         for (const toolId of open) {
-          this.deps.store.append({
+          events.push({
             ...base,
             at: last,
             type: 'tool.completed',
@@ -1205,14 +1206,15 @@ export class SessionManager {
           })
         }
       } else if (turn.assistant) {
-        this.deps.store.append({
+        events.push({
           ...base,
           type: 'message.delta',
           role: 'assistant',
           text: turn.assistant,
         })
       }
-      this.deps.store.append({ ...base, type: 'turn.completed', reason: 'done' })
+      events.push({ ...base, type: 'turn.completed', reason: 'done' })
+      this.deps.store.appendMany(events)
     })
   }
 

@@ -118,7 +118,7 @@ describe('SessionManager: composer features', () => {
       )
       await manager.close()
       resumed = make()
-      const file = attachments.save('question.txt', Buffer.from('A question'))
+      const file = await attachments.save('question.txt', Buffer.from('A question'))
       await resumed.prompt(sessionId, 'Continue our discussion', [file.id])
       await vi.waitFor(() => expect(prompts.length).toBeGreaterThan(0))
       expect(starts[1]).toMatchObject({
@@ -323,7 +323,7 @@ describe('SessionManager: composer features', () => {
   it('sends attachments to the agent as file paths and records them on the message', async () => {
     const { store, attachments, manager, prompts } = setup()
     const { sessionId } = await manager.create({ instanceId: 'rec' })
-    const file = attachments.save('ingest.log', Buffer.from('boom'))
+    const file = await attachments.save('ingest.log', Buffer.from('boom'))
 
     await manager.prompt(sessionId, 'Why did this fail?', [file.id])
 
@@ -342,7 +342,7 @@ describe('SessionManager: composer features', () => {
     const { sessionId } = await manager.create({ instanceId: 'rec' })
     await expect(manager.prompt(sessionId, '   ')).rejects.toThrow('Nothing to send')
 
-    const file = attachments.save('shot.png', Buffer.from('x'))
+    const file = await attachments.save('shot.png', Buffer.from('x'))
     await manager.prompt(sessionId, '', [file.id])
     await vi.waitFor(() => expect(prompts).toHaveLength(1))
     expect(prompts[0]).toBe(`Attached files:\n- ${file.path}`)

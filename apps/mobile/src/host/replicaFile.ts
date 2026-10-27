@@ -26,7 +26,7 @@ export async function writeReplica(key: string, raw: string | null): Promise<voi
       return
     }
     if (!f.exists) f.create()
-    f.write(raw)
+    await f.write(raw)
   } catch {
     // Storage full or unavailable: carry on without a saved copy.
   }

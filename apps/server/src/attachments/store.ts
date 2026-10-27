@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
@@ -31,16 +31,16 @@ export class AttachmentStore {
   /** `root` is where uploads live; agents get read access to it so attachments never prompt. */
   constructor(readonly root: string) {}
 
-  save(name: string, data: Buffer): StoredAttachment {
+  async save(name: string, data: Buffer): Promise<StoredAttachment> {
     if (data.length > MAX_ATTACHMENT_BYTES) {
       throw new Error(`Attachment is larger than ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB`)
     }
     const id = randomUUID()
     const fileName = safeFileName(name)
     const dir = path.join(this.root, id)
-    mkdirSync(dir, { recursive: true })
+    await mkdir(dir, { recursive: true })
     const file = path.join(dir, fileName)
-    writeFileSync(file, data)
+    await writeFile(file, data)
     const attachment = { id, name: fileName, path: file, size: data.length }
     this.byId.set(id, attachment)
     return attachment

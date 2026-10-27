@@ -76,6 +76,25 @@ export interface SummaryRow {
   avg: number
 }
 
+/** Exact nearest-rank percentiles, aggregated in SQLite without returning every raw sample. */
+export function metricSummarySql(daily = false): string {
+  const dimensions = `${daily ? 'day, ' : ''}name, platform, route, resume`
+  return `WITH selected AS (
+    SELECT ${daily ? "strftime('%Y-%m-%d', t / 1000.0, 'unixepoch') AS day," : ''}
+      name, platform, COALESCE(route, '') AS route,
+      COALESCE(json_extract(tags, '$.resume'), '') AS resume, value
+    FROM samples WHERE t >= ?
+  ), ranked AS (
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY ${dimensions} ORDER BY value) AS position,
+      COUNT(*) OVER (PARTITION BY ${dimensions}) AS total
+    FROM selected
+  ) SELECT ${dimensions}, COUNT(*) AS count,
+    MAX(CASE WHEN position = (total + 1) / 2 THEN value END) AS p50,
+    MAX(CASE WHEN position = (95 * total + 99) / 100 THEN value END) AS p95
+    ${daily ? '' : ', MAX(value) AS max, AVG(value) AS avg'}
+  FROM ranked GROUP BY ${dimensions} ORDER BY ${daily ? 'day, ' : ''}name, platform, route, resume`
+}
+
 /** Groups samples by name, platform and route, with the figures worth looking at. */
 export function summarize(
   rows: {

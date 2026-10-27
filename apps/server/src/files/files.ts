@@ -37,6 +37,23 @@ const RESULT_LIMIT = 50
  * must stay inside it (also through symlinks and junctions).
  */
 export class FileService {
+  private readonly indexes = new Map<string, { until: number; paths: Promise<string[]> }>()
+
+  /** Watch notifications and our own writes invalidate cached search paths. */
+  invalidate(cwd: string) {
+    if (!this.indexes.size) return
+    // Match the canonical root used by search, including Windows casing and junctions.
+    try {
+      this.indexes.delete(this.indexKey(realpathSync(cwd)))
+    } catch {
+      this.indexes.delete(this.indexKey(path.resolve(cwd)))
+    }
+  }
+
+  private indexKey(root: string): string {
+    return process.platform === 'win32' ? root.toLowerCase() : root
+  }
+
   /** Tickets for showing media files; the HTTP route serves what they name. */
   readonly media = new MediaTickets()
 
@@ -90,26 +107,33 @@ export class FileService {
     }
 
     const entries: FileEntry[] = []
-    for (const d of dirents) {
-      if (HIDDEN.has(d.name)) continue
-      let isDir = d.isDirectory()
-      let size: number | undefined
-      if (d.isSymbolicLink()) {
-        // Show links as whatever they point to; skip broken ones.
-        const info = await stat(path.join(target, d.name)).catch(() => null)
-        if (!info) continue
-        isDir = info.isDirectory()
-        size = info.isFile() ? info.size : undefined
-      } else if (d.isFile()) {
-        size = (await stat(path.join(target, d.name)).catch(() => null))?.size
-      }
-      entries.push({
-        name: d.name,
-        type: isDir ? 'dir' : 'file',
-        size,
-        ignored: isDir && IGNORED_DIRS.has(d.name) ? true : undefined,
-      })
-    }
+    // Bound concurrent stats so a wide folder does not serialize every disk round trip.
+    let next = 0
+    await Promise.all(
+      Array.from({ length: Math.min(16, dirents.length) }, async () => {
+        while (next < dirents.length) {
+          const d = dirents[next++]!
+          if (HIDDEN.has(d.name)) continue
+          let isDir = d.isDirectory()
+          let size: number | undefined
+          if (d.isSymbolicLink()) {
+            // Show links as whatever they point to; skip broken ones.
+            const info = await stat(path.join(target, d.name)).catch(() => null)
+            if (!info) continue
+            isDir = info.isDirectory()
+            size = info.isFile() ? info.size : undefined
+          } else if (d.isFile()) {
+            size = (await stat(path.join(target, d.name)).catch(() => null))?.size
+          }
+          entries.push({
+            name: d.name,
+            type: isDir ? 'dir' : 'file',
+            size,
+            ignored: isDir && IGNORED_DIRS.has(d.name) ? true : undefined,
+          })
+        }
+      }),
+    )
     return entries.sort(
       (a, b) =>
         (a.type === b.type ? 0 : a.type === 'dir' ? -1 : 1) ||
@@ -162,6 +186,7 @@ export class FileService {
     }
     await mkdir(path.dirname(file), { recursive: true })
     await writeFile(file, content, 'utf8')
+    this.invalidate(cwd)
     return (await stat(file)).mtimeMs
   }
 
@@ -173,6 +198,7 @@ export class FileService {
       await mkdir(path.dirname(target), { recursive: true })
       await writeFile(target, '', { flag: 'wx' })
     }
+    this.invalidate(cwd)
   }
 
   /** Files whose path contains every word of the query, best matches first. */
@@ -182,34 +208,54 @@ export class FileService {
     const base = this.resolve(cwd, '')
 
     const found: { path: string; score: number }[] = []
+    for (const rel of await this.searchPaths(base)) {
+      const lower = rel.toLowerCase()
+      if (!words.every((w) => lower.includes(w))) continue
+      const name = path.posix.basename(rel).toLowerCase()
+      const score =
+        (words.every((w) => name.includes(w)) ? 0 : 1000) +
+        (name.startsWith(words[0]!) ? 0 : 100) +
+        rel.length
+      found.push({ path: rel, score })
+    }
+    return found
+      .sort((a, b) => a.score - b.score || a.path.localeCompare(b.path))
+      .slice(0, RESULT_LIMIT)
+      .map((f) => f.path)
+  }
+
+  private searchPaths(base: string): Promise<string[]> {
+    const key = this.indexKey(base)
+    const existing = this.indexes.get(key)
+    if (existing && existing.until > Date.now()) return existing.paths
+    const paths = this.scanPaths(base)
+    this.indexes.delete(key)
+    this.indexes.set(key, { until: Date.now() + 2000, paths })
+    if (this.indexes.size > 8) this.indexes.delete(this.indexes.keys().next().value!)
+    return paths
+  }
+
+  private async scanPaths(base: string): Promise<string[]> {
+    const found: string[] = []
     let visited = 0
     const queue = ['']
-    while (queue.length > 0 && visited < SEARCH_LIMIT) {
-      const dir = queue.shift()!
+    let cursor = 0
+    while (cursor < queue.length && visited < SEARCH_LIMIT) {
+      const dir = queue[cursor++]!
       const dirents = await readdir(path.join(base, dir), { withFileTypes: true }).catch(() => [])
       for (const d of dirents) {
         if (HIDDEN.has(d.name) || (d.isDirectory() && IGNORED_DIRS.has(d.name))) continue
+        if (visited >= SEARCH_LIMIT) break
         visited++
         const rel = dir ? `${dir}/${d.name}` : d.name
         if (d.isDirectory()) {
           queue.push(rel)
           continue
         }
-        const lower = rel.toLowerCase()
-        if (!words.every((w) => lower.includes(w))) continue
-        const name = d.name.toLowerCase()
-        // Name matches beat folder matches; earlier and shorter beats later and longer.
-        const score =
-          (words.every((w) => name.includes(w)) ? 0 : 1000) +
-          (name.startsWith(words[0]!) ? 0 : 100) +
-          rel.length
-        found.push({ path: rel, score })
+        found.push(rel)
       }
     }
     return found
-      .sort((a, b) => a.score - b.score || a.path.localeCompare(b.path))
-      .slice(0, RESULT_LIMIT)
-      .map((f) => f.path)
   }
 }
 

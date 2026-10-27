@@ -72,6 +72,20 @@ function project() {
 }
 
 describe('FileService.list', () => {
+  it('invalidates indexed search paths after creates and watcher notifications', async () => {
+    const dir = project()
+    expect(await files.search(dir, 'fresh')).toEqual([])
+    await files.create(dir, 'fresh.ts', 'file')
+    expect(await files.search(dir, 'fresh')).toEqual(['fresh.ts'])
+    writeFileSync(path.join(dir, 'fresh-external.ts'), '')
+    files.invalidate(dir)
+    expect(await files.search(dir, 'external')).toEqual(['fresh-external.ts'])
+    if (process.platform === 'win32') {
+      await files.create(dir.toUpperCase(), 'mixed-case.ts', 'file')
+      expect(await files.search(dir, 'mixed-case')).toEqual(['mixed-case.ts'])
+    }
+  })
+
   it('lists folders first, hides .git, and dims dependency folders', async () => {
     const dir = project()
     const root = await files.list(dir)

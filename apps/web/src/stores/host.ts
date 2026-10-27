@@ -3,7 +3,7 @@ import { create } from 'zustand'
 import {
   HostClient,
   startTelemetry,
-  applyEvent,
+  applyEvents,
   retryWhileCurrent,
   emptyReplica,
   decodeSnapshot,
@@ -209,7 +209,7 @@ function startHost(entry: HostEntry) {
     // A queued animation frame may outlive removing or re-pairing this host.
     if (clients.get(entry.key) !== client) return
     if (batch.length) {
-      patchRuntime(entry.key, (r) => ({ replica: batch.reduce(applyEvent, r.replica) }))
+      patchRuntime(entry.key, (r) => ({ replica: applyEvents(r.replica, batch) }))
       saver.touch()
     }
   }

@@ -11,7 +11,7 @@ import {
 import type { TranscriptItem } from '@beddcode/client-runtime'
 import { Markdown } from '../../ui/Markdown.tsx'
 import { PatchView } from '../../ui/PatchView.tsx'
-import { buildBlocks, totalChanges, type EditedFile } from '@beddcode/client-runtime'
+import { createBlockBuilder, totalChanges, type EditedFile } from '@beddcode/client-runtime'
 import { folderName } from '../../ui/format.ts'
 import { FileIcon } from '../files/FileIcon.tsx'
 import { ApprovalCard } from './ApprovalCard.tsx'
@@ -43,6 +43,7 @@ export const Transcript = memo(function Transcript({
   hostKey,
   jumpTo,
   readingKey,
+  live = false,
 }: {
   items: Item[]
   cwd: string
@@ -61,10 +62,12 @@ export const Transcript = memo(function Transcript({
   /** Draws this message if it is among the earlier, undrawn ones (a new `n` asks again). */
   jumpTo?: { id: string; n: number }
   readingKey?: string
+  live?: boolean
   /** A turn the user stopped; its fork button stays visible instead of waiting for a hover. */
   stoppedTurn?: number
 }) {
-  const blocks = useMemo(() => buildBlocks(items), [items])
+  const build = useMemo(() => createBlockBuilder(), [sessionId])
+  const blocks = useMemo(() => build(items), [build, items])
   // Where drawing starts. It stays put as the thread grows, so rows already on screen keep their place.
   const [view, setWindow] = useState(() => ({
     id: sessionId,
@@ -214,7 +217,13 @@ export const Transcript = memo(function Transcript({
         const canFork = forkable(turnNo, index)
         return (
           <div key={block.item.id} className={canFork ? 'has-fork' : undefined}>
-            <ItemView item={block.item} cwd={cwd} onApprove={onApprove} onAnswer={onAnswer} />
+            <ItemView
+              item={block.item}
+              cwd={cwd}
+              onApprove={onApprove}
+              onAnswer={onAnswer}
+              live={live && block.item === items.at(-1)}
+            />
             {canFork && forkButton(turnNo!)}
           </div>
         )
@@ -228,11 +237,13 @@ function ItemView({
   cwd,
   onApprove,
   onAnswer,
+  live,
 }: {
   item: Item
   cwd: string
   onApprove(requestId: string, optionId: string): void | Promise<void>
   onAnswer?(requestId: string, answers?: Record<string, string[]>): void | Promise<void>
+  live?: boolean
 }) {
   switch (item.kind) {
     case 'message':
@@ -250,7 +261,7 @@ function ItemView({
           {item.text && <div className="plain">{item.text}</div>}
         </div>
       ) : (
-        <Markdown text={item.text} />
+        <Markdown text={item.text} live={live} />
       )
     case 'tool':
       return <ToolGroup tools={[item]} />

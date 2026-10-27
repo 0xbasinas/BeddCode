@@ -15,8 +15,9 @@ import { Limiter } from '../src/limiter.ts'
 import {
   MAX_BODY_BYTES,
   RETENTION_DAYS,
-  dailySeries,
-  summarize,
+  metricSummarySql,
+  type SummaryRow,
+  type DailyPoint,
   validateBatch,
   type Batch,
 } from '../src/metrics.ts'
@@ -294,20 +295,10 @@ export class Metrics extends DurableObject<Env> {
 
   async summary(days: number) {
     const since = Date.now() - days * 24 * 3600_000
-    const rows = this.ctx.storage.sql
-      .exec(
-        "SELECT t, name, platform, route, json_extract(tags, '$.resume') AS resume, value FROM samples WHERE t >= ?",
-        since,
-      )
-      .toArray() as {
-      t: number
-      name: string
-      platform: string
-      route: string | null
-      resume: string | null
-      value: number
-    }[]
-    return { days, samples: rows.length, rows: summarize(rows), daily: dailySeries(rows) }
+    const sql = this.ctx.storage.sql
+    const rows = sql.exec(metricSummarySql(), since).toArray() as unknown as SummaryRow[]
+    const daily = sql.exec(metricSummarySql(true), since).toArray() as unknown as DailyPoint[]
+    return { days, samples: rows.reduce((n, row) => n + row.count, 0), rows, daily }
   }
 
   override async alarm(): Promise<void> {

@@ -68,7 +68,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     terminals: new TerminalManager(),
     files: new FileService(),
   }
-  const watchers = new FileWatchers()
+  const watchers = new FileWatchers((cwd) => workspace.files.invalidate(cwd))
   // Filled in once the host listens: the agent tools' bridge calls back on this port.
   let port = config.port
   let agentTools: AgentTools | undefined

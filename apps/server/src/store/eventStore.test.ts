@@ -15,6 +15,55 @@ const turnStarted = (sessionId: string): SessionEvent => ({
 })
 
 describe('EventStore', () => {
+  it('rolls back a failed batch without notifying clients or retaining uncommitted snapshot keys', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'bc-store-rollback-'))
+    const file = path.join(dir, 'events.db')
+    const store = new EventStore(file)
+    const inspect = new DatabaseSync(file)
+    try {
+      inspect.exec(
+        "CREATE TRIGGER fail_batch BEFORE INSERT ON events WHEN NEW.at = 99 BEGIN SELECT RAISE(ABORT, 'test failure'); END",
+      )
+      const seen: number[] = []
+      store.subscribe((stored) => seen.push(stored.seq))
+      const commands: SessionEvent = {
+        type: 'session.commands',
+        sessionId: 's',
+        at: 1,
+        commands: [],
+      }
+      expect(() => store.appendMany([commands, { ...turnStarted('s'), at: 99 }])).toThrow(
+        'test failure',
+      )
+      expect(store.readAfter(0)).toEqual([])
+      expect(seen).toEqual([])
+      store.append(commands)
+      expect(store.readAfter(0)).toHaveLength(1)
+      expect(seen).toHaveLength(1)
+    } finally {
+      inspect.close()
+      store.close()
+      // This directory was created specifically for this test beneath the OS temp directory.
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('commits a batch before notifying any listener and rejects invalid batches atomically', () => {
+    const store = new EventStore(':memory:')
+    const seen: number[] = []
+    store.subscribe((stored) => {
+      expect(store.lastSeq()).toBe(3)
+      seen.push(stored.seq)
+    })
+    const stored = store.appendMany([turnStarted('a'), turnStarted('b'), turnStarted('a')])
+    expect(stored.map((s) => s.seq)).toEqual([1, 2, 3])
+    expect(seen).toEqual([1, 2, 3])
+    expect(() => store.appendMany([turnStarted('c'), { type: 'invalid' } as never])).toThrow()
+    expect(store.lastSeq()).toBe(3)
+    expect(store.readAfter(0, 100, 2).map((s) => s.seq)).toEqual([1, 2])
+    store.close()
+  })
+
   it('assigns increasing sequence numbers and replays after a cursor', () => {
     const store = new EventStore(':memory:')
     const a = store.append(turnStarted('s1'))
