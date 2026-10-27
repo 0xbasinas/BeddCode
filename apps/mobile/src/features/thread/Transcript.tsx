@@ -28,7 +28,7 @@ import {
   X,
 } from 'phosphor-react-native'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native'
+import { ActivityIndicator, Animated, FlatList, Pressable, StyleSheet, View } from 'react-native'
 
 import { colors, radius } from '@/theme/tokens'
 import { Message } from './Message'
@@ -423,6 +423,9 @@ export function Transcript({
   const all = useMemo(() => entries(session.items), [session.items])
   const list = useRef<FlatList<Entry>>(null)
   const laidOut = useRef(false)
+  // Tables and code blocks settle their size a moment after they are drawn; the list stays hidden
+  // until then and eases in, rather than showing them jump.
+  const reveal = useRef(new Animated.Value(0)).current
   const stick = useRef(true)
   // A long thread draws only its latest rows first, so it opens at once, at the bottom.
   const [shown, setShown] = useState(OPENING_ROWS)
@@ -469,53 +472,61 @@ export function Transcript({
     ) : null
 
   return (
-    <FlatList
-      ref={list}
-      data={data}
-      keyExtractor={(e) => e.id}
-      ListHeaderComponent={
-        <>
-          {earlier}
-          {hidden === 0 ? header : null}
-        </>
-      }
-      ListFooterComponent={footer}
-      contentContainerStyle={styles.list}
-      keyboardShouldPersistTaps="handled"
-      initialNumToRender={OPENING_ROWS}
-      windowSize={13}
-      maxToRenderPerBatch={8}
-      maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-      onStartReached={hidden > 0 ? showEarlier : undefined}
-      onStartReachedThreshold={0.6}
-      onScroll={(e) => {
-        const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent
-        stick.current = contentSize.height - (contentOffset.y + layoutMeasurement.height) < 120
-      }}
-      scrollEventThrottle={64}
-      onContentSizeChange={(_width, height) => {
-        if (!laidOut.current && height > 0) {
-          laidOut.current = true
-          onFirstLayout?.()
-          // Older rows then go in above the visible ones; the list keeps its place and stays at the end.
-          setLaid(true)
+    <Animated.View style={{ flex: 1, opacity: reveal }}>
+      <FlatList
+        ref={list}
+        data={data}
+        keyExtractor={(e) => e.id}
+        ListHeaderComponent={
+          <>
+            {earlier}
+            {hidden === 0 ? header : null}
+          </>
         }
-        // Offsets past the end are clamped, so this lands on the last row even before it is measured.
-        if (stick.current) list.current?.scrollToOffset({ offset: height, animated: false })
-      }}
-      renderItem={({ item: entry }) => (
-        <Row
-          entry={entry}
-          cwd={cwd}
-          sessionId={session.id}
-          hostKey={hostKey}
-          onApprove={approve}
-          onAnswer={answer}
-          fresh={fresh.current.has(entry.id)}
-          live={session.status === 'running' && entry.id === all[all.length - 1]?.id}
-        />
-      )}
-    />
+        ListFooterComponent={footer}
+        contentContainerStyle={styles.list}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={OPENING_ROWS}
+        windowSize={13}
+        maxToRenderPerBatch={8}
+        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        onStartReached={hidden > 0 ? showEarlier : undefined}
+        onStartReachedThreshold={0.6}
+        onScroll={(e) => {
+          const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent
+          stick.current = contentSize.height - (contentOffset.y + layoutMeasurement.height) < 120
+        }}
+        scrollEventThrottle={64}
+        onContentSizeChange={(_width, height) => {
+          if (!laidOut.current && height > 0) {
+            laidOut.current = true
+            Animated.timing(reveal, {
+              toValue: 1,
+              duration: 140,
+              delay: 90,
+              useNativeDriver: true,
+            }).start()
+            onFirstLayout?.()
+            // Older rows then go in above the visible ones; the list keeps its place and stays at the end.
+            setLaid(true)
+          }
+          // Offsets past the end are clamped, so this lands on the last row even before it is measured.
+          if (stick.current) list.current?.scrollToOffset({ offset: height, animated: false })
+        }}
+        renderItem={({ item: entry }) => (
+          <Row
+            entry={entry}
+            cwd={cwd}
+            sessionId={session.id}
+            hostKey={hostKey}
+            onApprove={approve}
+            onAnswer={answer}
+            fresh={fresh.current.has(entry.id)}
+            live={session.status === 'running' && entry.id === all[all.length - 1]?.id}
+          />
+        )}
+      />
+    </Animated.View>
   )
 }
 
