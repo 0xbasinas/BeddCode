@@ -1,5 +1,5 @@
 import { useLocalSearchParams } from 'expo-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { View } from 'react-native'
 
 import { PaneBar, type Pane } from '@/features/panes/PaneBar'
@@ -18,6 +18,13 @@ export default function SessionScreen() {
   // Panes the user has opened stay mounted, so a terminal or an open file is still there on return.
   const [opened, setOpened] = useState<Set<Pane>>(new Set(['thread']))
   const keyboard = useKeyboardVisible()
+  // The navigator waits for this screen's first render before it starts sliding, so that render is
+  // left nearly empty and the conversation is mounted one frame later, while the slide is under way.
+  const [drawn, setDrawn] = useState(false)
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setDrawn(true))
+    return () => cancelAnimationFrame(frame)
+  }, [])
   const choose = (next: Pane) => {
     setPane(next)
     setOpened((s) => (s.has(next) ? s : new Set(s).add(next)))
@@ -27,7 +34,7 @@ export default function SessionScreen() {
     <Screen bottom={false}>
       <View style={{ flex: 1 }}>
         <View style={{ flex: 1, display: pane === 'thread' ? 'flex' : 'none' }}>
-          <ThreadPane sessionId={id} onOpenPane={choose} />
+          {drawn ? <ThreadPane sessionId={id} onOpenPane={choose} /> : null}
         </View>
         {(['terminal', 'files', 'git', 'browser'] as const).map((p) =>
           opened.has(p) ? (
