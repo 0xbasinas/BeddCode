@@ -483,8 +483,8 @@ export function Transcript({
       contentContainerStyle={styles.list}
       keyboardShouldPersistTaps="handled"
       initialNumToRender={OPENING_ROWS}
-      windowSize={5}
-      maxToRenderPerBatch={6}
+      windowSize={13}
+      maxToRenderPerBatch={8}
       maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
       onStartReached={hidden > 0 ? showEarlier : undefined}
       onStartReachedThreshold={0.6}
