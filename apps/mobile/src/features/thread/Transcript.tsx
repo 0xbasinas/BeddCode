@@ -341,6 +341,9 @@ function ChangesCard({ item }: { item: ChangesItem }) {
 
 /** How many rows are drawn at first; earlier ones are added as the reader scrolls up to them. */
 const FIRST_ROWS = 40
+// The first pass draws only this many of the newest rows, which are the ones on screen, so the
+// thread appears at once. The rest of FIRST_ROWS is added above them a moment later.
+const OPENING_ROWS = 8
 const MORE_ROWS = 40
 
 /** Same row, same content: nothing to draw again (the entries are rebuilt on every event). */
@@ -486,7 +489,7 @@ export function Transcript({
   const laidOut = useRef(false)
   const stick = useRef(true)
   // A long thread draws only its latest rows first, so it opens at once, at the bottom.
-  const [shown, setShown] = useState(FIRST_ROWS)
+  const [shown, setShown] = useState(OPENING_ROWS)
   const hidden = Math.max(0, all.length - shown)
   const data = useMemo(() => (hidden ? all.slice(hidden) : all), [all, hidden])
   const showEarlier = useCallback(() => setShown((n) => n + MORE_ROWS), [])
@@ -534,7 +537,7 @@ export function Transcript({
       ListFooterComponent={footer}
       contentContainerStyle={styles.list}
       keyboardShouldPersistTaps="handled"
-      initialNumToRender={14}
+      initialNumToRender={OPENING_ROWS}
       windowSize={5}
       maxToRenderPerBatch={6}
       maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
@@ -549,6 +552,8 @@ export function Transcript({
         if (!laidOut.current && height > 0) {
           laidOut.current = true
           onFirstLayout?.()
+          // Older rows go in above the visible ones; the list keeps its place and stays at the end.
+          setTimeout(() => setShown((n) => Math.max(n, FIRST_ROWS)), 150)
         }
         // Offsets past the end are clamped, so this lands on the last row even before it is measured.
         if (stick.current) list.current?.scrollToOffset({ offset: height, animated: false })
