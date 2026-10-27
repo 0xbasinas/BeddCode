@@ -16,7 +16,7 @@ import {
   setMode,
   setSessionDone,
   setSessionModel,
-  useRuntime,
+  useHostStore,
   useSession,
   useSessionHostKey,
 } from '@/host/store'
@@ -43,7 +43,12 @@ export function ThreadPane({
   const session = useSession(sessionId)
   const hostKey = useSessionHostKey(sessionId)
   const openedAt = useRef(now())
-  const runtime = useRuntime(hostKey)
+  // Only the parts of the host this screen shows, so another session streaming on the same host
+  // does not redraw this one.
+  const providers = useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.providers : undefined))
+  const synced = useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.synced : false))
+  const hostName =
+    useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.host?.name : undefined)) ?? 'Host'
   const [menu, setMenu] = useState(false)
   const [modeMenu, setModeMenu] = useState(false)
   const [attachMenu, setAttachMenu] = useState(false)
@@ -56,16 +61,15 @@ export function ThreadPane({
         <Header title="Session" />
         <View style={styles.missing}>
           <Muted size={13.5} style={{ textAlign: 'center' }}>
-            {runtime.synced ? 'This session is not available.' : 'Loading…'}
+            {synced ? 'This session is not available.' : 'Loading…'}
           </Muted>
         </View>
       </View>
     )
   }
 
-  const agent = runtime.providers.find((p) => p.id === session.instanceId)
+  const agent = providers?.find((p) => p.id === session.instanceId)
   const hasModels = (agent?.capabilities.models?.length ?? 0) > 0
-  const hostName = runtime.host?.name ?? 'Host'
   const subtitle = [
     hostName,
     session.projectless ? 'No project' : folderName(session.projectPath),
