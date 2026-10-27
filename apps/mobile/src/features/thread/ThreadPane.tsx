@@ -1,7 +1,7 @@
 import { doneMenuAction, effortLabel, endedByDecline, folderName } from '@beddcode/client-runtime'
 import { Checks, DotsThree, Stop as StopIcon, ArrowUUpLeft } from 'phosphor-react-native'
 import { now } from '@beddcode/client-runtime'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 
 import { Composer } from '@/features/composer/Composer'
@@ -50,6 +50,13 @@ export function ThreadPane({
   const synced = useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.synced : false))
   const hostName =
     useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.host?.name : undefined)) ?? 'Host'
+  // The composer (a text field and a row of icons) is the costliest part to mount; it waits until
+  // the slide into this screen is over so the slide stays smooth.
+  const [composerReady, setComposerReady] = useState(false)
+  useEffect(() => {
+    const timer = setTimeout(() => setComposerReady(true), 300)
+    return () => clearTimeout(timer)
+  }, [])
   const [menu, setMenu] = useState(false)
   const [modeMenu, setModeMenu] = useState(false)
   const [attachMenu, setAttachMenu] = useState(false)
@@ -198,47 +205,51 @@ export function ThreadPane({
           </View>
         )}
         <View style={styles.composer}>
-          <Composer
-            placeholder={
-              endedByDecline(session)
-                ? `You declined. Tell ${agent?.label ?? 'the agent'} what to do instead…`
-                : `Reply to ${agent?.label ?? 'the agent'}…`
-            }
-            running={running}
-            onStop={() => void interrupt(session.id)}
-            onSend={async (text, ids) => {
-              await prompt(session.id, text, ids)
-              useAttachments.getState().remove(
-                session.id,
-                draft.filter((a) => a.id && ids.includes(a.id)).map((a) => a.key),
-              )
-            }}
-            attachments={draft}
-            commands={session.commands}
-            onRemoveAttachment={(key) => useAttachments.getState().remove(session.id, [key])}
-            onAttach={() => setAttachMenu(true)}
-            mode={
-              currentMode || modes.length > 0
-                ? {
-                    label: currentMode?.label ?? 'Mode',
-                    onPress: modes.length > 1 ? () => setModeMenu(true) : undefined,
-                  }
-                : undefined
-            }
-            model={
-              hasModels || session.model
-                ? {
-                    label:
-                      agent?.capabilities.models?.find((m) => m.id === session.model)?.label ??
-                      session.model ??
-                      'Default model',
-                    detail: session.effort ? effortLabel(session.effort) : undefined,
-                    onPress: hasModels ? () => setModelMenu(true) : undefined,
-                  }
-                : undefined
-            }
-            context={contextPct !== undefined ? `Context ${contextPct}%` : undefined}
-          />
+          {composerReady ? (
+            <Composer
+              placeholder={
+                endedByDecline(session)
+                  ? `You declined. Tell ${agent?.label ?? 'the agent'} what to do instead…`
+                  : `Reply to ${agent?.label ?? 'the agent'}…`
+              }
+              running={running}
+              onStop={() => void interrupt(session.id)}
+              onSend={async (text, ids) => {
+                await prompt(session.id, text, ids)
+                useAttachments.getState().remove(
+                  session.id,
+                  draft.filter((a) => a.id && ids.includes(a.id)).map((a) => a.key),
+                )
+              }}
+              attachments={draft}
+              commands={session.commands}
+              onRemoveAttachment={(key) => useAttachments.getState().remove(session.id, [key])}
+              onAttach={() => setAttachMenu(true)}
+              mode={
+                currentMode || modes.length > 0
+                  ? {
+                      label: currentMode?.label ?? 'Mode',
+                      onPress: modes.length > 1 ? () => setModeMenu(true) : undefined,
+                    }
+                  : undefined
+              }
+              model={
+                hasModels || session.model
+                  ? {
+                      label:
+                        agent?.capabilities.models?.find((m) => m.id === session.model)?.label ??
+                        session.model ??
+                        'Default model',
+                      detail: session.effort ? effortLabel(session.effort) : undefined,
+                      onPress: hasModels ? () => setModelMenu(true) : undefined,
+                    }
+                  : undefined
+              }
+              context={contextPct !== undefined ? `Context ${contextPct}%` : undefined}
+            />
+          ) : (
+            <View style={styles.composerSpace} />
+          )}
         </View>
       </View>
       {agent && hasModels ? (
@@ -304,6 +315,7 @@ export function ThreadPane({
 const styles = StyleSheet.create({
   missing: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
   composer: { paddingHorizontal: 12, paddingTop: 4, paddingBottom: 6 },
+  composerSpace: { height: 92 },
   queue: { paddingHorizontal: 16, gap: 6, paddingBottom: 4 },
   queued: {
     flexDirection: 'row',
