@@ -290,11 +290,10 @@ function ChangesCard({ item }: { item: ChangesItem }) {
 }
 
 /** How many rows are drawn at first; earlier ones are added as the reader scrolls up to them. */
-const FIRST_ROWS = 40
-// The first pass draws only this many of the newest rows, which are the ones on screen, so the
-// thread appears at once. The rest of FIRST_ROWS is added above them in small steps, so no single
-// step holds up a tap.
-const OPENING_ROWS = 6
+const FIRST_ROWS = 12
+// Adding older rows in steps after the thread opened re-laid the list out every few frames, which
+// felt like lag inside the thread. It now draws the newest rows once and adds more only on scrolling up.
+const OPENING_ROWS = FIRST_ROWS
 const OPENING_STEP = 6
 const OPENING_PAUSE_MS = 120
 const MORE_ROWS = 40
