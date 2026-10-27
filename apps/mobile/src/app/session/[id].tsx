@@ -24,22 +24,26 @@ export default function SessionScreen() {
   const [drawn, setDrawn] = useState(false)
   useState(() => openMark('shell'))
   useEffect(() => {
-    const frame = requestAnimationFrame(() => setDrawn(true))
-    return () => cancelAnimationFrame(frame)
-  }, [])
-  useEffect(() => {
     if (drawn) openMark('thread')
   }, [drawn])
   const navigation = useNavigation()
-  useEffect(
-    () =>
-      (
-        navigation as unknown as {
-          addListener(event: 'transitionEnd', listener: () => void): () => void
-        }
-      ).addListener('transitionEnd', () => openMark('slide')),
-    [navigation],
-  )
+  // Mounting the conversation blocks the UI thread, which stretched the slide to over 500ms. It now
+  // mounts once the slide is done (a timer covers a missed event).
+  useEffect(() => {
+    const timer = setTimeout(() => setDrawn(true), 450)
+    const off = (
+      navigation as unknown as {
+        addListener(event: 'transitionEnd', listener: () => void): () => void
+      }
+    ).addListener('transitionEnd', () => {
+      openMark('slide')
+      setDrawn(true)
+    })
+    return () => {
+      clearTimeout(timer)
+      off()
+    }
+  }, [navigation])
   const choose = (next: Pane) => {
     setPane(next)
     setOpened((s) => (s.has(next) ? s : new Set(s).add(next)))
