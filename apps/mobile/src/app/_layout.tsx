@@ -2,13 +2,11 @@ import { Inter_400Regular } from '@expo-google-fonts/inter/400Regular'
 import { Inter_500Medium } from '@expo-google-fonts/inter/500Medium'
 import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold'
 import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono/400Regular'
-import { DarkTheme, Stack as NativeStack, ThemeProvider } from 'expo-router'
-import { Stack as JSStack } from 'expo-router/js-stack'
+import { DarkTheme, Stack, ThemeProvider } from 'expo-router'
 import { useFonts } from 'expo-font'
 import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
 import { useCallback, useEffect, useState } from 'react'
-import { Platform } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
@@ -21,26 +19,15 @@ import { LoadingScreen } from '@/ui/LoadingScreen'
 SplashScreen.preventAutoHideAsync()
 
 // One object for good: a fresh one per render would make the navigator reconsider every screen.
-// iOS keeps the native stack, whose swipe back already follows the finger.
-const nativeOptions = {
+// The native stack: its slide runs on the UI thread, so it stays smooth even while the JavaScript
+// side is busy drawing the next screen (a JavaScript stack drops frames when it is).
+const screenOptions = {
   headerShown: false,
   contentStyle: { backgroundColor: colors.panel },
   animation: 'slide_from_right',
   animationDuration: 240,
   // Swipe back from anywhere on the screen, not just its edge (iOS).
   fullScreenGestureEnabled: true,
-} as const
-
-// Android's native stack only reacts once the system back gesture is let go. This one is drawn by
-// the app, so the screen follows the finger from the left edge. The first stretch of the edge
-// belongs to the system's own back gesture, so this one starts a little further in.
-const androidOptions = {
-  headerShown: false,
-  cardStyle: { backgroundColor: colors.panel },
-  animation: 'slide_from_right',
-  gestureEnabled: true,
-  gestureResponseDistance: 80,
-  gestureVelocityImpact: 0.3,
 } as const
 
 const theme = {
@@ -118,11 +105,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ThemeProvider value={theme}>
           <StatusBar style="light" />
-          {Platform.OS === 'android' ? (
-            <JSStack screenOptions={androidOptions} />
-          ) : (
-            <NativeStack screenOptions={nativeOptions} />
-          )}
+          <Stack screenOptions={screenOptions} />
           {gone ? null : <LoadingScreen status={status} done={done} onGone={onGone} />}
         </ThemeProvider>
       </SafeAreaProvider>

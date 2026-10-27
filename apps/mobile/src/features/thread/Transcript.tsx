@@ -33,6 +33,7 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-
 import Markdown from '@ronradtke/react-native-markdown-display'
 
 import { colors, fonts, radius } from '@/theme/tokens'
+import { sharedMarkdown } from './sharedMarkdown'
 import { Diffstat } from '@/ui/Diffstat'
 import { FadeIn } from '@/ui/FadeIn'
 import { animateLayout } from '@/ui/layoutAnimation'
@@ -117,6 +118,9 @@ const markdownStyles = {
   th: { borderColor: colors.border },
   td: { borderColor: colors.border },
 } as const
+
+// One parser and renderer for every message (see sharedMarkdown).
+const markdown = sharedMarkdown(markdownStyles)
 
 const TOOL_ICONS = {
   command: TerminalWindow,
@@ -384,13 +388,13 @@ const StreamingText = memo(function StreamingText({ text }: { text: string }) {
   return (
     <>
       {head ? <SettledMarkdown>{head}</SettledMarkdown> : null}
-      <Markdown style={markdownStyles}>{tail}</Markdown>
+      <Markdown {...markdown}>{tail}</Markdown>
     </>
   )
 })
 
 const SettledMarkdown = memo(function SettledMarkdown({ children }: { children: string }) {
-  return <Markdown style={markdownStyles}>{children}</Markdown>
+  return <Markdown {...markdown}>{children}</Markdown>
 })
 
 /** Rows that have already eased in, so scrolling back to one does not play it again. */
@@ -420,7 +424,7 @@ const Row = memo(
           ) : live ? (
             <StreamingText text={item.text} />
           ) : (
-            <Markdown style={markdownStyles}>{item.text}</Markdown>
+            <Markdown {...markdown}>{item.text}</Markdown>
           )
         case 'approval':
           return <ApprovalCard item={item} cwd={cwd} onApprove={onApprove} />
