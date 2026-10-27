@@ -11,7 +11,7 @@ import {
 } from 'phosphor-react-native'
 import { useEffect, useMemo, useState } from 'react'
 import type { SlashCommand } from '@beddcode/contracts'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { Alert, Pressable, StyleSheet, View } from 'react-native'
 
 import { Composer } from '@/features/composer/Composer'
 import { ModelPicker } from '@/features/composer/ModelPicker'
@@ -217,8 +217,12 @@ export default function NewSessionScreen() {
       workspace: useWorktree ? { mode: 'worktree' } : undefined,
       agentTools: agentTools || undefined,
     })
-    await prompt(sessionId, value)
+    // The session opens as soon as it exists; the first message follows while the screen slides in,
+    // instead of the screen waiting for the host to accept it.
     router.replace({ pathname: '/session/[id]', params: { id: sessionId } })
+    prompt(sessionId, value).catch((e) =>
+      Alert.alert('Message not sent', e instanceof Error ? e.message : 'Try sending it again.'),
+    )
   }
 
   const chip = (icon: typeof Robot, label: string, which: Which, disabled?: boolean) => (
