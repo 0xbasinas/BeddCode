@@ -24,7 +24,9 @@ SplashScreen.preventAutoHideAsync()
 const screenOptions = {
   headerShown: false,
   contentStyle: { backgroundColor: colors.panel },
-  animation: 'slide_from_right',
+  // Android's own slide_from_right lasts the system's medium time (~450ms) whatever the duration
+  // below says; ios_from_right is the same push at the short time (~200ms).
+  animation: 'ios_from_right',
   animationDuration: 240,
   // Swipe back from anywhere on the screen, not just its edge (iOS).
   fullScreenGestureEnabled: true,
