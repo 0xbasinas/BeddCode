@@ -82,14 +82,10 @@ export function DesktopPane({ sessionId, working }: { sessionId: string; working
     )
   }
 
-  const state = v.paused
-    ? 'You have the controls'
-    : v.active
-      ? 'Agent is using the desktop'
-      : 'Idle'
+  const state = v.paused ? 'You control' : v.active ? 'Agent working' : 'Idle'
   return (
     <div className="desktop-pane">
-      <div className="desktop-bar">
+      <div className="pane-head desktop-bar">
         <span className={`desktop-state ${v.paused ? 'paused' : v.active ? 'active' : ''}`}>
           {state}
         </span>

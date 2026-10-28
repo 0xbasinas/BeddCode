@@ -4,11 +4,13 @@
   display: flex;
   flex-direction: column;
   gap: calc(8px * var(--ui-scale));
-  padding: calc(10px * var(--ui-scale)) calc(14px * var(--ui-scale));
+  padding: 0 calc(14px * var(--ui-scale)) calc(10px * var(--ui-scale));
 }
+/* Also a .pane-head: it clears the collapse button at the start of the header row. */
 .desktop-bar {
-  display: flex;
-  align-items: center;
+  height: var(--pane-head);
+  min-height: var(--pane-head);
+  padding-right: 0;
   gap: calc(6px * var(--ui-scale));
 }
 .desktop-spacer {
@@ -26,6 +28,8 @@
 }
 .desktop-btn {
   display: inline-flex;
+  flex-shrink: 0;
+  white-space: nowrap;
   align-items: center;
   gap: calc(5px * var(--ui-scale));
   padding: calc(4px * var(--ui-scale)) calc(10px * var(--ui-scale));
