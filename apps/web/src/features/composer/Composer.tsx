@@ -6,7 +6,7 @@ import {
   type DragEvent,
   type ReactNode,
 } from 'react'
-import { ArrowUp, Paperclip, Plus, Square, X } from 'lucide-react'
+import { ArrowUp, ChevronRight, Paperclip, Plus, Square, X } from 'lucide-react'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import { formatBytes } from '../../ui/format.ts'
 import type { SlashCommand } from '@beddcode/contracts'
@@ -18,7 +18,8 @@ import {
 } from './attachments.ts'
 import { insertCommand, insertMention, matchCommands, mentionAt } from '@beddcode/client-runtime'
 import { hostRequest } from '../../stores/host.ts'
-import { FileIcon } from '../files/FileIcon.tsx'
+import { FileIcon, FolderIcon } from '../files/FileIcon.tsx'
+import { mentionItems, type MentionItem } from './mentionItems.ts'
 import { ModeMenu, type ModeItem } from './Menus.tsx'
 
 interface ComposerProps {
@@ -159,18 +160,19 @@ export function Composer(props: ComposerProps) {
   const [caret, setCaret] = useState(0)
   const mention = props.cwd && !slashOpen ? mentionAt(props.text, caret) : undefined
   const mentionKey = mention ? `${mention.start}:${mention.query}` : ''
-  const [paths, setPaths] = useState<{ key: string; list: string[] }>()
+  const [paths, setPaths] = useState<{ key: string; list: MentionItem[] }>()
   const [mentionIndex, setMentionIndex] = useState(0)
   const [mentionClosed, setMentionClosed] = useState<string>()
   useEffect(() => {
-    if (!mention?.query || !props.cwd) return
+    if (!mention || !props.cwd) return
     let cancelled = false
+    const cwd = props.cwd
     const timer = setTimeout(() => {
-      hostRequest(props.hostKey, 'files.search', { cwd: props.cwd!, query: mention.query }).then(
-        (r) => !cancelled && setPaths({ key: mentionKey, list: r.paths.slice(0, 8) }),
+      mentionItems(props.hostKey, cwd, mention.query).then(
+        (list) => !cancelled && setPaths({ key: mentionKey, list }),
         () => !cancelled && setPaths({ key: mentionKey, list: [] }),
       )
-    }, 120)
+    }, 100)
     return () => {
       cancelled = true
       clearTimeout(timer)
@@ -179,9 +181,10 @@ export function Composer(props: ComposerProps) {
   const mentionPaths = paths?.key === mentionKey ? paths.list : []
   const mentionOpen = mentionPaths.length > 0 && mentionClosed !== mentionKey
   useEffect(() => setMentionIndex(0), [mentionKey])
-  const chooseMention = (path: string) => {
+  const mentionDir = mention ? mention.query.slice(0, mention.query.lastIndexOf('/') + 1) : ''
+  const chooseMention = (item: MentionItem) => {
     if (!mention) return
-    const next = insertMention(props.text, caret, mention, path)
+    const next = insertMention(props.text, caret, mention, item.path, item.dir)
     props.onTextChange(next.text)
     setCaret(next.caret)
     requestAnimationFrame(() => box.current?.setSelectionRange(next.caret, next.caret))
@@ -267,23 +270,37 @@ export function Composer(props: ComposerProps) {
         )}
         {mentionOpen && (
           <div className="slash-menu" role="listbox" aria-label="Files">
-            {mentionPaths.map((p, i) => (
+            <div className="mention-head muted">
+              {mentionDir ? `@${mentionDir}` : 'Files and folders'}
+              <span className="spacer" />
+              <span>↑↓ to move · Tab to pick · Esc to close</span>
+            </div>
+            {mentionPaths.map((item, i) => (
               <button
-                key={p}
+                key={item.path}
                 role="option"
                 aria-selected={i === mentionIndex}
                 className={`slash-row mention-row ${i === mentionIndex ? 'active' : ''}`}
                 onMouseEnter={() => setMentionIndex(i)}
                 onMouseDown={(e) => {
                   e.preventDefault()
-                  chooseMention(p)
+                  chooseMention(item)
                 }}
               >
-                <FileIcon name={p} />
-                <span className="mention-name">{p.split('/').pop()}</span>
+                {item.dir ? <FolderIcon name={item.name} /> : <FileIcon name={item.name} />}
+                <span className="mention-name">{item.name}</span>
                 <span className="slash-desc">
-                  {p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : ''}
+                  {item.path.includes('/')
+                    ? item.path.slice(0, item.path.lastIndexOf('/') + 1)
+                    : ''}
                 </span>
+                {item.dir ? (
+                  <ChevronRight size={14} className="muted" />
+                ) : (
+                  item.size !== undefined && (
+                    <span className="slash-kind">{formatBytes(item.size)}</span>
+                  )
+                )}
               </button>
             ))}
           </div>

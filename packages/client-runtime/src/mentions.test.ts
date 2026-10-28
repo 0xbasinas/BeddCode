@@ -25,6 +25,10 @@ describe('insertMention', () => {
       caret: 20,
     })
   })
+  it('leaves a folder open for browsing into', () => {
+    const m = mentionAt('see @sr', 7)!
+    expect(insertMention('see @sr', 7, m, 'src', true)).toEqual({ text: 'see @src/', caret: 9 })
+  })
   it('keeps the text after the caret and quotes paths with spaces', () => {
     const m = mentionAt('see @ap and more', 7)!
     expect(insertMention('see @ap and more', 7, m, 'my file.ts')).toEqual({

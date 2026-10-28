@@ -5872,3 +5872,12 @@ button.tcall-row:hover .tcall-chevron,
   font-size: 13px;
   flex: none;
 }
+.mention-head {
+  display: flex;
+  gap: 8px;
+  padding: 4px 10px 6px;
+  font-size: 11.5px;
+}
+.mention-row .slash-desc {
+  text-align: right;
+}

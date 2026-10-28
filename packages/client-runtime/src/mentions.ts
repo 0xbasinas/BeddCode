@@ -17,10 +17,12 @@ export function insertMention(
   caret: number,
   mention: Mention,
   path: string,
+  dir = false,
 ): { text: string; caret: number } {
   const quoted = /\s/.test(path) ? `"${path}"` : path
-  const inserted = `@${quoted} `
-  const rest = text.slice(caret).replace(/^ /, '')
+  // A folder is left open, so the next keystroke browses into it.
+  const inserted = dir ? `@${path}/` : `@${quoted} `
+  const rest = dir ? text.slice(caret) : text.slice(caret).replace(/^ /, '')
   return {
     text: text.slice(0, mention.start) + inserted + rest,
     caret: mention.start + inserted.length,
