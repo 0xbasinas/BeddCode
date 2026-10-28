@@ -1839,21 +1839,16 @@ button.chip-lite:hover {
   font-size: calc(12px * var(--ui-scale));
 }
 .file-icon {
-  position: relative;
-  display: inline-grid;
-  place-items: center;
-  color: var(--text-muted);
+  display: block;
   flex: none;
+  /* Minimal: the icons are drawn in colour, shown in grey, and come up on hover. */
+  filter: grayscale(1);
+  opacity: 0.7;
+  transition: opacity 0.12s;
 }
-.file-label {
-  position: absolute;
-  bottom: -1px;
-  right: calc(-3px * var(--ui-scale));
-  font-size: calc(6px * var(--ui-scale));
-  font-weight: 700;
-  background: var(--bg-panel);
-  color: var(--text-muted);
-  line-height: 1;
+.tree-row:hover .file-icon,
+.tree-row.active .file-icon {
+  opacity: 1;
 }
 .editor-col {
   display: flex;

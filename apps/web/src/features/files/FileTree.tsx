@@ -1,6 +1,6 @@
-import { ChevronDown, ChevronRight, Folder, FolderOpen } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { EMPTY_FOLDER, useFiles } from './filesStore.ts'
-import { FileIcon } from './FileIcon.tsx'
+import { FileIcon, FolderIcon } from './FileIcon.tsx'
 import { FileRow } from './FileRow.tsx'
 
 const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name)
@@ -45,7 +45,7 @@ function Level({
                 aria-expanded={Boolean(expanded)}
               >
                 {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                {expanded ? <FolderOpen size={16} /> : <Folder size={16} />}
+                <FolderIcon name={entry.name} open={Boolean(expanded)} />
                 <span className="tree-name">{entry.name}</span>
               </button>
               {expanded && <Level cwd={cwd} dir={path} depth={depth + 1} onAttach={onAttach} />}
