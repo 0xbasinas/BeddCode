@@ -25,6 +25,7 @@ const caps = (resume: boolean): ProviderCapabilities => ({
 function resumableAdapter(opts: { resume: boolean; status?: ProviderInstance['status'] }) {
   const starts: StartSessionInput[] = []
   const closed: string[] = []
+  const interrupted: string[] = []
   const instance: ProviderInstance = {
     id: 'stub',
     kind: 'acp',
@@ -57,7 +58,9 @@ function resumableAdapter(opts: { resume: boolean; status?: ProviderInstance['st
             reason: 'done',
           })
         },
-        interrupt: async () => {},
+        interrupt: async () => {
+          interrupted.push(input.sessionId)
+        },
         setPermissionMode: async () => {},
         respondToApproval: async () => {},
         async close() {
@@ -68,7 +71,7 @@ function resumableAdapter(opts: { resume: boolean; status?: ProviderInstance['st
       return session
     },
   }
-  return { adapter, starts, closed }
+  return { adapter, starts, closed, interrupted }
 }
 
 function setup(opts: Parameters<typeof resumableAdapter>[0]) {
@@ -123,6 +126,38 @@ describe('SessionManager', () => {
     expect(store.readSession(sessionId).map((e) => e.event.type)).toEqual(['session.deleted'])
     expect(store.readSession(other.sessionId).length).toBeGreaterThan(0)
     await expect(manager.delete(sessionId)).rejects.toThrow('Unknown session')
+  })
+  it('stops an agent’s helpers with it only when asked, and always when it is deleted', async () => {
+    const { manager, interrupted } = setup({ resume: true })
+    const parent = await manager.create({ instanceId: 'stub' })
+    const child = await manager.create(
+      { instanceId: 'stub' },
+      { parent: { sessionId: parent.sessionId, depth: 1 } },
+    )
+    const grandchild = await manager.create(
+      { instanceId: 'stub' },
+      { parent: { sessionId: child.sessionId, depth: 2 } },
+    )
+    const other = await manager.create({ instanceId: 'stub' })
+
+    // Stopping a turn to change direction leaves the helpers working.
+    await manager.interrupt(parent.sessionId)
+    expect(interrupted).toEqual([parent.sessionId])
+
+    interrupted.length = 0
+    await manager.interrupt(parent.sessionId, { includeChildren: true })
+    expect(interrupted.sort()).toEqual(
+      [parent.sessionId, child.sessionId, grandchild.sessionId].sort(),
+    )
+
+    interrupted.length = 0
+    await manager.interrupt(child.sessionId, { includeChildren: true })
+    expect(interrupted.sort()).toEqual([child.sessionId, grandchild.sessionId].sort())
+    expect(interrupted).not.toContain(other.sessionId)
+
+    interrupted.length = 0
+    await manager.delete(parent.sessionId)
+    expect(interrupted.sort()).toEqual([child.sessionId, grandchild.sessionId].sort())
   })
   it('refuses to start a session on a provider that is not ready', async () => {
     const { manager } = setup({ resume: true, status: 'needs-sign-in' })

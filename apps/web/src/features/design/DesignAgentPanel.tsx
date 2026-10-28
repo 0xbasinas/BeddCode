@@ -1,3 +1,4 @@
+import {} from '../../ui/AgentMark.tsx'
 import { useEffect, useMemo, useState } from 'react'
 import type { AgentPreview, SlashCommand } from '@beddcode/contracts'
 import { MousePointer2, Plus } from 'lucide-react'
@@ -199,6 +200,7 @@ export function DesignAgentPanel({ hostKey }: { hostKey: string }) {
               agent && (
                 <>
                   <ConfigMenu
+                    agent={agent.id}
                     options={configOptions}
                     onChange={(id, value) =>
                       setConfigState({
@@ -208,6 +210,7 @@ export function DesignAgentPanel({ hostKey }: { hostKey: string }) {
                     }
                   />
                   <ModelMenu
+                    agent={agent.id}
                     models={agent.capabilities.models ?? []}
                     efforts={agent.capabilities.efforts ?? []}
                     value={choice}

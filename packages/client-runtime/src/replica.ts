@@ -149,6 +149,10 @@ export interface SessionView {
   /** Modes reported by the agent for this session, when it reports any. */
   /** How much of the agent's context window is in use, when the agent says. */
   context?: { used: number; size: number }
+  /** How a session another agent started said its task ended (its report_result), this task. */
+  result?: { status: 'done' | 'blocked' | 'failed'; summary: string }
+  /** Everything the agent has used so far, as it reports it: all tokens, and cost when it says. */
+  usage?: { tokens: number; costUsd: number }
   modes?: { id: string; label: string; description?: string; dangerous?: boolean }[]
   currentModeId?: string
 }
@@ -319,6 +323,20 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     case 'session.context':
       next.context = { used: e.used, size: e.size }
       break
+    case 'session.result':
+      next.result = { status: e.status, summary: e.summary }
+      break
+    case 'session.usage':
+      next.usage = {
+        tokens:
+          (current.usage?.tokens ?? 0) +
+          e.inputTokens +
+          e.outputTokens +
+          (e.cacheReadTokens ?? 0) +
+          (e.cacheWriteTokens ?? 0),
+        costUsd: (current.usage?.costUsd ?? 0) + (e.costUsd ?? 0),
+      }
+      break
     case 'session.provider-session':
       return { ...state, lastSeq: stored.seq }
     case 'session.modes':
@@ -326,6 +344,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.currentModeId = e.currentModeId
       break
     case 'turn.started':
+      next.result = undefined
       next.done = undefined
       next.turns = current.turns + 1
       next.status = 'running'

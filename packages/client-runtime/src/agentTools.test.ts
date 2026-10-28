@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
+  agentRunStatus,
+  agentSteps,
   agentToolName,
   agentToolView,
   childActivity,
+  childOverlaps,
   childPhase,
   childSessions,
+  childrenUsage,
   isAgentTool,
   latestReply,
   looseJson,
@@ -241,5 +245,206 @@ describe('childSessions', () => {
     const b = session({ id: 'b', createdAt: 2 })
     const c = session({ id: 'c', parent: undefined })
     expect(childSessions('parent', { a, b, c }).map((s) => s.id)).toEqual(['b', 'a'])
+  })
+})
+
+const changed = (after: string, paths: string[], reverted = false) =>
+  ({
+    kind: 'changes',
+    id: after,
+    turnId: 't',
+    before: 'b',
+    after,
+    files: paths.map((path) => ({ path, status: 'M', added: 1, removed: 0 })),
+    reverted,
+  }) as SessionView['items'][number]
+
+describe('helpers as a group', () => {
+  it('adds up what they used', () => {
+    expect(childrenUsage([])).toEqual({ tokens: 0, costUsd: 0 })
+    expect(
+      childrenUsage([
+        session({ id: 'a', usage: { tokens: 1200, costUsd: 0.02 } }),
+        session({ id: 'b', usage: { tokens: 300, costUsd: 0 } }),
+        session({ id: 'c' }),
+      ]),
+    ).toEqual({ tokens: 1500, costUsd: 0.02 })
+  })
+
+  it('finds files two helpers both changed, and ignores undone changes', () => {
+    const a = session({ id: 'a', title: 'Add login', items: [changed('1', ['x.ts', 'a.ts'])] })
+    const b = session({ id: 'b', title: 'Fix nav', items: [changed('2', ['x.ts'])] })
+    const c = session({ id: 'c', title: 'Docs', items: [changed('3', ['README.md'])] })
+    expect(childOverlaps([a, b, c])).toEqual({
+      a: [{ title: 'Fix nav', files: ['x.ts'] }],
+      b: [{ title: 'Add login', files: ['x.ts'] }],
+    })
+    const undone = session({ ...b, items: [changed('2', ['x.ts'], true)] })
+    expect(childOverlaps([a, undone, c])).toEqual({})
+  })
+})
+
+describe('review_changes and waiting on several', () => {
+  it('shows a review as a start of the reviewer, not of the session it reviews', () => {
+    const view = agentToolView(
+      tool({
+        title: 'Using beddcode · review_changes',
+        input: '{"session_id":"builder","focus":"tests"}',
+        output: JSON.stringify({ session_id: 'reviewer', agent: 'claude', reviewing: 'builder' }),
+      }),
+    )!
+    expect(view).toMatchObject({
+      name: 'review_changes',
+      verb: 'Started a review of',
+      prompt: 'tests',
+    })
+    expect(view.child).toMatchObject({ id: 'reviewer', agent: 'claude' })
+  })
+
+  it('lists the sessions of a wait on several, and whether they were done', () => {
+    const view = agentToolView(
+      tool({
+        title: 'Using beddcode · wait_for',
+        input: '{"session_ids":["a","b"],"mode":"all"}',
+        output: JSON.stringify({
+          done: false,
+          sessions: [
+            { session_id: 'a', title: 'One', agent: 'codex', status: 'idle', done: true },
+            { session_id: 'b', title: 'Two', agent: 'acp:grok', status: 'running', done: false },
+          ],
+        }),
+      }),
+    )!
+    expect(view.child).toBeUndefined()
+    expect(view.stillWorking).toBe(true)
+    expect(view.listed).toEqual([
+      { label: 'One', detail: 'codex · Done', sessionId: 'a' },
+      { label: 'Two', detail: 'acp:grok · Working', sessionId: 'b' },
+    ])
+  })
+})
+
+describe('calls made through Grok’s use_tool', () => {
+  const wrap = (name: string, input: object, answer?: object) => ({
+    title: 'use_tool',
+    input: JSON.stringify({ tool_name: `beddcode__${name}`, tool_input: input }),
+    ...(answer
+      ? {
+          output: JSON.stringify({
+            type: 'MCP',
+            tool_name: name,
+            server_name: 'beddcode',
+            output: { OkayOutput: JSON.stringify(answer, null, 2) },
+          }),
+        }
+      : {}),
+  })
+
+  it('knows the call from its input while the title is still use_tool', () => {
+    expect(agentToolName(wrap('wait_for', { session_id: 'a' }))).toBe('wait_for')
+    expect(
+      agentToolName({ title: 'use_tool', input: '{"tool_name":"github__stop"}' }),
+    ).toBeUndefined()
+  })
+
+  it('reads the session from the wrapped arguments and answer', () => {
+    const view = agentToolView(
+      tool({
+        ...wrap(
+          'wait_for',
+          { session_id: 'kid' },
+          { session_id: 'kid', title: 'Builder', agent: 'claude', status: 'idle', reply: 'ok' },
+        ),
+      }),
+    )!
+    expect(view.child).toMatchObject({ id: 'kid', title: 'Builder', agent: 'claude' })
+    expect(view.reply).toBe('ok')
+    const sent = agentToolView(
+      tool({ ...wrap('send_message', { session_id: 'kid', text: 'go' }) }),
+    )!
+    expect(sent.child?.id).toBe('kid')
+    expect(sent.prompt).toBe('go')
+  })
+
+  it('gives parallel starts each their own child by title', () => {
+    const kids = ['Builder', 'Reviewer', 'Tester'].map((title, i) =>
+      session({ id: title, title, parent: { sessionId: 'p', depth: 1 }, createdAt: 10_000 + i }),
+    )
+    const sessions = Object.fromEntries(kids.map((k) => [k.id, k]))
+    const ids = ['Builder', 'Reviewer', 'Tester'].map(
+      (title) =>
+        agentToolView(
+          tool({
+            ...wrap('start_session', { agent: 'claude', prompt: 'x', title }),
+            startedAt: 10_000,
+            status: 'running',
+          }),
+          { parentId: 'p', sessions },
+        )!.child?.id,
+    )
+    expect(ids).toEqual(['Builder', 'Reviewer', 'Tester'])
+  })
+})
+
+describe('a run of calls as steps', () => {
+  const call = (name: string, input: object, answer?: object, over: Partial<Tool> = {}) =>
+    tool({
+      id: `${name}-${Math.random()}`,
+      title: `Using beddcode · ${name}`,
+      input: JSON.stringify(input),
+      ...(answer ? { output: JSON.stringify(answer) } : {}),
+      ...over,
+    })
+  const kid = { session_id: 'kid', title: 'Builder', agent: 'claude' }
+
+  it('makes a message and every wait for its answer one step', () => {
+    const steps = agentSteps([
+      call('start_session', { agent: 'claude', prompt: 'go', title: 'Builder' }, kid),
+      call(
+        'wait_for',
+        { session_id: 'kid' },
+        { ...kid, status: 'idle', reply: 'READY', done: true },
+      ),
+      call('send_message', { session_id: 'kid', text: 'add mean' }, { ...kid, state: 'started' }),
+      call('wait_for', { session_id: 'kid' }, { ...kid, status: 'running', done: false }),
+      call(
+        'wait_for',
+        { session_id: 'kid' },
+        { ...kid, status: 'idle', reply: 'Added', done: true },
+      ),
+      call(
+        'wait_for',
+        { session_id: 'kid' },
+        { ...kid, status: 'idle', reply: 'Again', done: true },
+      ),
+    ])
+    expect(steps.map((s) => [s.kind, s.verb, s.calls, s.reply])).toEqual([
+      ['start', 'Started', 2, 'READY'],
+      ['ask', 'Asked', 3, 'Added'],
+      // The answer was in; a wait after it stands alone.
+      ['wait', 'Waited for', 1, 'Again'],
+    ])
+    expect(steps[1]!.text).toBe('add mean')
+  })
+
+  it('keeps lists and multi-waits as their own lines, and says what is going on', () => {
+    const steps = agentSteps([
+      call('list_agents', {}, { items: [{ agent: 'codex', label: 'Codex' }] }),
+      call('wait_for', { session_ids: ['a', 'b'] }, undefined, { status: 'running' }),
+      call('send_message', { session_id: 'kid', text: 'x' }, kid, { status: 'running' }),
+    ])
+    expect(steps.map((s) => s.kind)).toEqual(['other', 'other', 'ask'])
+    expect(steps[1]!.verb).toBe('Waiting for 0 sessions')
+    expect(steps[0]!.what).toBe('Codex (codex)')
+    const status = agentRunStatus(steps)
+    expect(status.pending?.id).toBe(steps[2]!.id)
+    expect(status).toMatchObject({ agents: 1, needsYou: false, failed: 0 })
+  })
+
+  it('counts failed steps', () => {
+    const steps = agentSteps([
+      call('stop', { session_id: 'kid' }, undefined, { status: 'failed', output: 'boom' }),
+    ])
+    expect(agentRunStatus(steps).failed).toBe(1)
   })
 })

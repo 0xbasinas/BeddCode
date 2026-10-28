@@ -48,6 +48,33 @@ it('batch application matches individual events, including reconnect duplicates 
 })
 
 describe('replica', () => {
+  it('keeps what a helper reported for the current task, and adds up what it used', () => {
+    const s = fold([
+      created,
+      { type: 'turn.started' },
+      { type: 'session.result', status: 'blocked', summary: 'Needs the key' },
+      {
+        type: 'session.usage',
+        inputTokens: 100,
+        outputTokens: 20,
+        cacheReadTokens: 880,
+        costUsd: 0.01,
+      },
+      { type: 'turn.completed', reason: 'done' },
+      { type: 'session.usage', inputTokens: 50, outputTokens: 5 },
+    ])
+    expect(s.sessions.s1).toMatchObject({
+      result: { status: 'blocked', summary: 'Needs the key' },
+      usage: { tokens: 1055, costUsd: 0.01 },
+    })
+    // A new task starts without the old outcome.
+    const next = applyEvent(s, {
+      seq: 99,
+      event: { ...base, type: 'turn.started' } as SessionEvent,
+    })
+    expect(next.sessions.s1!.result).toBeUndefined()
+    expect(next.sessions.s1!.usage).toEqual({ tokens: 1055, costUsd: 0.01 })
+  })
   it('keeps no-project grouping on replay and names it from the first message', () => {
     const s = fold([
       { ...created, title: 'New session', projectless: true, cwd: '/data/sessions/s1' },

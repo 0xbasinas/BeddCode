@@ -957,6 +957,33 @@ button.chip-lite:hover {
 .menu-row[aria-checked='true'] {
   background: var(--bg-hover);
 }
+.menu-pair {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.menu-pair .menu-row {
+  flex: 1;
+  min-width: 0;
+}
+.menu-pair-extra {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: calc(28px * var(--ui-scale));
+  height: calc(28px * var(--ui-scale));
+  border-radius: calc(6px * var(--ui-scale));
+  color: var(--text-muted);
+  opacity: 0;
+}
+.menu-pair:hover .menu-pair-extra,
+.menu-pair-extra:focus-visible {
+  opacity: 1;
+}
+.menu-pair-extra:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
 .menu-row:disabled {
   opacity: 0.55;
 }
@@ -1845,21 +1872,16 @@ button.chip-lite:hover {
   font-size: calc(12px * var(--ui-scale));
 }
 .file-icon {
-  position: relative;
-  display: inline-grid;
-  place-items: center;
-  color: var(--text-muted);
+  display: block;
   flex: none;
+  /* Minimal: the icons are drawn in colour, shown in grey, and come up on hover. */
+  filter: grayscale(1);
+  opacity: 0.7;
+  transition: opacity 0.12s;
 }
-.file-label {
-  position: absolute;
-  bottom: -1px;
-  right: calc(-3px * var(--ui-scale));
-  font-size: calc(6px * var(--ui-scale));
-  font-weight: 700;
-  background: var(--bg-panel);
-  color: var(--text-muted);
-  line-height: 1;
+.tree-row:hover .file-icon,
+.tree-row.active .file-icon {
+  opacity: 1;
 }
 .editor-col {
   display: flex;
@@ -4657,6 +4679,161 @@ button.tcall-row:hover .tcall-chevron,
   outline-offset: -2px;
 }
 
+/* Agent tools: a run of calls to the agent tools is one block, a line folded and a line per step
+   opened. */
+.orch {
+  margin: 4px 0 6px;
+  max-width: 720px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.orch-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  padding: 3px 6px;
+  border-radius: 8px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.orch-head:hover {
+  background: var(--bg-hover);
+}
+.orch-chevron {
+  flex: none;
+  color: var(--text-faint);
+  transition: transform 0.12s;
+}
+.orch.open .orch-chevron {
+  transform: rotate(90deg);
+}
+.orch-head > svg:not(.orch-chevron) {
+  flex: none;
+  color: var(--text-faint);
+}
+.orch.live .orch-head > svg:not(.orch-chevron) {
+  color: var(--accent);
+}
+.orch-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+.orch-meta {
+  color: var(--text-faint);
+}
+.orch-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 17px;
+  border: 1px solid var(--border);
+}
+.orch-chip.needs {
+  color: var(--bg-app);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.orch-chip.failed {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+}
+.orch-steps {
+  list-style: none;
+  margin: 2px 0 0 12px;
+  padding: 0 0 0 8px;
+  border-left: 1px solid var(--border);
+}
+.orch-step-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: 7px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.orch-step-head:not(:disabled):hover {
+  background: var(--bg-hover);
+}
+.orch-step-head:disabled {
+  cursor: default;
+}
+.orch-step.error .orch-step-head {
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+.orch-icon {
+  flex: none;
+  color: var(--text-faint);
+}
+.orch-step-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+.orch-step-text strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.orch-what {
+  color: var(--text-muted);
+}
+.orch-state {
+  flex: none;
+  color: var(--text-faint);
+}
+.orch-state.ok {
+  color: var(--success);
+}
+.orch-state.failed {
+  color: var(--danger);
+}
+.orch-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0 6px 30px;
+}
+.orch-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.orch-label {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 500;
+}
+.orch-text pre {
+  margin: 0;
+  padding: 6px 9px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-app);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 /* Agent tools: a session's agent starting and managing others. A start or a wait is a card that
    follows the child live; messages, stops and lists are single lines. */
 .agent-card {
@@ -4676,17 +4853,9 @@ button.tcall-row:hover .tcall-chevron,
 .agent-card.starting {
   border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
 }
-.agent-card.needs-you {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
-}
 .agent-card.failed,
 .agent-card.error {
   border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
-}
-.agent-card.compact {
-  gap: 3px;
-  padding: 5px 9px;
 }
 .agent-card-head {
   display: flex;
@@ -4694,32 +4863,18 @@ button.tcall-row:hover .tcall-chevron,
   gap: 8px;
   min-width: 0;
 }
-.agent-card-toggle {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding: 0;
-  background: none;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
 .agent-card-chevron {
   flex: none;
   margin-right: -3px;
   color: var(--text-faint);
   transition: transform 0.12s;
 }
-.agent-card-toggle[aria-expanded='true'] .agent-card-chevron {
-  transform: rotate(90deg);
-}
 .agent-card-icon {
   flex: none;
   color: var(--accent);
+}
+.agent-icon {
+  flex: none;
 }
 .agent-avatar {
   width: 18px;
@@ -4799,132 +4954,10 @@ button.tcall-row:hover .tcall-chevron,
   opacity: 0.75;
   font-variant-numeric: tabular-nums;
 }
-.agent-task {
-  margin: 0 0 0 38px;
-  color: var(--text-secondary);
-  line-height: 1.45;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.agent-where {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-left: 38px;
-  color: var(--text-faint);
-  font-size: 11.5px;
-  min-width: 0;
-}
-.agent-where svg {
-  flex: none;
-}
-.agent-where span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.agent-where svg + span.mono,
-.agent-activity .mono,
-.agent-fold-body {
-  font-family: var(--font-mono);
-}
-.agent-where svg:nth-of-type(2) {
-  margin-left: 6px;
-}
-.agent-activity {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-left: 26px;
-  min-width: 0;
-  color: var(--text-muted);
-  font-size: 11.5px;
-}
-.agent-activity .mono {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.agent-activity-dot {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: agent-pulse 1.4s ease-in-out infinite;
-}
-@keyframes agent-pulse {
-  0%,
-  100% {
-    opacity: 0.35;
-  }
-  50% {
-    opacity: 1;
-  }
-}
 .agent-error {
   margin: 0 0 0 26px;
   color: var(--danger);
   font-size: 12px;
-  overflow-wrap: anywhere;
-}
-.agent-note {
-  margin: 0 0 0 26px;
-  color: var(--text-faint);
-  font-size: 11.5px;
-  font-style: italic;
-}
-.agent-fold {
-  margin-left: 20px;
-}
-.agent-fold-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  min-width: 0;
-  padding: 1px 6px;
-  border-radius: 7px;
-  color: var(--text-muted);
-  font-size: 12px;
-  text-align: left;
-}
-.agent-fold-head:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-.agent-fold-chevron {
-  flex: none;
-  transition: transform 0.12s;
-}
-.agent-fold.open .agent-fold-chevron {
-  transform: rotate(90deg);
-}
-.agent-fold-label {
-  flex: none;
-  color: var(--text-faint);
-  font-weight: 500;
-}
-.agent-fold-preview {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-secondary);
-}
-.agent-fold-body {
-  margin: 3px 0 2px 6px;
-  padding: 8px 10px;
-  max-height: 260px;
-  overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg-app);
-  color: var(--text-secondary);
-  font-size: 11.5px;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .agent-open {
@@ -4959,33 +4992,6 @@ button.tcall-row:hover .tcall-chevron,
 }
 .agent-row.error {
   background: color-mix(in srgb, var(--danger) 8%, transparent);
-}
-.agent-row-icon {
-  flex: none;
-  color: var(--text-faint);
-}
-.agent-row-text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.agent-row-what {
-  color: var(--text-muted);
-}
-.agent-row-error {
-  color: var(--danger);
-}
-.agent-row-state {
-  flex: none;
-  color: var(--text-faint);
-}
-.agent-row-state.ok {
-  color: var(--success);
-}
-.agent-row-state.failed {
-  color: var(--danger);
 }
 /* "Started by …" at the top of a child session */
 .started-by {
@@ -5046,11 +5052,17 @@ button.tcall-row:hover .tcall-chevron,
   font-size: 12px;
   color: var(--text-muted);
 }
+.child-bar-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 .child-bar-head {
   display: flex;
   align-items: center;
   gap: 7px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 5px 10px;
   border-radius: 9px;
   color: inherit;
@@ -5097,6 +5109,45 @@ button.tcall-row:hover .tcall-chevron,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.child-bar-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.child-bar-item .child-bar-row {
+  flex: 1;
+}
+.child-bar-stop,
+.child-bar-stop-all {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 7px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+.child-bar-stop-all {
+  margin-right: 6px;
+}
+.child-bar-stop:hover,
+.child-bar-stop-all:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.child-bar-cost {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.child-bar-result.blocked,
+.child-bar-overlap {
+  color: var(--warn, #c98a2b);
+}
+.child-bar-result.failed {
+  color: var(--danger, #d95b5b);
 }
 .child-bar-activity {
   color: var(--text-faint);
@@ -5819,6 +5870,22 @@ button.tcall-row:hover .tcall-chevron,
 .message-nav-row[data-active='true'] .message-nav-tick {
   width: calc(14px * var(--ui-scale));
   background: var(--text);
+}
+.mention-row {
+  align-items: center;
+}
+.mention-name {
+  font-size: 13px;
+  flex: none;
+}
+.mention-head {
+  display: flex;
+  gap: 8px;
+  padding: 4px 10px 6px;
+  font-size: 11.5px;
+}
+.mention-row .slash-desc {
+  text-align: right;
 }
 
 .patch-more {

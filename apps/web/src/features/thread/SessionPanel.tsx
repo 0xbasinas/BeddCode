@@ -1,3 +1,4 @@
+import { AgentMark } from '../../ui/AgentMark.tsx'
 import { useEffect, useId, useRef, useState } from 'react'
 import {
   Check,
@@ -31,15 +32,9 @@ function focusWhenReady(selector: string, fallback: HTMLElement | null, frames =
 }
 
 export function SessionChip({ agent }: { agent: string }) {
-  const initials = agent
-    .split(/\s+/)
-    .map((word) => word[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase()
   return (
     <span className="chip-lite static" title="The agent running this session">
-      <span className="avatar">{initials}</span>
+      <AgentMark agent={agent} label={agent} />
       {agent}
     </span>
   )

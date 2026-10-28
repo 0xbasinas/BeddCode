@@ -6,7 +6,7 @@ import {
   type DragEvent,
   type ReactNode,
 } from 'react'
-import { ArrowUp, Paperclip, Plus, Square, X } from 'lucide-react'
+import { ArrowUp, ChevronRight, Paperclip, Plus, Square, X } from 'lucide-react'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import { formatBytes } from '../../ui/format.ts'
 import type { SlashCommand } from '@beddcode/contracts'
@@ -16,7 +16,10 @@ import {
   EMPTY_ATTACHMENTS,
   useAttachments,
 } from './attachments.ts'
-import { insertCommand, matchCommands } from '@beddcode/client-runtime'
+import { insertCommand, insertMention, matchCommands, mentionAt } from '@beddcode/client-runtime'
+import { hostRequest } from '../../stores/host.ts'
+import { FileIcon, FolderIcon } from '../files/FileIcon.tsx'
+import { mentionItems, type MentionItem } from './mentionItems.ts'
 import { ModeMenu, type ModeItem } from './Menus.tsx'
 
 interface ComposerProps {
@@ -44,6 +47,8 @@ interface ComposerProps {
   modelSlot?: ReactNode
   /** The strip under the composer (agent, folder, host, stats). */
   footer?: ReactNode
+  /** The folder the agent works in; typing `@` lists its files to mention. */
+  cwd?: string
   /** Slash commands and skills the agent offers; typing `/` lists them. */
   commands?: SlashCommand[]
   /** Shown above the box: the agent's plan, queued messages. */
@@ -151,6 +156,40 @@ export function Composer(props: ComposerProps) {
     setSlashClosed(null)
   }
 
+  // `@` mentions: files of the working folder that match what follows the `@`.
+  const [caret, setCaret] = useState(0)
+  const mention = props.cwd && !slashOpen ? mentionAt(props.text, caret) : undefined
+  const mentionKey = mention ? `${mention.start}:${mention.query}` : ''
+  const [paths, setPaths] = useState<{ key: string; list: MentionItem[] }>()
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const [mentionClosed, setMentionClosed] = useState<string>()
+  useEffect(() => {
+    if (!mention || !props.cwd) return
+    let cancelled = false
+    const cwd = props.cwd
+    const timer = setTimeout(() => {
+      mentionItems(props.hostKey, cwd, mention.query).then(
+        (list) => !cancelled && setPaths({ key: mentionKey, list }),
+        () => !cancelled && setPaths({ key: mentionKey, list: [] }),
+      )
+    }, 100)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [props.hostKey, props.cwd, mentionKey])
+  const mentionPaths = paths?.key === mentionKey ? paths.list : []
+  const mentionOpen = mentionPaths.length > 0 && mentionClosed !== mentionKey
+  useEffect(() => setMentionIndex(0), [mentionKey])
+  const mentionDir = mention ? mention.query.slice(0, mention.query.lastIndexOf('/') + 1) : ''
+  const chooseMention = (item: MentionItem) => {
+    if (!mention) return
+    const next = insertMention(props.text, caret, mention, item.path, item.dir)
+    props.onTextChange(next.text)
+    setCaret(next.caret)
+    requestAnimationFrame(() => box.current?.setSelectionRange(next.caret, next.caret))
+  }
+
   const onPaste = (e: ClipboardEvent) => {
     const pasted = Array.from(e.clipboardData.files)
     if (pasted.length > 0) {
@@ -229,6 +268,43 @@ export function Composer(props: ComposerProps) {
             ))}
           </div>
         )}
+        {mentionOpen && (
+          <div className="slash-menu" role="listbox" aria-label="Files">
+            <div className="mention-head muted">
+              {mentionDir ? `@${mentionDir}` : 'Files and folders'}
+              <span className="spacer" />
+              <span>↑↓ to move · Tab to pick · Esc to close</span>
+            </div>
+            {mentionPaths.map((item, i) => (
+              <button
+                key={item.path}
+                role="option"
+                aria-selected={i === mentionIndex}
+                className={`slash-row mention-row ${i === mentionIndex ? 'active' : ''}`}
+                onMouseEnter={() => setMentionIndex(i)}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  chooseMention(item)
+                }}
+              >
+                {item.dir ? <FolderIcon name={item.name} /> : <FileIcon name={item.name} />}
+                <span className="mention-name">{item.name}</span>
+                <span className="slash-desc">
+                  {item.path.includes('/')
+                    ? item.path.slice(0, item.path.lastIndexOf('/') + 1)
+                    : ''}
+                </span>
+                {item.dir ? (
+                  <ChevronRight size={14} className="muted" />
+                ) : (
+                  item.size !== undefined && (
+                    <span className="slash-kind">{formatBytes(item.size)}</span>
+                  )
+                )}
+              </button>
+            ))}
+          </div>
+        )}
         <textarea
           ref={box}
           aria-label="Message"
@@ -236,9 +312,34 @@ export function Composer(props: ComposerProps) {
           placeholder={props.placeholder}
           rows={2}
           autoFocus={props.autoFocus}
-          onChange={(e) => props.onTextChange(e.target.value)}
+          onChange={(e) => {
+            props.onTextChange(e.target.value)
+            setCaret(e.target.selectionStart)
+          }}
+          onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
           onPaste={onPaste}
           onKeyDown={(e) => {
+            if (mentionOpen && !e.nativeEvent.isComposing) {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault()
+                setMentionIndex(
+                  (i) =>
+                    (i + (e.key === 'ArrowDown' ? 1 : -1) + mentionPaths.length) %
+                    mentionPaths.length,
+                )
+                return
+              }
+              if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault()
+                chooseMention(mentionPaths[mentionIndex] ?? mentionPaths[0]!)
+                return
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                setMentionClosed(mentionKey)
+                return
+              }
+            }
             if (slashOpen && !e.nativeEvent.isComposing) {
               if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 e.preventDefault()

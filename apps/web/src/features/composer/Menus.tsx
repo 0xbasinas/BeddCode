@@ -1,4 +1,5 @@
-import { Check, ChevronDown, Shield, Sparkles } from 'lucide-react'
+import { ModelIcon } from '../../ui/AgentMark.tsx'
+import { Check, ChevronDown, Shield } from 'lucide-react'
 import type { ModelOption } from '@beddcode/contracts'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import { effortLabel } from '../../ui/format.ts'
@@ -79,11 +80,13 @@ export function ModelMenu({
   efforts,
   value,
   onChange,
+  agent,
 }: {
   models: ModelOption[]
   efforts: string[]
   value: ModelChoice
   onChange(next: ModelChoice): void
+  agent?: string
 }) {
   if (models.length === 0 && efforts.length === 0) return null
   const model = models.find((m) => m.id === value.model)
@@ -102,7 +105,7 @@ export function ModelMenu({
           aria-haspopup="menu"
           aria-expanded={open}
         >
-          <Sparkles size={15} /> {label}
+          <ModelIcon agent={agent} /> {label}
           {value.effort && <span className="muted">{effortLabel(value.effort)}</span>}
           <ChevronDown size={14} />
         </button>
@@ -195,16 +198,18 @@ export function ModelBadge({
   models,
   model,
   effort,
+  agent,
 }: {
   models: ModelOption[]
   model?: string
   effort?: string
+  agent?: string
 }) {
   if (!model && !effort) return null
   const label = models.find((m) => m.id === model)?.label ?? model ?? 'Default model'
   return (
     <span className="pill static" title="Chosen when the session started">
-      <Sparkles size={15} /> {label}
+      <ModelIcon agent={agent} /> {label}
       {effort && <span className="muted">{effortLabel(effort)}</span>}
     </span>
   )

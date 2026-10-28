@@ -18,7 +18,7 @@ export interface AutomationDeps {
   hostId: string
   sessions: SessionManager
   store: EventStore
-  workspace: Pick<WorkspaceServices, 'projects' | 'terminals'>
+  workspace: Pick<WorkspaceServices, 'projects' | 'terminals' | 'git'>
   /** The port the host listens on, for the agent tools' bridge to call back. */
   port: () => number
   /** Where pictures of the browser pages agents use are kept. */
@@ -92,12 +92,23 @@ export function createAutomation(deps: AutomationDeps) {
       childrenOf: (id) => store.childrenOf(id),
       subscribe,
       projectPaths: async () => (await workspace.projects.list()).map((p) => p.path),
+      diff: async (cwd) => {
+        const changed = (await workspace.git.status(cwd)).files.slice(0, 200).map((f) => f.path)
+        if (changed.length > 0)
+          return (await workspace.git.generationContext(cwd, 'commit', changed)).text
+        return (await workspace.git.generationContext(cwd, 'pr').catch(() => ({ text: '' }))).text
+      },
+      report: (sessionId, status, summary) =>
+        void store.append({ type: 'session.result', sessionId, at: Date.now(), status, summary }),
     },
     { file: writeBridge(home), url: () => `http://127.0.0.1:${deps.port()}/agent-tools` },
     browser,
     new DesignTools(designs, designLink),
   )
-  const stopAlerts = store.subscribe((stored) => alerts.onEvent(stored))
+  const stopAlerts = store.subscribe((stored) => {
+    alerts.onEvent(stored)
+    if (stored.event.type === 'session.deleted') agentTools.forget(stored.event.sessionId)
+  })
   return {
     schedules,
     alerts,

@@ -1,5 +1,5 @@
 import type { SessionView } from './replica.ts'
-import { toolLabel, type Tool } from './toolSummary.ts'
+import { toolDuration, toolLabel, type Tool } from './toolSummary.ts'
 
 /** The tools BeddCode gives an agent that may start other agents (see the host's agentTools). */
 export const AGENT_TOOL_NAMES = [
@@ -9,6 +9,7 @@ export const AGENT_TOOL_NAMES = [
   'get_status',
   'read_transcript',
   'wait_for',
+  'review_changes',
   'stop',
   'list_children',
 ] as const
@@ -28,11 +29,17 @@ export function agentToolName(tool: Pick<Tool, 'title' | 'input'>): AgentToolNam
   const title = tool.title.trim()
   const hit = TITLE.exec(title)
   if (hit) return hit[1]!.toLowerCase() as AgentToolName
+  // Grok's use_tool before its title catches up: the name is in the input.
+  if (/^use_tool$/i.test(title)) {
+    const named = looseJson(tool.input).tool_name
+    const inner = typeof named === 'string' ? TITLE.exec(named) : null
+    if (inner) return inner[1]!.toLowerCase() as AgentToolName
+  }
   // A bare name ("stop") could be anyone's tool; take it only with arguments that fit ours.
   const bare = BARE.exec(title)
   if (!bare) return undefined
   const name = bare[1]!.toLowerCase() as AgentToolName
-  const args = looseJson(tool.input)
+  const args = toolArgs(tool.input)
   const fits =
     name === 'start_session'
       ? typeof args.agent === 'string' && typeof args.prompt === 'string'
@@ -47,6 +54,20 @@ export function isAgentTool(tool: Pick<Tool, 'title' | 'input'>): boolean {
 }
 
 type Json = Record<string, unknown>
+
+/** The arguments of a call. Grok sends them inside its use_tool: { tool_name, tool_input: {…} }. */
+function toolArgs(input: string | undefined): Json {
+  const given = looseJson(input)
+  const inner = given.tool_input ?? given.toolInput
+  return inner && typeof inner === 'object' && !Array.isArray(inner) ? (inner as Json) : given
+}
+
+/** What a call brought back. Grok wraps it: { type: "MCP", output: { OkayOutput: "<the JSON>" } }. */
+function toolResult(output: string | undefined): Json {
+  const outer = looseJson(output)
+  const wrapped = outer.output && typeof outer.output === 'object' ? (outer.output as Json) : outer
+  return typeof wrapped.OkayOutput === 'string' ? looseJson(wrapped.OkayOutput) : outer
+}
 
 /**
  * Reads a JSON object even when the provider cut it short (they cap tool output at a few
@@ -65,7 +86,8 @@ export function looseJson(text: string | undefined): Json {
     // fall through to field by field
   }
   const out: Json = {}
-  const field = /"([a-z_]+)"\s*:\s*(?:"((?:[^"\\]|\\.)*)("?)|(-?\d+(?:\.\d+)?)|(true|false|null))/g
+  const field =
+    /"([A-Za-z_]+)"\s*:\s*(?:"((?:[^"\\]|\\.)*)("?)|(-?\d+(?:\.\d+)?)|(true|false|null))/g
   for (let m = field.exec(trimmed); m; m = field.exec(trimmed)) {
     const key = m[1]!
     if (key in out) continue
@@ -226,6 +248,7 @@ const VERBS: Record<AgentToolName, [string, string]> = {
   get_status: ['Checking on', 'Checked on'],
   read_transcript: ['Reading the conversation of', 'Read the conversation of'],
   wait_for: ['Waiting for', 'Waited for'],
+  review_changes: ['Starting a review of', 'Started a review of'],
   stop: ['Stopping', 'Stopped'],
   list_children: ['Listing its sessions', 'Listed its sessions'],
 }
@@ -241,9 +264,9 @@ export function agentToolView(
   const name = agentToolName(tool)
   if (!name) return undefined
   const sessions = options.sessions ?? {}
-  const args = looseJson(tool.input)
+  const args = toolArgs(tool.input)
   const failed = tool.status === 'failed'
-  const result = failed ? {} : looseJson(tool.output)
+  const result = failed ? {} : toolResult(tool.output)
   const pending = tool.status === 'running'
   const [running, done] = VERBS[name]
   const view: AgentToolView = {
@@ -269,13 +292,35 @@ export function agentToolView(
     return view
   }
 
-  let id = text(result.session_id) ?? text(args.session_id)
+  // Waiting on several sessions at once: one line listing them.
+  if (name === 'wait_for' && Array.isArray(args.session_ids)) {
+    const items = Array.isArray(result.sessions) ? (result.sessions as Json[]) : []
+    view.listed = items.map((item) => ({
+      label: text(item.title) ?? text(item.session_id) ?? '?',
+      detail: [text(item.agent), CHILD_PHASE_LABEL[phaseOfStatus(item.status) ?? 'done']]
+        .filter(Boolean)
+        .join(' · '),
+      sessionId: text(item.session_id),
+    }))
+    if (!pending && !failed) view.stillWorking = result.done === false
+    return view
+  }
+
+  // A review's own session is the one it starts; the session in the arguments is the one reviewed.
+  const starts = name === 'start_session' || name === 'review_changes'
+  let id =
+    name === 'review_changes'
+      ? text(result.session_id)
+      : (text(result.session_id) ?? text(args.session_id))
   // A start still under way has no answer yet: its session is the parent's newest child since.
-  if (!id && name === 'start_session' && options.parentId && !failed) {
+  if (!id && starts && options.parentId && !failed) {
     const since = (tool.startedAt ?? tool.at ?? 0) - 2_000
-    id = Object.values(sessions)
+    const fresh = Object.values(sessions)
       .filter((s) => s.parent?.sessionId === options.parentId && s.createdAt >= since)
-      .sort((a, b) => a.createdAt - b.createdAt)[0]?.id
+      .sort((a, b) => a.createdAt - b.createdAt)
+    // Starts made together each pick their own child by the title they gave.
+    const title = text(args.title)
+    id = (fresh.find((s) => title && s.title === title) ?? fresh[0])?.id
   }
   const live = id ? sessions[id] : undefined
   const resultPhase = phaseOfStatus(result.status)
@@ -285,9 +330,8 @@ export function agentToolView(
     ? resultPhase
     : live
       ? childPhase(live)
-      : (resultPhase ??
-        (failed ? 'failed' : pending && name === 'start_session' ? 'starting' : 'done'))
-  if (id || name === 'start_session') {
+      : (resultPhase ?? (failed ? 'failed' : pending && starts ? 'starting' : 'done'))
+  if (id || starts) {
     view.child = {
       id,
       known: live !== undefined,
@@ -307,6 +351,7 @@ export function agentToolView(
     }
   }
   if (name === 'start_session') view.prompt = text(args.prompt)
+  if (name === 'review_changes') view.prompt = text(args.focus)
   if (name === 'send_message') view.prompt = text(args.text)
   if (name === 'wait_for' || name === 'get_status') {
     view.reply = text(result.reply) ?? text(result.last_reply)
@@ -314,6 +359,147 @@ export function agentToolView(
   }
   if (name === 'read_transcript') view.transcript = text(result.transcript)
   return view
+}
+
+/** One line of the orchestration log: a start, a message with its answer, a wait. */
+export interface AgentStep {
+  /** The first call that made it up. */
+  id: string
+  kind: 'start' | 'ask' | 'wait' | 'other'
+  verb: string
+  child?: ChildInfo
+  /** The task given or the message sent. */
+  text?: string
+  /** What came back: the child's reply, or its conversation. */
+  reply?: string
+  /** For lists, stops and waits on several sessions: what they covered. */
+  what?: string
+  /** A call of the step is still going. */
+  pending: boolean
+  error?: string
+  /** Time the calls of the step ran. */
+  ms: number
+  calls: number
+  stillWorking?: boolean
+  /** Its answer is in: later waits for the same session are a step of their own. */
+  settled: boolean
+}
+
+const joinListed = (view: AgentToolView) =>
+  view.listed?.map((l) => (l.detail ? `${l.label} (${l.detail})` : l.label)).join(', ')
+
+/**
+ * A run of agent-tool calls as the steps a person would describe: a message and the waits that
+ * bring its answer are one step, however many times the agent had to wait again.
+ */
+export function agentSteps(
+  tools: Tool[],
+  options: { parentId?: string; sessions?: Record<string, SessionView>; now?: number } = {},
+): AgentStep[] {
+  const now = options.now ?? Date.now()
+  const steps: AgentStep[] = []
+  for (const tool of tools) {
+    const view = agentToolView(tool, options)
+    if (!view) continue
+    const ms = toolDuration(tool, now) ?? 0
+    const id = view.child?.id
+    const answered = !view.pending && !view.stillWorking && !view.error
+    if (view.name === 'wait_for' && !view.listed && id) {
+      const open = steps.findLast((s) => s.kind !== 'other' && s.child?.id === id)
+      if (open && !open.settled) {
+        open.calls++
+        open.ms += ms
+        open.pending = view.pending
+        open.reply = view.reply ?? open.reply
+        open.stillWorking = view.stillWorking
+        open.error = view.error ?? open.error
+        open.child = view.child ?? open.child
+        open.settled = answered
+        continue
+      }
+    }
+    const kind: AgentStep['kind'] =
+      view.name === 'start_session' || view.name === 'review_changes'
+        ? 'start'
+        : view.name === 'send_message'
+          ? 'ask'
+          : view.name === 'wait_for' && !view.listed
+            ? 'wait'
+            : 'other'
+    steps.push({
+      id: tool.id,
+      kind,
+      verb:
+        kind === 'ask'
+          ? view.pending
+            ? 'Asking'
+            : 'Asked'
+          : view.name === 'wait_for' && view.listed
+            ? `${view.verb} ${view.listed.length} sessions`
+            : view.verb,
+      child: view.child,
+      text: view.prompt,
+      reply: view.reply ?? view.transcript,
+      what: kind === 'other' ? joinListed(view) : undefined,
+      pending: view.pending,
+      error: view.error,
+      ms,
+      calls: 1,
+      stillWorking: view.stillWorking,
+      settled: kind === 'wait' && answered,
+    })
+  }
+  return steps
+}
+
+/** What a run of steps adds up to, for its one-line header. */
+export function agentRunStatus(
+  steps: AgentStep[],
+  sessions: Record<string, SessionView> = {},
+): { agents: number; pending?: AgentStep; needsYou: boolean; failed: number } {
+  const ids = new Set(steps.flatMap((s) => (s.child?.id ? [s.child.id] : [])))
+  return {
+    agents: ids.size,
+    pending: steps.findLast((s) => s.pending),
+    needsYou: [...ids].some((id) => sessions[id] && childPhase(sessions[id]!) === 'needs-you'),
+    failed: steps.filter((s) => s.error).length,
+  }
+}
+
+/** Files a session's turns changed that were not undone. */
+const changedFiles = (s: SessionView) =>
+  new Set(
+    s.items.flatMap((i) => (i.kind === 'changes' && !i.reverted ? i.files.map((f) => f.path) : [])),
+  )
+
+/** What a group of sessions has used so far, as their agents reported it. */
+export function childrenUsage(children: SessionView[]): { tokens: number; costUsd: number } {
+  return children.reduce(
+    (sum, c) => ({
+      tokens: sum.tokens + (c.usage?.tokens ?? 0),
+      costUsd: sum.costUsd + (c.usage?.costUsd ?? 0),
+    }),
+    { tokens: 0, costUsd: 0 },
+  )
+}
+
+/** For each session that changed files another one of the group also changed: who, and which. */
+export function childOverlaps(
+  children: SessionView[],
+): Record<string, { title: string; files: string[] }[]> {
+  const files = new Map(children.map((c) => [c.id, changedFiles(c)]))
+  const out: Record<string, { title: string; files: string[] }[]> = {}
+  for (const c of children) {
+    const mine = files.get(c.id)!
+    if (mine.size === 0) continue
+    const shared = children.flatMap((o) => {
+      if (o.id === c.id) return []
+      const both = [...files.get(o.id)!].filter((f) => mine.has(f))
+      return both.length > 0 ? [{ title: o.title, files: both.slice(0, 10) }] : []
+    })
+    if (shared.length > 0) out[c.id] = shared
+  }
+  return out
 }
 
 /** The sessions a session's agent started, oldest first. */

@@ -95,10 +95,17 @@ function watchRelay(label: string) {
   let last = ''
   const began = performance.now()
   const timer = setInterval(async () => {
-    const status = await local.rpc('host.relay.get', {}).then((r) => r.status, () => 'unreachable')
+    const status = await local.rpc('host.relay.get', {}).then(
+      (r) => r.status,
+      () => 'unreachable',
+    )
     if (status !== last) {
       last = status
-      ;(report.relayStatus ??= []).push({ label, atMs: Math.round(performance.now() - began), status })
+      ;(report.relayStatus ??= []).push({
+        label,
+        atMs: Math.round(performance.now() - began),
+        status,
+      })
     }
   }, 250)
   return () => clearInterval(timer)
@@ -164,7 +171,10 @@ async function measureOnce(profile: Profile, route: 'direct' | 'relay') {
       if (e.type === 'turn.completed') resolve()
     }
   })
-  const { sessionId } = (await create((m, p) => (cold.client.request as any)(m, p), `Live ${profile.name} ${route}`)) as any
+  const { sessionId } = (await create(
+    (m, p) => (cold.client.request as any)(m, p),
+    `Live ${profile.name} ${route}`,
+  )) as any
   const sent = Date.now()
   await cold.client.request('sessions.prompt', { sessionId, text: '[stream:3] live check' })
   await done

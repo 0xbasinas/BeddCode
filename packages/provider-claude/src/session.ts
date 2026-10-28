@@ -71,12 +71,18 @@ export class ClaudeSession implements ProviderSession {
   private turnCount = 0
   private approvalCount = 0
   private closed = false
+  private readonly autoAllowed: Set<string>
 
   constructor(
     private readonly input: StartSessionInput,
     private readonly deps: ClaudeSessionDeps,
   ) {
     this.sessionId = input.sessionId
+    this.autoAllowed = new Set(
+      (input.mcpServers ?? []).flatMap((m) =>
+        (m.autoAllow ?? []).map((t) => `mcp__${m.name}__${t}`),
+      ),
+    )
     this.mapper = new ClaudeEventMapper(input.sessionId, {
       cwd: input.cwd,
       resumed: input.resumeId !== undefined,
@@ -280,6 +286,10 @@ export class ClaudeSession implements ProviderSession {
   }
 
   private readonly canUseTool: CanUseTool = (toolName, input, options) => {
+    // Even in plan mode, where Claude asks before every MCP tool, a tool the host marked as only
+    // reporting back must not wait for the user.
+    if (this.autoAllowed.has(toolName))
+      return Promise.resolve({ behavior: 'allow', updatedInput: input })
     if (toolName === 'AskUserQuestion') return this.askQuestions(input, options.signal)
     const requestId = `req-${++this.approvalCount}`
     const kind = toolKind(toolName)

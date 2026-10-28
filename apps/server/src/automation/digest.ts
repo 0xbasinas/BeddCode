@@ -18,6 +18,10 @@ export interface SessionDigest {
   lastError?: string
   parentSessionId?: string
   depth: number
+  /** How the session said its task ended, if it has since the last message it was sent. */
+  result?: { status: 'done' | 'blocked' | 'failed'; summary: string }
+  /** Why the latest turn was cancelled, when the host said (a restart, say). */
+  cancelledBecause?: string
 }
 
 type Created = Extract<SessionEvent, { type: 'session.created' }>
@@ -29,6 +33,8 @@ export function digest(events: StoredEvent[]): SessionDigest | undefined {
   let reply: string[] = []
   let turns = 0
   let lastError: string | undefined
+  let result: SessionDigest['result']
+  let cancelledBecause: string | undefined
   const open = new Map<string, string>()
   // Something between two replies (a tool call, say) makes them separate messages.
   let split = false
@@ -45,11 +51,18 @@ export function digest(events: StoredEvent[]): SessionDigest | undefined {
         break
       case 'turn.started':
         status = 'running'
+        // A new task: what it said about the last one no longer applies.
+        result = undefined
+        cancelledBecause = undefined
+        break
+      case 'session.result':
+        result = { status: event.status, summary: event.summary }
         break
       case 'turn.completed':
         turns++
         status = event.reason === 'done' ? 'idle' : event.reason
         if (event.reason === 'error' && event.message) lastError = event.message
+        if (event.reason === 'cancelled' && event.message) cancelledBecause = event.message
         open.clear()
         break
       case 'message.delta':
@@ -90,6 +103,8 @@ export function digest(events: StoredEvent[]): SessionDigest | undefined {
     lastError,
     parentSessionId: created.parent?.sessionId,
     depth: created.parent?.depth ?? 0,
+    result,
+    cancelledBecause,
   }
 }
 

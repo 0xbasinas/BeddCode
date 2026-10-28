@@ -1,15 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { baseName, fileLabel, languageName } from './fileIcons.ts'
+import { baseName, languageName } from './fileIcons.ts'
 
 describe('file icons', () => {
-  it('labels files by extension and leaves unknown ones blank', () => {
-    expect(fileLabel('token-bucket.ts')).toBe('TS')
-    expect(fileLabel('package.json')).toBe('{}')
-    expect(fileLabel('Makefile')).toBe('')
-    expect(fileLabel('.gitignore')).toBe('')
-    expect(fileLabel('weird.xyz')).toBe('')
-  })
-
   it('names languages for the status bar', () => {
     expect(languageName('a.tsx')).toBe('TypeScript')
     expect(languageName('README.md')).toBe('Markdown')

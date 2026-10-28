@@ -95,7 +95,14 @@ export const SessionEvent = z.discriminatedUnion('type', [
     /** True when the conversation was started outside BeddCode and imported. */
     imported: z.boolean().optional(),
     /** Set when another session's agent started this one (see agent tools). */
-    parent: z.object({ sessionId: z.string(), depth: z.number().int() }).optional(),
+    parent: z
+      .object({
+        sessionId: z.string(),
+        depth: z.number().int(),
+        /** The caller's own id for this start, so repeating the call finds this session again. */
+        requestId: z.string().optional(),
+      })
+      .optional(),
     /** The agent may start and manage sessions of its own through BeddCode's tools. */
     agentTools: z.boolean().optional(),
     /** The agent may use the desktop app's browser pane through BeddCode's browser tools. */
@@ -110,6 +117,12 @@ export const SessionEvent = z.discriminatedUnion('type', [
   Base.extend({ type: z.literal('session.renamed'), title: z.string().trim().min(1).max(120) }),
   /** The user moved the session to, or back out of, the sidebar's Done section. */
   Base.extend({ type: z.literal('session.done'), done: z.boolean() }),
+  /** A session started by another agent says how its task ended (its report_result tool). */
+  Base.extend({
+    type: z.literal('session.result'),
+    status: z.enum(['done', 'blocked', 'failed']),
+    summary: z.string(),
+  }),
   /** The user deleted the session; devices drop it. Its earlier events are removed from the log. */
   Base.extend({ type: z.literal('session.deleted') }),
   /** The user pinned the session to the top of the sidebar, or unpinned it. */

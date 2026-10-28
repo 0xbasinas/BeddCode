@@ -139,6 +139,42 @@ describe('AlertService', () => {
     expect(t.sent).toHaveLength(1)
   })
 
+  it('alerts for a child that needs the user or fails, naming whose it is', () => {
+    const t = setup()
+    const alerts = t.make()
+    t.append({
+      type: 'session.created',
+      sessionId: 'child',
+      at: 0,
+      title: 'Write tests',
+      cwd: '/w',
+      instanceId: 'codex',
+      parent: { sessionId: 's1', depth: 1 },
+    })
+    expect(
+      alerts.alertFor(
+        t.append({
+          type: 'approval.requested',
+          sessionId: 'child',
+          at: 0,
+          requestId: 'r',
+          title: 'Run npm test',
+          options: [],
+        }),
+      ),
+    ).toMatchObject({ kind: 'needsYou', title: 'Write tests (for Fix login)', sessionId: 'child' })
+    expect(
+      alerts.alertFor(
+        t.append({ type: 'turn.completed', sessionId: 'child', at: 0, reason: 'error' }),
+      ),
+    ).toMatchObject({ kind: 'error', title: 'Write tests (for Fix login)' })
+    expect(
+      alerts.alertFor(
+        t.append({ type: 'turn.completed', sessionId: 'child', at: 0, reason: 'done' }),
+      ),
+    ).toBeUndefined()
+  })
+
   it('forgets a revoked device and a token Expo no longer knows', async () => {
     const t = setup(() => ({
       data: [{ status: 'error', message: 'gone', details: { error: 'DeviceNotRegistered' } }],
