@@ -330,6 +330,18 @@ export class HostClient {
           z: true,
         }),
       )
+      // Right behind the hello, not after the welcome: that answer costs a round trip, which on a
+      // relay or a mobile network is the largest part of what is left. The host handles frames in
+      // order, and starts over if the log is not the one this resumes.
+      ws.send(
+        JSON.stringify({
+          t: 'subscribe',
+          afterSeq: this.lastSeq,
+          compact: true,
+          batch: true,
+          logId: this.logId,
+        }),
+      )
     }
     ws.onmessage = (msg) => {
       if (this.ws !== ws) return
@@ -392,9 +404,6 @@ export class HostClient {
             resume: this.lastSeq === 0 ? 'cold' : this.restored ? 'disk' : 'warm',
           }
         }
-        ws.send(
-          JSON.stringify({ t: 'subscribe', afterSeq: this.lastSeq, compact: true, batch: true }),
-        )
         if (this.browserOffer) ws.send(JSON.stringify(this.browserOffer))
         if (this.designView) ws.send(JSON.stringify(this.designView))
         for (const wake of [...this.waiting]) wake()

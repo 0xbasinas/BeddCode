@@ -131,14 +131,14 @@ Set `DEEPSEEK_API_KEY` in the shell that runs the tests; the key is read from th
 
 The host first gets a history to replay: `RELAY_SESSIONS` (default 120) finished sessions plus one long session of `RELAY_HEAVY_TURNS` (default 30) turns with large output, about 4,500 events. For each profile and each route the test records:
 
-| Name          | What it measures                                                                                 |
-| ------------- | ------------------------------------------------------------------------------------------------ |
-| `pairMs`      | Exchanging a pairing code for a token                                                            |
+| Name          | What it measures                                                                                               |
+| ------------- | -------------------------------------------------------------------------------------------------------------- |
+| `pairMs`      | Exchanging a pairing code for a token                                                                          |
 | `cold`        | A device that has never seen the host: time until caught up, `connect.ms`, `replay.ms`, events, KB on the wire |
-| `request`     | A small request (`projects.list`) one at a time: median and p95                                  |
-| `live`        | A streamed answer: time to the first piece, and how late each piece arrives                      |
-| `warm`        | The same device returning with what it holds: time and bytes (nothing but the new part should move) |
-| `reconnectMs` | The link is cut while connected: time until the device is connected again                        |
+| `request`     | A small request (`projects.list`) one at a time: median and p95                                                |
+| `live`        | A streamed answer: time to the first piece, and how late each piece arrives                                    |
+| `warm`        | The same device returning with what it holds: time and bytes (nothing but the new part should move)            |
+| `reconnectMs` | The link is cut while connected: time until the device is connected again                                      |
 
 `relayVsDirect` gives each as a ratio. `RELAY_PROFILES=mobile,poor` picks profiles. To measure a deployed relay, set `RELAY_URL` (and `RELAY_PASSWORD`): the proxies then shape only the two ends of it, and the relay's own distance and load are real. A local relay measures the protocol, encryption and the relay's forwarding, plus the simulated network. Results: `.e2e/relay-stats/relay-*.json`, including the relay status over time and why each proxied connection closed.
 
@@ -157,12 +157,19 @@ The relay costs about two times the direct route on every profile, which is what
 
 Each run also counts bytes on every leg, per phase (`pairWire`, `cold.wire`, `requestWire`, `liveWire`, `warm.wire`, `idle16sWire`), as `upKb` (toward the host) and `downKb` (toward the device). Over the relay there are two legs, device to relay (`device`) and host to relay (`host`), which should carry the same payload. Measured on `lan` with the 2,200-event history (about 1.3 MB of events before compression):
 
-| Phase                | Direct (down) | Relay, device leg (down) | Relay, host leg (up) |
-| -------------------- | ------------- | ------------------------ | -------------------- |
-| First sync           | 166 KB        | 198 KB (+19%)            | 199 KB               |
-| 15 small requests    | 0.7 KB up / 0.9 down | 2.0 up / 1.6 down  | 2.0 up / 2.2 down    |
-| 3 s of live streaming | 16 KB        | 25 KB (+55%)             | 27 KB                |
-| Returning device     | 0.5 KB        | 0.7 KB                   | 0.6 KB               |
-| 16 s idle            | ~0            | 0.1 KB each way          | 0.1 KB each way      |
+| Phase                 | Direct (down)        | Relay, device leg (down) | Relay, host leg (up) |
+| --------------------- | -------------------- | ------------------------ | -------------------- |
+| First sync            | 166 KB               | 198 KB (+19%)            | 199 KB               |
+| 15 small requests     | 0.7 KB up / 0.9 down | 2.0 up / 1.6 down        | 2.0 up / 2.2 down    |
+| 3 s of live streaming | 16 KB                | 25 KB (+55%)             | 27 KB                |
+| Returning device      | 0.5 KB               | 0.7 KB                   | 0.6 KB               |
+| 16 s idle             | ~0                   | 0.1 KB each way          | 0.1 KB each way      |
 
 History is compressed about 8 times on the wire in both routes. The relay's extra comes from encrypting and framing every message, so it costs most on many small messages (streamed text, requests) and least on bulk replay. The host sends each byte to the relay once, and the relay forwards it unchanged, so the two legs match.
+
+#### Changes made after these measurements
+
+- **Fewer round trips per connect.** The client sends `subscribe` right behind `hello` instead of waiting for `welcome`, with the log id so a host with another log replays from the start. Simulated `mobile` / `poor` relay runs: first sync 1.52 s → 1.22 s and 3.6 s → 3.0 s; returning device 0.94 s → 0.70 s and 2.2 s → 1.6 s (direct returning device 0.44 s → 0.30 s).
+- **Streamed text through a relay** is joined into pieces every 250 ms instead of 60 ms (a few frames a second, not 19): 56 frames → 18 and 25 KB → 14 KB for 3 s of streaming, at most 250 ms later.
+- **Long diffs** in a thread show their first 120 lines and a button for the rest. The fully expanded 120-message thread drops from 26,500 to 16,300 DOM nodes, expanding from 570 ms to 420 ms, and the worst scroll frame from 540 ms to 350 ms. Sidebar rows outside the screen are no longer laid out (sidebar search 68 ms → 33 ms with 306 sessions).
+- **History size** (1,001 sessions, 34,000 events, over a simulated `good` relay): the first sync of a new device takes 3.2 s and 790 KB; a returning device 0.3 s. It grows linearly with history and only a device's first connection pays it, so nothing was changed.

@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import type { TranscriptItem } from '@beddcode/client-runtime'
 import { Markdown } from '../../ui/Markdown.tsx'
-import { PatchView } from '../../ui/PatchView.tsx'
+import { INLINE_PATCH_LINES, PatchView } from '../../ui/PatchView.tsx'
 import { createBlockBuilder, totalChanges, type EditedFile } from '@beddcode/client-runtime'
 import { folderName } from '../../ui/format.ts'
 import { FileIcon } from '../files/FileIcon.tsx'
@@ -378,7 +378,7 @@ function FileDiff({
           {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
         </button>
       </div>
-      {open && <PatchView patch={file.patch} />}
+      {open && <PatchView patch={file.patch} limit={INLINE_PATCH_LINES} />}
     </div>
   )
 }

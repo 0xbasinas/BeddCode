@@ -565,6 +565,21 @@ describe('server', () => {
     expect(replayed[0]?.event.type).toBe('error')
   })
 
+  it('replays from the start for a client that resumes from another log', async () => {
+    const { server, store } = await boot()
+    store.append({ type: 'error', sessionId: 's', at: 1, message: 'one' })
+    store.append({ type: 'error', sessionId: 's', at: 2, message: 'two' })
+    const stale = await Client.connect(server.port)
+    stale.send({ t: 'subscribe', afterSeq: 2, logId: 'some-other-log' })
+    await stale.until((fs) => fs.some((f) => f.t === 'caught-up'))
+    expect(stale.events().map((e) => e.seq)).toEqual([1, 2])
+
+    const same = await Client.connect(server.port)
+    same.send({ t: 'subscribe', afterSeq: 2, logId: store.logId })
+    await same.until((fs) => fs.some((f) => f.t === 'caught-up'))
+    expect(same.events()).toEqual([])
+  })
+
   it('sends a compact replay to a client that asks, and tells it where the replay ended', async () => {
     const { server, store } = await boot()
     store.append({

@@ -51,6 +51,11 @@ export const ClientFrame = z.discriminatedUnion('t', [
     compact: z.boolean().optional(),
     /** The client understands `events` frames: the replay comes in groups, not one by one. */
     batch: z.boolean().optional(),
+    /**
+     * The log `afterSeq` belongs to. A client sends `subscribe` right behind `hello`, before it has
+     * seen the host's `welcome`; a host with another log replays from the start instead.
+     */
+    logId: z.string().optional(),
   }),
   /**
    * Whether this client can run agents' browser tools (the desktop app can), and which session

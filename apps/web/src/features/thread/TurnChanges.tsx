@@ -3,7 +3,7 @@ import { ChevronDown, ChevronUp, FolderOpen, GitPullRequest, History, Undo2 } fr
 import { useUiStore } from '../../stores/ui.ts'
 import type { TranscriptItem } from '@beddcode/client-runtime'
 import type { GitDiff, TurnChangedFile } from '@beddcode/contracts'
-import { PatchView } from '../../ui/PatchView.tsx'
+import { INLINE_PATCH_LINES, PatchView } from '../../ui/PatchView.tsx'
 import { hostRequest } from '../../stores/host.ts'
 import { FileIcon } from '../files/FileIcon.tsx'
 
@@ -199,7 +199,7 @@ function ChangedFile({
           <div className="turn-diff-note composer-error">{diff.error}</div>
         ) : diff.patch ? (
           <>
-            <PatchView patch={diff.patch} />
+            <PatchView patch={diff.patch} limit={INLINE_PATCH_LINES} />
             {diff.truncated && <div className="turn-diff-note muted">Diff cut short</div>}
           </>
         ) : (

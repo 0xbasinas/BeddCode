@@ -61,7 +61,10 @@ export async function startLab(): Promise<Lab> {
   let relayTarget: { host: string; port: number }
   if (external) {
     const url = new URL(external)
-    relayTarget = { host: url.hostname, port: Number(url.port) || (url.protocol === 'https:' ? 443 : 80) }
+    relayTarget = {
+      host: url.hostname,
+      port: Number(url.port) || (url.protocol === 'https:' ? 443 : 80),
+    }
   } else {
     relay = await startRelay({ port: 0, host: '127.0.0.1' })
     relayTarget = { host: '127.0.0.1', port: relay.port }
@@ -95,7 +98,9 @@ export async function startLab(): Promise<Lab> {
         BEDDCODE_WEB_ROOT: path.join(root, 'apps/web/dist'),
         BEDDCODE_TELEMETRY: '0',
         BEDDCODE_RELAY_URL: relayUrl,
-        ...(process.env.RELAY_PASSWORD ? { BEDDCODE_RELAY_PASSWORD: process.env.RELAY_PASSWORD } : {}),
+        ...(process.env.RELAY_PASSWORD
+          ? { BEDDCODE_RELAY_PASSWORD: process.env.RELAY_PASSWORD }
+          : {}),
       },
     },
   )
@@ -143,7 +148,11 @@ export async function startLab(): Promise<Lab> {
         const link = parsePairLink(pair.link ?? '')
         const began = performance.now()
         if (route === 'direct') {
-          const result = await pairWithHost({ host: '127.0.0.1', port: direct.port }, pair.code, 'bench')
+          const result = await pairWithHost(
+            { host: '127.0.0.1', port: direct.port },
+            pair.code,
+            'bench',
+          )
           return { token: result.token, hostId: result.host.hostId!, ms: performance.now() - began }
         }
         const relayRoute = link?.relay ?? link?.routes.find((r) => r.startsWith('relay+'))
