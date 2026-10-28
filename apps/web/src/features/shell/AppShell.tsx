@@ -86,6 +86,30 @@ export function AppShell() {
         event.preventDefault()
         useUiStore.getState().togglePaneCollapsed()
       }
+      // Ctrl+Tab / Ctrl+Shift+Tab, or Ctrl/Cmd+Alt+Down / Up: the next or previous session in the sidebar.
+      const cycleKeys =
+        (event.ctrlKey && event.key === 'Tab') ||
+        ((event.ctrlKey || event.metaKey) &&
+          event.altKey &&
+          (event.key === 'ArrowDown' || event.key === 'ArrowUp'))
+      if (cycleKeys) {
+        const rows = Array.from(
+          document.querySelectorAll<HTMLAnchorElement>('.session-list .session-row'),
+        )
+        if (rows.length) {
+          event.preventDefault()
+          const back = event.key === 'ArrowUp' || (event.key === 'Tab' && event.shiftKey)
+          const at = rows.findIndex((row) => row.classList.contains('active'))
+          const next =
+            at < 0
+              ? back
+                ? rows.length - 1
+                : 0
+              : (at + (back ? -1 : 1) + rows.length) % rows.length
+          rows[next]!.click()
+          rows[next]!.scrollIntoView({ block: 'nearest' })
+        }
+      }
       // Ctrl/Cmd+O: Browse… for a folder on the host the Add folder menu points at.
       if (
         (event.ctrlKey || event.metaKey) &&
