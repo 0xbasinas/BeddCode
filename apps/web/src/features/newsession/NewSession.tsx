@@ -332,6 +332,7 @@ export function NewSession({
                 : 'No agent is ready on this host yet. Install and sign in to Claude Code or Codex, or add an ACP agent.'}
         </p>
         <Composer
+          cwd={(workspace.existing?.path ?? folder) || undefined}
           text={text}
           onTextChange={setText}
           placeholder="Describe a task, or paste an issue link…"

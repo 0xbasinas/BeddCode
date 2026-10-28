@@ -364,6 +364,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
       <Composer
         key={sessionId}
         draftId={sessionId}
+        cwd={session.cwd}
         text={text}
         onTextChange={setText}
         placeholder={

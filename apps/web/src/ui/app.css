@@ -5865,3 +5865,10 @@ button.tcall-row:hover .tcall-chevron,
   width: calc(14px * var(--ui-scale));
   background: var(--text);
 }
+.mention-row {
+  align-items: center;
+}
+.mention-name {
+  font-size: 13px;
+  flex: none;
+}

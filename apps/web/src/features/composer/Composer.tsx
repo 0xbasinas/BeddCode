@@ -16,7 +16,9 @@ import {
   EMPTY_ATTACHMENTS,
   useAttachments,
 } from './attachments.ts'
-import { insertCommand, matchCommands } from '@beddcode/client-runtime'
+import { insertCommand, insertMention, matchCommands, mentionAt } from '@beddcode/client-runtime'
+import { hostRequest } from '../../stores/host.ts'
+import { FileIcon } from '../files/FileIcon.tsx'
 import { ModeMenu, type ModeItem } from './Menus.tsx'
 
 interface ComposerProps {
@@ -44,6 +46,8 @@ interface ComposerProps {
   modelSlot?: ReactNode
   /** The strip under the composer (agent, folder, host, stats). */
   footer?: ReactNode
+  /** The folder the agent works in; typing `@` lists its files to mention. */
+  cwd?: string
   /** Slash commands and skills the agent offers; typing `/` lists them. */
   commands?: SlashCommand[]
   /** Shown above the box: the agent's plan, queued messages. */
@@ -151,6 +155,38 @@ export function Composer(props: ComposerProps) {
     setSlashClosed(null)
   }
 
+  // `@` mentions: files of the working folder that match what follows the `@`.
+  const [caret, setCaret] = useState(0)
+  const mention = props.cwd && !slashOpen ? mentionAt(props.text, caret) : undefined
+  const mentionKey = mention ? `${mention.start}:${mention.query}` : ''
+  const [paths, setPaths] = useState<{ key: string; list: string[] }>()
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const [mentionClosed, setMentionClosed] = useState<string>()
+  useEffect(() => {
+    if (!mention?.query || !props.cwd) return
+    let cancelled = false
+    const timer = setTimeout(() => {
+      hostRequest(props.hostKey, 'files.search', { cwd: props.cwd!, query: mention.query }).then(
+        (r) => !cancelled && setPaths({ key: mentionKey, list: r.paths.slice(0, 8) }),
+        () => !cancelled && setPaths({ key: mentionKey, list: [] }),
+      )
+    }, 120)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [props.hostKey, props.cwd, mentionKey])
+  const mentionPaths = paths?.key === mentionKey ? paths.list : []
+  const mentionOpen = mentionPaths.length > 0 && mentionClosed !== mentionKey
+  useEffect(() => setMentionIndex(0), [mentionKey])
+  const chooseMention = (path: string) => {
+    if (!mention) return
+    const next = insertMention(props.text, caret, mention, path)
+    props.onTextChange(next.text)
+    setCaret(next.caret)
+    requestAnimationFrame(() => box.current?.setSelectionRange(next.caret, next.caret))
+  }
+
   const onPaste = (e: ClipboardEvent) => {
     const pasted = Array.from(e.clipboardData.files)
     if (pasted.length > 0) {
@@ -229,6 +265,29 @@ export function Composer(props: ComposerProps) {
             ))}
           </div>
         )}
+        {mentionOpen && (
+          <div className="slash-menu" role="listbox" aria-label="Files">
+            {mentionPaths.map((p, i) => (
+              <button
+                key={p}
+                role="option"
+                aria-selected={i === mentionIndex}
+                className={`slash-row mention-row ${i === mentionIndex ? 'active' : ''}`}
+                onMouseEnter={() => setMentionIndex(i)}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  chooseMention(p)
+                }}
+              >
+                <FileIcon name={p} />
+                <span className="mention-name">{p.split('/').pop()}</span>
+                <span className="slash-desc">
+                  {p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : ''}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
         <textarea
           ref={box}
           aria-label="Message"
@@ -236,9 +295,34 @@ export function Composer(props: ComposerProps) {
           placeholder={props.placeholder}
           rows={2}
           autoFocus={props.autoFocus}
-          onChange={(e) => props.onTextChange(e.target.value)}
+          onChange={(e) => {
+            props.onTextChange(e.target.value)
+            setCaret(e.target.selectionStart)
+          }}
+          onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
           onPaste={onPaste}
           onKeyDown={(e) => {
+            if (mentionOpen && !e.nativeEvent.isComposing) {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault()
+                setMentionIndex(
+                  (i) =>
+                    (i + (e.key === 'ArrowDown' ? 1 : -1) + mentionPaths.length) %
+                    mentionPaths.length,
+                )
+                return
+              }
+              if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault()
+                chooseMention(mentionPaths[mentionIndex] ?? mentionPaths[0]!)
+                return
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                setMentionClosed(mentionKey)
+                return
+              }
+            }
             if (slashOpen && !e.nativeEvent.isComposing) {
               if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 e.preventDefault()
