@@ -11,6 +11,7 @@ import { DesignStore } from '../design/designStore.ts'
 import { DesignTools } from '../design/designTools.ts'
 import { DesignLink } from '../design/designLink.ts'
 import { BrowserBroker, BrowserTools, type BrowserToolsHost } from './browserUse.ts'
+import { auditFile } from '../computer/audit.ts'
 import { ComputerTools, type ComputerToolsHost } from '../computer/computerTools.ts'
 import { CuaDesktopDriver } from '../computer/cuaDriver.ts'
 import { ScheduleService } from './schedules.ts'
@@ -87,6 +88,7 @@ export function createAutomation(deps: AutomationDeps) {
     () => CuaDesktopDriver.load(),
     toolHost,
     deps.computerImageDir ?? path.join(home, 'computer-images'),
+    { audit: auditFile(path.join(home, 'computer-audit.jsonl')) },
   )
   const designs = new DesignStore(path.join(home, 'designs'))
   const designLink = new DesignLink()
@@ -119,6 +121,11 @@ export function createAutomation(deps: AutomationDeps) {
   const stopAlerts = store.subscribe((stored) => {
     alerts.onEvent(stored)
     if (stored.event.type === 'session.deleted') agentTools.forget(stored.event.sessionId)
+    // A turn that ends frees the desktop for other sessions; a stopped one also loses its access.
+    if (stored.event.type === 'turn.completed') {
+      computer.release(stored.event.sessionId)
+      if (stored.event.reason === 'cancelled') computer.halt(stored.event.sessionId)
+    }
   })
   return {
     schedules,

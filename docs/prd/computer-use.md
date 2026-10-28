@@ -46,6 +46,28 @@ Packaging: `apps/desktop/scripts/build-host.mjs` installs `@trycua/cua-driver` b
 (about 31 MB on disk, outside the ASAR archive, copied by `after-pack.cjs` like the other native packages).
 Checked with `pnpm run pack`: the packaged `BeddCode.exe`, run as Node, loads it and its health check passes.
 
+### Hardening
+
+Added after reading Anthropic's computer-use guidance (isolation, confirming consequential actions,
+treating screen text as untrusted, verifying each step, iteration caps), Claude Code's own
+computer-use design (per-app approval, browsers view-only, terminals click-only, one session at a time,
+Esc aborts) and the Cua SDK guide (never replay an unknown outcome, verify postconditions):
+
+- **App tiers** (`policy.ts`): password managers and UAC are blocked; browsers are view-only (use the
+  `browser_*` tools); terminals and code editors are click-only; Explorer, Settings and the like are
+  allowed but the approval says how far they reach.
+- **Consequential clicks**: a click on something that reads like a payment, transfer or account closing
+  asks in every mode; delete, send, install and agree ask below full access.
+- **Untrusted screen text**: every snapshot says its text is data, and adds a warning when it reads like
+  instructions to a model.
+- **Verify every input**: clicks and keys report what changed in the window (or that nothing did).
+- **One session at a time**: a lease on the desktop, released when a turn ends or after 2 minutes idle.
+- **Stop**: a cancelled turn takes the session's access back and drops its queued calls.
+- **Timeouts**: a call that hangs returns after 60 s without blocking the queue; driver readiness is
+  cached for 30 s; click coordinates are range-checked.
+- **Audit trail**: `computer-audit.jsonl` in the host's home records session, tool, program and outcome,
+  never typed text or screen content (rotated at 5 MB).
+
 Not done: the Desktop pane viewer, Stop and take-over, the phone viewer, redaction of pixels (only whole
 pictures are withheld), per-project app allow lists, and the Linux and container drivers.
 
