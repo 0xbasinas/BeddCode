@@ -400,6 +400,8 @@ export const RpcMethods = {
       browserTools: z.boolean().optional(),
       /** Let the agent read and draw on the host's design canvases (BeddCode's design tools). */
       designTools: z.boolean().optional(),
+      /** Let the agent operate the host's desktop (BeddCode's computer tools). */
+      computerTools: z.boolean().optional(),
     }),
     result: z.object({ sessionId: z.string() }),
   },

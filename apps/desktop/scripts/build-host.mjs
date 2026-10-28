@@ -33,6 +33,9 @@ const EXTERNAL = [
   // Optional native speedups of `ws`; it falls back to JavaScript without them.
   'bufferutil',
   'utf-8-validate',
+  // Native desktop-automation library for computer use (Windows hosts); the host loads it on demand
+  // by name (apps/server/src/computer/cuaDriver.ts), so the bundler never sees it.
+  '@trycua/cua-driver',
 ]
 
 const appVersion = JSON.parse(
@@ -94,6 +97,13 @@ const dependencies = {
     '@anthropic-ai/claude-agent-sdk',
     requireFromClaude,
   ),
+}
+// Computer use only has a Windows driver so far; its library and per-platform binary (about 11 MB)
+// are left out of other installers.
+if (process.platform === 'win32') {
+  // Its exports allow only `import`, so the version is read from the package file itself.
+  const pkgFile = path.join(serverDir, 'node_modules/@trycua/cua-driver/package.json')
+  dependencies['@trycua/cua-driver'] = JSON.parse(readFileSync(pkgFile, 'utf8')).version
 }
 writeFileSync(
   path.join(out, 'server/package.json'),

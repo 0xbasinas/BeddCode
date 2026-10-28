@@ -1,8 +1,56 @@
 # PRD: Computer use for agents
 
-Status: proposal, not started. Owner: 0xbasinas. Last updated: 24 October 2026.
+Status: Windows driver on Cua built and tested (branch `spike/cua-driver`); Linux and container drivers
+not started. Owner: 0xbasinas. Last updated: 28 October 2026.
 
-This doc is for future work. Nothing here exists yet unless a section says it ships today.
+Everything below the "What exists today" section is still the plan unless the section after this one
+says it ships.
+
+## Implemented: Windows host on Cua Driver
+
+Code: `apps/server/src/computer/`. A session created with **Use computer** (`computerTools`) gets
+`computer_*` tools from the host's MCP server. They run on the host, not on a desktop client.
+
+- `driver.ts`: the `DesktopDriver` interface (windows, launch, snapshot, click, type, key, scroll).
+- `cuaDriver.ts`: the driver on [`@trycua/cua-driver`](https://github.com/trycua/cua) 0.37 (MIT, an
+  optional dependency, loaded lazily; the host reports why when it is missing or the host is not Windows).
+- `computerTools.ts`: the policy: tools, approvals, grants, redaction, limits.
+
+Policy that ships:
+
+- An app the session opens is its own. An app that was already open is not, even when launching it
+  returns that process (Notepad reopened the user's unsaved tabs in testing), and any other window
+  needs the user's yes, once per program and session.
+- Password managers and Windows security prompts are never operable and are not asked about.
+- Refs (`e12`) are checked before use: the element row must be the one the agent last read, or the call is
+  refused as stale. Cua only honours tokens from a window's latest snapshot, so each ref action re-reads the window.
+- Fields named like passwords or secrets have their values replaced, and the picture is withheld.
+- Typing a secret-looking string, typing into a password field, and system key combinations ask first.
+- Typing is verified by reading the field back. Background input is tried first, with a foreground
+  fallback (`foreground: auto|never|always`), which says so in the result.
+- One call at a time (one mouse, one keyboard), 300 actions per session, and `revoke` on session end.
+
+Measured on Windows 11 (Cua 0.37, Calculator, a throwaway Electron app, Windows Terminal):
+
+| Finding                      | Detail                                                                                                                                                                                                           |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| UIA clicks in the background | Reliable; 5–11 ms; no focus change.                                                                                                                                                                              |
+| Background typing            | Unreliable. It landed once in Calculator and not on a second try, and was ignored by Notepad. The SDK reports "not verified". Chromium and Windows Terminal refuse it outright.                                  |
+| Foreground typing            | Works (SendInput); the driver restores the previous foreground. Verified by reading the field back.                                                                                                              |
+| Electron                     | Only the title bar until Chromium accessibility is on: launch the app with `--force-renderer-accessibility`. Then the full DOM tree and background clicks work. `set_value` is not supported on Chromium fields. |
+| Elevated windows             | The driver refuses with a clear UIPI error and returns almost nothing from `get_window_state`. Nothing is typed.                                                                                                 |
+| Screenshots                  | Clear PNGs per window, also of windows that are not in front.                                                                                                                                                    |
+
+Packaging: `apps/desktop/scripts/build-host.mjs` installs `@trycua/cua-driver` beside the host bundle on Windows builds
+(about 31 MB on disk, outside the ASAR archive, copied by `after-pack.cjs` like the other native packages).
+Checked with `pnpm run pack`: the packaged `BeddCode.exe`, run as Node, loads it and its health check passes.
+
+Not done: the Desktop pane viewer, Stop and take-over, the phone viewer, redaction of pixels (only whole
+pictures are withheld), per-project app allow lists, and the Linux and container drivers.
+
+Tests: `computerTools.test.ts` and `cuaDriver.test.ts` (fake desktop and fake SDK client),
+`agentTools.computer.test.ts`, and `computerTools.real.test.ts`, which drives Calculator through Cua
+when `BEDDCODE_REAL_COMPUTER=1`.
 
 ## Executive summary
 
