@@ -951,6 +951,33 @@ button.chip-lite:hover {
 .menu-row[aria-checked='true'] {
   background: var(--bg-hover);
 }
+.menu-pair {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.menu-pair .menu-row {
+  flex: 1;
+  min-width: 0;
+}
+.menu-pair-extra {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: calc(28px * var(--ui-scale));
+  height: calc(28px * var(--ui-scale));
+  border-radius: calc(6px * var(--ui-scale));
+  color: var(--text-muted);
+  opacity: 0;
+}
+.menu-pair:hover .menu-pair-extra,
+.menu-pair-extra:focus-visible {
+  opacity: 1;
+}
+.menu-pair-extra:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
 .menu-row:disabled {
   opacity: 0.55;
 }

@@ -1,4 +1,3 @@
-import {} from '../../ui/AgentMark.tsx'
 import { AgentMark } from '../../ui/AgentMark.tsx'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
@@ -9,6 +8,7 @@ import {
   Folder,
   FolderPlus,
   GitBranch,
+  GitBranchPlus,
   Globe,
   PenTool,
   MessageSquare,
@@ -53,7 +53,12 @@ import {
 
 interface Workspace {
   mode: 'worktree' | 'local'
+  /** The branch a new worktree starts from. */
   baseBranch?: string
+  /** An existing branch to check out in the new worktree, instead of a new branch. */
+  branch?: string
+  /** A worktree that already has the branch: the session works there, in its folder. */
+  existing?: { path: string; branch: string }
 }
 
 interface RepoState {
@@ -163,7 +168,7 @@ export function NewSession({
         !welcome && folder
           ? {
               hostKey,
-              cwd: folder,
+              cwd: workspace.existing?.path ?? folder,
               draftId,
               title: folderName(folder),
               instanceId: agent?.id,
@@ -172,7 +177,7 @@ export function NewSession({
           : undefined,
     })
     return () => useComposerWorkspace.setState({ workspace: undefined })
-  }, [hostKey, folder, draftId, agent?.id, welcome])
+  }, [hostKey, folder, draftId, agent?.id, welcome, workspace.existing?.path])
 
   // Look at the folder's repository whenever it changes: branches for the picker, and whether
   // worktrees are possible at all.
@@ -276,13 +281,15 @@ export function NewSession({
     try {
       const sessionId = await createSession(hostKey, {
         instanceId: agent.id,
-        cwd: folder || undefined,
+        cwd: (workspace.existing?.path ?? folder) || undefined,
         projectless: !folder || undefined,
         permissionMode: validModeId,
         model: choice.model,
         effort: choice.effort,
         config: Object.keys(configValues).length > 0 ? configValues : undefined,
-        workspace: useWorktree ? { mode: 'worktree', baseBranch: workspace.baseBranch } : undefined,
+        workspace: useWorktree
+          ? { mode: 'worktree', baseBranch: workspace.baseBranch, branch: workspace.branch }
+          : undefined,
         agentTools: agentTools || undefined,
         browserTools: browserTools || undefined,
         designTools: designTools || undefined,
@@ -647,10 +654,24 @@ function WorkspaceChip({
   onChange(next: Workspace): void
 }) {
   const base = workspace.baseBranch ?? repo.info.defaultBranch ?? repo.info.branch ?? 'main'
-  const label =
-    workspace.mode === 'worktree'
-      ? `New worktree from ${base}`
+  const label = workspace.existing
+    ? `Worktree ${workspace.existing.branch}`
+    : workspace.mode === 'worktree'
+      ? workspace.branch
+        ? `Branch ${workspace.branch}`
+        : `New worktree from ${base}`
       : `Work in the main checkout${repo.info.branch ? ` (${repo.info.branch})` : ''}`
+  // Working on a branch: where it already is, or in a worktree of its own.
+  const workOn = (b: Branch): Workspace =>
+    b.worktree
+      ? { mode: 'local', existing: { path: b.worktree, branch: b.name } }
+      : b.current
+        ? { mode: 'local' }
+        : { mode: 'worktree', baseBranch: base, branch: b.name }
+  const onBranch = (b: Branch) =>
+    workspace.existing?.branch === b.name ||
+    workspace.branch === b.name ||
+    (workspace.mode === 'local' && !workspace.existing && b.current)
 
   return (
     <Dropdown
@@ -667,7 +688,7 @@ function WorkspaceChip({
         <>
           <button
             className="menu-row"
-            aria-checked={workspace.mode === 'worktree'}
+            aria-checked={workspace.mode === 'worktree' && !workspace.branch}
             onClick={() => {
               onChange({ mode: 'worktree', baseBranch: base })
               close()
@@ -677,11 +698,11 @@ function WorkspaceChip({
               <span className="menu-title">New worktree from {base}</span>
               <span className="menu-desc">Isolated copy, safe to run in parallel</span>
             </span>
-            {workspace.mode === 'worktree' && <Check size={16} />}
+            {workspace.mode === 'worktree' && !workspace.branch && <Check size={16} />}
           </button>
           <button
             className="menu-row"
-            aria-checked={workspace.mode === 'local'}
+            aria-checked={workspace.mode === 'local' && !workspace.existing}
             onClick={() => {
               onChange({ mode: 'local' })
               close()
@@ -691,27 +712,47 @@ function WorkspaceChip({
               <span className="menu-title">Work in the main checkout</span>
               <span className="menu-desc">Edits {repo.info.root} directly</span>
             </span>
-            {workspace.mode === 'local' && <Check size={16} />}
+            {workspace.mode === 'local' && !workspace.existing && <Check size={16} />}
           </button>
           {repo.branches.length > 0 && <div className="menu-sep" />}
-          {repo.branches.length > 0 && <div className="menu-heading">Start the worktree from</div>}
+          {repo.branches.length > 0 && <div className="menu-heading">Work on a branch</div>}
           {repo.branches.map((b) => (
-            <button
-              key={b.name}
-              className="menu-row"
-              aria-checked={workspace.mode === 'worktree' && base === b.name}
-              onClick={() => {
-                onChange({ mode: 'worktree', baseBranch: b.name })
-                close()
-              }}
-            >
-              <span className="menu-text">
-                <code className="menu-title">{b.name}</code>
-              </span>
-              <span className="muted">
-                {b.worktree ? 'worktree' : b.current ? 'current' : `${timeAgo(b.at)} ago`}
-              </span>
-            </button>
+            <div key={b.name} className="menu-pair">
+              <button
+                className="menu-row"
+                aria-checked={onBranch(b)}
+                title={
+                  b.worktree
+                    ? `Work in its worktree, ${b.worktree}`
+                    : b.current
+                      ? 'Work in the main checkout'
+                      : 'Check it out in a new worktree'
+                }
+                onClick={() => {
+                  onChange(workOn(b))
+                  close()
+                }}
+              >
+                <span className="menu-text">
+                  <code className="menu-title">{b.name}</code>
+                </span>
+                <span className="muted">
+                  {b.worktree ? 'worktree' : b.current ? 'current' : `${timeAgo(b.at)} ago`}
+                </span>
+                {onBranch(b) && <Check size={16} />}
+              </button>
+              <button
+                className="menu-pair-extra"
+                aria-label={`New worktree from ${b.name}`}
+                title={`New worktree on a new branch from ${b.name}`}
+                onClick={() => {
+                  onChange({ mode: 'worktree', baseBranch: b.name })
+                  close()
+                }}
+              >
+                <GitBranchPlus size={14} />
+              </button>
+            </div>
           ))}
         </>
       )}
