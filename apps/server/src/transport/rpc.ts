@@ -23,6 +23,7 @@ import { browseFolders } from '../workspace/folders.ts'
 import type { FileService } from '../files/files.ts'
 import type { TerminalManager } from '../terminals/manager.ts'
 import type { AlertService } from '../automation/alerts.ts'
+import type { ComputerPane } from '../automation/index.ts'
 import { previewTrigger } from '../automation/cron.ts'
 import type { DesignStore } from '../design/designStore.ts'
 import type { ScheduleService } from '../automation/schedules.ts'
@@ -36,6 +37,7 @@ export interface AutomationServices {
   schedules: ScheduleService
   alerts: AlertService
   designs: DesignStore
+  computer: ComputerPane
 }
 
 /** Everything that works on a session's folder: git, projects, shells and files. */
@@ -309,6 +311,10 @@ export function createRpcRouter(
     'design.save': async (p) => designs.save(p.id, p.project, p.origin),
     'design.rename': async (p) => designs.rename(p.id, p.name),
     'design.delete': async (p) => ({ removed: designs.remove(p.id) }),
+    'computer.view': async (p) => automation.computer.view(p.sessionId, p.since),
+    'computer.control': async (p) => ({
+      paused: automation.computer.control(p.sessionId, p.paused),
+    }),
     'schedules.list': async () => schedules.list(),
     'schedules.save': async (p) => schedules.saveSchedule(p),
     'schedules.remove': async (p) => ({ removed: schedules.remove(p.id) }),

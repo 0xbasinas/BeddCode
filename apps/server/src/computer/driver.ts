@@ -38,6 +38,16 @@ export interface Snapshot {
   /** The element at each index as the driver described it ("Button \"Seven\" [id=num7Button]"). */
   rows: Map<number, string>
   image?: DesktopImage
+  /** The picture's size in pixels, when the driver knows it. */
+  size?: { width: number; height: number }
+}
+
+/** A rectangle in the window picture's pixels. */
+export interface PictureRegion {
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 export interface InputOptions {
@@ -86,6 +96,15 @@ export interface DesktopDriver {
     amount: number,
     opts: InputOptions,
   ): Promise<Outcome<{ detail: string }>>
+  /**
+   * Where the window's password and secret fields are in its picture, so they can be painted over.
+   * Without it (or when it fails) a picture of a window with a secret field is withheld.
+   */
+  secretRegions?(
+    window: DesktopWindow,
+    picture: { width: number; height: number },
+    isSecret: (label: string) => boolean,
+  ): Promise<Outcome<{ regions: PictureRegion[] }>>
   /** Ends a process this driver launched. */
   terminate(pid: number): Promise<Outcome>
   dispose(): Promise<void>

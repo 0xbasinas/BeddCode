@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { PNG } from 'pngjs'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   COMPUTER_TOOL_DEFINITIONS,
@@ -18,6 +19,7 @@ import type {
   DesktopWindow,
   InputOptions,
   Outcome,
+  PictureRegion,
   Snapshot,
 } from './driver.ts'
 
@@ -48,6 +50,9 @@ class FakeDesktop implements DesktopDriver {
 
   /** How long every driver call takes: 0 for a quick desktop, long for one that hangs. */
   hangMs = 2
+  picture = png
+  /** Where secret fields are in the picture; none means the driver cannot tell. */
+  regions?: PictureRegion[]
   readyCalls = 0
   /** Runs when a click lands, so a test can change what the window shows. */
   onClick?: (rows: Map<number, string>, target: ClickTarget) => void
@@ -89,7 +94,12 @@ class FakeDesktop implements DesktopDriver {
       if (g && !g.ok) return g
       const rows = new Map(this.rows.get(w.id) ?? [])
       const text = ['- Window "x"', ...[...rows].map(([i, r]) => `  - [${i}] ${r}`)].join('\n')
-      const snapshot: Snapshot = { text, rows, image: png }
+      const snapshot: Snapshot = {
+        text,
+        rows,
+        image: this.picture,
+        size: { width: 100, height: 50 },
+      }
       return { ok: true as const, snapshot }
     })
   }
@@ -154,6 +164,12 @@ class FakeDesktop implements DesktopDriver {
   async scroll(w: DesktopWindow, direction: string, amount: number) {
     this.calls.push(`scroll ${direction} ${amount}`)
     return { ok: true as const, detail: 'Scrolled' }
+  }
+
+  async secretRegions() {
+    return this.regions
+      ? { ok: true as const, regions: this.regions }
+      : { ok: false as const, code: 'error' as const, error: 'no uia' }
   }
 
   async terminate(pid: number): Promise<Outcome> {
@@ -643,10 +659,15 @@ describe('one session at a time', () => {
 
 describe('stop', () => {
   it('takes a stopped session its access back', async () => {
-    const { call, id, asked, tools } = await open()
+    const { call, id, asked, tools, text } = await open()
     await call('computer_snapshot', { window: id })
     const before = asked.length
     tools.halt('s1')
+    // Until its next turn starts, a stopped session's calls are refused without asking.
+    const refused = await call('computer_snapshot', { window: id })
+    expect(text(refused)).toMatch(/^stopped:/)
+    expect(asked.length).toBe(before)
+    tools.resume('s1')
     await call('computer_snapshot', { window: id })
     expect(asked.length).toBe(before + 1)
     expect(asked.at(-1)!.title).toMatch(/control calc/)
@@ -846,5 +867,92 @@ describe('audit trail', () => {
     s.desktop.win(9, '1Password.exe', '1Password')
     await s.call('computer_snapshot', { window: 9 })
     expect(entries.at(-1)).toMatchObject({ tool: 'computer_snapshot', outcome: 'blocked' })
+  })
+})
+
+describe('secret fields in the picture', () => {
+  const secretRows: [number, string][] = [
+    [1, 'Edit "Password" [value="hunter2" id=pw]'],
+    [2, 'Button "Sign in"'],
+  ]
+  const real = () => {
+    const p = new PNG({ width: 100, height: 50 })
+    p.data.fill(255)
+    return { data: PNG.sync.write(p).toString('base64'), mime: 'image/png' }
+  }
+
+  it('paints over the secret field and still sends the picture', async () => {
+    const s = await open({}, 'login', secretRows)
+    s.desktop.picture = real()
+    s.desktop.regions = [{ x: 10, y: 10, width: 40, height: 10 }]
+    const t = s.text(await s.call('computer_snapshot', { window: s.id }))
+    expect(t).toMatch(/painted over/)
+    expect(t).toContain('[image]')
+    expect(t).not.toContain('hunter2')
+    const shown = s.tools.viewOf('s1', true).image!
+    const px = PNG.sync.read(Buffer.from(shown.data, 'base64'))
+    expect([px.data[(15 * 100 + 30) * 4], px.data[(40 * 100 + 90) * 4]]).toEqual([0, 255])
+  })
+
+  it('withholds the picture when the fields cannot be located', async () => {
+    const s = await open({}, 'login', secretRows)
+    s.desktop.picture = real()
+    const t = s.text(await s.call('computer_snapshot', { window: s.id }))
+    expect(t).toMatch(/picture are withheld/)
+    expect(t).not.toContain('[image]')
+    expect(s.tools.viewOf('s1', true).image).toBeUndefined()
+  })
+})
+
+describe('the Desktop pane', () => {
+  it('shows the latest picture, the last actions and who holds the desktop', async () => {
+    const s = await open()
+    expect(s.tools.viewOf('s1', true)).toMatchObject({ at: 0, active: true, actions: ['launch'] })
+    await s.call('computer_snapshot', { window: s.id })
+    await s.call('computer_click', { window: s.id, ref: 'e1' })
+    const v = s.tools.viewOf('s1', true)
+    expect(v.image?.mime).toBe('image/png')
+    expect(v).toMatchObject({ app: 'calc', paused: false, active: true, enabled: true })
+    expect(v.actions).toEqual(['launch', 'snapshot calc', 'click calc e1'])
+    // Nothing new since the picture the pane already has: it is not sent again.
+    expect(s.tools.viewOf('s1', true, v.at).image).toBeUndefined()
+    expect(s.tools.viewOf('s2', false)).toMatchObject({
+      enabled: false,
+      active: false,
+      actions: [],
+    })
+  })
+
+  it('keeps the last picture of a stopped session and drops its access', async () => {
+    const s = await open()
+    await s.call('computer_snapshot', { window: s.id })
+    s.tools.halt('s1')
+    const v = s.tools.viewOf('s1', true)
+    expect(v.image).toBeDefined()
+    expect(v.active).toBe(false)
+  })
+
+  it('lets the user take over: the agent waits, and carries on when it is handed back', async () => {
+    const s = await open()
+    await s.call('computer_snapshot', { window: s.id })
+    s.tools.setPaused('s1', true)
+    expect(s.tools.viewOf('s1', true)).toMatchObject({ paused: true, active: false })
+    const r = await s.call('computer_click', { window: s.id, x: 1, y: 1 })
+    expect(r.isError).toBe(true)
+    expect(s.text(r)).toMatch(/^paused:/)
+    expect(s.desktop.calls.some((c) => c.startsWith('click'))).toBe(false)
+    // Looking at the list of windows and waiting stay possible.
+    expect((await s.call('computer_windows')).isError).toBeUndefined()
+    s.tools.setPaused('s1', false)
+    expect((await s.call('computer_click', { window: s.id, x: 1, y: 1 })).isError).toBeUndefined()
+  })
+
+  it('takes the desktop from the agent for other sessions too, while the user holds it', async () => {
+    const s = await open()
+    await s.call('computer_snapshot', { window: s.id })
+    s.tools.setPaused('s1', true)
+    expect(JSON.stringify(await s.call('computer_snapshot', { window: s.id }, 's2'))).not.toMatch(
+      /busy/,
+    )
   })
 })

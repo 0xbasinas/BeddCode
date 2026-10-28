@@ -13,7 +13,7 @@ export interface Classification {
 
 /** Windows an agent may never operate: they hold the user's secrets or the system's prompts. */
 const NEVER =
-  /1password|bitwarden|keepass|lastpass|dashlane|nordpass|enpass|credential manager|consent\.exe|logonui|credentialuibroker|windows security|user account control/i
+  /1password|bitwarden|keepass|lastpass|dashlane|nordpass|enpass|credential manager|consent\.exe|logonui|credentialuibroker|windows security|user account control|polkit|gnome-keyring|seahorse|pinentry|kwallet|authentication required/i
 
 const BROWSERS = new Set([
   'chrome',
@@ -27,6 +27,13 @@ const BROWSERS = new Set([
   'chromium',
   'tor',
   'zen',
+  'google-chrome',
+  'chromium-browser',
+  'firefox-esr',
+  'brave-browser',
+  'microsoft-edge',
+  'epiphany',
+  'librewolf',
 ])
 
 const TERMINALS_AND_EDITORS = new Set([
@@ -55,6 +62,28 @@ const TERMINALS_AND_EDITORS = new Set([
   'goland64',
   'clion64',
   'studio64',
+  'gnome-terminal',
+  'gnome-terminal-server',
+  'konsole',
+  'xterm',
+  'kitty',
+  'foot',
+  'tilix',
+  'terminator',
+  'xfce4-terminal',
+  'lxterminal',
+  'ptyxis',
+  'ghostty',
+  'zsh',
+  'fish',
+  'sh',
+  'gnome-text-editor',
+  'gedit',
+  'kate',
+  'sublime_text',
+  'emacs',
+  'vim',
+  'nvim',
 ])
 
 const BROAD: Record<string, string> = {
@@ -65,6 +94,13 @@ const BROAD: Record<string, string> = {
   taskmgr: 'Can end any program.',
   services: 'Can start and stop system services.',
   control: 'Can change system settings.',
+  nautilus: 'Can read, move and delete any file.',
+  dolphin: 'Can read, move and delete any file.',
+  thunar: 'Can read, move and delete any file.',
+  nemo: 'Can read, move and delete any file.',
+  'gnome-control-center': 'Can change system settings.',
+  systemsettings5: 'Can change system settings.',
+  'gnome-system-monitor': 'Can end any program.',
 }
 
 const baseName = (app: string) =>

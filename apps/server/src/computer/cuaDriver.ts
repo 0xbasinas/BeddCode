@@ -7,6 +7,7 @@ import type {
   Outcome,
   Snapshot,
 } from './driver.ts'
+import { readFields, regionsOf, type RunScript } from './uiaSecrets.ts'
 
 // A DesktopDriver on Cua Driver (@trycua/cua-driver, MIT): UI Automation for the tree and for
 // clicks that do not move the user's mouse, Windows Graphics Capture for pictures, and SendInput or
@@ -74,15 +75,21 @@ export class CuaDesktopDriver implements DesktopDriver {
   private readonly latest = new Map<number, string>()
   private readonly launched = new Set<number>()
 
-  constructor(private readonly client: CuaClient) {}
+  constructor(
+    private readonly client: CuaClient,
+    /** Runs a PowerShell script (UI Automation lookups); tests stand in for it. */
+    private readonly runScript?: RunScript,
+  ) {}
 
   /** Loads the SDK; a driver for hosts where it is installed and the platform is supported. */
   static async load(): Promise<Outcome<{ driver: CuaDesktopDriver }>> {
-    if (process.platform !== 'win32')
+    // Windows is the tested platform. Linux uses the SDK's AT-SPI and X11 backend, which needs an
+    // X11 session (Wayland-only desktops are refused by its health check), and is untested here.
+    if (process.platform !== 'win32' && process.platform !== 'linux')
       return {
         ok: false,
         code: 'unavailable',
-        error: `Computer use is only wired up for Windows hosts for now (this host is ${process.platform}).`,
+        error: `Computer use is wired up for Windows and Linux hosts (this host is ${process.platform}).`,
       }
     try {
       // A variable specifier keeps the bundler from pulling the native library into the host.
@@ -158,12 +165,26 @@ export class CuaDesktopDriver implements DesktopDriver {
       .join('\n')
       .trim()
     const image = r.images[0]
+    const s = structured(r)
+    const width = Number(s.screenshot_width)
+    const height = Number(s.screenshot_height)
     const snapshot: Snapshot = {
       text,
       rows: parseRows(text),
       image: image ? { data: image.dataBase64, mime: image.mimeType } : undefined,
+      size: width > 0 && height > 0 ? { width, height } : undefined,
     }
     return { ok: true as const, snapshot }
+  }
+
+  async secretRegions(
+    window: DesktopWindow,
+    picture: { width: number; height: number },
+    isSecret: (label: string) => boolean,
+  ) {
+    const found = await readFields(window.id, this.runScript)
+    if (!found.ok) return found
+    return { ok: true as const, regions: regionsOf(found, picture, isSecret, window.bounds) }
   }
 
   private token(window: DesktopWindow, index: number): string | undefined {

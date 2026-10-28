@@ -98,9 +98,9 @@ const dependencies = {
     requireFromClaude,
   ),
 }
-// Computer use only has a Windows driver so far; its library and per-platform binary (about 11 MB)
-// are left out of other installers.
-if (process.platform === 'win32') {
+// Computer use runs on Windows and Linux hosts; its library and per-platform binary (about 11 MB)
+// are left out of macOS installers.
+if (process.platform === 'win32' || process.platform === 'linux') {
   // Its exports allow only `import`, so the version is read from the package file itself.
   const pkgFile = path.join(serverDir, 'node_modules/@trycua/cua-driver/package.json')
   dependencies['@trycua/cua-driver'] = JSON.parse(readFileSync(pkgFile, 'utf8')).version

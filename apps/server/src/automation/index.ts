@@ -16,6 +16,12 @@ import { ComputerTools, type ComputerToolsHost } from '../computer/computerTools
 import { CuaDesktopDriver } from '../computer/cuaDriver.ts'
 import { ScheduleService } from './schedules.ts'
 
+/** The Desktop pane's view of a session's computer use. */
+export interface ComputerPane {
+  view(sessionId: string, since?: number): ReturnType<ComputerTools['viewOf']>
+  control(sessionId: string, paused: boolean): boolean
+}
+
 export interface AutomationDeps {
   home: string
   hostId: string
@@ -122,12 +128,24 @@ export function createAutomation(deps: AutomationDeps) {
     alerts.onEvent(stored)
     if (stored.event.type === 'session.deleted') agentTools.forget(stored.event.sessionId)
     // A turn that ends frees the desktop for other sessions; a stopped one also loses its access.
+    if (stored.event.type === 'turn.started') computer.resume(stored.event.sessionId)
     if (stored.event.type === 'turn.completed') {
       computer.release(stored.event.sessionId)
       if (stored.event.reason === 'cancelled') computer.halt(stored.event.sessionId)
     }
   })
+  // What the Desktop pane reads and does for a session that may use the computer.
+  const computerPane: ComputerPane = {
+    view: (sessionId, since) => {
+      const created = store.readSession(sessionId).find((e) => e.event.type === 'session.created')
+      const enabled =
+        created?.event.type === 'session.created' && created.event.computerTools === true
+      return computer.viewOf(sessionId, enabled, since)
+    },
+    control: (sessionId, paused) => computer.setPaused(sessionId, paused),
+  }
   return {
+    computerPane,
     schedules,
     alerts,
     agentTools,

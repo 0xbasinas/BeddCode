@@ -68,8 +68,14 @@ Esc aborts) and the Cua SDK guide (never replay an unknown outcome, verify postc
 - **Audit trail**: `computer-audit.jsonl` in the host's home records session, tool, program and outcome,
   never typed text or screen content (rotated at 5 MB).
 
-Not done: the Desktop pane viewer, Stop and take-over, the phone viewer, redaction of pixels (only whole
-pictures are withheld), per-project app allow lists, and the Linux and container drivers.
+### Desktop pane, take-over, pixel redaction, Linux
+
+- **Desktop pane** (right rail, monitor icon): the session's latest window picture, who holds the desktop, the last 12 actions. Polled through `computer.view` (the picture is only sent when it changed).
+- **Stop** ends the turn (`sessions.interrupt`), which takes back the session's access and drops its queued calls. **Take over** (`computer.control`) makes the agent's computer calls answer "paused" until the user hands the controls back.
+- **Pixel redaction**: when a window has a password or secret field, UI Automation locates it (`uiaSecrets.ts`) and `mask.ts` paints it black in the picture, which is then sent (to the agent and to the pane). If the field cannot be located the whole picture is withheld, as before. Verified on a real Windows Forms password box.
+- **Linux**: the driver loads on Linux through the SDK's AT-SPI/X11 backend, with Linux program names in the tiers. Untested here: there is no Linux machine in this setup, and secret fields on Linux still withhold the picture (the UI Automation lookup is Windows only).
+
+Not done: the phone viewer, per-project app allow lists, container drivers, and a Linux or macOS test run.
 
 Tests: `computerTools.test.ts` and `cuaDriver.test.ts` (fake desktop and fake SDK client),
 `agentTools.computer.test.ts`, and `computerTools.real.test.ts`, which drives Calculator through Cua

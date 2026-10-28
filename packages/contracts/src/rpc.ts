@@ -537,6 +537,32 @@ export const RpcMethods = {
     params: z.object({ sessionId: z.string(), includeChildren: z.boolean().optional() }),
     result: z.object({}),
   },
+  /**
+   * What a session is doing on the desktop, for the Desktop pane: its latest window picture (left out
+   * when `since` is already the newest), whether the user holds the controls, and its last actions.
+   */
+  'computer.view': {
+    params: z.object({ sessionId: z.string(), since: z.number().optional() }),
+    result: z.object({
+      /** The session may use the computer. */
+      enabled: z.boolean(),
+      /** The user has taken over: the agent's computer calls wait. */
+      paused: z.boolean(),
+      /** This session holds the desktop right now. */
+      active: z.boolean(),
+      /** When the picture was taken; 0 when there is none yet. */
+      at: z.number(),
+      app: z.string().optional(),
+      title: z.string().optional(),
+      image: z.object({ data: z.string(), mime: z.string() }).optional(),
+      actions: z.array(z.string()),
+    }),
+  },
+  /** The user takes the controls from the agent (`paused`) or hands them back. */
+  'computer.control': {
+    params: z.object({ sessionId: z.string(), paused: z.boolean() }),
+    result: z.object({ paused: z.boolean() }),
+  },
   'sessions.rename': {
     params: z.object({ sessionId: z.string(), title: z.string().trim().min(1).max(120) }),
     result: z.object({}),
