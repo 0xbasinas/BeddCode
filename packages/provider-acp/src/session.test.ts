@@ -1219,3 +1219,59 @@ async function nextEventFrom(events: SessionEvent[], pred: (e: SessionEvent) => 
   }
   throw new Error('event never arrived')
 }
+
+describe('AcpSession: hardening', () => {
+  it('signs in with a method the agent runs itself, then repeats the refused request', async () => {
+    const agent = fakeAgent()
+    agent.auto.initialize = () => ({
+      protocolVersion: 1,
+      agentCapabilities: {},
+      authMethods: [
+        { id: 'login', name: 'Log in', type: 'terminal' },
+        { id: 'env', name: 'API key' },
+      ],
+    })
+    let signedIn = false
+    agent.auto.authenticate = () => {
+      signedIn = true
+      return {}
+    }
+    agent.auto['session/new'] = () =>
+      signedIn
+        ? { sessionId: 'acp-1', modes: MODES }
+        : { rpcError: { code: -32000, message: 'Authentication required' } }
+    const session = start(agent)
+    await nextEvent(session, (e) => e.type === 'session.modes')
+    expect(agent.sent('authenticate')).toMatchObject([{ params: { methodId: 'env' } }])
+    await session.close()
+  })
+
+  it('refuses a second prompt while one is running', async () => {
+    const agent = fakeAgent()
+    const session = start(agent)
+    const { turn, promptId } = await beginPrompt(session, agent)
+    await expect(session.prompt({ text: 'again' })).rejects.toThrow(/still working/)
+    agent.reply(promptId, { stopReason: 'end_turn' })
+    await turn
+    await session.close()
+  })
+
+  it('does not answer a request that names another session', async () => {
+    const agent = fakeAgent()
+    const session = start(agent)
+    await nextEvent(session, (e) => e.type === 'session.modes')
+    const res = await agent.ask('fs/read_text_file', { sessionId: 'other', path: '/x' })
+    expect(res).toMatchObject({ error: { code: -32602 } })
+    await session.close()
+  })
+
+  it('reports a missing file as resource not found', async () => {
+    const agent = fakeAgent()
+    const session = start(agent)
+    await nextEvent(session, (e) => e.type === 'session.modes')
+    const missing = path.join(tmp(), 'nope.txt')
+    const res = await agent.ask('fs/read_text_file', { sessionId: 'acp-1', path: missing })
+    expect(res).toMatchObject({ error: { code: -32002 } })
+    await session.close()
+  })
+})

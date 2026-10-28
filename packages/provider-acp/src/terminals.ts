@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { StringDecoder } from 'node:string_decoder'
 import { spawnProcess } from '@beddcode/shared'
 
 export interface CreateTerminal {
@@ -65,16 +66,24 @@ export class TerminalManager {
       exit: null,
       waiters: [],
     }
-    const append = (chunk: Buffer) => {
-      term.output += chunk.toString('utf8')
+    const add = (text: string) => {
+      term.output += text
       if (term.limit !== null && Buffer.byteLength(term.output) > term.limit) {
         // Keep the tail: the end of the output is what an agent needs most.
-        term.output = Buffer.from(term.output).subarray(-term.limit).toString('utf8')
+        term.output = tailWithin(term.output, term.limit)
         term.truncated = true
       }
     }
-    child.stdout?.on('data', append)
-    child.stderr?.on('data', append)
+    // A multi-byte character can arrive split across two chunks; a decoder per stream joins it.
+    const follow = (stream: NodeJS.ReadableStream | null | undefined) => {
+      if (!stream) return
+      const decoder = new StringDecoder('utf8')
+      stream.on('data', (chunk: Buffer) => add(decoder.write(chunk)))
+      stream.on('end', () => add(decoder.end()))
+    }
+    const append = (chunk: Buffer) => add(chunk.toString('utf8'))
+    follow(child.stdout)
+    follow(child.stderr)
     const finish = (status: ExitStatus) => {
       if (term.exit) return
       term.exit = status
@@ -93,6 +102,11 @@ export class TerminalManager {
   output(id: string) {
     const t = this.get(id)
     return { output: t.output, truncated: t.truncated, exitStatus: t.exit }
+  }
+
+  /** The output so far, or nothing when the terminal is unknown or already released. */
+  peek(id: string): string | undefined {
+    return this.terminals.get(id)?.output
   }
 
   waitForExit(id: string): Promise<ExitStatus> {
@@ -123,6 +137,16 @@ export class TerminalManager {
     if (!t) throw new Error(`Unknown terminal: ${id}`)
     return t
   }
+}
+
+/** The end of `text` that fits in `limit` bytes, cut at a character boundary as the protocol asks. */
+export function tailWithin(text: string, limit: number): string {
+  const bytes = Buffer.from(text)
+  if (bytes.length <= limit) return text
+  let start = bytes.length - Math.max(0, limit)
+  // Skip continuation bytes (10xxxxxx) so the cut never lands inside a character.
+  while (start < bytes.length && (bytes[start]! & 0xc0) === 0x80) start++
+  return bytes.subarray(start).toString('utf8')
 }
 
 function killTree(child: ChildProcess) {

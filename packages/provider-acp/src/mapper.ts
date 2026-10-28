@@ -67,6 +67,9 @@ interface ToolState {
   /** Latest diff per path, emitted once the tool succeeds. */
   diffs: Map<string, { path: string; oldText?: string | null; newText: string }>
   output?: string
+  /** The terminal this tool call embeds, and the last output seen from it (it may be released). */
+  terminalId?: string
+  terminalText?: string
   input?: string
   paths?: string[]
 }
@@ -95,10 +98,18 @@ const sameList = (a: string[] | undefined, b: string[] | undefined) =>
 
 function textOf(content: ToolCallContent[] | null | undefined): string | undefined {
   const text = (content ?? [])
-    .flatMap((c) => (c.type === 'content' && c.content.type === 'text' ? [c.content.text] : []))
+    .flatMap((c) => {
+      if (c.type !== 'content') return []
+      if (c.content.type === 'text') return [c.content.text]
+      if (c.content.type === 'resource_link') return [c.content.uri]
+      return []
+    })
     .join('\n')
   return text ? text.slice(0, MAX_OUTPUT) : undefined
 }
+
+/** The tail of terminal output: what a command ended with is what matters. */
+const tailOf = (text: string) => (text.length > MAX_OUTPUT ? text.slice(-MAX_OUTPUT) : text)
 
 function rawOutputText(raw: unknown): string | undefined {
   if (raw === undefined || raw === null) return undefined
@@ -136,6 +147,8 @@ export class AcpEventMapper {
   constructor(
     private readonly sessionId: string,
     private readonly now: () => number = Date.now,
+    /** Reads a terminal the agent runs through us, for tool calls that embed one. */
+    private readonly readTerminal: (terminalId: string) => string | undefined = () => undefined,
   ) {}
 
   setTurn(turnId: string | undefined) {
@@ -168,6 +181,9 @@ export class AcpEventMapper {
       case 'agent_message_chunk':
         if (update.content.type === 'text' && update.content.text) {
           out.push({ type: 'message.delta', role: 'assistant', text: update.content.text })
+        } else if (update.content.type === 'resource_link') {
+          const { name, uri } = update.content
+          out.push({ type: 'message.delta', role: 'assistant', text: `[${name || uri}](${uri})` })
         }
         break
 
@@ -181,7 +197,7 @@ export class AcpEventMapper {
           pathsOf(update.locations),
         )
         this.collectDiffs(state, update.content)
-        state.output = textOf(update.content) ?? rawOutputText(update.rawOutput) ?? state.output
+        this.noteOutput(state, update.content, update.rawOutput)
         if (update.status === 'completed' || update.status === 'failed') {
           this.finish(update.toolCallId, state, update.status === 'completed', out)
         }
@@ -198,7 +214,7 @@ export class AcpEventMapper {
           pathsOf(update.locations),
         )
         this.collectDiffs(state, update.content)
-        state.output = textOf(update.content) ?? rawOutputText(update.rawOutput) ?? state.output
+        this.noteOutput(state, update.content, update.rawOutput)
         if (update.status === 'completed' || update.status === 'failed') {
           this.finish(update.toolCallId, state, update.status === 'completed', out)
         }
@@ -345,6 +361,21 @@ export class AcpEventMapper {
       })
     }
     return state
+  }
+
+  /** What the tool printed: its text content, else its raw output, else its embedded terminal. */
+  private noteOutput(
+    state: ToolState,
+    content: ToolCallContent[] | null | undefined,
+    rawOutput: unknown,
+  ) {
+    // The agent may release a terminal before the call ends, so its output is kept as it is seen.
+    for (const c of content ?? []) {
+      if (c.type === 'terminal') state.terminalId = c.terminalId
+    }
+    const live = state.terminalId ? this.readTerminal(state.terminalId)?.trim() : undefined
+    if (live) state.terminalText = tailOf(live)
+    state.output = textOf(content) ?? rawOutputText(rawOutput) ?? state.terminalText ?? state.output
   }
 
   private collectDiffs(state: ToolState, content: ToolCallContent[] | null | undefined) {

@@ -61,6 +61,13 @@ export function isChooser(options: { kind: string }[]): boolean {
   return false
 }
 
+/** A missing file is the protocol's "resource not found"; anything else keeps its own message. */
+function fileError(err: unknown): never {
+  const code = (err as NodeJS.ErrnoException | null)?.code
+  const message = err instanceof Error ? err.message : String(err)
+  throw new JsonRpcError(code === 'ENOENT' ? -32002 : -32603, message)
+}
+
 /** The text a tool call carries in its content blocks. */
 export function contentText(content: unknown): string | undefined {
   if (!Array.isArray(content)) return undefined
@@ -150,9 +157,9 @@ export class AcpSession implements ProviderSession {
     private readonly deps: AcpSessionDeps,
   ) {
     this.sessionId = input.sessionId
-    this.mapper = new AcpEventMapper(input.sessionId)
-    if (input.resumeId) this.mapper.continuesEarlierConversation()
     this.terminals = new TerminalManager(input.cwd)
+    this.mapper = new AcpEventMapper(input.sessionId, Date.now, (id) => this.terminals.peek(id))
+    if (input.resumeId) this.mapper.continuesEarlierConversation()
     this.rpc = new JsonRpcClient(deps.transport, deps.log, { jsonrpc2: true })
     this.rpc.onNotification((method, params) => this.onNotification(method, params))
     this.rpc.onRequest((method, params) => this.onClientRequest(method, params))
@@ -211,6 +218,10 @@ export class AcpSession implements ProviderSession {
       )
       this.canSendImages = caps?.promptCapabilities?.image === true
       this.authMethods = (init.authMethods ?? []).map((m) => m.name)
+      // Only methods the agent runs itself can be started from here; a terminal one needs the user.
+      this.agentAuthIds = (init.authMethods ?? [])
+        .filter((m) => (m as { type?: string }).type !== 'terminal')
+        .map((m) => m.id)
       const extra = this.input.additionalDirectories ?? []
       const base = {
         cwd: this.input.cwd,
@@ -326,6 +337,30 @@ export class AcpSession implements ProviderSession {
   }
 
   private authMethods: string[] = []
+  private agentAuthIds: string[] = []
+
+  /** The agent says it needs a sign-in: the protocol's auth-required error. */
+  private isAuthRequired(err: unknown): boolean {
+    return (
+      err instanceof JsonRpcError && (err.code === -32000 || /auth.?required/i.test(err.message))
+    )
+  }
+
+  /**
+   * Tries the sign-in methods the agent runs by itself (credentials it already holds, an API key in
+   * its environment). True when one of them worked; the caller then repeats what was refused.
+   */
+  private async authenticate(): Promise<boolean> {
+    for (const methodId of this.agentAuthIds) {
+      try {
+        await this.rpc.request('authenticate', { methodId }, { timeoutMs: INIT_TIMEOUT })
+        return true
+      } catch (err) {
+        this.deps.log.debug(`${this.deps.label} did not accept sign-in method ${methodId}`, err)
+      }
+    }
+    return false
+  }
 
   /** An agent that wants a sign-in says so with a bare auth error; tell the user what to do. */
   private explain(err: unknown): string {
@@ -343,10 +378,16 @@ export class AcpSession implements ProviderSession {
 
   /** A session setup request, tried again when the agent's session storage is not ready yet. */
   private async setup<T>(method: string, params: Obj): Promise<T> {
+    let signedIn = false
     for (let attempt = 1; ; attempt++) {
       try {
         return await this.rpc.request<T>(method, params, { timeoutMs: SESSION_TIMEOUT })
       } catch (err) {
+        if (!signedIn && this.isAuthRequired(err) && (await this.authenticate())) {
+          signedIn = true
+          attempt--
+          continue
+        }
         if (!isStorageNotFound(err) || attempt >= STORAGE_RETRIES) throw err
         await new Promise((resolve) => setTimeout(resolve, STORAGE_RETRY_MS))
       }
@@ -434,6 +475,8 @@ export class AcpSession implements ProviderSession {
     } catch {
       return // the start-up failure was already reported as an error event
     }
+    // One prompt at a time: a second would interleave two turns' updates under one turn id.
+    if (this.inflightTurn) throw new Error('The agent is still working on the previous message.')
 
     const turnId = `turn-${++this.turnCount}`
     this.inflightTurn = turnId
@@ -467,10 +510,7 @@ export class AcpSession implements ProviderSession {
           this.emit({ type: 'turn.completed', reason: 'cancelled' }, turnId)
           break
         default:
-          this.emit(
-            { type: 'error', message: `${this.deps.label} stopped: ${res.stopReason}` },
-            turnId,
-          )
+          this.emit({ type: 'error', message: this.stopMessage(res.stopReason) }, turnId)
           this.emit({ type: 'turn.completed', reason: 'error' }, turnId)
       }
     } catch (err) {
@@ -485,6 +525,20 @@ export class AcpSession implements ProviderSession {
     } finally {
       this.stopWatchdog()
       this.endTurn = undefined
+    }
+  }
+
+  /** What a stop reason other than a normal end or a cancel means, in words. */
+  private stopMessage(reason: string): string {
+    switch (reason) {
+      case 'max_tokens':
+        return `${this.deps.label} stopped because it reached its output limit.`
+      case 'max_turn_requests':
+        return `${this.deps.label} stopped because it reached its limit of steps for one turn.`
+      case 'refusal':
+        return `${this.deps.label} declined to continue with this request.`
+      default:
+        return `${this.deps.label} stopped: ${reason}`
     }
   }
 
@@ -617,9 +671,12 @@ export class AcpSession implements ProviderSession {
     this.closed = true
     this.cancelAllPending()
     this.terminals.releaseAll()
-    if (this.input.textOnly && this.acpSessionId) {
+    this.stopWatchdog()
+    if (this.acpSessionId) {
       if (this.inflightTurn) this.rpc.notify('session/cancel', { sessionId: this.acpSessionId })
-      if (this.canCloseSession) {
+      // Throwaway sessions are closed so they leave nothing in the agent's history; a real one is
+      // kept so it can be resumed.
+      if (this.input.textOnly && this.canCloseSession) {
         await this.rpc
           .request('session/close', { sessionId: this.acpSessionId }, { timeoutMs: 1500 })
           .catch(() => {})
@@ -667,6 +724,10 @@ export class AcpSession implements ProviderSession {
       throw new JsonRpcError(-32601, message)
     }
     const p = (params ?? {}) as Obj
+    // Requests name the session they belong to; one for another session is not ours to answer.
+    if (typeof p.sessionId === 'string' && this.acpSessionId && p.sessionId !== this.acpSessionId) {
+      throw new JsonRpcError(-32602, `Unknown session: ${p.sessionId}`)
+    }
     switch (method) {
       case 'session/request_permission':
         return this.askPermission(p as unknown as RequestPermissionRequest)
@@ -679,7 +740,7 @@ export class AcpSession implements ProviderSession {
 
       case 'fs/read_text_file': {
         const file = this.absolute(p.path)
-        const text = await readFile(file, 'utf8')
+        const text = await readFile(file, 'utf8').catch(fileError)
         const line = typeof p.line === 'number' ? Math.max(1, p.line) : 1
         const limit = typeof p.limit === 'number' ? p.limit : undefined
         if (line === 1 && limit === undefined) return { content: text }
@@ -688,8 +749,8 @@ export class AcpSession implements ProviderSession {
       }
       case 'fs/write_text_file': {
         const file = this.absolute(p.path)
-        await mkdir(path.dirname(file), { recursive: true })
-        await writeFile(file, String(p.content ?? ''), 'utf8')
+        await mkdir(path.dirname(file), { recursive: true }).catch(fileError)
+        await writeFile(file, String(p.content ?? ''), 'utf8').catch(fileError)
         return {}
       }
 
