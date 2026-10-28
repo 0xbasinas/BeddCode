@@ -43,6 +43,8 @@ export interface Snapshot {
 export interface InputOptions {
   /** Take the foreground for this input (the driver puts the previous window back afterwards). */
   foreground?: boolean
+  /** Pause between typed characters, in ms; some apps (Notepad) drop or repeat keys that come faster. */
+  delayMs?: number
 }
 
 export type ClickTarget = { index: number } | { x: number; y: number }
@@ -64,6 +66,13 @@ export interface DesktopDriver {
     window: DesktopWindow,
     text: string,
     opts: InputOptions & { index?: number },
+  ): Promise<Outcome<{ detail: string }>>
+  /** Replaces the whole content of a text element directly, with no keystrokes. */
+  setValue(
+    window: DesktopWindow,
+    index: number,
+    value: string,
+    opts: InputOptions,
   ): Promise<Outcome<{ detail: string }>>
   /** A key ("enter") or a combination (["ctrl", "s"]). */
   key(

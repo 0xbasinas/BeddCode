@@ -75,6 +75,11 @@ export const COMPUTER_TOOL_DEFINITIONS = [
         window: windowArg,
         text: { type: 'string' },
         ref: refArg,
+        clear: {
+          type: 'boolean',
+          description:
+            'With a ref: replace the whole content of the element directly, with no keystrokes. The most reliable way to fill a text box or editor that supports it (it does not in browsers); the old content is lost.',
+        },
         foreground: foregroundArg,
       },
       required: ['window', 'text'],
@@ -168,6 +173,8 @@ const SYSTEM_KEYS =
 
 const MAX_TREE_CHARS = 40_000
 const MAX_ACTIONS = 300
+/** Between typed characters: Notepad garbled text sent at full speed (Hello m BeddCode rrrrr...). */
+const TYPE_DELAY_MS = 25
 
 interface Seen {
   rows: Map<number, string>
@@ -483,8 +490,22 @@ export class ComputerTools {
       if (!allowed)
         return fail('The user did not allow typing a secret. Ask them to type it themselves.')
     }
+    if (args.clear === true) {
+      if (index === undefined)
+        return fail('"clear" replaces the content of an element: give its ref')
+      const set = await driver.setValue(win, index, text, {})
+      if (!set.ok)
+        return this.failure(
+          set.code,
+          `${set.error}\nThis element cannot be set directly; type into it instead (without clear).`,
+        )
+      const check = secret
+        ? 'Not verified: the field holds a secret.'
+        : await this.verify(driver, win, index, text)
+      return ok([set.detail, check].join('\n'))
+    }
     const { result, usedForeground } = await this.deliver(this.foreground(args), (foreground) =>
-      driver.type(win, text, { foreground, index }),
+      driver.type(win, text, { foreground, index, delayMs: TYPE_DELAY_MS }),
     )
     if (!result.ok) return this.failure(result.code, result.error)
     const notes = [result.detail]

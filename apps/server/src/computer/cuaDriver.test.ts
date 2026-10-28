@@ -152,6 +152,27 @@ describe('CuaDesktopDriver', () => {
     expect(await d.key(win, 'enter', {})).toMatchObject({ ok: false, code: 'elevated' })
   })
 
+  it('passes the pause between typed characters on', async () => {
+    const { c, calls } = client({ type_text: { text: 'ok' } })
+    await new CuaDesktopDriver(c).type(win, 'hello', { foreground: true, delayMs: 25 })
+    expect(calls[0]!.args).toMatchObject({
+      text: 'hello',
+      delay_ms: 25,
+      delivery_mode: 'foreground',
+    })
+    await new CuaDesktopDriver(c).type(win, 'x', {})
+    expect(calls[1]!.args).not.toHaveProperty('delay_ms')
+  })
+
+  it('sets a value on an element it has read, and not before', async () => {
+    const { c, calls } = client({ get_window_state: { text: STATE }, set_value: { text: 'ok' } })
+    const d = new CuaDesktopDriver(c)
+    expect(await d.setValue(win, 2, 'x', {})).toMatchObject({ ok: false, code: 'stale' })
+    await d.snapshot(win)
+    expect(await d.setValue(win, 2, 'x', {})).toMatchObject({ ok: true })
+    expect(calls.at(-1)!.args).toMatchObject({ element_token: 's00000007:2', value: 'x' })
+  })
+
   it('uses hotkey for combinations and press_key for a single key', async () => {
     const { c, calls } = client({ hotkey: { text: 'ok' }, press_key: { text: 'ok' } })
     const d = new CuaDesktopDriver(c)

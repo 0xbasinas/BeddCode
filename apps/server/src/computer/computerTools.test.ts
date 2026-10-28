@@ -33,6 +33,7 @@ class FakeDesktop implements DesktopDriver {
   /** Whether typing lands in the row. */
   typingLands = true
   calls: string[] = []
+  delays: (number | undefined)[] = []
   active = 0
   maxActive = 0
   nextPid = 1000
@@ -103,12 +104,31 @@ class FakeDesktop implements DesktopDriver {
           code: 'foreground_needed' as const,
           error: 'Background delivery is not available',
         }
+      this.delays.push(opts.delayMs)
       this.calls.push(`type ${JSON.stringify(text)}${opts.foreground ? ' fg' : ''}`)
       if (this.typingLands && opts.index !== undefined) {
         const rows = this.rows.get(w.id)!
         rows.set(opts.index, `Edit "Name" [value="${text}"]`)
       }
       return { ok: true as const, detail: `Typed ${text.length} chars` }
+    })
+  }
+
+  setFails = false
+
+  async setValue(w: DesktopWindow, index: number, value: string) {
+    return this.busy(() => {
+      const g = this.guard(w)
+      if (g && !g.ok) return g
+      if (this.setFails)
+        return {
+          ok: false as const,
+          code: 'error' as const,
+          error: 'element does not implement ValuePattern',
+        }
+      this.calls.push(`set ${index} ${JSON.stringify(value)}`)
+      this.rows.get(w.id)!.set(index, `Edit "Name" [value="${value}"]`)
+      return { ok: true as const, detail: 'Set the value' }
     })
   }
 
@@ -389,6 +409,50 @@ describe('acting', () => {
     expect(text(r)).toMatch(/foreground/)
     expect(text(r)).toMatch(/Verified/)
     expect(desktop.calls).toContain('type "hello" fg')
+  })
+
+  it('types with a pause between characters, so slow apps do not garble the text', async () => {
+    const { call, id, desktop } = await calc()
+    await call('computer_type', { window: id, text: 'hello' })
+    expect(desktop.delays).toEqual([25])
+  })
+
+  it('replaces a field directly with clear, and reads it back', async () => {
+    const { call, id, desktop, text } = await calc()
+    await call('computer_snapshot', { window: id })
+    const r = await call('computer_type', {
+      window: id,
+      text: 'whole text',
+      ref: 'e2',
+      clear: true,
+    })
+    expect(r.isError).toBeUndefined()
+    expect(text(r)).toMatch(/Verified/)
+    expect(desktop.calls).toContain('set 2 "whole text"')
+    expect(desktop.calls.some((c) => c.startsWith('type'))).toBe(false)
+  })
+
+  it('needs a ref for clear, and says when the element cannot be set directly', async () => {
+    const { call, id, desktop, text } = await calc()
+    expect(text(await call('computer_type', { window: id, text: 'x', clear: true }))).toMatch(
+      /give its ref/,
+    )
+    await call('computer_snapshot', { window: id })
+    desktop.setFails = true
+    const r = await call('computer_type', { window: id, text: 'x', ref: 'e2', clear: true })
+    expect(r.isError).toBe(true)
+    expect(text(r)).toMatch(/type into it instead/)
+  })
+
+  it('still asks before setting a secret field directly', async () => {
+    const s = setup({ level: 3, answer: () => false })
+    await s.call('computer_launch', { app: 'login' })
+    const id = s.desktop.windowsList[0]!.id
+    s.desktop.rows.set(id, new Map([[4, 'Edit "Password" [value=""]']]))
+    await s.call('computer_snapshot', { window: id })
+    const r = await s.call('computer_type', { window: id, text: 'abc', ref: 'e4', clear: true })
+    expect(r.isError).toBe(true)
+    expect(s.desktop.calls.some((c) => c.startsWith('set'))).toBe(false)
   })
 
   it('does not take the foreground when told never to', async () => {

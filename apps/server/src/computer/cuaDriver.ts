@@ -212,8 +212,24 @@ export class CuaDesktopDriver implements DesktopDriver {
         pid: window.pid,
         window_id: window.id,
         text,
+        ...(opts.delayMs ? { delay_ms: opts.delayMs } : {}),
         ...(token ? { element_token: token } : {}),
       },
+      opts,
+    )
+  }
+
+  async setValue(window: DesktopWindow, index: number, value: string, opts: InputOptions) {
+    const token = this.token(window, index)
+    if (!token)
+      return {
+        ok: false as const,
+        code: 'stale' as const,
+        error: 'Read the window with computer_snapshot before setting an element.',
+      }
+    return this.act(
+      'set_value',
+      { pid: window.pid, window_id: window.id, element_token: token, value },
       opts,
     )
   }
