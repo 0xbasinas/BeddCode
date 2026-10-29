@@ -1,4 +1,9 @@
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import {
+  execFile,
+  spawn,
+  type ChildProcess,
+  type ChildProcessWithoutNullStreams,
+} from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
 
@@ -116,4 +121,20 @@ export function spawnProcess(
       windowsVerbatimArguments: viaShell,
     },
   )
+}
+
+/**
+ * Ends a child and everything it started (tool shells, servers, background jobs). On Windows
+ * `child.kill()` would leave those running, so the whole tree is ended there.
+ */
+export function killProcessTree(child: ChildProcess, signal: NodeJS.Signals = 'SIGTERM'): void {
+  if (child.pid === undefined || child.exitCode !== null) return
+  if (isWindows) {
+    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+      windowsHide: true,
+      stdio: 'ignore',
+    }).on('error', () => child.kill())
+  } else {
+    child.kill(signal)
+  }
 }

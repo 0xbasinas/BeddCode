@@ -36,6 +36,8 @@ import { TerminalManager } from './terminals.ts'
 
 type Draft<E = SessionEvent> = E extends unknown ? Omit<E, 'sessionId' | 'at' | 'turnId'> : never
 type Obj = Record<string, unknown>
+/** An event before the session adds its id, time and turn. */
+export type AcpDraft = Draft
 
 const PROTOCOL_VERSION = 1
 /** Starting up can legitimately take a while (an `npx` download, MCP servers); a hang cannot. */
@@ -80,7 +82,38 @@ export function contentText(content: unknown): string | undefined {
   return parts.length > 0 ? parts.join('\n').slice(0, 2000) : undefined
 }
 
+/**
+ * What one particular agent needs beyond the protocol. Every hook is optional; an agent without
+ * any is driven by the protocol alone.
+ */
+export interface AcpHooks {
+  /** Sent as `_meta` on `initialize`. */
+  initializeMeta?: Obj
+  /** Sent as `_meta` on every `session/cancel`. */
+  cancelMeta?: Obj
+  /** Sent as `_meta` on `authenticate`. */
+  authMeta?: Obj
+  /** The agent's own sign-in methods in the order to try them. */
+  authOrder?(methodIds: string[]): string[]
+  /** Words for an error the agent reports in its own way, or nothing to keep the default. */
+  describeError?(err: unknown): string | undefined
+  /** Rewrites the user's text before it is sent (expanding the agent's own shorthand). */
+  transformPrompt?(text: string): string | Promise<string>
+  /**
+   * Turns a notification of the agent's own (any method but `session/update`) into events. `ctx`
+   * says which agent session the notification should be about.
+   */
+  onNotification?(
+    method: string,
+    params: unknown,
+    ctx: { sessionId: string },
+  ): AcpDraft[] | undefined
+  /** Which of the agent's permission options the user may be offered. */
+  filterPermissionOptions?(options: PermissionOption[]): PermissionOption[]
+}
+
 export interface AcpSessionDeps {
+  hooks?: AcpHooks
   transport: Transport
   log: Logger
   label: string
@@ -198,6 +231,7 @@ export class AcpSession implements ProviderSession {
                 // Forms an agent wants filled in go to the user as questions.
                 elicitation: { form: {} },
               },
+          ...(this.deps.hooks?.initializeMeta ? { _meta: this.deps.hooks.initializeMeta } : {}),
           clientInfo: {
             name: 'beddcode',
             title: 'BeddCode',
@@ -351,9 +385,14 @@ export class AcpSession implements ProviderSession {
    * its environment). True when one of them worked; the caller then repeats what was refused.
    */
   private async authenticate(): Promise<boolean> {
-    for (const methodId of this.agentAuthIds) {
+    const order = this.deps.hooks?.authOrder?.(this.agentAuthIds) ?? this.agentAuthIds
+    for (const methodId of order) {
       try {
-        await this.rpc.request('authenticate', { methodId }, { timeoutMs: INIT_TIMEOUT })
+        await this.rpc.request(
+          'authenticate',
+          { methodId, ...(this.deps.hooks?.authMeta ? { _meta: this.deps.hooks.authMeta } : {}) },
+          { timeoutMs: INIT_TIMEOUT },
+        )
         return true
       } catch (err) {
         this.deps.log.debug(`${this.deps.label} did not accept sign-in method ${methodId}`, err)
@@ -364,6 +403,8 @@ export class AcpSession implements ProviderSession {
 
   /** An agent that wants a sign-in says so with a bare auth error; tell the user what to do. */
   private explain(err: unknown): string {
+    const own = this.deps.hooks?.describeError?.(err)
+    if (own) return own
     const message = describeRpcError(err)
     const code = err instanceof JsonRpcError ? err.code : undefined
     if (
@@ -490,7 +531,7 @@ export class AcpSession implements ProviderSession {
       const request = this.rpc.request<{ stopReason: string }>('session/prompt', {
         sessionId: this.acpSessionId,
         prompt: [
-          { type: 'text', text: input.text },
+          { type: 'text', text: await this.promptText(input.text) },
           ...(await this.imageBlocks(input.attachments)),
         ],
       })
@@ -518,7 +559,12 @@ export class AcpSession implements ProviderSession {
       if (this.inflightTurn !== turnId) return
       this.inflightTurn = null
       this.emit(
-        { type: 'error', message: err instanceof Error ? err.message : String(err) },
+        {
+          type: 'error',
+          message:
+            this.deps.hooks?.describeError?.(err) ??
+            (err instanceof Error ? err.message : String(err)),
+        },
         turnId,
       )
       this.emit({ type: 'turn.completed', reason: 'error' }, turnId)
@@ -540,6 +586,15 @@ export class AcpSession implements ProviderSession {
       default:
         return `${this.deps.label} stopped: ${reason}`
     }
+  }
+
+  private cancel() {
+    if (!this.acpSessionId) return
+    const meta = this.deps.hooks?.cancelMeta
+    this.rpc.notify('session/cancel', {
+      sessionId: this.acpSessionId,
+      ...(meta ? { _meta: meta } : {}),
+    })
   }
 
   /** Ends the running turn now, whatever the agent does: it is not answering. */
@@ -584,7 +639,7 @@ export class AcpSession implements ProviderSession {
     this.deps.log.warn(
       `${this.deps.label} was silent for ${Math.round(idleMs / 1000)}s; cancelling`,
     )
-    if (this.acpSessionId) this.rpc.notify('session/cancel', { sessionId: this.acpSessionId })
+    this.cancel()
     await new Promise((resolve) => setTimeout(resolve, graceMs))
     const minutes = Math.max(1, Math.round(idleMs / 60_000))
     this.forceEnd(
@@ -592,6 +647,18 @@ export class AcpSession implements ProviderSession {
       'error',
       `${this.deps.label} stopped responding for ${minutes} minute${minutes === 1 ? '' : 's'}, so the turn was ended.`,
     )
+  }
+
+  /** The text as the agent should get it; a hook that fails leaves the user's words alone. */
+  private async promptText(text: string): Promise<string> {
+    const hook = this.deps.hooks?.transformPrompt
+    if (!hook) return text
+    try {
+      return await hook(text)
+    } catch (err) {
+      this.deps.log.debug('prompt rewrite failed; sending the text as typed', err)
+      return text
+    }
   }
 
   /** Pictures go in as image blocks when the agent takes them; every file is also named in the text. */
@@ -642,7 +709,7 @@ export class AcpSession implements ProviderSession {
 
   async interrupt() {
     this.cancelAllPending()
-    if (this.acpSessionId) this.rpc.notify('session/cancel', { sessionId: this.acpSessionId })
+    this.cancel()
     // An agent that ignores the cancel must not leave the turn stuck.
     const turnId = this.inflightTurn
     if (turnId) {
@@ -673,7 +740,7 @@ export class AcpSession implements ProviderSession {
     this.terminals.releaseAll()
     this.stopWatchdog()
     if (this.acpSessionId) {
-      if (this.inflightTurn) this.rpc.notify('session/cancel', { sessionId: this.acpSessionId })
+      if (this.inflightTurn) this.cancel()
       // Throwaway sessions are closed so they leave nothing in the agent's history; a real one is
       // kept so it can be resumed.
       if (this.input.textOnly && this.canCloseSession) {
@@ -691,7 +758,18 @@ export class AcpSession implements ProviderSession {
   }
 
   private onNotification(method: string, params: unknown) {
-    if (method !== 'session/update') return
+    if (method !== 'session/update') {
+      if (this.replaying || !this.acpSessionId) return
+      try {
+        const drafts = this.deps.hooks?.onNotification?.(method, params, {
+          sessionId: this.acpSessionId,
+        })
+        for (const draft of drafts ?? []) this.emit(draft, this.inflightTurn ?? undefined)
+      } catch (err) {
+        this.deps.log.debug(`could not read ${method}`, err)
+      }
+      return
+    }
     if (this.replaying) {
       this.lastReplayAt = Date.now()
       return
@@ -850,11 +928,12 @@ export class AcpSession implements ProviderSession {
     }
     const requestId = `req-${++this.approvalCount}`
     const tool = req.toolCall
+    const offered = this.deps.hooks?.filterPermissionOptions?.(req.options) ?? req.options
     if (tool.toolCallId) this.mapper.noteApproval(tool.toolCallId)
     const raw = (tool.rawInput ?? {}) as Obj
     // Two or more "allow" choices of one kind make this a chooser (which branch, which option):
     // what is being chosen between is in the tool call's content, not in a command.
-    const chooser = isChooser(req.options)
+    const chooser = isChooser(offered)
     const detail =
       (chooser ? contentText(tool.content) : undefined) ||
       (typeof raw.command === 'string' && raw.command) ||
@@ -877,7 +956,7 @@ export class AcpSession implements ProviderSession {
           toolId: tool.toolCallId || undefined,
           title: tool.title ?? 'Permission requested',
           detail: detail || undefined,
-          options: req.options.map((o: PermissionOption) => ({
+          options: offered.map((o: PermissionOption) => ({
             id: o.optionId,
             label: o.name,
             kind: o.kind.startsWith('allow') ? ('allow' as const) : ('deny' as const),

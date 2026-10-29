@@ -1,6 +1,9 @@
 import readline from 'node:readline'
 import type { Logger } from './log.ts'
-import { spawnProcess } from './process.ts'
+import { killProcessTree, spawnProcess } from './process.ts'
+
+/** How long an agent has to exit by itself once its input is closed. */
+const CLOSE_GRACE_MS = 1_500
 
 /** Line-oriented duplex channel; the real one wraps a child's stdio. */
 export interface Transport {
@@ -242,8 +245,12 @@ export function spawnTransport(
     onLine: (handler) => readline.createInterface({ input: child.stdout }).on('line', handler),
     onClose: (handler) => child.once('close', handler),
     close: () => {
+      // Closing its input is the polite way to ask it to finish; whatever is still running a
+      // moment later, with everything it started, is ended.
       child.stdin.end()
-      child.kill()
+      const timer = setTimeout(() => killProcessTree(child), CLOSE_GRACE_MS)
+      timer.unref?.()
+      child.once('close', () => clearTimeout(timer))
     },
     stderrTail: () => tail.trim(),
   }

@@ -140,6 +140,7 @@ export class AcpEventMapper {
   /** A resumed conversation's first total holds its earlier turns, counted when they ran. */
   private costBaseline = false
   private modes: { id: string; label: string; description?: string; dangerous?: boolean }[] = []
+  private commandsKey = ''
   private readonly tools = new Map<string, ToolState>()
   /** Tool calls the agent asked the user about (`session/request_permission`). */
   private readonly asked = new Set<string>()
@@ -236,17 +237,21 @@ export class AcpEventMapper {
         })
         break
 
-      case 'available_commands_update':
-        out.push({
-          type: 'session.commands',
-          commands: update.availableCommands.map((c) => ({
-            name: c.name,
-            description: c.description || undefined,
-            hint: c.input?.hint || undefined,
-            kind: 'command' as const,
-          })),
-        })
+      case 'available_commands_update': {
+        const commands = update.availableCommands.map((c) => ({
+          name: c.name,
+          description: c.description || undefined,
+          hint: c.input?.hint || undefined,
+          kind: 'command' as const,
+        }))
+        // Some agents repeat an unchanged list with every turn; only a change is news.
+        const key = JSON.stringify(commands)
+        if (key !== this.commandsKey) {
+          this.commandsKey = key
+          out.push({ type: 'session.commands', commands })
+        }
         break
+      }
 
       case 'config_option_update': {
         // The mode option has its own picker: announce it as modes, the rest as settings.

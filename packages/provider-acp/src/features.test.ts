@@ -541,7 +541,7 @@ describe('previewing an agent before a session', () => {
 describe('starting Grok', () => {
   const grok = () => {
     const store = new AcpAgentStore(path.join(tmp(), 'acp.json'))
-    store.put({ id: 'grok', label: 'Grok', command: 'grok', args: ['agent', 'stdio'] })
+    store.put({ id: 'grok-agent', label: 'Grok', command: 'grok', args: ['agent', 'stdio'] })
     return store
   }
 
@@ -556,7 +556,7 @@ describe('starting Grok', () => {
         return a.transport
       },
     })
-    const session = await adapter.startSession('acp:grok', {
+    const session = await adapter.startSession('acp:grok-agent', {
       sessionId: 's1',
       cwd: '/w',
       permissionMode: 'ask',

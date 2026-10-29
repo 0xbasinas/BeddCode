@@ -4,6 +4,7 @@ import {
   JsonRpcError,
   describeRpcError,
   rpcErrorDetail,
+  spawnTransport,
   type Transport,
 } from './jsonrpc.ts'
 
@@ -85,4 +86,13 @@ describe('rpcErrorDetail and describeRpcError', () => {
     expect(describeRpcError(new Error('plain'))).toBe('plain')
     expect(describeRpcError('text')).toBe('text')
   })
+})
+
+describe('spawnTransport close', () => {
+  it('ends a child that ignores its closed input', async () => {
+    const transport = spawnTransport(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {})
+    const closed = new Promise<void>((resolve) => transport.onClose(() => resolve()))
+    transport.close()
+    await closed
+  }, 10_000)
 })

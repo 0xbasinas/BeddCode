@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { z } from 'zod'
 
-export const RESERVED_IDS = new Set(['claude', 'codex', 'fake'])
+export const RESERVED_IDS = new Set(['claude', 'codex', 'grok', 'fake'])
 
 /** One configured ACP agent: a command that speaks ACP over stdio. */
 export const AcpAgentConfig = z.object({

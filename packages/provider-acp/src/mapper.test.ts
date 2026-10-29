@@ -259,3 +259,17 @@ describe('embedded terminals and links', () => {
     ])
   })
 })
+
+describe('available commands', () => {
+  it('announces a list once and again only when it changes', () => {
+    const list = (...names: string[]) => ({
+      sessionUpdate: 'available_commands_update',
+      availableCommands: names.map((name) => ({ name, description: '' })),
+    })
+    const events = run([list('a', 'b'), list('a', 'b'), list('a', 'b', 'c')])
+    expect(events).toMatchObject([
+      { type: 'session.commands', commands: [{ name: 'a' }, { name: 'b' }] },
+      { type: 'session.commands', commands: [{ name: 'a' }, { name: 'b' }, { name: 'c' }] },
+    ])
+  })
+})
