@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Check, ChevronDown, ChevronRight, Folder, Minus } from 'lucide-react'
 import type { GitFile, GitStatus } from '@beddcode/contracts'
-import { PatchView } from '../../ui/PatchView.tsx'
+import { PatchView, type PatchReview } from '../../ui/PatchView.tsx'
+import { reviewKey, useReviewComments, useReviewStore } from '../../stores/review.ts'
+import { ReviewBar } from './ReviewBar.tsx'
 import { hostRequest } from '../../stores/host.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
 import {
@@ -30,8 +32,11 @@ export function ChangesTab({
   instanceId,
   onOpenCommits,
   onOpenPr,
+  draftId,
 }: {
   cwd: string
+  /** Where "Add to message" stages the review: the composer of this pane's session or folder. */
+  draftId?: string
   status: GitStatus
   /** Changes whenever the pane refreshes as a whole, so open diffs load again too. */
   refreshKey: string
@@ -50,6 +55,10 @@ export function ChangesTab({
   const operation = useGitOperations((s) => s.entries[gitOperationKey(hostKey, cwd)]?.operation)
   const busy = operation?.pending ? (operation.kind === 'commit' ? 'commit' : 'push') : null
   const [generating, setGenerating] = useState(false)
+  const review = reviewKey(hostKey, cwd)
+  const comments = useReviewComments(review)
+  const addComment = useReviewStore((s) => s.add)
+  const removeComment = useReviewStore((s) => s.remove)
 
   const groups = useMemo(() => groupByDirectory(status.files), [status.files])
   const selected = useMemo(() => selectedPaths(status.files, overrides), [status.files, overrides])
@@ -171,6 +180,12 @@ export function ChangesTab({
                         cwd={cwd}
                         path={file.path}
                         refreshKey={diffRefreshKey(file, refreshKey)}
+                        review={{
+                          path: file.path,
+                          comments: comments.filter((c) => c.path === file.path),
+                          onAdd: (c) => addComment(review, c),
+                          onRemove: (id) => removeComment(review, id),
+                        }}
                       />
                     )}
                   </div>
@@ -180,6 +195,16 @@ export function ChangesTab({
         ))}
       </div>
 
+      {comments.length > 0 && (
+        <ReviewBar
+          hostKey={hostKey}
+          cwd={cwd}
+          comments={comments}
+          sessionId={sessionId}
+          draftId={draftId}
+          storeKey={review}
+        />
+      )}
       <div className="git-footer">
         <GenerateGitText
           sessionId={sessionId}
@@ -219,10 +244,12 @@ function FileDiffView({
   cwd,
   path,
   refreshKey,
+  review,
 }: {
   cwd: string
   path: string
   refreshKey: string
+  review?: PatchReview
 }) {
   const hostKey = useHostKey()
   // Reloads when the file's status changes, and on the same interval as the list, so an edit
@@ -235,7 +262,7 @@ function FileDiffView({
   }
   return (
     <>
-      <PatchView patch={diff.data.patch} />
+      <PatchView patch={diff.data.patch} review={review} />
       {diff.data.truncated && <div className="muted diff-note">Showing the first part only.</div>}
     </>
   )

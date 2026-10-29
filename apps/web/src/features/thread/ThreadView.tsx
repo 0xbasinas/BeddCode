@@ -1,3 +1,4 @@
+import { OpenInEditor } from '../editors/OpenInEditor.tsx'
 import {} from '../../ui/AgentMark.tsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
@@ -217,6 +218,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
           </div>
         </div>
         <div className="thread-actions">
+          <OpenInEditor hostKey={hostKey} cwd={session.cwd} />
           <EnvironmentButton session={session} hostKey={hostKey} stats={stats} />
           <Dropdown
             placement="bottom"
@@ -333,6 +335,9 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
               minute: '2-digit',
             })}
             {session.worktree ? ` · worktree from ${session.worktree.baseBranch}` : ''}
+            {session.worktree?.copiedFiles
+              ? ` · ${session.worktree.copiedFiles} local ${session.worktree.copiedFiles === 1 ? 'file' : 'files'} copied from .worktreeinclude`
+              : ''}
           </div>
           {session.parent && <StartedByBanner session={session} hostKey={hostKey} />}
           <Transcript

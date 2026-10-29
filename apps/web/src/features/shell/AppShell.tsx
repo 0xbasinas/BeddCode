@@ -11,6 +11,7 @@ import { HostStatusBanner } from './HostStatusBanner.tsx'
 import { WindowBar } from './WindowBar.tsx'
 import { RAIL_WIDTH, openPaneWidth, rememberPaneWidth } from './paneWidth.ts'
 import { Sidebar } from './Sidebar.tsx'
+import { CommandPalette, usePalette } from '../palette/CommandPalette.tsx'
 import { useAppPreferences } from '../../stores/appPreferences.ts'
 import { useUiStore } from '../../stores/ui.ts'
 import { appWindowControls } from '../../ui/desktop.ts'
@@ -76,6 +77,17 @@ export function AppShell() {
   const navigate = useNavigate()
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      // Ctrl/Cmd+Shift+P: the command palette (Ctrl+K stays the session search).
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        !event.altKey &&
+        event.code === 'KeyP'
+      ) {
+        event.preventDefault()
+        usePalette.getState().setOpen(!usePalette.getState().open)
+        return
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         useUiStore.getState().setSearchOpen(true)
@@ -126,6 +138,7 @@ export function AppShell() {
   }, [navigate, settings])
   const layers = (
     <>
+      <CommandPalette />
       <FolderBrowserLayer />
       <FolderPickerHint />
       <WindowBar />

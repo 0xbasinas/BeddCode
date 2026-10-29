@@ -250,7 +250,7 @@ export class SessionManager {
     const info = params.projectless ? null : await this.deps.git.info(folder).catch(() => null)
     let cwd = folder
     let branch = info?.isRepo ? info.branch : undefined
-    let worktree: { baseBranch: string } | undefined
+    let worktree: { baseBranch: string; copiedFiles?: number } | undefined
     if (params.workspace?.mode === 'worktree') {
       if (!info?.isRepo) throw new Error('Worktrees need a git repository')
       const made = await this.deps.git.createWorktree(folder, {
@@ -259,7 +259,10 @@ export class SessionManager {
       })
       cwd = made.path
       branch = made.branch
-      worktree = { baseBranch: made.baseBranch }
+      worktree = {
+        baseBranch: made.baseBranch,
+        ...(made.copiedFiles ? { copiedFiles: made.copiedFiles } : {}),
+      }
     }
 
     let session: ProviderSession

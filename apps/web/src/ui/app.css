@@ -5904,3 +5904,218 @@ button.tcall-row:hover .tcall-chevron,
   color: var(--text);
   background: var(--bg-hover);
 }
+
+/* Review comments on diffs (git pane) */
+.patch.reviewable div {
+  gap: calc(6px * var(--ui-scale));
+  padding-left: calc(6px * var(--ui-scale));
+}
+.patch-num {
+  flex: 0 0 calc(30px * var(--ui-scale));
+  text-align: right;
+  color: var(--text-faint);
+  user-select: none;
+}
+.patch-comment-btn {
+  flex: 0 0 calc(16px * var(--ui-scale));
+  display: grid;
+  place-items: center;
+  height: calc(20px * var(--ui-scale));
+  padding: 0;
+  border-radius: calc(4px * var(--ui-scale));
+  color: var(--accent);
+  opacity: 0;
+}
+.patch.reviewable div:hover > .patch-comment-btn,
+.patch-comment-btn:focus-visible {
+  opacity: 1;
+}
+button.patch-comment-btn:hover {
+  background: var(--bg-hover);
+}
+.patch.reviewable div.commented .patch-num {
+  color: var(--accent);
+}
+.patch.reviewable .patch-comment {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(8px * var(--ui-scale));
+  margin: calc(2px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(4px * var(--ui-scale))
+    calc(52px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-left: 2px solid var(--accent);
+  border-radius: calc(6px * var(--ui-scale));
+  background: var(--bg-raised);
+  color: var(--text);
+  font-family: var(--font-sans, inherit);
+  white-space: pre-wrap;
+}
+.patch-comment-body {
+  flex: 1;
+  min-width: 0;
+}
+.patch.reviewable .patch-comment.editing {
+  flex-direction: column;
+  align-items: stretch;
+}
+.patch-comment textarea {
+  width: 100%;
+  resize: vertical;
+  padding: calc(6px * var(--ui-scale));
+  border: 1px solid var(--border-strong);
+  border-radius: calc(6px * var(--ui-scale));
+  background: var(--bg-panel);
+  color: var(--text);
+  font: inherit;
+}
+.patch.reviewable .patch-comment-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: calc(6px * var(--ui-scale));
+  padding: 0;
+}
+.patch-comment-actions button,
+.review-bar button {
+  white-space: nowrap;
+  padding: calc(5px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border-radius: calc(6px * var(--ui-scale));
+  font-size: calc(12px * var(--ui-scale));
+}
+.patch-comment-actions .primary,
+.review-bar .primary {
+  background: var(--text);
+  color: var(--bg-app);
+  font-weight: 500;
+}
+.patch-comment-actions .secondary,
+.review-bar .secondary {
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+}
+.review-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-top: 1px solid var(--border-subtle);
+  color: var(--accent);
+  font-size: calc(12.5px * var(--ui-scale));
+}
+.review-count {
+  color: var(--text);
+  font-weight: 500;
+}
+.review-bar .spacer {
+  flex: 1;
+}
+.review-error {
+  flex-basis: 100%;
+}
+
+/* Open in editor */
+.menu-label {
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(2px * var(--ui-scale));
+  color: var(--text-faint);
+  font-size: calc(11.5px * var(--ui-scale));
+}
+.editor-menu-row > .menu-title {
+  flex: 1;
+  min-width: 0;
+}
+.menu-check {
+  color: var(--accent);
+}
+
+/* Command palette (Ctrl/Cmd+Shift+P) */
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  background: rgba(0, 0, 0, 0.45);
+}
+.palette {
+  width: min(calc(620px * var(--ui-scale)), calc(100vw - calc(32px * var(--ui-scale))));
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--bg-panel);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
+.palette-input {
+  display: flex;
+  align-items: center;
+  gap: calc(10px * var(--ui-scale));
+  padding: calc(12px * var(--ui-scale)) calc(14px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+.palette-input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: calc(14px * var(--ui-scale));
+}
+.palette-input kbd,
+.palette-detail {
+  font-size: calc(11px * var(--ui-scale));
+  color: var(--text-faint);
+}
+.palette-list {
+  overflow-y: auto;
+  padding: calc(6px * var(--ui-scale));
+}
+.palette-row {
+  display: flex;
+  align-items: center;
+  gap: calc(10px * var(--ui-scale));
+  width: 100%;
+  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border-radius: calc(6px * var(--ui-scale));
+  text-align: left;
+  font-size: calc(13px * var(--ui-scale));
+  color: var(--text);
+}
+.palette-row[aria-selected='true'] {
+  background: var(--bg-hover);
+}
+.palette-icon {
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+}
+.palette-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette-detail {
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette-group {
+  flex: none;
+  min-width: calc(70px * var(--ui-scale));
+  text-align: right;
+  font-size: calc(11px * var(--ui-scale));
+  color: var(--text-faint);
+}
+.palette-empty {
+  padding: calc(14px * var(--ui-scale));
+  text-align: center;
+}

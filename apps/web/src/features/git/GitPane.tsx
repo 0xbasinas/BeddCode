@@ -108,6 +108,7 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
             cwd={cwd}
             sessionId={workspace.sessionId}
             instanceId={workspace.instanceId}
+            draftId={workspace.draftId}
             status={status.data}
             refreshKey={key}
             onChanged={changed}

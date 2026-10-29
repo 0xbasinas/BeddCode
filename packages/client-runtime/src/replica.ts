@@ -104,7 +104,7 @@ export interface SessionView {
   projectless?: boolean
   branch?: string
   /** Present when the session runs in a worktree made for it. */
-  worktree?: { baseBranch: string }
+  worktree?: { baseBranch: string; copiedFiles?: number }
   createdAt: number
   updatedAt: number
   /** In the sidebar's Done section, by the user's choice; a new turn takes it out again. */

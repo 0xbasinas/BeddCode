@@ -20,6 +20,7 @@ import type {
   GitStatus,
 } from '@beddcode/contracts'
 import { diffText, runCommand, type RunResult } from '@beddcode/shared'
+import { copyWorktreeIncludes } from './worktreeInclude.ts'
 
 export type Runner = (
   file: string,
@@ -704,7 +705,7 @@ export class GitService {
   async createWorktree(
     cwd: string,
     options: { branch?: string; baseBranch?: string } = {},
-  ): Promise<{ path: string; branch: string; baseBranch: string }> {
+  ): Promise<{ path: string; branch: string; baseBranch: string; copiedFiles?: number }> {
     const info = await this.info(cwd)
     if (!info.isRepo || !info.mainRoot) throw new GitError('Worktrees need a git repository')
     const base = options.baseBranch ?? info.defaultBranch ?? info.branch
@@ -727,7 +728,11 @@ export class GitService {
       ).code === 0
     if (exists) await this.git(info.mainRoot, ['worktree', 'add', dir, branch])
     else await this.git(info.mainRoot, ['worktree', 'add', '-b', branch, dir, base])
-    return { path: dir, branch, baseBranch: base }
+    // Local, ignored files the checkout needs (.env and the like), listed in .worktreeinclude.
+    // A failure here never fails the worktree: the agent can still work, just without them.
+    const included = await copyWorktreeIncludes(dir, info.mainRoot).catch(() => null)
+    const copiedFiles = included?.kind === 'copied' ? included.copied.length : undefined
+    return { path: dir, branch, baseBranch: base, ...(copiedFiles ? { copiedFiles } : {}) }
   }
 
   /**

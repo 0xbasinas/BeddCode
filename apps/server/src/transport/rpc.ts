@@ -1,4 +1,5 @@
-import { statSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
+import path from 'node:path'
 import {
   RpcMethods,
   type MetricPlatform,
@@ -20,6 +21,7 @@ import type { GitService } from '../workspace/git.ts'
 import type { GithubService } from '../workspace/github.ts'
 import type { ProjectStore } from '../workspace/projects.ts'
 import { browseFolders } from '../workspace/folders.ts'
+import { detectEditors, launchEditor, type DetectedEditor } from '../workspace/editors.ts'
 import type { FileService } from '../files/files.ts'
 import type { TerminalManager } from '../terminals/manager.ts'
 import type { AlertService } from '../automation/alerts.ts'
@@ -106,12 +108,21 @@ export interface RpcContext {
 }
 
 /** Managing who may connect is only for someone sitting at this machine. */
+/** Installed editors, looked up again at most every 30 s (a lookup stats a few dozen paths). */
+let editorCache: { at: number; editors: DetectedEditor[] } | undefined
+function listEditors(fresh = false): DetectedEditor[] {
+  if (fresh || !editorCache || Date.now() - editorCache.at > 30_000)
+    editorCache = { at: Date.now(), editors: detectEditors() }
+  return editorCache.editors
+}
+
 const LOOPBACK_ONLY: ReadonlySet<RpcMethodName> = new Set([
   'host.pair',
   'host.relay.get',
   'host.relay.set',
   'devices.list',
   'devices.revoke',
+  'editors.open',
 ])
 
 export function createRpcRouter(
@@ -187,6 +198,24 @@ export function createRpcRouter(
     'git.pr.list': async (p) => ({ items: await github.list(p.cwd, p.filter, p.limit) }),
     'git.pr.view': (p) => github.view(p.cwd, p.number),
     'git.pr.act': (p) => github.act(p.cwd, p.number, p.do),
+    'editors.list': async (_p, context) => ({
+      editors: listEditors().map(({ id, label }) => ({ id, label })),
+      canOpen: context.peer === 'loopback',
+    }),
+    'editors.open': async (p) => {
+      const editor = listEditors(true).find((e) => e.id === p.editor)
+      if (!editor) throw new Error('That editor is not installed on this computer')
+      const cwd = path.resolve(p.cwd)
+      if (!existsSync(cwd) || !statSync(cwd).isDirectory())
+        throw new Error('That folder does not exist')
+      if (p.path !== undefined) {
+        const file = path.resolve(cwd, p.path)
+        if (file !== cwd && !file.startsWith(cwd + path.sep))
+          throw new Error('Only files inside the folder can be opened')
+      }
+      launchEditor(editor, { cwd, path: p.path, line: p.line, column: p.column })
+      return { opened: true }
+    },
     'git.pr.checkout': (p) => github.checkout(p.cwd, p.number, git, { worktree: p.worktree }),
     'git.pr.create': async (p) => {
       const info = await git.info(p.cwd)

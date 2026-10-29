@@ -280,6 +280,29 @@ export const RpcMethods = {
     }),
     result: z.object({ url: z.string() }),
   },
+  /**
+   * Code editors (and the system file manager) installed on the host, preferred first.
+   * `canOpen` is false unless this connection is the host machine itself: an editor opens on the
+   * host's screen, which a phone or another computer cannot see.
+   */
+  'editors.list': {
+    params: z.object({}),
+    result: z.object({
+      editors: z.array(z.object({ id: z.string(), label: z.string() })),
+      canOpen: z.boolean(),
+    }),
+  },
+  /** Opens a folder, and optionally a file at a line, in an installed editor. Loopback only. */
+  'editors.open': {
+    params: z.object({
+      editor: z.string().min(1),
+      cwd: z.string().min(1),
+      path: z.string().optional(),
+      line: z.number().int().positive().optional(),
+      column: z.number().int().positive().optional(),
+    }),
+    result: z.object({ opened: z.boolean() }),
+  },
   /** Deletes the worktree a session was started in (its branch is kept). */
   'worktrees.remove': {
     params: z.object({ sessionId: z.string() }),

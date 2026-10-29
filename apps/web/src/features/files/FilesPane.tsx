@@ -12,6 +12,7 @@ import {
 import type { PaneWorkspace } from '../../stores/composerWorkspace.ts'
 import { hostRequest, onHostFrame, sendHostFrame, useRuntime } from '../../stores/host.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
+import { OpenFileInEditor } from '../editors/OpenInEditor.tsx'
 import { formatBytes } from '../../ui/format.ts'
 import { MediaViewer } from './MediaViewer.tsx'
 import { Editor, type EditorPosition } from './Editor.tsx'
@@ -159,7 +160,9 @@ export function FilesPane({ workspace }: { workspace: PaneWorkspace }) {
         </div>
       </div>
 
-      {folder.tabs.length > 0 && <EditorColumn cwd={cwd} onAttach={attach} />}
+      {folder.tabs.length > 0 && (
+        <EditorColumn cwd={cwd} hostKey={hostKey} realCwd={realCwd} onAttach={attach} />
+      )}
     </div>
   )
 }
@@ -192,7 +195,17 @@ function NewEntry({
   )
 }
 
-function EditorColumn({ cwd, onAttach }: { cwd: string; onAttach(path: string): void }) {
+function EditorColumn({
+  cwd,
+  hostKey,
+  realCwd,
+  onAttach,
+}: {
+  cwd: string
+  hostKey: string
+  realCwd: string
+  onAttach(path: string): void
+}) {
   const tabSize = useAppPreferences((s) => s.values.editorTabSize)
   const folder = useFiles((s) => s.byCwd[cwd] ?? EMPTY_FOLDER)
   const { activate, close, setDraft, save, reload } = useFiles.getState()
@@ -286,6 +299,13 @@ function EditorColumn({ cwd, onAttach }: { cwd: string; onAttach(path: string): 
           </span>
         ))}
         <span className="spacer" />
+        <OpenFileInEditor
+          hostKey={hostKey}
+          cwd={realCwd}
+          path={doc.path}
+          line={doc.media || doc.binary ? undefined : position.line}
+          column={doc.media || doc.binary ? undefined : position.col}
+        />
         <button
           className="icon-btn"
           aria-label={`Attach ${doc.path}`}
