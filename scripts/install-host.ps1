@@ -6,23 +6,33 @@
 #
 #   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/0xbasinas/BeddCode/main/scripts/install-host.ps1))) -NoService
 #
-# It needs Windows PowerShell 5.1 or PowerShell 7 and no administrator rights. It uses the Node.js 22+
-# already on the machine; without one it downloads the official Node 22 into its own folder (nothing is
-# installed system-wide). Options:
+# Run it again to update (the background host is stopped, replaced and started again).
+#
+# It needs Windows PowerShell 5.1 or PowerShell 7 and no administrator rights (except -AtBoot). It uses
+# the Node.js 22+ already on the machine; without one it downloads the official Node 22 into its own
+# folder (nothing is installed system-wide). On Windows on ARM it runs the x64 build, with its own x64
+# Node, through Windows' x64 emulation. Options:
 #   -Version <tag>   install that release (default: the latest)
 #   -NoService       unpack only; do not start it in the background
 #   -OwnNode         use a private Node 22 even when the machine has one
+#   -Port <n>        the port the background host listens on (default 3773, the desktop app's)
+#   -AtBoot          start it with Windows, whether or not anyone is signed in (run as administrator)
+#   -Uninstall       stop and remove the background host, the command and the install folder
+#                    (your sessions and settings in %USERPROFILE%\.beddcode are kept)
 # Variables: BEDDCODE_PREFIX (where it unpacks, default %LOCALAPPDATA%\beddcode-host),
 #            BEDDCODE_BIN (where the command goes, default %USERPROFILE%\.local\bin; added to your user PATH).
 param(
   [string]$Version = 'latest',
   [switch]$NoService,
-  [switch]$OwnNode
+  [switch]$OwnNode,
+  [int]$Port = 3773,
+  [switch]$AtBoot,
+  [switch]$Uninstall
 )
 
 # Everything runs inside a function, so a failure throws instead of closing the window when piped to iex.
 function Install-BeddCodeHost {
-  param([string]$Version, [bool]$Service, [bool]$OwnNode)
+  param([string]$Version, [bool]$Service, [bool]$OwnNode, [int]$Port, [bool]$AtBoot, [bool]$Uninstall)
 
   $ErrorActionPreference = 'Stop'
   $ProgressPreference = 'SilentlyContinue' # Invoke-WebRequest is far slower with its progress bar.
@@ -41,8 +51,66 @@ function Install-BeddCodeHost {
   function Get-File([string]$url, [string]$path) { Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $path }
 
   if ($env:OS -ne 'Windows_NT') { Fail 'this installer is for Windows; on Linux use scripts/install-host.sh' }
+  if ($Port -lt 1 -or $Port -gt 65535) { Fail "-Port must be between 1 and 65535 (not $Port)" }
   $arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
-  if ($arch -ne 'AMD64') { Fail "only x64 is built so far (this is $arch)" }
+  if ($arch -eq 'ARM64') {
+    # Only x64 is built. Windows on ARM runs x64 programs, but the host's native terminal library is
+    # x64, so it has to run on an x64 Node too: always use the private one.
+    Write-Host 'Windows on ARM: using the x64 build and its own x64 Node (through emulation).'
+    $OwnNode = $true
+  } elseif ($arch -ne 'AMD64') {
+    Fail "only x64 (and ARM64 through emulation) is supported (this is $arch)"
+  }
+
+  $launcher = Join-Path $prefix 'beddcode.cmd'
+  $shim = Join-Path $bin 'beddcode.cmd'
+
+  # Stops the host installed here: its scheduled task, then any of its node processes still running
+  # (a running host keeps its files open, and Windows will not move or delete open files).
+  function Stop-Host {
+    if (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue) {
+      Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue
+    }
+    $mine = [Regex]::Escape((Join-Path $prefix 'server\main.mjs'))
+    Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
+      Where-Object { $_.CommandLine -match $mine } |
+      ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Milliseconds 500
+  }
+
+  # What answers on the port, if anything: the host's /health, or $null.
+  function Get-Health([int]$port) {
+    try {
+      $res = Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 -Uri "http://127.0.0.1:$port/health"
+      return ($res.Content | ConvertFrom-Json)
+    } catch { return $null }
+  }
+
+  if ($Uninstall) {
+    if (Test-Path $launcher) {
+      & $launcher host uninstall
+    } elseif (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue) {
+      Unregister-ScheduledTask -TaskName $task -Confirm:$false
+    }
+    Stop-Host
+    if (Test-Path $prefix) { Remove-Item -Recurse -Force $prefix }
+    if (Test-Path "$prefix.old") { Remove-Item -Recurse -Force "$prefix.old" -ErrorAction SilentlyContinue }
+    # Only the forwarder this installer wrote; a beddcode.cmd from the desktop app lives elsewhere.
+    if ((Test-Path $shim) -and ((Get-Content -Raw $shim) -match [Regex]::Escape($launcher))) { Remove-Item -Force $shim }
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if ($userPath -and ($userPath -split ';') -contains $bin -and -not (Get-ChildItem -Path $bin -ErrorAction SilentlyContinue)) {
+      # Take the folder off PATH only when nothing else is left in it.
+      [Environment]::SetEnvironmentVariable('Path', (($userPath -split ';') | Where-Object { $_ -and $_ -ne $bin }) -join ';', 'User')
+      Write-Host "Removed $bin from your PATH."
+    }
+    Write-Host "Removed the BeddCode host from $prefix. Your sessions and settings in $(Join-Path $env:USERPROFILE '.beddcode') are kept."
+    return
+  }
+
+  if ($AtBoot -and $Service) {
+    $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $admin) { Fail '-AtBoot needs an administrator PowerShell (Windows only lets administrators register a task that runs while nobody is signed in)' }
+  }
 
   $needNode = $true
   if (-not $OwnNode -and (Get-Command node -ErrorAction SilentlyContinue)) {
@@ -62,6 +130,14 @@ function Install-BeddCodeHost {
   try {
     Write-Host "Downloading $url"
     try { Get-File $url (Join-Path $tmp $asset) } catch { Fail "download failed; is there a release with ${asset}? ($($_.Exception.Message))" }
+    # Releases carry the archive's SHA-256 next to it (older ones do not; then only the size is trusted).
+    $sum = $null
+    try { Get-File "$url.sha256" (Join-Path $tmp 'asset.sha256'); $sum = ((Get-Content (Join-Path $tmp 'asset.sha256') -Raw) -split '\s+')[0] } catch {}
+    if ($sum) {
+      if ((Get-FileHash -Algorithm SHA256 -Path (Join-Path $tmp $asset)).Hash -ne $sum.ToUpperInvariant()) { Fail "$asset did not match its checksum" }
+    } else {
+      Write-Warning "this release has no checksum for $asset; it was not verified"
+    }
 
     $unpacked = Join-Path $tmp 'unpacked'
     Expand-Archive -Path (Join-Path $tmp $asset) -DestinationPath $unpacked -Force
@@ -88,16 +164,8 @@ function Install-BeddCodeHost {
       Move-Item -Path $inner.FullName -Destination (Join-Path $unpacked 'node')
     }
 
-    # A running host keeps its files open, and Windows will not move open files, so stop the one
-    # installed here before swapping (it is started again below).
-    if (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue) {
-      Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue
-    }
-    $mine = [Regex]::Escape((Join-Path $prefix 'server\main.mjs'))
-    Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
-      Where-Object { $_.CommandLine -match $mine } |
-      ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-    Start-Sleep -Milliseconds 500
+    # Stop the host installed here before swapping (it is started again below).
+    Stop-Host
 
     # Swap the new copy in only once it is complete, so a failed update leaves the old one working.
     New-Item -ItemType Directory -Force -Path (Split-Path $prefix -Parent), $bin | Out-Null
@@ -115,8 +183,6 @@ function Install-BeddCodeHost {
 
   # The command on PATH: a small forwarder to the launcher in the install folder (Windows has no
   # symlinks for ordinary users).
-  $launcher = Join-Path $prefix 'beddcode.cmd'
-  $shim = Join-Path $bin 'beddcode.cmd'
   Set-Content -Path $shim -Encoding Ascii -Value "@echo off`r`n`"$launcher`" %*`r`nexit /b %ERRORLEVEL%"
   Write-Host "Installed to $prefix"
 
@@ -129,28 +195,47 @@ function Install-BeddCodeHost {
   }
   if (($env:Path -split ';') -notcontains $bin) { $env:Path = "$env:Path;$bin" }
 
-  if ($Service) {
-    # Run it in the background whenever you sign in, as `beddcode host install` does, but through a
-    # hidden PowerShell window: the host is a console program, and a visible console window would
-    # stop the host when closed. The task has no run-time limit and asks Task Scheduler to retry it if it fails.
-    $command = "& '$($launcher.Replace("'", "''"))' serve; exit `$LASTEXITCODE"
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
-      -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -Command `"$command`""
-    $user = if ($env:USERDOMAIN) { "$env:USERDOMAIN\$env:USERNAME" } else { $env:USERNAME }
-    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
-    $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-      -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
-      -MultipleInstances IgnoreNew
-    Register-ScheduledTask -TaskName $task -Action $action -Trigger $trigger -Principal $principal `
-      -Settings $settings -Description 'BeddCode host' -Force | Out-Null
-    Start-ScheduledTask -TaskName $task
-    Write-Host "Started the host in the background; it starts whenever you sign in to Windows (task `"$task`")."
-    Write-Host
-    Write-Host 'Pair your phone or another computer with:  beddcode pair'
-    Write-Host 'Check everything with:  beddcode doctor   (it also lists the agent CLIs you still need)'
-    Write-Host 'Stop and remove the background task with:  beddcode host uninstall'
+  if (-not $Service) {
+    if (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue) {
+      # An update of a host already set up to run in the background: start it again, as it was.
+      Start-ScheduledTask -TaskName $task
+      Write-Host "Started the background host again (task `"$task`")."
+    } else {
+      Write-Host 'Start it with:  beddcode serve   (or in the background:  beddcode host install)'
+    }
+    return
   }
+
+  # Something else already answering on the port is usually the desktop app's own host. Two hosts
+  # cannot share a port, so say what will happen instead of leaving a host that silently fails.
+  $other = Get-Health $Port
+  $desktop = Get-Process -Name 'BeddCode' -ErrorAction SilentlyContinue
+  if ($other) {
+    Write-Warning "A BeddCode host ($($other.version)) already answers on port $Port$(if ($desktop) { ', most likely the desktop app''s own' })."
+    Write-Warning 'The background host starts once that one stops (it retries every minute). In its Automatic host setting the desktop app'
+    Write-Warning 'uses the background host instead of starting its own: quit the app and open it again. Or install on another port with -Port.'
+  }
+
+  # `beddcode host install` registers the scheduled task (the same one `beddcode host uninstall` and the
+  # desktop app's tray menu manage): no console window, no run-time limit, restarted if it fails.
+  $hostArgs = @('host', 'install')
+  if ($Port -ne 3773) { $hostArgs += @('--port', "$Port") }
+  if ($AtBoot) { $hostArgs += '--at-boot' }
+  & $launcher @hostArgs
+  if ($LASTEXITCODE -ne 0) { Fail "could not set up the background host (beddcode $($hostArgs -join ' ') exited with $LASTEXITCODE)" }
+
+  # Give it a few seconds to answer, then show where things stand.
+  if (-not $other) {
+    for ($i = 0; $i -lt 20 -and -not (Get-Health $Port); $i++) { Start-Sleep -Milliseconds 500 }
+  }
+  Write-Host
+  $statusArgs = @('host', 'status')
+  if ($Port -ne 3773) { $statusArgs += @('--port', "$Port") }
+  & $launcher @statusArgs
+  Write-Host
+  Write-Host 'Pair your phone or another computer with:  beddcode pair'
+  Write-Host 'Check everything with:  beddcode doctor   (it also lists the agent CLIs you still need)'
+  Write-Host 'Update by running this installer again. Remove everything with -Uninstall, or only the background task with:  beddcode host uninstall'
 }
 
-Install-BeddCodeHost -Version $Version -Service (-not $NoService) -OwnNode $OwnNode
+Install-BeddCodeHost -Version $Version -Service (-not $NoService) -OwnNode $OwnNode -Port $Port -AtBoot $AtBoot -Uninstall $Uninstall

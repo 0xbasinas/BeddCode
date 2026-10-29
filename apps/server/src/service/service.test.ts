@@ -39,21 +39,68 @@ describe('planService', () => {
     )
   })
 
-  it('creates a logon task on Windows, quoting paths with spaces', () => {
+  it('creates a windowless logon task on Windows, quoting paths with spaces', () => {
     const plan = planService({
       platform: 'win32',
       home: 'C:\\Users\\me',
       command: ['C:\\Program Files\\nodejs\\node.exe', 'C:\\beddcode\\main.js'],
       serveArgs: ['--host', '0.0.0.0', '--port', '4000'],
+      user: 'PC\\me',
     })
-    const create = plan.install[0]!
-    expect(create.slice(0, 4)).toEqual(['schtasks', '/Create', '/TN', 'BeddCode Server'])
-    expect(create[5]).toBe(
-      '"C:\\Program Files\\nodejs\\node.exe" C:\\beddcode\\main.js serve --host 0.0.0.0 --port 4000',
+    const xmlPath = 'C:\\Users\\me\\AppData\\Local\\BeddCode\\host-task.xml'
+    expect(plan.install[0]).toEqual([
+      'schtasks',
+      '/Create',
+      '/TN',
+      'BeddCode Server',
+      '/XML',
+      xmlPath,
+      '/F',
+    ])
+    const file = plan.files[0]!
+    expect(file.path).toBe(xmlPath)
+    expect(file.utf16).toBe(true)
+    const xml = file.content
+    expect(xml).toContain(
+      '<Command>%SystemRoot%\\System32\\conhost.exe</Command><Arguments>--headless &#34;C:\\Program Files\\nodejs\\node.exe&#34; C:\\beddcode\\main.js serve --host 0.0.0.0 --port 4000</Arguments>',
     )
-    expect(create).toContain('ONLOGON')
+    expect(xml).toContain(
+      '<LogonTrigger><Enabled>true</Enabled><UserId>PC\\me</UserId></LogonTrigger>',
+    )
+    expect(xml).toContain('<LogonType>InteractiveToken</LogonType>')
+    // No 72-hour limit, restarted when it fails, kept on battery.
+    expect(xml).toContain('<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>')
+    expect(xml).toContain('<RestartOnFailure>')
+    expect(xml).toContain('<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>')
     expect(plan.uninstall.at(-1)).toEqual(['schtasks', '/Delete', '/TN', 'BeddCode Server', '/F'])
-    expect(plan.files).toEqual([])
+    expect(plan.remove).toEqual([xmlPath])
+  })
+
+  it('starts with Windows, signed in or not, with --at-boot', () => {
+    const plan = planService({
+      platform: 'win32',
+      home: 'C:\\Users\\me',
+      command: ['node.exe', 'main.js'],
+      serveArgs: [],
+      user: 'PC\\me',
+      atBoot: true,
+    })
+    const xml = plan.files[0]!.content
+    expect(xml).toContain('<BootTrigger>')
+    expect(xml).not.toContain('<LogonTrigger>')
+    expect(xml).toContain('<LogonType>S4U</LogonType>')
+  })
+
+  it('keeps the user services running without a session on Linux with --at-boot', () => {
+    const plan = planService({
+      platform: 'linux',
+      home: '/home/me',
+      command: ['/usr/bin/node', '/x.js'],
+      serveArgs: [],
+      user: 'me',
+      atBoot: true,
+    })
+    expect(plan.install.at(-1)).toEqual(['loginctl', 'enable-linger', 'me'])
   })
 
   it('refuses platforms it does not support', () => {
@@ -87,9 +134,8 @@ describe('planService with an environment', () => {
       serveArgs: [],
       env: { ELECTRON_RUN_AS_NODE: '1' },
     })
-    const task = plan.install[0]!
-    expect(task[task.indexOf('/TR') + 1]).toMatch(
-      /^cmd \/d \/c ".*set "ELECTRON_RUN_AS_NODE=1" && /,
+    expect(plan.files[0]!.content).toContain(
+      '<Arguments>--headless cmd.exe /d /c &#34;set &#34;ELECTRON_RUN_AS_NODE=1&#34; &#38;&#38; C:\\Apps\\BeddCode.exe',
     )
   })
 

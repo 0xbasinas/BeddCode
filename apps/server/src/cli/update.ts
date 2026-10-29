@@ -38,9 +38,17 @@ export function pickAsset(
   platform: NodeJS.Platform,
   arch: string,
   preferDeb = false,
+  hostOnly = false,
 ): Release['assets'][number] | undefined {
   const named = (re: RegExp) =>
     assets.filter((a) => re.test(a.name) && !a.name.endsWith('.blockmap'))
+  // A host installed on its own (scripts/install-host.*) updates from the host archive, not the app.
+  if (hostOnly) {
+    const os = platform === 'win32' ? 'win' : platform
+    return assets.find(
+      (a) => a.name === `beddcode-host-${os}-x64.${os === 'win' ? 'zip' : 'tar.gz'}`,
+    )
+  }
   const byArch = (list: Release['assets']) =>
     list.find((a) => (arch === 'arm64' ? /arm64|aarch64/i : /x64|amd64|x86_64/i).test(a.name)) ??
     list[0]
@@ -56,6 +64,8 @@ export interface UpdateDeps {
   platform: NodeJS.Platform
   arch: string
   current: string
+  /** Installed by scripts/install-host.* (its launcher sets BEDDCODE_HOST_BUNDLE), not with the app. */
+  hostOnly?: boolean
   download(url: string, file: string): Promise<void>
 }
 
@@ -72,6 +82,7 @@ const realDeps = (): UpdateDeps => ({
   platform: process.platform,
   arch: process.arch,
   current: VERSION,
+  hostOnly: process.env.BEDDCODE_HOST_BUNDLE === '1',
   async download(url, file) {
     const res = await fetch(url, { headers: { 'user-agent': 'beddcode-cli' } })
     if (!res.ok || !res.body) throw new Error(`Download failed (${res.status})`)
@@ -101,7 +112,13 @@ export async function updateCmd(
     `BeddCode ${release.tag_name} is available (you have ${deps.current}).\n${release.html_url}\n`,
   )
   if (flags.download === true) {
-    const asset = pickAsset(release.assets, deps.platform, deps.arch, flags.deb === true)
+    const asset = pickAsset(
+      release.assets,
+      deps.platform,
+      deps.arch,
+      flags.deb === true,
+      deps.hostOnly,
+    )
     if (!asset) {
       ctx.io.err('This release has no installer for this system.\n')
       return 1
@@ -110,6 +127,12 @@ export async function updateCmd(
     ctx.io.err(`Downloading ${asset.name}…\n`)
     await deps.download(asset.browser_download_url, file)
     ctx.io.out(`${file}\n`)
+  } else if (deps.hostOnly) {
+    ctx.io.err(
+      deps.platform === 'win32'
+        ? 'Update by running the installer again: irm https://raw.githubusercontent.com/0xbasinas/BeddCode/main/scripts/install-host.ps1 | iex\n'
+        : 'Update by running the installer again: curl -fsSL https://raw.githubusercontent.com/0xbasinas/BeddCode/main/scripts/install-host.sh | sh\n',
+    )
   } else {
     ctx.io.err(
       deps.platform === 'win32'

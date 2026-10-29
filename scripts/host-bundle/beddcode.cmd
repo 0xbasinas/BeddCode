@@ -5,6 +5,7 @@ rem release zip keeps it next to server\ and web\.
 setlocal
 set "BEDDCODE_WEB_ROOT=%~dp0web"
 set "NODE_NO_WARNINGS=1"
+set "BEDDCODE_HOST_BUNDLE=1"
 set "BEDDCODE_NODE=%~dp0node\node.exe"
 if not exist "%BEDDCODE_NODE%" set "BEDDCODE_NODE=node"
 if "%~1"=="" (

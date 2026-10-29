@@ -44,7 +44,9 @@ beddcode update              # is there a newer release? (--download fetches the
 beddcode completion bash     # tab completion: bash, zsh, fish or powershell
 beddcode open                # start the desktop app
 beddcode serve               # run the host in this terminal
-beddcode host install        # run the host in the background at login (host uninstall removes it)
+beddcode host install        # run the host in the background at login (--at-boot: with the machine)
+beddcode host status         # is the background host installed, and does a host answer?
+beddcode host uninstall      # stop and remove the background host
 ```
 
 A session is named by its id, the start of its id, part of its title, or `last`. Add `--host <name>` to use a host you added with `hosts add`. For tab completion, `eval "$(beddcode completion bash)"` (or `zsh`), `beddcode completion fish > ~/.config/fish/completions/beddcode.fish`, or `beddcode completion powershell | Out-String | Invoke-Expression` in a profile.
@@ -60,7 +62,7 @@ curl -fsSL https://raw.githubusercontent.com/0xbasinas/BeddCode/main/scripts/ins
 beddcode pair        # then pair your phone or another computer with the code it prints
 ```
 
-It downloads `beddcode-host-linux-x64.tar.gz` from the latest release, unpacks it to `~/.local/share/beddcode-host`, puts `beddcode` in `~/.local/bin` and runs `beddcode host install`. If the machine has no Node.js 22+, it downloads the official Node 22 (checked against nodejs.org's hash) into the same folder; nothing is installed system-wide, and `--own-node` forces that even when Node exists. Pass `--version <tag>`, `--no-service` or `--own-node` after `sh -s --`. Run `sudo loginctl enable-linger "$USER"` so it keeps running after you log out, and install and sign in to an agent CLI (Claude Code, Codex) on that machine; `beddcode doctor` checks.
+It downloads `beddcode-host-linux-x64.tar.gz` from the latest release, checks it against the release's `.sha256`, unpacks it to `~/.local/share/beddcode-host`, puts `beddcode` in `~/.local/bin`, runs `beddcode host install` and shows `beddcode host status`. If the machine has no Node.js 22+, it downloads the official Node 22 (checked against nodejs.org's hash) into the same folder; nothing is installed system-wide, and `--own-node` forces that even when Node exists. Options go after `sh -s --`: `--version <tag>`, `--no-service`, `--own-node`, `--port <n>`, `--at-boot` (keep it running after you log out, through `loginctl enable-linger`) and `--uninstall` (removes the service, the command and the folder; `~/.beddcode` is kept). Run it again to update: a running background host is restarted on the new version. Install and sign in to an agent CLI (Claude Code, Codex) on that machine; `beddcode doctor` checks.
 
 On Windows, the same without the desktop app, from PowerShell (no administrator rights needed):
 
@@ -69,7 +71,23 @@ irm https://raw.githubusercontent.com/0xbasinas/BeddCode/main/scripts/install-ho
 beddcode pair        # in a new terminal, so it sees the updated PATH
 ```
 
-It downloads `beddcode-host-win-x64.zip` from the latest release, unpacks it to `%LOCALAPPDATA%\beddcode-host`, puts `beddcode.cmd` in `%USERPROFILE%\.local\bin` (added to your user PATH) and registers the `BeddCode Server` scheduled task that `beddcode host install` uses, so it starts whenever you sign in; it runs in a hidden window and `beddcode host uninstall` removes it. Node.js works as on Linux (a private Node 22, hash-checked, when there is no Node 22+). For options, run it as a script block: `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/0xbasinas/BeddCode/main/scripts/install-host.ps1))) -Version <tag> -NoService -OwnNode`. `BEDDCODE_PREFIX` and `BEDDCODE_BIN` change the folders, as on Linux. If the desktop app is also installed, run only one host: both use port 3773 and the same scheduled task.
+It downloads `beddcode-host-win-x64.zip` from the latest release, checks it against the release's `.sha256`, unpacks it to `%LOCALAPPDATA%\beddcode-host`, puts `beddcode.cmd` in `%USERPROFILE%\.local\bin` (added to your user PATH), runs `beddcode host install` and shows `beddcode host status`. The background host is the `BeddCode Server` scheduled task: it runs with no window (under `conhost --headless`), has no run-time limit, keeps running on battery, is restarted if it fails, and starts whenever you sign in. Node.js works as on Linux (a private Node 22, hash-checked, when there is no Node 22+). Windows on ARM gets the x64 build with its own x64 Node, through Windows' x64 emulation.
+
+For options, run it as a script block:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/0xbasinas/BeddCode/main/scripts/install-host.ps1))) -Port 3874 -AtBoot
+```
+
+- `-Version <tag>` installs that release, `-OwnNode` uses a private Node 22 even when the machine has one.
+- `-NoService` only unpacks it (an existing background host is started again on the new version).
+- `-Port <n>` runs the background host on another port (default 3773).
+- `-AtBoot` starts it with Windows whether or not anyone is signed in; it needs an administrator PowerShell. Without it, the host runs only while you are signed in (a locked screen is fine).
+- `-Uninstall` removes the background host, the command and the folder; `%USERPROFILE%\.beddcode` (sessions, settings, pairing) is kept.
+
+Run it again to update; it stops the background host, swaps the folder only once the new one is complete, and starts it again. `beddcode update` in a host-only install says so and points back to the installer. `BEDDCODE_PREFIX` and `BEDDCODE_BIN` change the folders, as on Linux.
+
+With the desktop app on the same machine: there is one background host (one `BeddCode Server` task, port 3773), set up by whichever of them ran `host install` last. The desktop app uses it instead of starting its own (see below), so the two do not fight over the port. The installer warns when another host (such as the desktop app's own) already answers on the port: quit the app and open it again, or pick another `-Port`.
 
 ## Develop
 
@@ -91,7 +109,13 @@ pnpm build
 pnpm --filter @beddcode/desktop start
 ```
 
-The app starts its own local host, restarts it if it stops, and stops it when you quit; if a host is already running on the port (for example from `pnpm dev`) it uses that one. The host serves the built web app, so the window loads it from `http://127.0.0.1:3773` and a browser on this machine (or the tailnet, with a paired device) can open the same address. The host's log is in the app's data folder under `logs/host.log`. `BEDDCODE_NO_DAEMON=1` turns the supervision off.
+The app does not need to start the host itself. Where its host comes from is the **Host** setting in the tray menu:
+
+- **Automatic** (the default): when the background host is installed (`beddcode host install`, the host-only installer, or the tray's **Run the host in the background, without the app**), the app uses it, starts it if it is not running, and never starts a second host next to it. Otherwise it uses a host already answering on the port (for example from `pnpm dev` or `beddcode serve`), and only when there is none starts its own.
+- **Let the app start its own**: a host already running, otherwise its own, which it restarts if it stops and stops when you quit.
+- **Only use a host started separately**: it never starts one. Until a host answers it shows "Waiting for the host…" (and asks the background host to start, when installed), then connects on its own; when that host stops and comes back, it reconnects.
+
+The app only accepts a host on `127.0.0.1` that answers `/health` as a BeddCode host. Remote hosts (another machine, over the tailnet) are paired in the app itself and need a pairing code. `BEDDCODE_HOST_MODE=auto|app|external` overrides the setting, and `BEDDCODE_NO_DAEMON=1` is the same as `external`. The host serves the built web app, so the window loads it from `http://127.0.0.1:3773` and a browser on this machine (or the tailnet, with a paired device) can open the same address. The log of a host the app starts is in the app's data folder under `logs/host.log`.
 
 ### Build installers
 

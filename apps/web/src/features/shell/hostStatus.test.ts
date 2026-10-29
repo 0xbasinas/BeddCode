@@ -33,6 +33,17 @@ describe('hostNotice', () => {
     })
   })
 
+  it('says it is waiting for a host the app does not start itself', () => {
+    expect(
+      hostNotice('offline', { ...state('waiting'), detail: 'run beddcode serve' }),
+    ).toMatchObject({
+      text: expect.stringMatching(/Waiting/),
+      detail: 'run beddcode serve',
+      tone: 'info',
+      retry: true,
+    })
+  })
+
   it('leaves a host the user refused to the pairing screen', () => {
     expect(hostNotice('denied', state('running'))).toBeNull()
   })

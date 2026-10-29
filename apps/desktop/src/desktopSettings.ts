@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { isHostMode, type HostMode } from './hostMode.ts'
 
 /** Choices about the desktop app itself (the host's own settings live in its data folder). */
 export interface DesktopSettings {
@@ -7,16 +8,19 @@ export interface DesktopSettings {
   keepRunning?: boolean
   /** The "still running in the tray" notice has been shown once. */
   trayHintShown?: boolean
+  /** Where the host comes from (see hostMode.ts). Unset means auto. */
+  hostMode?: HostMode
 }
 
 export function readDesktopSettings(file: string): DesktopSettings {
   try {
     const parsed = JSON.parse(readFileSync(file, 'utf8')) as unknown
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-    const { keepRunning, trayHintShown } = parsed as Record<string, unknown>
+    const { keepRunning, trayHintShown, hostMode } = parsed as Record<string, unknown>
     return {
       ...(typeof keepRunning === 'boolean' && { keepRunning }),
       ...(typeof trayHintShown === 'boolean' && { trayHintShown }),
+      ...(isHostMode(hostMode) && { hostMode }),
     }
   } catch {
     return {}

@@ -12,7 +12,7 @@ export interface DesktopWindow {
 
 /** The local host as the desktop app supervises it (apps/desktop/src/daemon.ts). */
 export interface DesktopDaemonState {
-  status: 'starting' | 'running' | 'attached' | 'restarting' | 'failed' | 'stopped'
+  status: 'starting' | 'running' | 'attached' | 'restarting' | 'failed' | 'waiting' | 'stopped'
   detail?: string
   restarts: number
   logFile?: string
@@ -20,7 +20,10 @@ export interface DesktopDaemonState {
 
 export interface DesktopDaemon {
   status(): Promise<DesktopDaemonState | null>
-  /** Replaces the host the app started, or starts a new one after a failure. False: not ours to restart. */
+  /**
+   * Replaces the host the app started, starts a new one after a failure, or asks the background host
+   * to start while waiting for it. False: not ours to restart.
+   */
   restart(): Promise<boolean>
   log(): Promise<string>
   revealLog(): Promise<boolean>

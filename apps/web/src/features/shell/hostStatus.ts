@@ -35,6 +35,14 @@ export function hostNotice(
         tone: 'error',
         retry: true,
       }
+    case 'waiting':
+      // The app does not start a host itself here (its Host setting, or a background host).
+      return {
+        text: 'Waiting for the BeddCode host…',
+        detail: daemon.detail,
+        tone: 'info',
+        retry: true,
+      }
     case undefined:
     case 'stopped':
       return null
