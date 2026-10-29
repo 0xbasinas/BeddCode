@@ -21,6 +21,7 @@ import {
   Folder,
   FolderGit2,
   GitBranch,
+  GitPullRequest,
   Monitor,
   PenSquare,
   Plus,
@@ -45,6 +46,8 @@ import {
   doneOpen,
   isFiledAway,
   nestSessions,
+  PR_STATE_LABEL,
+  prStateKind,
   searchSessions,
   sessionNote,
   splitDone,
@@ -62,7 +65,9 @@ import {
   setSessionPinned,
   useAllSessions,
   useHostStore,
+  hostRequest,
 } from '../../stores/host.ts'
+import { usePolled } from '../git/usePolled.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { HostsDialog } from '../hosts/HostsDialog.tsx'
 import { HistoryDialog } from '../history/HistoryDialog.tsx'
@@ -376,6 +381,9 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               <AgentIcon agent={s.instanceId} label={agentLabel(s)} size={11} />
               {agentLabel(s)}
             </span>
+            {s.branch && !isFiledAway(s) && (
+              <SessionPr hostKey={hostOf.get(s.id) ?? LOCAL_HOST_KEY} cwd={s.cwd} branch={s.branch} />
+            )}
             {s.pinned && !showPinned && (
               <Pin className="session-pin" size={11} aria-label="Pinned" />
             )}
@@ -774,6 +782,27 @@ ${s.projectless ? 'no-project' : s.projectPath}`
         />
       )}
     </aside>
+  )
+}
+
+/** The pull request of a session's branch as a small chip: its number, coloured by state. */
+function SessionPr({ hostKey, cwd, branch }: { hostKey: string; cwd: string; branch: string }) {
+  const { data: pr } = usePolled(
+    () => hostRequest(hostKey, 'git.pr.get', { cwd }),
+    `${hostKey}:${cwd}:${branch}`,
+    60_000,
+  )
+  if (!pr) return null
+  const kind = prStateKind(pr)
+  return (
+    <span
+      className={`session-pr ${kind}`}
+      title={`#${pr.number} ${pr.title} · ${PR_STATE_LABEL[kind]}${
+        pr.checks.some((c) => c.state === 'failure') ? ' · checks failing' : ''
+      }`}
+    >
+      <GitPullRequest size={11} />#{pr.number}
+    </span>
   )
 }
 

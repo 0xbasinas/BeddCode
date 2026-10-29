@@ -3818,6 +3818,23 @@ button.tcall-row:hover .tcall-chevron,
   text-overflow: ellipsis;
   font-size: calc(11.5px * var(--ui-scale));
 }
+.session-pr {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  font-size: calc(11px * var(--ui-scale));
+  color: var(--ok, #3fb950);
+}
+.session-pr.draft {
+  color: var(--text-faint);
+}
+.session-pr.merged {
+  color: #a371f7;
+}
+.session-pr.closed {
+  color: var(--danger);
+}
 .session-pin {
   flex: none;
   color: var(--text-faint);
