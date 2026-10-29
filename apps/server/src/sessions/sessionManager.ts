@@ -151,6 +151,8 @@ export class SessionManager {
   private readonly turns = new Map<string, TurnState>()
   private readonly activity = new Map<string, Activity>()
   private stallTimer: ReturnType<typeof setInterval> | undefined
+  /** Answers to messages sent with a client id, so a resend is not sent twice (see prompt). */
+  private readonly recentSends = new Map<string, Promise<RpcResult<'sessions.prompt'>>>()
   /** Events that must reach the log but that the database refused (see `record`). */
   private readonly unsaved: SessionEvent[] = []
   private storeFailedAt = -Infinity
@@ -389,11 +391,45 @@ export class SessionManager {
     return folder
   }
 
+  /**
+   * Sends a message. `clientMessageId` makes it safe to send again: a client that lost its
+   * connection before the answer, or a double press of Send, gets the first answer back instead of
+   * the message going to the agent twice.
+   */
   async prompt(
     sessionId: string,
     text: string,
     attachmentIds: string[] = [],
     mode: 'auto' | 'queue' = 'auto',
+    clientMessageId?: string,
+  ): Promise<RpcResult<'sessions.prompt'>> {
+    if (!clientMessageId) return this.sendPrompt(sessionId, text, attachmentIds, mode)
+    const key = `${sessionId}\u0000${clientMessageId}`
+    const sent = this.recentSends.get(key)
+    if (sent) {
+      this.deps.log.info(`${sessionId}: the same message was sent again; answering it once`)
+      return sent
+    }
+    const result = this.sendPrompt(sessionId, text, attachmentIds, mode)
+    this.recentSends.set(key, result)
+    // Only a few minutes and a few hundred messages are remembered: a resend comes right away.
+    setTimeout(() => this.recentSends.delete(key), 10 * 60_000).unref?.()
+    if (this.recentSends.size > 500) {
+      const oldest = this.recentSends.keys().next().value
+      if (oldest !== undefined) this.recentSends.delete(oldest)
+    }
+    // A message that failed was not sent: trying again must really try again.
+    result.catch(() => {
+      if (this.recentSends.get(key) === result) this.recentSends.delete(key)
+    })
+    return result
+  }
+
+  private async sendPrompt(
+    sessionId: string,
+    text: string,
+    attachmentIds: string[],
+    mode: 'auto' | 'queue',
   ): Promise<RpcResult<'sessions.prompt'>> {
     const attachments = attachmentIds.map((id) => {
       const found = this.deps.attachments.get(id)

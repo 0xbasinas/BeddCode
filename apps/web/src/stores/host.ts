@@ -13,6 +13,7 @@ import {
   type ConnectionState,
   type ReplicaState,
   type SessionView,
+  MessageIds,
 } from '@beddcode/client-runtime'
 import type {
   BrowserUseCall,
@@ -509,6 +510,8 @@ function sessionRequest<M extends RpcMethodName>(
   return hostRequest(hostKey, method, params)
 }
 
+const messageIds = new MessageIds()
+
 /** Sends a message; while the agent is busy the host steers it in or queues it. */
 export async function prompt(
   sessionId: string,
@@ -517,12 +520,17 @@ export async function prompt(
   mode?: 'auto' | 'queue',
 ) {
   const started = now()
+  // Sending the same message again after a failure reuses its id, so a message that did reach
+  // the host before the connection dropped is not sent to the agent twice.
+  const attempt = messageIds.begin(sessionId, text, attachmentIds)
   const result = await sessionRequest(sessionId, 'sessions.prompt', {
     sessionId,
     text,
     attachments: attachmentIds && attachmentIds.length > 0 ? attachmentIds : undefined,
     mode,
+    clientMessageId: attempt.id,
   })
+  attempt.done()
   // Enter to the host having the message: the part of sending that is not the agent's thinking.
   const hostKey = hostKeyOfSession(sessionId)
   if (hostKey) recordMetric(hostKey, 'send.ack.ms', now() - started, { state: result.state })

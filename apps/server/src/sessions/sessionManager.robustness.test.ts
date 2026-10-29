@@ -257,6 +257,27 @@ describe('SessionManager robustness', () => {
     await manager.close()
   })
 
+  it('sends a message the client sent twice (lost answer, double press) only once', async () => {
+    const { manager, events, state, prompts } = setup()
+    state.onPrompt = (emit) => emit({ type: 'turn.completed', reason: 'done' })
+    const { sessionId } = await manager.create({ instanceId: 'stub' })
+    const [a, b] = await Promise.all([
+      manager.prompt(sessionId, 'hi', [], 'auto', 'm-1'),
+      manager.prompt(sessionId, 'hi', [], 'auto', 'm-1'),
+    ])
+    expect(b).toEqual(a)
+    await until(() => events(sessionId).some((e) => e.type === 'turn.completed'))
+    expect(await manager.prompt(sessionId, 'hi', [], 'auto', 'm-1')).toEqual(a)
+    expect(prompts).toHaveLength(1)
+    // A different id is a new message, even with the same words.
+    await manager.prompt(sessionId, 'hi', [], 'auto', 'm-2')
+    await until(() => prompts.length === 2)
+    expect(
+      events(sessionId).filter((e) => e.type === 'message.delta' && e.role === 'user'),
+    ).toHaveLength(2)
+    await manager.close()
+  })
+
   it('explains a resume whose folder is gone instead of failing with ENOENT', async () => {
     const { manager, crash } = setup()
     const folder = mkdtempSync(path.join(os.tmpdir(), 'beddcode-gone-'))

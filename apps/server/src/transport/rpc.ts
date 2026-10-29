@@ -238,7 +238,8 @@ export function createRpcRouter(
       const saved = await attachments.save(p.path, await files.readAttachment(p.cwd, p.path))
       return { id: saved.id, name: saved.name, size: saved.size }
     },
-    'sessions.prompt': (p) => sessions.prompt(p.sessionId, p.text, p.attachments, p.mode),
+    'sessions.prompt': (p) =>
+      sessions.prompt(p.sessionId, p.text, p.attachments, p.mode, p.clientMessageId),
     'sessions.dequeue': async (p) => {
       await sessions.dequeue(p.sessionId, p.queueId, p.action)
       return {}

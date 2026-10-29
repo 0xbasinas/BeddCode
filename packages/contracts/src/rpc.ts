@@ -428,6 +428,11 @@ export const RpcMethods = {
       /** Ids returned by attachments.upload. A prompt needs text or at least one attachment. */
       attachments: z.array(z.string()).optional(),
       mode: z.enum(['auto', 'queue']).optional(),
+      /**
+       * Chosen by the client, the same for every attempt at one message: the host sends a message
+       * it already has only once and answers the repeat like the first.
+       */
+      clientMessageId: z.string().max(200).optional(),
     }),
     result: z.object({
       state: z.enum(['started', 'steered', 'queued']),
