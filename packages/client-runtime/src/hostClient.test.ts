@@ -136,6 +136,8 @@ describe('HostClient', () => {
       createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
       backoff: { minMs: 100, maxMs: 100 },
       incompatibleRetryMs: 10_000,
+      // The retry is jittered (7.5–12.5 s); a quicker connect timeout could add a third try.
+      connectTimeoutMs: 60_000,
     })
     client.start()
     // The host refuses the hello with 1002 (it was updated and this app not yet).
