@@ -1,5 +1,5 @@
-import readline from 'node:readline'
 import type { Logger } from './log.ts'
+import { readLines } from './lines.ts'
 import { spawnProcess, stopProcess } from './process.ts'
 
 /** Line-oriented duplex channel; the real one wraps a child's stdio. */
@@ -225,8 +225,10 @@ export function spawnTransport(
     tail = (tail + text).slice(-2000)
   }
   child.stderr.on('data', (d: Buffer) => {
-    remember(String(d))
-    log?.debug(`${executable} stderr: ${String(d).trimEnd()}`)
+    // Only the tail is kept; a chatty agent must not grow the log line without bound either.
+    const text = d.length > 8_192 ? d.subarray(-8_192).toString('utf8') : d.toString('utf8')
+    remember(text)
+    log?.debug(`${executable} stderr: ${text.trimEnd()}`)
   })
   // Writes to a dead process surface as EPIPE; the close handler already reports the exit.
   child.stdin.on('error', () => {})
@@ -247,7 +249,16 @@ export function spawnTransport(
         log?.warn(`could not write to ${executable}`, err)
       }
     },
-    onLine: (handler) => readline.createInterface({ input: child.stdout }).on('line', handler),
+    // Line by line, but a runaway line (a huge tool result, binary garbage) is dropped instead of
+    // being buffered until the host runs out of memory.
+    onLine: (handler) =>
+      readLines(child.stdout, handler, {
+        onOversize: (bytes) =>
+          log?.error(
+            `${executable} wrote a line of ${Math.round(bytes / 1_048_576)} MB; it was dropped`,
+          ),
+        onError: (err) => log?.error(`could not handle a line from ${executable}`, err),
+      }),
     onClose: (handler) => {
       let fired = false
       const fire = () => {

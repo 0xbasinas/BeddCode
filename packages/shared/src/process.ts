@@ -7,6 +7,8 @@ import {
 } from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
+import type { Logger } from './log.ts'
+import { readJsonFile, writeFileAtomic } from './fsSafe.ts'
 
 const isWindows = process.platform === 'win32'
 
@@ -122,16 +124,59 @@ export function spawnProcess(
       windowsVerbatimArguments: viaShell,
     },
   )
-  track(child)
+  track(child, viaShell ? 'cmd.exe' : file)
   return child
 }
 
 /** Long-running children still alive, so the host can make sure none outlives it. */
 const running = new Set<ChildProcess>()
 
-function track(child: ChildProcess) {
+/** What the ledger keeps about a child, to find it again after the host itself was killed. */
+export interface ChildRecord {
+  pid: number
+  /** The file that was executed (cmd.exe for a Windows shim). */
+  command: string
+  startedAt: number
+  /** The process that started it. */
+  owner: number
+}
+const records = new Map<ChildProcess, ChildRecord>()
+let ledger: string | undefined
+
+/**
+ * Keeps a list of running children in `file` from now on. A host that is killed outright (kill -9,
+ * Task Manager, a crash of Node itself) runs none of its exit handlers, so its agents would keep
+ * running; the next host start reads this list and ends them (see `reapOrphans`).
+ */
+export function recordChildrenIn(file: string | undefined) {
+  ledger = file
+  saveLedger()
+}
+
+function saveLedger() {
+  if (!ledger) return
+  try {
+    writeFileAtomic(ledger, JSON.stringify([...records.values()]))
+  } catch {
+    // Best effort: a full disk must not stop an agent from starting.
+  }
+}
+
+/** Registers a long-running child started elsewhere (Claude's SDK spawns its own). */
+export function trackChild(child: ChildProcess, command: string) {
+  track(child, command)
+}
+
+function track(child: ChildProcess, command: string) {
   running.add(child)
-  const forget = () => running.delete(child)
+  if (child.pid !== undefined) {
+    records.set(child, { pid: child.pid, command, startedAt: Date.now(), owner: process.pid })
+    saveLedger()
+  }
+  const forget = () => {
+    running.delete(child)
+    if (records.delete(child)) saveLedger()
+  }
   child.once('exit', forget)
   child.once('error', forget)
 }
@@ -228,4 +273,132 @@ export function stopProcess(
 export function killAllChildren() {
   for (const child of Array.from(running)) killProcessTree(child, { sync: true })
   running.clear()
+}
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (err) {
+    // EPERM: it exists but belongs to someone else.
+    return (err as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
+/** `ps` elapsed time ([[dd-]hh:]mm:ss) in seconds. */
+function parseElapsed(text: string): number | undefined {
+  const m = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/.exec(text.trim())
+  if (!m) return undefined
+  const [, d = '0', h = '0', min = '0', sec = '0'] = m
+  return ((Number(d) * 24 + Number(h)) * 60 + Number(min)) * 60 + Number(sec)
+}
+
+/** When a process started and what it runs, or undefined when that cannot be told. */
+export async function processInfo(
+  pid: number,
+): Promise<{ startedAt: number; command: string } | undefined> {
+  try {
+    if (isWindows) {
+      const res = await runCommand(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          `$p = Get-Process -Id ${pid} -ErrorAction Stop; $p.StartTime.ToUniversalTime().ToString('o') + '|' + $p.Path`,
+        ],
+        { timeoutMs: 8_000 },
+      )
+      const [when, command = ''] = res.stdout.trim().split('|')
+      const startedAt = Date.parse(when ?? '')
+      return res.code === 0 && Number.isFinite(startedAt) ? { startedAt, command } : undefined
+    }
+    const res = await runCommand('ps', ['-o', 'etime=,command=', '-p', String(pid)], {
+      timeoutMs: 5_000,
+    })
+    const line = res.stdout.trim()
+    if (res.code !== 0 || !line) return undefined
+    const [elapsed = '', ...rest] = line.split(/\s+/)
+    const seconds = parseElapsed(elapsed)
+    if (seconds === undefined) return undefined
+    return { startedAt: Date.now() - seconds * 1_000, command: rest.join(' ') }
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * True when `pid` is still the process described: alive, started within a few seconds of the
+ * recorded time, and running the recorded program. Process ids are reused, so an id alone could
+ * name some unrelated program by now.
+ */
+export async function isSameProcess(
+  pid: number,
+  startedAt: number,
+  command?: string,
+): Promise<boolean> {
+  if (!isAlive(pid)) return false
+  const info = await processInfo(pid)
+  if (!info) return false
+  // `ps` reports whole seconds; allow for that and for a slow spawn.
+  if (Math.abs(info.startedAt - startedAt) > 15_000) return false
+  if (!command) return true
+  const name = path
+    .basename(command)
+    .toLowerCase()
+    .replace(/\.(exe|cmd|bat)$/, '')
+  return info.command.toLowerCase().includes(name)
+}
+
+/** Every process below `pid`, deepest first (POSIX; on Windows taskkill /T does this itself). */
+async function descendantsOf(pid: number): Promise<number[]> {
+  const found: number[] = []
+  const walk = async (parent: number, depth: number) => {
+    if (depth > 8) return
+    const res = await runCommand('pgrep', ['-P', String(parent)], { timeoutMs: 3_000 }).catch(
+      () => undefined,
+    )
+    for (const child of (res?.stdout ?? '').split(/\s+/).filter(Boolean).map(Number)) {
+      await walk(child, depth + 1)
+      found.push(child)
+    }
+  }
+  await walk(pid, 0)
+  return found
+}
+
+/**
+ * Ends the agents a previous host recorded (see `recordChildrenIn`) that are still running because
+ * that host was killed before it could stop them. Only processes that are provably the recorded
+ * ones are touched, and none whose host is still alive. Returns how many were ended.
+ */
+export async function reapOrphans(file: string, log?: Logger): Promise<number> {
+  const read = readJsonFile<ChildRecord[]>(file)
+  if (read.status !== 'ok' || !Array.isArray(read.value)) return 0
+  let ended = 0
+  for (const rec of read.value) {
+    if (typeof rec?.pid !== 'number' || typeof rec.startedAt !== 'number') continue
+    if (rec.owner === process.pid || (typeof rec.owner === 'number' && isAlive(rec.owner))) continue
+    if (!(await isSameProcess(rec.pid, rec.startedAt, rec.command))) continue
+    try {
+      if (isWindows) {
+        await runCommand('taskkill', ['/pid', String(rec.pid), '/T', '/F'], { timeoutMs: 10_000 })
+      } else {
+        for (const pid of [...(await descendantsOf(rec.pid)), rec.pid]) {
+          try {
+            process.kill(pid, 'SIGKILL')
+          } catch {
+            // already gone
+          }
+        }
+      }
+      ended++
+      log?.warn(
+        `ended ${path.basename(rec.command)} (pid ${rec.pid}), left running by a host that was killed`,
+      )
+    } catch (err) {
+      log?.warn(`could not end leftover process ${rec.pid}`, err)
+    }
+  }
+  return ended
 }
