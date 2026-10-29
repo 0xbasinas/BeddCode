@@ -18,6 +18,7 @@ import { useNavigate } from '@tanstack/react-router'
 import type { SessionView } from '@beddcode/client-runtime'
 import { setMode, useRuntime } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
+import { usePane } from '../split/paneContext.ts'
 import { useUiStore } from '../../stores/ui.ts'
 import { folderName } from '../../ui/format.ts'
 import { environmentHint } from './environment.ts'
@@ -75,7 +76,9 @@ export function EnvironmentButton({
     setExpanded((current) => (current === row ? undefined : row))
 
   // Closed by default; the store keeps it open or closed while the app runs (not across restarts).
-  const open = useUiStore((s) => s.environmentOpen)
+  // Beside other sessions, only the pane last used shows the card.
+  const paneActive = usePane()?.active ?? true
+  const open = useUiStore((s) => s.environmentOpen) && paneActive
   const setOpen = useUiStore((s) => s.setEnvironmentOpen)
   const anchor = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)

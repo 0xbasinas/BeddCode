@@ -13,6 +13,7 @@ import {
   PenTool,
   MessageSquare,
   Monitor,
+  MousePointer2,
   Server,
 } from 'lucide-react'
 import type {
@@ -110,9 +111,11 @@ export function NewSession({
   const [agentTools, setAgentTools] = useState(false)
   const [browserTools, setBrowserTools] = useState(false)
   const [designTools, setDesignTools] = useState(false)
+  const [computerTools, setComputerTools] = useState(false)
   const [repo, setRepo] = useState<RepoState | null | 'loading'>('loading')
   const [commands, setCommands] = useState<SlashCommand[]>([])
-  const [preview, setPreview] = useState<{ key: string; data?: AgentPreview; failed?: boolean }>()
+  const [preview, setPreview] = useState<{ key: string; data?: AgentPreview; error?: string }>()
+  const [previewAttempt, setPreviewAttempt] = useState(0)
   const [configState, setConfigState] = useState<{
     key: string
     values: Record<string, string | boolean>
@@ -237,16 +240,18 @@ export function NewSession({
     setPreview({ key: previewKey })
     hostRequest(hostKey, 'agents.preview', { instanceId: agent.id, cwd: folder || undefined }).then(
       (data) => !cancelled && setPreview({ key: previewKey, data }),
-      () => !cancelled && setPreview({ key: previewKey, failed: true }),
+      (err: unknown) =>
+        !cancelled &&
+        setPreview({ key: previewKey, error: err instanceof Error ? err.message : String(err) }),
     )
     return () => {
       cancelled = true
     }
-  }, [hostKey, agent?.id, agent?.kind, folder, connection, previewKey])
+  }, [hostKey, agent?.id, agent?.kind, folder, connection, previewKey, previewAttempt])
   const agentPreview = preview?.key === previewKey ? preview : undefined
   const offered = agentPreview?.data
   const loadingOffer =
-    agent?.kind === 'acp' && agentPreview !== undefined && !offered && !agentPreview.failed
+    agent?.kind === 'acp' && agentPreview !== undefined && !offered && !agentPreview.error
 
   const configValues = configState?.key === selectionKey ? configState.values : {}
   const configOptions = (offered?.config ?? []).map((o) => ({
@@ -293,6 +298,7 @@ export function NewSession({
         agentTools: agentTools || undefined,
         browserTools: browserTools || undefined,
         designTools: designTools || undefined,
+        computerTools: computerTools || undefined,
       })
       await prompt(sessionId, value, attachments)
       if (activeDraft.current === memoryKey)
@@ -359,6 +365,16 @@ export function NewSession({
             agent && (
               <>
                 {loadingOffer && <span className="muted offer-note">Reading settings…</span>}
+                {agentPreview?.error && (
+                  <button
+                    type="button"
+                    className="offer-note"
+                    title={agentPreview.error}
+                    onClick={() => setPreviewAttempt((n) => n + 1)}
+                  >
+                    Settings unavailable · Retry
+                  </button>
+                )}
                 <ConfigMenu
                   agent={agent.id}
                   options={configOptions}
@@ -428,6 +444,15 @@ export function NewSession({
                   onClick={() => setDesignTools((v) => !v)}
                 >
                   <PenTool size={15} aria-hidden="true" />
+                </button>
+                <button
+                  className="capability-toggle"
+                  aria-label="Use computer"
+                  aria-pressed={computerTools}
+                  title={`Use computer: ${computerTools ? 'on' : 'off'}. Let the agent open and operate apps on this machine's desktop. You approve each app it did not open.`}
+                  onClick={() => setComputerTools((v) => !v)}
+                >
+                  <MousePointer2 size={15} aria-hidden="true" />
                 </button>
               </div>
               {repo && repo !== 'loading' && (

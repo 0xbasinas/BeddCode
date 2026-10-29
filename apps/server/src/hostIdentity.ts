@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
+import { writeFileAtomic } from '@beddcode/shared'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -18,8 +19,8 @@ export function loadHostId(home: string): string {
     // first run
   }
   const id = randomUUID()
-  mkdirSync(home, { recursive: true })
-  writeFileSync(file, id)
+  // Written whole or not at all: a half-written id would make every paired device distrust this host.
+  writeFileAtomic(file, id)
   return id
 }
 
@@ -37,7 +38,6 @@ export function loadRelayKey(home: string, create: () => string): string {
     // first run
   }
   const key = create()
-  mkdirSync(home, { recursive: true })
-  writeFileSync(file, key, { mode: 0o600 })
+  writeFileAtomic(file, key, { mode: 0o600 })
   return key
 }

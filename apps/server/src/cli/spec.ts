@@ -104,8 +104,8 @@ export const SPECS: CommandSpec[] = [
   {
     name: 'host',
     desc: 'Run the host in the background',
-    sub: ['install', 'uninstall'],
-    flags: [PORT, '--host', '--allow-lan', '--dry-run'],
+    sub: ['install', 'uninstall', 'status'],
+    flags: [PORT, '--host', '--allow-lan', '--at-boot', '--dry-run'],
   },
   {
     name: 'serve',
@@ -115,7 +115,7 @@ export const SPECS: CommandSpec[] = [
   {
     name: 'install-service',
     desc: 'Run the host in the background',
-    flags: [PORT, '--host', '--allow-lan', '--dry-run'],
+    flags: [PORT, '--host', '--allow-lan', '--at-boot', '--dry-run'],
   },
   { name: 'uninstall-service', desc: 'Remove the background host', flags: ['--dry-run'] },
 ]

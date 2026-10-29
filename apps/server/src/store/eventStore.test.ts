@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { createLogger } from '@beddcode/shared'
 import type { SessionEvent } from '@beddcode/contracts'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { EventStore } from './eventStore.ts'
+import { EventStore, openEventStore } from './eventStore.ts'
 import { migrations } from './migrations.ts'
 import { dropRepeatedSnapshots } from './snapshots.ts'
 
@@ -15,6 +16,25 @@ const turnStarted = (sessionId: string): SessionEvent => ({
 })
 
 describe('EventStore', () => {
+  it('lists created sessions in activity order using a sequence cursor', () => {
+    const store = new EventStore(':memory:')
+    const created = (id: string): SessionEvent => ({
+      type: 'session.created',
+      sessionId: id,
+      title: id,
+      cwd: '/project',
+      instanceId: 'agent',
+      at: 1,
+    })
+    store.append(created('first'))
+    store.append(created('second'))
+    store.append(turnStarted('first'))
+    store.append(turnStarted('no-creation'))
+    expect(store.listSessionIds(undefined, 1)).toEqual([{ id: 'first', latest: 3 }])
+    expect(store.listSessionIds(3, 2)).toEqual([{ id: 'second', latest: 2 }])
+    store.close()
+  })
+
   it('rolls back a failed batch without notifying clients or retaining uncommitted snapshot keys', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'bc-store-rollback-'))
     const file = path.join(dir, 'events.db')
@@ -86,6 +106,52 @@ describe('EventStore', () => {
     off()
     store.append(turnStarted('s1'))
     expect(seen).toEqual([1])
+  })
+
+  it('keeps notifying the other listeners when one throws', () => {
+    const store = new EventStore(':memory:', createLogger('test', 'error'))
+    const seen: number[] = []
+    store.subscribe(() => {
+      throw new Error('a broken client')
+    })
+    store.subscribe((s) => seen.push(s.seq))
+    expect(() => store.append(turnStarted('s1'))).not.toThrow()
+    expect(seen).toEqual([1])
+  })
+
+  it('skips a damaged row instead of failing every replay after it', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'bc-store-damaged-'))
+    const file = path.join(dir, 'events.db')
+    try {
+      const store = new EventStore(file, createLogger('test', 'error'))
+      store.append(turnStarted('s1'))
+      store.append(turnStarted('s1'))
+      store.close()
+      const db = new DatabaseSync(file)
+      db.prepare("UPDATE events SET payload = '{not json' WHERE seq = 1").run()
+      db.close()
+      const reopened = new EventStore(file, createLogger('test', 'error'))
+      expect(reopened.readAfter(0, 10).map((s) => s.seq)).toEqual([2])
+      expect(reopened.readSession('s1').map((s) => s.seq)).toEqual([2])
+      reopened.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('moves a database SQLite cannot read aside and starts a new log', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'bc-store-notadb-'))
+    const file = path.join(dir, 'events.db')
+    try {
+      writeFileSync(file, 'this is not a sqlite database, just some bytes '.repeat(200))
+      const store = openEventStore(file, createLogger('test', 'error'))
+      store.append(turnStarted('s1'))
+      expect(store.lastSeq()).toBe(1)
+      store.close()
+      expect(readdirSync(dir).some((f) => f.startsWith('events.db.corrupt-'))).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('rejects invalid events', () => {

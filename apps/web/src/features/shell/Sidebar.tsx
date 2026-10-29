@@ -36,6 +36,7 @@ import {
   PinOff,
   Trash2,
   X,
+  Columns2,
 } from 'lucide-react'
 import {
   activityLine,
@@ -50,6 +51,8 @@ import {
 } from '@beddcode/client-runtime'
 import type { Project } from '@beddcode/contracts'
 import { ContextMenu, type ContextMenuItem } from '../../ui/ContextMenu.tsx'
+import { SESSION_DRAG, useSplit } from '../split/splitLayout.ts'
+import { useArrangePanes, useOpenBeside, useShownPanes } from '../split/SplitView.tsx'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import {
   reconnectHostNow,
@@ -89,6 +92,8 @@ function hostState(connection: string | undefined): { label: string; tone: strin
       return { label: 'Reconnecting…', tone: 'warn' }
     case 'denied':
       return { label: 'Needs pairing', tone: 'failed' }
+    case 'incompatible':
+      return { label: 'Needs update', tone: 'failed' }
     default:
       return { label: 'Offline', tone: 'failed' }
   }
@@ -188,6 +193,10 @@ export function Sidebar() {
   const openId = useRouterState({
     select: (r) => /^\/session\/([^/]+)/.exec(r.location.pathname)?.[1],
   })
+  // Sessions shown side by side; a row can be dragged beside the conversation to join them.
+  const shownPanes = useShownPanes()
+  const openBeside = useOpenBeside()
+  const arrangePanes = useArrangePanes()
   useEffect(() => {
     if (!searchOpen) return
     // A shortcut from Settings also mounts the composer, which normally takes initial focus.
@@ -292,15 +301,32 @@ ${s.projectless ? 'no-project' : s.projectPath}`
         activeOptions={{ exact: true, includeSearch: false }}
         className={depth > 0 ? 'session-row child' : 'session-row'}
         style={depth > 0 ? { ['--nest' as string]: Math.min(depth, 3) } : undefined}
+        data-shown={shownPanes.length > 1 && shownPanes.includes(s.id) ? 'true' : undefined}
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData(SESSION_DRAG, s.id)
+          e.dataTransfer.setData('text/plain', s.title)
+          e.dataTransfer.effectAllowed = 'copyMove'
+        }}
         onContextMenu={(e) => {
           e.preventDefault()
           setMenu({ x: e.clientX, y: e.clientY, session: s })
         }}
         activeProps={{ className: 'session-row active' }}
-        onClick={() => {
+        onClick={(e) => {
           if (searchOpen) {
             setQuery('')
             setSearchOpen(false)
+          }
+          // Already beside the main one: go to its pane instead of swapping the split.
+          if (shownPanes.length > 1 && shownPanes.includes(s.id) && s.id !== openId) {
+            e.preventDefault()
+            useSplit.getState().setFocused(s.id)
+            document
+              .querySelector<HTMLTextAreaElement>(
+                `.split-pane[data-session-id="${CSS.escape(s.id)}"] textarea`,
+              )
+              ?.focus()
           }
         }}
       >
@@ -331,6 +357,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               className="session-where"
               title={[s.branch, agentLabel(s)].filter(Boolean).join(' · ')}
             >
+              {s.mcpGateway && <span title="Started through remote MCP">MCP · </span>}
               {s.branch && (
                 <>
                   <GitBranch size={11} /> <code>{s.branch}</code> ·{' '}
@@ -398,7 +425,24 @@ ${s.projectless ? 'no-project' : s.projectPath}`
 
   const menuItems = (session: SessionView): ContextMenuItem[] => {
     const action = doneMenuAction(session)
+    const shown = shownPanes.length > 1 && shownPanes.includes(session.id)
     return [
+      shown
+        ? {
+            id: 'split',
+            label: 'Close pane',
+            hint: 'Stops showing it beside the others. The session keeps running.',
+            icon: <Columns2 size={15} />,
+            onSelect: () => arrangePanes(shownPanes.filter((id) => id !== session.id)),
+          }
+        : {
+            id: 'split',
+            label: 'Open side by side',
+            hint: 'Or drag the session beside the conversation.',
+            icon: <Columns2 size={15} />,
+            disabled: shownPanes.length === 1 && shownPanes[0] === session.id,
+            onSelect: () => openBeside(session.id),
+          },
       {
         id: 'done',
         label: action.label,

@@ -20,6 +20,7 @@ import {
   MetricRecord,
   PairingCode,
   RelaySettings,
+  McpGatewaySettings,
   TailnetStatus,
 } from './hosts.ts'
 import { ConfigOption, SlashCommand } from './events.ts'
@@ -314,6 +315,16 @@ export const RpcMethods = {
   'host.pair': { params: z.object({}), result: PairingCode },
   /** The relay that lets devices on other networks reach this host. Loopback connections only. */
   'host.relay.get': { params: z.object({}), result: RelaySettings },
+  'host.mcpGateway.get': { params: z.object({}), result: McpGatewaySettings },
+  'host.mcpGateway.set': {
+    params: z.object({
+      url: z.string().nullable(),
+      secret: z.string().optional(),
+      allowApprovals: z.boolean().optional(),
+      allowProjectRead: z.boolean().optional(),
+    }),
+    result: McpGatewaySettings,
+  },
   /** Sets (an ordinary address such as relay.example.com) or clears (null) the relay; takes effect at once. */
   'host.relay.set': {
     params: z.object({
@@ -437,6 +448,8 @@ export const RpcMethods = {
       browserTools: z.boolean().optional(),
       /** Let the agent read and draw on the host's design canvases (BeddCode's design tools). */
       designTools: z.boolean().optional(),
+      /** Let the agent operate the host's desktop (BeddCode's computer tools). */
+      computerTools: z.boolean().optional(),
     }),
     result: z.object({ sessionId: z.string() }),
   },
@@ -465,6 +478,11 @@ export const RpcMethods = {
       /** Ids returned by attachments.upload. A prompt needs text or at least one attachment. */
       attachments: z.array(z.string()).optional(),
       mode: z.enum(['auto', 'queue']).optional(),
+      /**
+       * Chosen by the client, the same for every attempt at one message: the host sends a message
+       * it already has only once and answers the repeat like the first.
+       */
+      clientMessageId: z.string().max(200).optional(),
     }),
     result: z.object({
       state: z.enum(['started', 'steered', 'queued']),
@@ -571,6 +589,32 @@ export const RpcMethods = {
     /** `includeChildren` also stops the sessions this one's agent started. */
     params: z.object({ sessionId: z.string(), includeChildren: z.boolean().optional() }),
     result: z.object({}),
+  },
+  /**
+   * What a session is doing on the desktop, for the Desktop pane: its latest window picture (left out
+   * when `since` is already the newest), whether the user holds the controls, and its last actions.
+   */
+  'computer.view': {
+    params: z.object({ sessionId: z.string(), since: z.number().optional() }),
+    result: z.object({
+      /** The session may use the computer. */
+      enabled: z.boolean(),
+      /** The user has taken over: the agent's computer calls wait. */
+      paused: z.boolean(),
+      /** This session holds the desktop right now. */
+      active: z.boolean(),
+      /** When the picture was taken; 0 when there is none yet. */
+      at: z.number(),
+      app: z.string().optional(),
+      title: z.string().optional(),
+      image: z.object({ data: z.string(), mime: z.string() }).optional(),
+      actions: z.array(z.string()),
+    }),
+  },
+  /** The user takes the controls from the agent (`paused`) or hands them back. */
+  'computer.control': {
+    params: z.object({ sessionId: z.string(), paused: z.boolean() }),
+    result: z.object({ paused: z.boolean() }),
   },
   'sessions.rename': {
     params: z.object({ sessionId: z.string(), title: z.string().trim().min(1).max(120) }),

@@ -112,6 +112,7 @@ const connectionText = {
   connected: 'Online',
   connecting: 'Connecting…',
   reconnecting: 'Reconnecting…',
+  incompatible: 'Needs update',
   stopped: 'Offline',
   denied: 'Pair again',
 } as const

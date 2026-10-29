@@ -10,6 +10,7 @@ import {
   statusLabel,
   trayMenu,
   type TrayActions,
+  type TrayModel,
 } from './trayModel.ts'
 
 describe('shouldHideOnClose', () => {
@@ -45,13 +46,17 @@ describe('trayMenu', () => {
     open: () => void calls.push('open'),
     toggleKeepRunning: () => void calls.push('keep'),
     toggleStartAtLogin: () => void calls.push('login'),
+    setHostMode: (mode) => void calls.push(`mode:${mode}`),
+    toggleBackgroundHost: () => void calls.push('background'),
     quit: () => void calls.push('quit'),
   }
-  const model = {
-    status: { status: 'running' as const, restarts: 0 },
+  const model: TrayModel = {
+    status: { status: 'running', restarts: 0 },
     keepRunning: true,
     startAtLogin: false,
     canStartAtLogin: true,
+    hostMode: 'auto',
+    backgroundHost: false,
   }
 
   it('lists open, status, the two toggles and quit', () => {
@@ -59,6 +64,7 @@ describe('trayMenu', () => {
     expect(labels).toEqual([
       'Open BeddCode',
       'Host running',
+      'Host',
       'Keep running when the window is closed',
       'Start when I sign in',
       'Quit BeddCode',
@@ -71,14 +77,35 @@ describe('trayMenu', () => {
   })
 
   it('wires each item to its action', () => {
-    for (const item of trayMenu(model, actions)) item.click?.()
-    expect(calls).toEqual(['open', 'keep', 'login', 'quit'])
+    for (const item of trayMenu(model, actions)) {
+      item.click?.()
+      for (const sub of item.submenu ?? []) sub.click?.()
+    }
+    expect(calls).toEqual([
+      'open',
+      'mode:auto',
+      'mode:app',
+      'mode:external',
+      'background',
+      'keep',
+      'login',
+      'quit',
+    ])
+  })
+
+  it('marks the host mode, and offers the background host only where the app can set it up', () => {
+    const host = (m: typeof model) => trayMenu(m, actions).find((i) => i.label === 'Host')!.submenu!
+    const checked = host({ ...model, hostMode: 'external' }).filter((i) => i.checked)
+    expect(checked.map((i) => i.label)).toEqual(['Only use a host started separately'])
+    expect(host({ ...model, backgroundHost: null }).some((i) => i.type === 'checkbox')).toBe(false)
+    expect(host({ ...model, backgroundHost: true }).at(-1)?.checked).toBe(true)
   })
 
   it('shows the host state', () => {
     expect(statusLabel(null)).toBe('Host stopped')
     expect(statusLabel({ status: 'failed', restarts: 3 })).toBe('Host could not start')
     expect(statusLabel({ status: 'restarting', restarts: 1 })).toBe('Host starting…')
+    expect(statusLabel({ status: 'waiting', restarts: 0 })).toBe('Waiting for the host…')
   })
 })
 
@@ -92,7 +119,9 @@ describe('desktop settings', () => {
     expect(readDesktopSettings(file)).toEqual({})
     writeDesktopSettings(file, { keepRunning: false, trayHintShown: true })
     expect(readDesktopSettings(file)).toEqual({ keepRunning: false, trayHintShown: true })
-    writeFileSync(file, '{"keepRunning":"yes","other":1}')
+    writeDesktopSettings(file, { hostMode: 'external' })
+    expect(readDesktopSettings(file)).toEqual({ hostMode: 'external' })
+    writeFileSync(file, '{"keepRunning":"yes","other":1,"hostMode":"remote"}')
     expect(readDesktopSettings(file)).toEqual({})
     writeFileSync(file, 'not json')
     expect(readDesktopSettings(file)).toEqual({})

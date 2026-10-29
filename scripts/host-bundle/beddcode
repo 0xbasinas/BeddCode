@@ -5,6 +5,7 @@ set -eu
 here=$(dirname "$(readlink -f "$0")")
 export BEDDCODE_WEB_ROOT="$here/web"
 export NODE_NO_WARNINGS=1
+export BEDDCODE_HOST_BUNDLE=1
 [ "$#" -eq 0 ] && set -- help
 # The Node the installer downloaded, if it had to; otherwise the one on PATH.
 node="$here/node/bin/node"

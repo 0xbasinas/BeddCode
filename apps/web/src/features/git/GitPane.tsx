@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useUiStore } from '../../stores/ui.ts'
-import { GitBranch, RotateCw } from 'lucide-react'
+import { Folder, GitBranch, RotateCw } from 'lucide-react'
 import { BrandIcon } from '../../ui/BrandIcon.tsx'
+import { paneProject } from '../shell/paneProject.ts'
 import type { PaneWorkspace } from '../../stores/composerWorkspace.ts'
 import { hostRequest } from '../../stores/host.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
@@ -21,6 +22,7 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
   const setTab = useUiStore((s) => s.setGitTab)
   const [version, setVersion] = useState(0)
   const cwd = workspace.cwd
+  const project = paneProject(workspace)
   const hostKey = useHostKey()
   const operationKey = gitOperationKey(hostKey, cwd)
   const { operation, revision } = useGitOperations(
@@ -83,6 +85,9 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
       </div>
 
       <div className="git-branch">
+        <span className="git-project pane-project" title={project.title}>
+          <Folder size={14} /> {project.label}
+        </span>
         <GitBranch size={15} />
         <code>{info.data.branch ?? 'detached HEAD'}</code>
         {(info.data.ahead ?? 0) > 0 && <span className="add">↑{info.data.ahead}</span>}

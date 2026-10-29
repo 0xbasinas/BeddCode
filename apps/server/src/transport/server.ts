@@ -103,6 +103,7 @@ export interface StartServerOptions {
   reachable?: () => Promise<{ hostId: string; name: string; routes: string[]; relay?: string }>
   /** Reads and changes the relay this host is reachable through. */
   relay?: RelayControl
+  mcpGateway?: AccessServices['mcpGateway']
   telemetry?: AccessServices['telemetry']
   /** Takes the host's own measurements (see Telemetry.record). */
   telemetryRecorder?: (name: string, value: number, tags?: Record<string, string>) => void
@@ -206,6 +207,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       port: () => listeningPort,
       reachable: options.reachable,
       relay: options.relay,
+      mcpGateway: options.mcpGateway,
       telemetry: options.telemetry,
     },
     options.automation,

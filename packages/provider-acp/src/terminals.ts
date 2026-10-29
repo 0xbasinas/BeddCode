@@ -1,4 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { StringDecoder } from 'node:string_decoder'
+import path from 'node:path'
 import { spawnProcess } from '@beddcode/shared'
 import type { AgentCommand, AgentTerminalHost } from '@beddcode/provider-core'
 
@@ -19,12 +21,24 @@ interface Terminal {
   child: ChildProcess
   output: string
   truncated: boolean
-  limit: number | null
+  limit: number
   exit: ExitStatus | null
   waiters: ((s: ExitStatus) => void)[]
 }
 
 const isWindows = process.platform === 'win32'
+/** Bound memory when an agent omits the optional output limit or asks for a very large one. */
+export const DEFAULT_OUTPUT_LIMIT = 1024 * 1024
+export const MAX_OUTPUT_LIMIT = 4 * 1024 * 1024
+
+/** Keep the newest complete UTF-8 characters within the byte limit. */
+export function trimOutput(text: string, limit: number): string {
+  const bytes = Buffer.from(text, 'utf8')
+  if (bytes.length <= limit) return text
+  let start = bytes.length - limit
+  while (start < bytes.length && (bytes[start]! & 0xc0) === 0x80) start++
+  return bytes.subarray(start).toString('utf8')
+}
 
 /**
  * Terminals an ACP agent asks us to run. With a host (the BeddCode server) they run in the
@@ -41,6 +55,14 @@ export class TerminalManager {
   ) {}
 
   create(req: CreateTerminal): { terminalId: string } {
+    if (
+      req.outputByteLimit != null &&
+      (!Number.isSafeInteger(req.outputByteLimit) || req.outputByteLimit < 0)
+    ) {
+      throw new Error('Terminal output limit must be a non-negative integer')
+    }
+    if (req.cwd != null && !path.isAbsolute(req.cwd))
+      throw new Error('Terminal working directory must be an absolute path')
     if (this.host) {
       const id = `term-${this.nextId++}`
       this.hosted.set(
@@ -80,27 +102,33 @@ export class TerminalManager {
       child,
       output: '',
       truncated: false,
-      limit: req.outputByteLimit ?? null,
+      limit: Math.min(req.outputByteLimit ?? DEFAULT_OUTPUT_LIMIT, MAX_OUTPUT_LIMIT),
       exit: null,
       waiters: [],
     }
-    const append = (chunk: Buffer) => {
-      term.output += chunk.toString('utf8')
-      if (term.limit !== null && Buffer.byteLength(term.output) > term.limit) {
+    const append = (text: string) => {
+      term.output += text
+      if (Buffer.byteLength(term.output) > term.limit) {
         // Keep the tail: the end of the output is what an agent needs most.
-        term.output = Buffer.from(term.output).subarray(-term.limit).toString('utf8')
+        term.output = trimOutput(term.output, term.limit)
         term.truncated = true
       }
     }
-    child.stdout?.on('data', append)
-    child.stderr?.on('data', append)
+    const collect = (stream: NodeJS.ReadableStream | null) => {
+      if (!stream) return
+      const decoder = new StringDecoder('utf8')
+      stream.on('data', (chunk: Buffer) => append(decoder.write(chunk)))
+      stream.on('end', () => append(decoder.end()))
+    }
+    collect(child.stdout)
+    collect(child.stderr)
     const finish = (status: ExitStatus) => {
       if (term.exit) return
       term.exit = status
       for (const w of term.waiters.splice(0)) w(status)
     }
     child.on('error', (err) => {
-      append(Buffer.from(`${err.message}\n`))
+      append(`${err.message}\n`)
       finish({ exitCode: 127, signal: null })
     })
     child.on('close', (code, signal) => finish({ exitCode: code, signal }))

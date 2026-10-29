@@ -5,6 +5,7 @@ import {
   type MetricPlatform,
   type MetricRecord,
   type RelaySettings,
+  type McpGatewaySettings,
   type RpcMethodName,
   type RpcParams,
   type RpcResult,
@@ -25,6 +26,7 @@ import { detectEditors, launchEditor, type DetectedEditor } from '../workspace/e
 import type { FileService } from '../files/files.ts'
 import type { TerminalManager } from '../terminals/manager.ts'
 import type { AlertService } from '../automation/alerts.ts'
+import type { ComputerPane } from '../automation/index.ts'
 import { previewTrigger } from '../automation/cron.ts'
 import type { DesignStore } from '../design/designStore.ts'
 import type { ScheduleService } from '../automation/schedules.ts'
@@ -38,6 +40,7 @@ export interface AutomationServices {
   schedules: ScheduleService
   alerts: AlertService
   designs: DesignStore
+  computer: ComputerPane
 }
 
 /** Everything that works on a session's folder: git, projects, shells and files. */
@@ -91,6 +94,15 @@ export interface AccessServices {
   reachable?: () => Promise<{ hostId: string; name: string; routes: string[]; relay?: string }>
   /** Reads and changes the relay this host is reachable through. */
   relay?: RelayControl
+  mcpGateway?: {
+    get(): McpGatewaySettings
+    set(
+      url: string | null,
+      secret?: string,
+      allowApprovals?: boolean,
+      allowProjectRead?: boolean,
+    ): Promise<McpGatewaySettings>
+  }
   /** Where apps' speed measurements go (kept only while the owner has uploads switched on). */
   telemetry?: { report(platform: MetricPlatform, records: MetricRecord[]): boolean }
 }
@@ -120,6 +132,8 @@ const LOOPBACK_ONLY: ReadonlySet<RpcMethodName> = new Set([
   'host.pair',
   'host.relay.get',
   'host.relay.set',
+  'host.mcpGateway.get',
+  'host.mcpGateway.set',
   'devices.list',
   'devices.revoke',
   'editors.open',
@@ -154,6 +168,14 @@ export function createRpcRouter(
     'host.relay.get': async () => {
       if (!access.relay) throw new Error('This host does not support relays')
       return access.relay.get()
+    },
+    'host.mcpGateway.get': async () => {
+      if (!access.mcpGateway) throw new Error('This host does not support the MCP gateway')
+      return access.mcpGateway.get()
+    },
+    'host.mcpGateway.set': (p) => {
+      if (!access.mcpGateway) throw new Error('This host does not support the MCP gateway')
+      return access.mcpGateway.set(p.url, p.secret, p.allowApprovals, p.allowProjectRead)
     },
     'host.relay.set': (p) => {
       if (!access.relay) throw new Error('This host does not support relays')
@@ -270,7 +292,8 @@ export function createRpcRouter(
       const saved = await attachments.save(p.path, await files.readAttachment(p.cwd, p.path))
       return { id: saved.id, name: saved.name, size: saved.size }
     },
-    'sessions.prompt': (p) => sessions.prompt(p.sessionId, p.text, p.attachments, p.mode),
+    'sessions.prompt': (p) =>
+      sessions.prompt(p.sessionId, p.text, p.attachments, p.mode, p.clientMessageId),
     'sessions.dequeue': async (p) => {
       await sessions.dequeue(p.sessionId, p.queueId, p.action)
       return {}
@@ -341,6 +364,10 @@ export function createRpcRouter(
     'design.save': async (p) => designs.save(p.id, p.project, p.origin),
     'design.rename': async (p) => designs.rename(p.id, p.name),
     'design.delete': async (p) => ({ removed: designs.remove(p.id) }),
+    'computer.view': async (p) => automation.computer.view(p.sessionId, p.since),
+    'computer.control': async (p) => ({
+      paused: automation.computer.control(p.sessionId, p.paused),
+    }),
     'schedules.list': async () => schedules.list(),
     'schedules.save': async (p) => schedules.saveSchedule(p),
     'schedules.remove': async (p) => ({ removed: schedules.remove(p.id) }),

@@ -133,6 +133,7 @@ export class AcpSession implements ProviderSession {
   /** While loading history the agent replays old messages; those must not become new events. */
   private replaying = false
   private lastReplayAt = 0
+  private readonly replayedState = new Map<string, SessionUpdate>()
   /** The model list some agents give outside the config options, and the one now chosen. */
   private modelState: unknown
   private modelValue: string | undefined
@@ -190,6 +191,8 @@ export class AcpSession implements ProviderSession {
                 terminal: true,
                 // Forms an agent wants filled in go to the user as questions.
                 elicitation: { form: {} },
+                // We map and send boolean configuration options in the composer.
+                session: { configOptions: { boolean: {} } },
               },
           clientInfo: {
             name: 'beddcode',
@@ -206,9 +209,7 @@ export class AcpSession implements ProviderSession {
       }
 
       const caps = init.agentCapabilities
-      this.canCloseSession = Boolean(
-        caps?.sessionCapabilities && 'close' in caps.sessionCapabilities,
-      )
+      this.canCloseSession = caps?.sessionCapabilities?.close != null
       this.canSendImages = caps?.promptCapabilities?.image === true
       this.authMethods = (init.authMethods ?? []).map((m) => m.name)
       const extra = this.input.additionalDirectories ?? []
@@ -233,7 +234,7 @@ export class AcpSession implements ProviderSession {
       if (this.input.resumeId) {
         this.acpSessionId = this.input.resumeId
         if (caps?.sessionCapabilities?.resume) {
-          const res = await this.setup<SetupResponse>('session/resume', {
+          const res = await this.reopen<SetupResponse>('session/resume', {
             sessionId: this.acpSessionId,
             ...base,
           })
@@ -245,7 +246,7 @@ export class AcpSession implements ProviderSession {
           this.lastReplayAt = Date.now()
           const startedAt = Date.now()
           try {
-            const res = await this.setup<SetupResponse>('session/load', {
+            const res = await this.reopen<SetupResponse>('session/load', {
               sessionId: this.acpSessionId,
               ...base,
             })
@@ -311,12 +312,15 @@ export class AcpSession implements ProviderSession {
         }
       }
       if (shown.length > 0) this.emit({ type: 'session.config', options: shown })
+      // Replay contains old conversation events, but its latest settings remain useful state.
+      for (const update of this.replayedState.values()) this.applyUpdate(update)
+      this.replayedState.clear()
       // Settings chosen before the session started (model, thinking level, ...).
       for (const [id, value] of Object.entries(this.input.config ?? {})) {
         try {
           await this.sendConfig(id, value)
         } catch (err) {
-          this.deps.log.warn(`could not apply ${id} for ${this.sessionId}`, err)
+          throw new Error(`Could not apply agent setting ${id}: ${describeRpcError(err)}`)
         }
       }
     } catch (err) {
@@ -350,6 +354,28 @@ export class AcpSession implements ProviderSession {
         if (!isStorageNotFound(err) || attempt >= STORAGE_RETRIES) throw err
         await new Promise((resolve) => setTimeout(resolve, STORAGE_RETRY_MS))
       }
+    }
+  }
+
+  /**
+   * Reopens an earlier conversation. An agent whose files for it are gone answers with a bare
+   * "not found" (Grok: "Path not found.: No such file or directory"); say that it is the
+   * conversation that is missing, so the host can continue in a new one.
+   */
+  private async reopen<T>(method: string, params: Obj): Promise<T> {
+    try {
+      return await this.setup<T>(method, params)
+    } catch (err) {
+      const message = describeRpcError(err)
+      const code = err instanceof JsonRpcError ? err.code : undefined
+      if (
+        isStorageNotFound(err) ||
+        code === -32002 ||
+        /not found|no such file|does not exist|os error 2|ENOENT/i.test(message)
+      ) {
+        throw new Error(`session not found (${message})`, { cause: err })
+      }
+      throw err
     }
   }
 
@@ -617,7 +643,7 @@ export class AcpSession implements ProviderSession {
     this.closed = true
     this.cancelAllPending()
     this.terminals.releaseAll()
-    if (this.input.textOnly && this.acpSessionId) {
+    if (this.acpSessionId) {
       if (this.inflightTurn) this.rpc.notify('session/cancel', { sessionId: this.acpSessionId })
       if (this.canCloseSession) {
         await this.rpc
@@ -635,20 +661,33 @@ export class AcpSession implements ProviderSession {
 
   private onNotification(method: string, params: unknown) {
     if (method !== 'session/update') return
+    const p = params as { sessionId?: string; update?: SessionUpdate }
+    if (p?.sessionId !== this.acpSessionId || !p.update) return
     if (this.replaying) {
       this.lastReplayAt = Date.now()
+      if (
+        p.update.sessionUpdate === 'available_commands_update' ||
+        p.update.sessionUpdate === 'config_option_update' ||
+        p.update.sessionUpdate === 'current_mode_update'
+      ) {
+        // Reinsert so different kinds retain the order in which their latest values arrived.
+        this.replayedState.delete(p.update.sessionUpdate)
+        this.replayedState.set(p.update.sessionUpdate, p.update)
+      }
       return
     }
-    const p = params as { sessionId?: string; update?: SessionUpdate }
-    if (p.sessionId !== this.acpSessionId || !p.update) return
+    this.applyUpdate(p.update)
+  }
+
+  private applyUpdate(update: SessionUpdate) {
     if (
       this.quiet &&
-      (p.update.sessionUpdate === 'agent_message_chunk' ||
-        p.update.sessionUpdate === 'agent_thought_chunk')
+      (update.sessionUpdate === 'agent_message_chunk' ||
+        update.sessionUpdate === 'agent_thought_chunk')
     )
       return
-    if (isProgress(p.update.sessionUpdate)) this.lastProgressAt = Date.now()
-    for (const event of this.mapper.map(p.update)) {
+    if (isProgress(update.sessionUpdate)) this.lastProgressAt = Date.now()
+    for (const event of this.mapper.map(update)) {
       if (event.type === 'session.config' && this.modelState) {
         this.queue.push({ ...event, options: this.withModel(event.options) })
       } else this.queue.push(event)

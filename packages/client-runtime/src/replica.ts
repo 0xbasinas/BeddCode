@@ -113,6 +113,8 @@ export interface SessionView {
   pinned?: boolean
   status: SessionStatus
   lastTurnReason?: 'done' | 'cancelled' | 'error'
+  /** Why the last turn ended, when it was not the agent finishing (stopped, crashed, host restart). */
+  lastTurnMessage?: string
   /**
    * The user turned down a request in the turn that is running (or just ended). Some agents (Grok)
    * end the turn right after a "no", which then reads as cancelled although nobody pressed Stop.
@@ -134,12 +136,15 @@ export interface SessionView {
   parent?: { sessionId: string; depth: number }
   /** Started by a schedule. */
   schedule?: { id: string; name: string }
+  mcpGateway?: boolean
   /** Can start and manage other sessions. */
   agentTools?: boolean
   /** The agent may use the desktop app's browser pane. */
   browserTools?: boolean
   /** The agent may draw on the host's design canvases. */
   designTools?: boolean
+  /** The agent may operate the host's desktop. */
+  computerTools?: boolean
   /** The agent's own per-session settings (model, thinking level, ...). */
   config: ConfigOption[]
   /** The session this one continues, when it was forked. */
@@ -246,9 +251,11 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       imported: e.imported,
       parent: e.parent,
       schedule: e.schedule,
+      mcpGateway: e.mcpGateway,
       agentTools: e.agentTools,
       browserTools: e.browserTools,
       designTools: e.designTools,
+      computerTools: e.computerTools,
     }
     return {
       lastSeq: stored.seq,
@@ -349,6 +356,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.turns = current.turns + 1
       next.status = 'running'
       next.lastTurnReason = undefined
+      next.lastTurnMessage = undefined
       next.declined = undefined
       break
     case 'message.delta': {
@@ -526,6 +534,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.completedTurns = current.completedTurns + 1
       next.status = e.reason === 'error' ? 'failed' : 'idle'
       next.lastTurnReason = e.reason
+      next.lastTurnMessage = e.message
       next.items = current.items.map((item) => {
         if (item.kind === 'approval' && !item.resolvedOptionId) return { ...item, cancelled: true }
         if (item.kind === 'question' && !item.answers && !item.dismissed)

@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types"],
+    "typeRoots": ["../relay/node_modules/@types", "../relay/node_modules"],
+    "lib": ["ES2023"]
+  },
+  "include": ["worker.ts"]
+}

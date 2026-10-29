@@ -156,7 +156,11 @@ describe('AcpSession: setup', () => {
     expect(init.jsonrpc).toBe('2.0')
     expect(init.params).toMatchObject({
       protocolVersion: 1,
-      clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true },
+      clientCapabilities: {
+        fs: { readTextFile: true, writeTextFile: true },
+        terminal: true,
+        session: { configOptions: { boolean: {} } },
+      },
     })
     expect(agent.sent('session/new')[0]?.params).toEqual({ cwd: '/work', mcpServers: [] })
     await session.close()
@@ -173,6 +177,19 @@ describe('AcpSession: setup', () => {
         { id: 'plan', label: 'Plan', description: 'Plan first' },
       ],
     })
+    await session.close()
+  })
+
+  it('reports a startup error instead of ignoring a rejected requested setting', async () => {
+    const agent = fakeAgent()
+    agent.auto['session/set_config_option'] = () => new Error('unsupported setting')
+    const session = start(agent, { config: { reasoning_effort: 'high' } })
+    const error = await nextEvent(session, (e) => e.type === 'error')
+    expect(error).toMatchObject({
+      message: expect.stringContaining('Could not apply agent setting reasoning_effort'),
+    })
+    await expect(session.prompt({ text: 'hello' })).rejects.toThrow('session is closed')
+    expect(agent.sent('session/prompt')).toHaveLength(0)
     await session.close()
   })
 
@@ -225,6 +242,77 @@ describe('AcpSession: setup', () => {
     expect(agent.sent('session/load')).toHaveLength(1)
     const events = await drain(session)
     expect(events.some((e) => e.type === 'message.delta')).toBe(false)
+  })
+
+  it('preserves current commands and settings while excluding old replayed messages', async () => {
+    const agent = fakeAgent({ sessionCapabilities: {} })
+    agent.auto['session/load'] = () => {
+      agent.update(
+        { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'OLD' } },
+        'old',
+      )
+      agent.update(
+        {
+          sessionUpdate: 'available_commands_update',
+          availableCommands: [{ name: 'check', description: 'Check the project' }],
+        },
+        'old',
+      )
+      agent.update(
+        {
+          sessionUpdate: 'config_option_update',
+          configOptions: [{ type: 'boolean', id: 'web', name: 'Web search', currentValue: true }],
+        },
+        'old',
+      )
+      agent.update(
+        {
+          sessionUpdate: 'available_commands_update',
+          availableCommands: [{ name: 'wrong', description: 'Other session' }],
+        },
+        'other',
+      )
+      return { modes: MODES }
+    }
+    const session = start(agent, { resumeId: 'old' })
+    const events: SessionEvent[] = []
+    const collecting = (async () => {
+      for await (const e of session.events) events.push(e)
+    })()
+    await nextEventFrom(events, (e) => e.type === 'session.commands')
+    await session.close()
+    await collecting
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'session.commands',
+        commands: [expect.objectContaining({ name: 'check' })],
+      }),
+    )
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'session.config',
+        options: [expect.objectContaining({ id: 'web', value: true })],
+      }),
+    )
+    expect(events.some((e) => e.type === 'message.delta')).toBe(false)
+  })
+
+  it('closes an ordinary session when the agent advertises session close', async () => {
+    const agent = fakeAgent({ sessionCapabilities: { close: {} } })
+    agent.auto['session/close'] = () => ({})
+    const session = start(agent)
+    await nextEvent(session, (e) => e.type === 'session.provider-session')
+    await session.close()
+    expect(agent.sent('session/close')[0]?.params).toEqual({ sessionId: 'acp-1' })
+    expect(agent.isClosed()).toBe(true)
+  })
+
+  it('does not call session close when the capability is null', async () => {
+    const agent = fakeAgent({ sessionCapabilities: { close: null } })
+    const session = start(agent)
+    await nextEvent(session, (e) => e.type === 'session.provider-session')
+    await session.close()
+    expect(agent.sent('session/close')).toHaveLength(0)
   })
 
   it('reports an error when the agent can neither resume nor load', async () => {
@@ -1124,6 +1212,22 @@ describe('AcpSession: starting and resuming', () => {
     const session = start(agent)
     await nextEvent(session, (e) => e.type === 'session.modes')
     expect(calls).toBe(3)
+    await session.close()
+  })
+
+  it('says the conversation is gone when the agent cannot find its files to resume it', async () => {
+    const agent = fakeAgent({ sessionCapabilities: {} })
+    agent.auto['session/load'] = () => ({
+      rpcError: {
+        code: -32603,
+        message: 'Path not found.: No such file or directory (os error 2)',
+      },
+    })
+    const session = start(agent, { resumeId: 'acp-gone' })
+    const failed = await nextEvent(session, (e) => e.type === 'error')
+    expect(failed).toMatchObject({
+      message: expect.stringMatching(/^session not found \(Path not found/),
+    })
     await session.close()
   })
 

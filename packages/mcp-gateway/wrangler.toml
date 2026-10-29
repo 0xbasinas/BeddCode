@@ -1,0 +1,16 @@
+name = "beddcode-mcp"
+main = "worker.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["global_fetch_strictly_public"]
+
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "c76db642a6f84c378d52474bba15efe8"
+
+[[durable_objects.bindings]]
+name = "GATEWAY"
+class_name = "Gateway"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Gateway"]

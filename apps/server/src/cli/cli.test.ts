@@ -67,6 +67,32 @@ describe('doctor', () => {
     expect(formatChecks(checks)).toContain('→ Install git')
   })
 
+  it('checks the background host when asked to', async () => {
+    const find = async (installed: boolean, up: boolean) =>
+      (
+        await doctor(
+          deps({
+            serviceInstalled: async () => installed,
+            platform: 'win32',
+            ...(up ? {} : { health: async () => null }),
+          }),
+        )
+      ).find((c) => c.name === 'Background host')
+    expect(await find(false, true)).toMatchObject({
+      level: 'ok',
+      detail: expect.stringMatching(/not installed/),
+    })
+    expect(await find(true, true)).toMatchObject({
+      level: 'ok',
+      detail: expect.stringMatching(/^installed/),
+    })
+    expect(await find(true, false)).toMatchObject({
+      level: 'warn',
+      fix: expect.stringContaining('schtasks /Run /TN "BeddCode Server"'),
+    })
+    expect((await doctor(deps())).some((c) => c.name === 'Background host')).toBe(false)
+  })
+
   it('only warns for what is optional', async () => {
     const checks = await doctor(
       deps({

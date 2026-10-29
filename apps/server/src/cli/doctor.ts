@@ -19,6 +19,9 @@ export interface DoctorDeps {
   tailnet(): Promise<TailnetStatus>
   dataDir: string
   dirExists(dir: string): boolean
+  /** Whether the background host (`beddcode host install`) is set up; left out, it is not checked. */
+  serviceInstalled?(): Promise<boolean>
+  platform?: NodeJS.Platform
 }
 
 /** The agent CLIs BeddCode can drive. At least one has to be installed to start a session. */
@@ -53,9 +56,34 @@ export async function doctor(deps: DoctorDeps): Promise<Check[]> {
           name: 'Host',
           level: 'warn',
           detail: `nothing answers on port ${deps.port}`,
-          fix: 'Open the BeddCode app, or run `beddcode serve`.',
+          fix: 'Open the BeddCode app, run `beddcode serve`, or keep one running in the background with `beddcode host install`.',
         },
   )
+
+  if (deps.serviceInstalled) {
+    const installed = await deps.serviceInstalled().catch(() => false)
+    const start =
+      deps.platform === 'win32'
+        ? 'schtasks /Run /TN "BeddCode Server"'
+        : 'systemctl --user start beddcode-server'
+    checks.push(
+      !installed
+        ? {
+            name: 'Background host',
+            level: 'ok',
+            detail:
+              'not installed; the app or `beddcode serve` runs the host (`beddcode host install` keeps one running)',
+          }
+        : health
+          ? { name: 'Background host', level: 'ok', detail: 'installed, starts at sign-in' }
+          : {
+              name: 'Background host',
+              level: 'warn',
+              detail: 'installed, but nothing answers on the port',
+              fix: `Start it with \`${start}\`; \`beddcode logs\` shows why it stopped.`,
+            },
+    )
+  }
 
   const git = deps.find('git')
   const gitVersion = git ? await version(deps, git) : null

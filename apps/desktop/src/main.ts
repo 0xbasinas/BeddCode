@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import os from 'node:os'
 import path from 'node:path'
 import {
   app,
@@ -21,6 +22,15 @@ import {
   type DesktopSettings,
 } from './desktopSettings.ts'
 import { autoUpdater } from 'electron-updater'
+import {
+  backgroundHostInstalled,
+  backgroundHostPort,
+  planHost,
+  resolveHostMode,
+  startBackgroundHost,
+  waitingDetail,
+  type HostMode,
+} from './hostMode.ts'
 import { hostPort, serverLaunch } from './serverLaunch.ts'
 import { shouldAutoUpdate, startAutoUpdate } from './updater.ts'
 import {
@@ -46,13 +56,33 @@ if (process.platform === 'win32') {
   app.setAppUserModelId(app.isPackaged ? 'dev.beddcode.app' : 'BeddCode')
 }
 
-// The local host: started with the app, restarted if it stops, stopped with the app. Off when
-// BEDDCODE_NO_DAEMON=1 (a host run by hand is found and used anyway; see daemon.ts).
+// The local host. Where it comes from depends on the Host setting (see hostMode.ts): the background
+// host when one is installed, a host already running (a terminal, a service), or one the app starts
+// itself, restarts if it stops, and stops with the app. BEDDCODE_HOST_MODE overrides the setting, and
+// BEDDCODE_NO_DAEMON=1 means "only use a host started separately".
 let daemon: Daemon | null = null
-function startDaemon() {
-  if (process.env.BEDDCODE_NO_DAEMON === '1') return
+let hostMode: HostMode = 'auto'
+/** Whether the background host is installed; null where the app cannot set it up itself. */
+let backgroundHost: boolean | null = null
+/** Everything that follows the host's state; kept across a change of mode, which replaces the daemon. */
+const hostListeners = new Set<(state: DaemonState) => void>()
+const onHost = (listener: (state: DaemonState) => void) => {
+  hostListeners.add(listener)
+  return () => void hostListeners.delete(listener)
+}
+// The app sets up the background host with its own command line, so only an installed build can.
+const canManageBackgroundHost = () =>
+  app.isPackaged && (process.platform === 'win32' || process.platform === 'linux')
+
+async function startDaemon() {
+  hostMode = resolveHostMode(settings.hostMode, process.env)
   const port = hostPort(process.env)
-  daemon = new Daemon({
+  const installed = await backgroundHostInstalled()
+  backgroundHost = canManageBackgroundHost() ? installed : null
+  // A background host on another port (say the app runs on a test port) is neither used nor waited for.
+  const servicePort = installed ? backgroundHostPort(process.platform, os.homedir()) : null
+  const plan = planHost(hostMode, installed && (servicePort === null || servicePort === port))
+  const next = new Daemon({
     launch: serverLaunch({
       packaged: app.isPackaged,
       resourcesPath: process.resourcesPath,
@@ -62,11 +92,96 @@ function startDaemon() {
     }),
     probe: () => probeHealth(port),
     logFile: path.join(app.getPath('userData'), 'logs', 'host.log'),
+    spawn: plan.spawn,
+    startService: plan.useService ? () => startBackgroundHost() : undefined,
+    waitingDetail: waitingDetail(plan, port, process.platform),
   })
-  daemon.onChange((state: DaemonState) => {
+  daemon = next
+  next.onChange((state: DaemonState) => {
+    if (daemon !== next) return
     for (const win of BrowserWindow.getAllWindows()) win.webContents.send(DAEMON_STATUS, state)
+    for (const listener of hostListeners) listener(state)
   })
-  daemon.start()
+  next.start()
+}
+
+/** Stops the current daemon (and a host it started), starts one for the current settings, and reloads. */
+async function restartDaemon() {
+  const old = daemon
+  daemon = null
+  await old?.stop()
+  await startDaemon()
+  updateTray()
+  if (!webUrl) for (const win of BrowserWindow.getAllWindows()) loadFromHost(win)
+}
+
+async function setHostMode(mode: HostMode) {
+  if (mode === hostMode && mode === settings.hostMode) return
+  saveSettings({ ...settings, hostMode: mode })
+  await restartDaemon()
+}
+
+/** Runs the app's own `beddcode` command and collects what it says. */
+function runOwnCli(args: string[]): Promise<{ ok: boolean; output: string }> {
+  const launch = cliLaunch({
+    argv: [process.execPath, ...args],
+    packaged: app.isPackaged,
+    defaultApp: false,
+    resourcesPath: process.resourcesPath,
+    execPath: process.execPath,
+  })
+  if (!launch) return Promise.resolve({ ok: false, output: 'Only an installed build can do this.' })
+  return new Promise((resolve) => {
+    let output = ''
+    const child = spawn(launch.command, launch.args, {
+      env: { ...process.env, ...launch.env },
+      windowsHide: true,
+    })
+    child.stdout?.on('data', (chunk: Buffer) => (output += chunk.toString('utf8')))
+    child.stderr?.on('data', (chunk: Buffer) => (output += chunk.toString('utf8')))
+    child.on('error', (err) => resolve({ ok: false, output: err.message }))
+    child.on('close', (code) => resolve({ ok: code === 0, output: output.trim() }))
+  })
+}
+
+/**
+ * Installs or removes the background host (`beddcode host install|uninstall`). It keeps running
+ * after the app quits and starts at sign-in; the app then uses it instead of starting its own.
+ */
+async function toggleBackgroundHost() {
+  const install = !backgroundHost
+  if (install) {
+    const { response } = await dialog.showMessageBox({
+      type: 'question',
+      buttons: ['Run in the background', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+      title: 'BeddCode',
+      message: 'Run the BeddCode host in the background?',
+      detail:
+        'It starts when you sign in and keeps running after you quit the app, so your phone and other computers can reach this one (paired devices and your tailnet only). The app uses it instead of starting its own. Turn it off here or with `beddcode host uninstall`.',
+    })
+    if (response !== 0) return
+  }
+  // The port has to be free for the background host, so stop a host the app started first.
+  const old = daemon
+  daemon = null
+  await old?.stop()
+  const port = hostPort(process.env)
+  const portArgs = port === 3773 ? [] : ['--port', String(port)]
+  const result = await runOwnCli(['host', install ? 'install' : 'uninstall', ...portArgs])
+  if (!result.ok) {
+    dialog.showErrorBox(
+      'BeddCode',
+      `Could not ${install ? 'set up' : 'remove'} the background host.\n\n${result.output}`,
+    )
+  } else if (install && settings.hostMode === 'app') {
+    // "Start its own" would fight the background host for the port.
+    saveSettings({ ...settings, hostMode: 'auto' })
+  }
+  await startDaemon()
+  updateTray()
+  if (!webUrl) for (const win of BrowserWindow.getAllWindows()) loadFromHost(win)
 }
 
 // The tray icon keeps the app, and the host it supervises, running after the window is closed.
@@ -99,6 +214,8 @@ function updateTray() {
         keepRunning: keepRunning(),
         startAtLogin: app.getLoginItemSettings().openAtLogin,
         canStartAtLogin: canStartAtLogin(process.platform, app.isPackaged),
+        hostMode,
+        backgroundHost,
       },
       {
         open: showWindow,
@@ -111,6 +228,8 @@ function updateTray() {
           app.setLoginItemSettings({ openAtLogin, args: openAtLogin ? ['--hidden'] : [] })
           updateTray()
         },
+        setHostMode: (mode) => void setHostMode(mode),
+        toggleBackgroundHost: () => void toggleBackgroundHost(),
         quit: () => app.quit(),
       },
     ),
@@ -127,7 +246,7 @@ function createTray() {
     .resize({ width: 16, height: 16 })
   tray = new Tray(icon)
   tray.on('click', showWindow)
-  daemon?.onChange(updateTray)
+  onHost(updateTray)
   updateTray()
 }
 
@@ -217,11 +336,21 @@ function splash(title: string, detail?: string): string {
 }
 
 /** Shows the app once the local host answers; until then a plain page says what is happening. */
+const unwatchHost = new Map<number, () => void>()
 function loadFromHost(win: BrowserWindow) {
   const appUrl = `http://127.0.0.1:${hostPort(process.env)}/`
+  const id = win.webContents.id
+  unwatchHost.get(id)?.()
   if (!daemon) return void win.loadURL(appUrl)
   void win.loadURL(splash('Starting BeddCode…'))
   let shown = false
+  let lastSplash = ''
+  const show = (title: string, detail?: string) => {
+    const url = splash(title, detail)
+    if (url === lastSplash) return
+    lastSplash = url
+    void win.loadURL(url)
+  }
   const check = (state: DaemonState) => {
     if (shown || win.isDestroyed()) return
     if (state.status === 'running' || state.status === 'attached') {
@@ -229,14 +358,19 @@ function loadFromHost(win: BrowserWindow) {
       off()
       void win.loadURL(appUrl)
     } else if (state.status === 'failed') {
-      void win.loadURL(
-        splash('BeddCode could not start its host. Trying again every minute.', state.detail),
-      )
+      show('BeddCode could not start its host. Trying again every minute.', state.detail)
+    } else if (state.status === 'waiting') {
+      show('Waiting for the BeddCode host…', state.detail)
     }
   }
-  const off = daemon.onChange(check)
+  const stop = onHost(check)
+  const off = () => {
+    stop()
+    unwatchHost.delete(id)
+  }
+  unwatchHost.set(id, off)
   check(daemon.current)
-  win.on('closed', off)
+  win.once('closed', off)
 }
 
 // The system's own folder picker, for adding a folder on this computer. Only the app's own page
@@ -316,10 +450,10 @@ function startApp() {
     void Promise.all([daemon.stop(), shared?.forwards.closeAll()]).finally(() => app.quit())
   })
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     settings = readDesktopSettings(settingsFile())
     browserShared()
-    startDaemon()
+    await startDaemon()
     if (process.platform !== 'darwin') createTray()
     createWindow()
     if (
