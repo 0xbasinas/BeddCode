@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { readJsonFile, writeFileAtomic } from '@beddcode/shared'
 import os from 'node:os'
 import path from 'node:path'
 import type { PairResult } from '@beddcode/contracts'
@@ -26,18 +26,13 @@ export const localTarget = (port: number): HostTarget => ({
 export const hostsFile = () => path.join(dataHome(), 'cli-hosts.json')
 
 export function loadSaved(file = hostsFile()): HostTarget[] {
-  try {
-    const parsed = JSON.parse(readFileSync(file, 'utf8')) as unknown
-    return Array.isArray(parsed) ? (parsed as HostTarget[]) : []
-  } catch {
-    return []
-  }
+  const read = readJsonFile(file)
+  return read.status === 'ok' && Array.isArray(read.value) ? (read.value as HostTarget[]) : []
 }
 
 export function saveHosts(hosts: HostTarget[], file = hostsFile()): void {
-  mkdirSync(path.dirname(file), { recursive: true })
   // Holds access tokens for other machines, so only this user reads it.
-  writeFileSync(file, JSON.stringify(hosts, null, 2), { mode: 0o600 })
+  writeFileAtomic(file, JSON.stringify(hosts, null, 2), { mode: 0o600 })
 }
 
 /** `build-server`, `build-server:4000`, `http://build-server:3773` → the host's HTTP and WS bases. */

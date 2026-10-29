@@ -1,11 +1,13 @@
 import {
-  execFile,
   spawn,
+  spawnSync,
   type ChildProcess,
   type ChildProcessWithoutNullStreams,
 } from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
+import type { Logger } from './log.ts'
+import { readJsonFile, writeFileAtomic } from './fsSafe.ts'
 
 const isWindows = process.platform === 'win32'
 
@@ -69,29 +71,63 @@ export function runCommand(
   options: RunOptions = {},
 ): Promise<RunResult> {
   const viaShell = isWindows && /\.(cmd|bat)$/i.test(file)
+  const limit = 4 * 1024 * 1024
   return new Promise((resolve, reject) => {
-    execFile(
+    // stdin is not even a pipe: nothing is ever written to it, and some programs wait on an open
+    // one. PowerShell never exits (nodejs/node#25645, nodejs/node#60077), git could sit at a prompt.
+    const child = spawn(
       viaShell ? 'cmd.exe' : file,
       viaShell ? ['/d', '/s', '/c', quoteForCmd(file), ...args.map(quoteForCmd)] : args,
       {
-        timeout: options.timeoutMs ?? 10_000,
         env: options.env,
         cwd: options.cwd,
         windowsHide: true,
         windowsVerbatimArguments: viaShell,
-        maxBuffer: 4 * 1024 * 1024,
-      },
-      (error, stdout, stderr) => {
-        if (error && 'killed' in error && error.killed)
-          return reject(new Error(`${file} timed out`))
-        if (error && typeof error.code !== 'number') return reject(error)
-        resolve({ code: error ? (error.code as number) : 0, stdout, stderr })
+        stdio: ['ignore', 'pipe', 'pipe'],
       },
     )
+    const out: Buffer[] = []
+    const err: Buffer[] = []
+    let size = 0
+    let failure: Error | undefined
+    const collect = (into: Buffer[]) => (chunk: Buffer) => {
+      size += chunk.length
+      if (size > limit) {
+        failure ??= new Error(`${file} wrote more than ${limit} bytes`)
+        child.kill()
+        return
+      }
+      into.push(chunk)
+    }
+    child.stdout.on('data', collect(out))
+    child.stderr.on('data', collect(err))
+    const timer = setTimeout(() => {
+      failure ??= new Error(`${file} timed out`)
+      if (isWindows && child.pid) {
+        spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+          stdio: 'ignore',
+          windowsHide: true,
+        }).on('error', () => undefined)
+      } else child.kill('SIGKILL')
+    }, options.timeoutMs ?? 10_000)
+    child.on('error', (error) => {
+      clearTimeout(timer)
+      reject(error)
+    })
+    child.on('close', (code, signal) => {
+      clearTimeout(timer)
+      if (failure) return reject(failure)
+      if (code === null) return reject(new Error(`${file} was ended by ${signal ?? 'a signal'}`))
+      resolve({
+        code,
+        stdout: Buffer.concat(out).toString('utf8'),
+        stderr: Buffer.concat(err).toString('utf8'),
+      })
+    })
   })
 }
 
-function quoteForCmd(arg: string): string {
+export function quoteForCmd(arg: string): string {
   return /[\s"&|<>^()]/.test(arg) ? `"${arg.replace(/"/g, '""')}"` : arg
 }
 
@@ -110,7 +146,7 @@ export function spawnProcess(
   options: SpawnOptions = {},
 ): ChildProcessWithoutNullStreams {
   const viaShell = isWindows && /\.(cmd|bat)$/i.test(file)
-  return spawn(
+  const child = spawn(
     viaShell ? 'cmd.exe' : file,
     viaShell ? ['/d', '/s', '/c', quoteForCmd(file), ...args.map(quoteForCmd)] : args,
     {
@@ -121,20 +157,346 @@ export function spawnProcess(
       windowsVerbatimArguments: viaShell,
     },
   )
+  track(child, viaShell ? 'cmd.exe' : file)
+  return child
+}
+
+/** Long-running children still alive, so the host can make sure none outlives it. */
+const running = new Set<ChildProcess>()
+
+/** What the ledger keeps about a child, to find it again after the host itself was killed. */
+export interface ChildRecord {
+  pid: number
+  /** The file that was executed (cmd.exe for a Windows shim). */
+  command: string
+  startedAt: number
+  /** The process that started it. */
+  owner: number
+}
+const records = new Map<ChildProcess, ChildRecord>()
+let ledger: string | undefined
+
+/**
+ * Keeps a list of running children in `file` from now on. A host that is killed outright (kill -9,
+ * Task Manager, a crash of Node itself) runs none of its exit handlers, so its agents would keep
+ * running; the next host start reads this list and ends them (see `reapOrphans`).
+ */
+export function recordChildrenIn(file: string | undefined) {
+  ledger = file
+  saveLedger()
+}
+
+function saveLedger() {
+  if (!ledger) return
+  try {
+    writeFileAtomic(ledger, JSON.stringify([...records.values()]))
+  } catch {
+    // Best effort: a full disk must not stop an agent from starting.
+  }
+}
+
+/** Registers a long-running child started elsewhere (Claude's SDK spawns its own). */
+export function trackChild(child: ChildProcess, command: string) {
+  track(child, command)
+}
+
+function track(child: ChildProcess, command: string) {
+  running.add(child)
+  if (child.pid !== undefined) {
+    records.set(child, { pid: child.pid, command, startedAt: Date.now(), owner: process.pid })
+    saveLedger()
+  }
+  const forget = () => {
+    running.delete(child)
+    if (records.delete(child)) saveLedger()
+  }
+  child.once('exit', forget)
+  child.once('error', forget)
+}
+
+/** How many children started with `spawnProcess` are still running. */
+export function runningChildren(): number {
+  return running.size
+}
+
+const exited = (child: ChildProcess) => child.exitCode !== null || child.signalCode !== null
+
+/**
+ * Kills a child and, on Windows, everything it started. There `child.kill()` ends only the direct
+ * process, which for an npm-installed agent is the `cmd.exe` running its `.cmd` shim: the real
+ * agent (and anything it ran) would be left running. `taskkill /T` ends the whole tree.
+ */
+export function killProcessTree(child: ChildProcess, options: { sync?: boolean } = {}) {
+  if (exited(child) || child.pid === undefined) return
+  if (isWindows) {
+    const args = ['/pid', String(child.pid), '/T', '/F']
+    try {
+      if (options.sync) spawnSync('taskkill', args, { windowsHide: true, timeout: 5_000 })
+      else spawn('taskkill', args, { windowsHide: true, stdio: 'ignore' }).on('error', () => {})
+    } catch {
+      // Fall back to the direct child at least.
+    }
+    try {
+      child.kill()
+    } catch {
+      // already gone
+    }
+    return
+  }
+  try {
+    child.kill('SIGKILL')
+  } catch {
+    // already gone
+  }
 }
 
 /**
- * Ends a child and everything it started (tool shells, servers, background jobs). On Windows
- * `child.kill()` would leave those running, so the whole tree is ended there.
+ * Asks a child to stop and makes sure it does. Closing its stdin is the polite request (agents
+ * on stdio exit when their input ends) and gives it a moment to save its own state: killing an
+ * agent mid-write can leave its conversation file unreadable, so the next resume fails. Then
+ * SIGTERM (after up to a second), and after `graceMs` a hard kill of the whole tree.
  */
-export function killProcessTree(child: ChildProcess, signal: NodeJS.Signals = 'SIGTERM'): void {
-  if (child.pid === undefined || child.exitCode !== null) return
-  if (isWindows) {
-    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
-      windowsHide: true,
-      stdio: 'ignore',
-    }).on('error', () => child.kill())
-  } else {
-    child.kill(signal)
+export function stopProcess(
+  child: ChildProcess,
+  options: { graceMs?: number } = {},
+): Promise<void> {
+  if (exited(child) || child.pid === undefined) return Promise.resolve()
+  const graceMs = options.graceMs ?? 3_000
+  return new Promise((resolve) => {
+    let hard: ReturnType<typeof setTimeout> | undefined
+    const done = () => {
+      if (hard) clearTimeout(hard)
+      resolve()
+    }
+    child.once('exit', done)
+    try {
+      child.stdin?.end()
+    } catch {
+      // a broken pipe is fine: the process is going away
+    }
+    // Then SIGTERM, for a child that does not watch its input. Not on Windows: there a signal is a
+    // hard kill of the shim only, so stdin EOF and then the tree kill are all there is.
+    const term = isWindows
+      ? undefined
+      : setTimeout(
+          () => {
+            try {
+              child.kill('SIGTERM')
+            } catch {
+              // already gone
+            }
+          },
+          Math.min(1_000, graceMs / 3),
+        )
+    term?.unref?.()
+    child.once('exit', () => term && clearTimeout(term))
+    hard = setTimeout(() => {
+      killProcessTree(child)
+      // Whatever happens next, do not keep the caller waiting on a process that will not report.
+      setTimeout(resolve, 1_000).unref?.()
+    }, graceMs)
+    hard.unref?.()
+  })
+}
+
+/**
+ * Last resort when the host is exiting: kills every child still running, synchronously, so no
+ * agent is left orphaned (on Windows, children are not ended with their parent).
+ */
+export function killAllChildren() {
+  for (const child of Array.from(running)) killProcessTree(child, { sync: true })
+  running.clear()
+}
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (err) {
+    // EPERM: it exists but belongs to someone else.
+    return (err as NodeJS.ErrnoException).code === 'EPERM'
   }
+}
+
+/** `ps` elapsed time ([[dd-]hh:]mm:ss) in seconds. */
+function parseElapsed(text: string): number | undefined {
+  const m = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/.exec(text.trim())
+  if (!m) return undefined
+  const [, d = '0', h = '0', min = '0', sec = '0'] = m
+  return ((Number(d) * 24 + Number(h)) * 60 + Number(min)) * 60 + Number(sec)
+}
+
+type ProcessFacts = { startedAt: number; command: string }
+
+/**
+ * When each process started and what it runs, in one look-up. A pid missing from the map is not
+ * running. Undefined when the system could not be asked, which callers must treat as "cannot
+ * tell", not as "gone". On Windows `startedAt` is NaN when PowerShell did not answer.
+ */
+export async function processInfos(
+  pids: readonly number[],
+): Promise<Map<number, ProcessFacts> | undefined> {
+  const found = new Map<number, ProcessFacts>()
+  const ids = [...new Set(pids)].filter((pid) => Number.isInteger(pid) && pid > 0)
+  if (ids.length === 0) return found
+  try {
+    if (isWindows) return await windowsProcessInfos(ids)
+    const res = await runCommand('ps', ['-o', 'pid=,etime=,command=', '-p', ids.join(',')], {
+      timeoutMs: 10_000,
+    })
+    for (const line of res.stdout.split('\n')) {
+      const [id = '', elapsed = '', ...rest] = line.trim().split(/\s+/)
+      const seconds = parseElapsed(elapsed)
+      if (!/^\d+$/.test(id) || seconds === undefined) continue
+      found.set(Number(id), { startedAt: Date.now() - seconds * 1_000, command: rest.join(' ') })
+    }
+    return found
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Windows: tasklist says quickly and reliably which pids run and what program they are. Their
+ * start times need PowerShell, which can be slow to start or not answer at all (seen on CI); then
+ * `startedAt` is NaN, and only the program name is known.
+ */
+async function windowsProcessInfos(ids: number[]): Promise<Map<number, ProcessFacts> | undefined> {
+  const list = await runCommand('tasklist', ['/FO', 'CSV', '/NH'], { timeoutMs: 15_000 })
+  if (list.code !== 0) return undefined
+  const found = new Map<number, ProcessFacts>()
+  const wanted = new Set(ids)
+  for (const line of list.stdout.split(/\r?\n/)) {
+    const m = /^"([^"]*)","(\d+)"/.exec(line.trim())
+    if (m && wanted.has(Number(m[2]))) found.set(Number(m[2]), { startedAt: NaN, command: m[1]! })
+  }
+  if (found.size === 0) return found
+  const times = await runCommand(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-NoLogo',
+      '-InputFormat',
+      'None',
+      '-Command',
+      `Get-Process -Id ${[...found.keys()].join(',')} -ErrorAction SilentlyContinue | ForEach-Object { '{0}|{1}|{2}' -f $_.Id, $_.StartTime.ToUniversalTime().ToString('o'), $_.Path }`,
+    ],
+    { timeoutMs: 15_000 },
+  ).catch(() => undefined)
+  for (const line of times?.stdout.split(/\r?\n/) ?? []) {
+    const [id = '', when = '', ...command] = line.trim().split('|')
+    const startedAt = Date.parse(when)
+    const known = found.get(Number(id))
+    if (known && Number.isFinite(startedAt)) {
+      found.set(Number(id), { startedAt, command: command.join('|') || known.command })
+    }
+  }
+  return found
+}
+
+/** When a process started and what it runs, or undefined when that cannot be told. */
+export async function processInfo(pid: number): Promise<ProcessFacts | undefined> {
+  return (await processInfos([pid]))?.get(pid)
+}
+
+function matches(info: ProcessFacts, startedAt: number, command?: string): boolean {
+  // Without a start time the process cannot be told from a later one that got the same id.
+  if (!Number.isFinite(info.startedAt)) return false
+  // `ps` reports whole seconds; allow for that and for a slow spawn.
+  if (Math.abs(info.startedAt - startedAt) > 15_000) return false
+  if (!command) return true
+  const name = path
+    .basename(command)
+    .toLowerCase()
+    .replace(/\.(exe|cmd|bat)$/, '')
+  return info.command.toLowerCase().includes(name)
+}
+
+/**
+ * True when `pid` is still the process described: alive, started within a few seconds of the
+ * recorded time, and running the recorded program. Process ids are reused, so an id alone could
+ * name some unrelated program by now. When its start time cannot be read (Windows without a
+ * working PowerShell), `ifUnknown` decides from the program name alone; by default the answer is
+ * false: never act on a process that cannot be identified.
+ */
+export async function isSameProcess(
+  pid: number,
+  startedAt: number,
+  command?: string,
+  options: { ifUnknown?: (program: string) => boolean } = {},
+): Promise<boolean> {
+  if (!isAlive(pid)) return false
+  const infos = await processInfos([pid])
+  if (!infos) return options.ifUnknown?.('') ?? false
+  const info = infos.get(pid)
+  if (!info) return false
+  if (!Number.isFinite(info.startedAt)) return options.ifUnknown?.(info.command) ?? false
+  return matches(info, startedAt, command)
+}
+
+/** Every process below `pid`, deepest first (POSIX; on Windows taskkill /T does this itself). */
+async function descendantsOf(pid: number): Promise<number[]> {
+  const found: number[] = []
+  const walk = async (parent: number, depth: number) => {
+    if (depth > 8) return
+    const res = await runCommand('pgrep', ['-P', String(parent)], { timeoutMs: 3_000 }).catch(
+      () => undefined,
+    )
+    for (const child of (res?.stdout ?? '').split(/\s+/).filter(Boolean).map(Number)) {
+      await walk(child, depth + 1)
+      found.push(child)
+    }
+  }
+  await walk(pid, 0)
+  return found
+}
+
+/**
+ * Ends the agents a previous host recorded (see `recordChildrenIn`) that are still running because
+ * that host was killed before it could stop them. Only processes that are provably the recorded
+ * ones are touched, and none whose host is still alive. Returns how many were ended.
+ */
+export async function reapOrphans(file: string, log?: Logger): Promise<number> {
+  const read = readJsonFile<ChildRecord[]>(file)
+  if (read.status !== 'ok' || !Array.isArray(read.value)) return 0
+  const candidates = read.value.filter(
+    (rec) =>
+      typeof rec?.pid === 'number' &&
+      typeof rec.startedAt === 'number' &&
+      rec.owner !== process.pid &&
+      !(typeof rec.owner === 'number' && isAlive(rec.owner)),
+  )
+  if (candidates.length === 0) return 0
+  // Looked up together: on Windows each look-up starts PowerShell, which can take seconds.
+  const infos = await processInfos(candidates.map((rec) => rec.pid))
+  if (!infos) {
+    log?.warn('could not check whether agents a previous host started are still running')
+    return 0
+  }
+  let ended = 0
+  for (const rec of candidates) {
+    const info = infos.get(rec.pid)
+    if (!info || !isAlive(rec.pid) || !matches(info, rec.startedAt, rec.command)) continue
+    try {
+      if (isWindows) {
+        await runCommand('taskkill', ['/pid', String(rec.pid), '/T', '/F'], { timeoutMs: 10_000 })
+      } else {
+        for (const pid of [...(await descendantsOf(rec.pid)), rec.pid]) {
+          try {
+            process.kill(pid, 'SIGKILL')
+          } catch {
+            // already gone
+          }
+        }
+      }
+      ended++
+      log?.warn(
+        `ended ${path.basename(rec.command)} (pid ${rec.pid}), left running by a host that was killed`,
+      )
+    } catch (err) {
+      log?.warn(`could not end leftover process ${rec.pid}`, err)
+    }
+  }
+  return ended
 }

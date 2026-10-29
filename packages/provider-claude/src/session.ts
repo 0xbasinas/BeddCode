@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import type {
   CanUseTool,
   Options,
@@ -5,10 +6,18 @@ import type {
   PermissionResult,
   Query,
   SDKUserMessage,
+  SpawnedProcess,
+  SpawnOptions,
 } from '@anthropic-ai/claude-agent-sdk'
 import type { PermissionModeOption, QuestionSpec, SessionEvent } from '@beddcode/contracts'
 import type { ProviderSession, PromptInput, StartSessionInput } from '@beddcode/provider-core'
-import { createAsyncQueue, deferred, type Deferred, type Logger } from '@beddcode/shared'
+import {
+  createAsyncQueue,
+  deferred,
+  trackChild,
+  type Deferred,
+  type Logger,
+} from '@beddcode/shared'
 import { ClaudeEventMapper, toolKind, toolTitle } from './mapper.ts'
 
 export type QueryFn = (params: {
@@ -72,6 +81,8 @@ export class ClaudeSession implements ProviderSession {
   private approvalCount = 0
   private closed = false
   private readonly autoAllowed: Set<string>
+  /** The end of what Claude's process wrote to stderr, to explain an exit. */
+  private stderrTail = ''
 
   constructor(
     private readonly input: StartSessionInput,
@@ -105,6 +116,7 @@ export class ClaudeSession implements ProviderSession {
         pathToClaudeCodeExecutable: deps.executablePath,
         env: { ...process.env, ...deps.env },
         abortController: this.abort,
+        spawnClaudeCodeProcess: (options) => this.spawnClaude(options),
         canUseTool: this.canUseTool,
         ...(input.mcpServers?.length
           ? {
@@ -134,6 +146,31 @@ export class ClaudeSession implements ProviderSession {
     })
     void this.pump()
     if (!input.textOnly) void this.announceCommands()
+  }
+
+  /**
+   * Starts Claude's process the way the SDK would, but registered with the host's list of agent
+   * processes: a host that is killed outright can then end it at its next start, and one that exits
+   * normally ends it on the way out. Its stderr is drained (a full pipe would block Claude) and the
+   * tail kept, to say why it stopped.
+   */
+  private spawnClaude({ command, args, cwd, env, signal }: SpawnOptions): SpawnedProcess {
+    const child = spawn(command, args, {
+      cwd,
+      env,
+      signal,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
+    trackChild(child, command)
+    child.stderr.setEncoding('utf8')
+    child.stderr.on('data', (text: string) => {
+      this.stderrTail = (this.stderrTail + text).slice(-2_000)
+    })
+    child.stderr.on('error', () => {})
+    child.stdin.on('error', () => {})
+    // Node reports an abort through the signal as an 'error' too; the SDK listens for it.
+    return child
   }
 
   /** Claude reports its slash commands and skills once it has started. */
@@ -415,6 +452,13 @@ export class ClaudeSession implements ProviderSession {
     this.pending.clear()
   }
 
+  /** The SDK's error, with the last thing Claude wrote to stderr when that says more. */
+  private explainExit(err: unknown): string {
+    const message = err instanceof Error ? err.message : String(err)
+    const tail = this.stderrTail.trim().split('\n').slice(-3).join('\n').trim()
+    return tail && !message.includes(tail) ? `${message}: ${tail.slice(0, 500)}` : message
+  }
+
   private failTurns(error: Error) {
     for (const w of this.turnWaiters.splice(0)) w.reject(error)
   }
@@ -433,10 +477,7 @@ export class ClaudeSession implements ProviderSession {
     } catch (err) {
       if (!this.closed) {
         this.deps.log.error(`claude stream failed for ${this.sessionId}`, err)
-        this.emit(
-          { type: 'error', message: err instanceof Error ? err.message : String(err) },
-          this.currentTurn(),
-        )
+        this.emit({ type: 'error', message: this.explainExit(err) }, this.currentTurn())
         this.emit({ type: 'turn.completed', reason: 'error' }, this.currentTurn())
         for (const w of this.turnWaiters.splice(0)) w.resolve()
       }

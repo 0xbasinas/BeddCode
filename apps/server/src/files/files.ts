@@ -97,6 +97,41 @@ export class FileService {
     return target
   }
 
+  /**
+   * Which of these paths (relative to `cwd`, or absolute) name a file or folder inside it, as a
+   * path relative to it. Anything outside the folder, or missing, is null. For links in text.
+   */
+  async locate(
+    cwd: string,
+    paths: string[],
+  ): Promise<({ path: string; type: 'file' | 'dir' } | null)[]> {
+    let base: string
+    try {
+      base = realpathSync(cwd)
+    } catch {
+      return paths.map(() => null)
+    }
+    const plain = path.resolve(cwd)
+    return Promise.all(
+      paths.map(async (p) => {
+        try {
+          let rel = p
+          if (path.isAbsolute(p)) {
+            // Written against the folder as given (`/tmp/x`) or its real path (`/private/tmp/x`).
+            const fromPlain = path.relative(plain, p)
+            rel = isInside(plain, p) ? fromPlain : path.relative(base, p)
+          }
+          const target = this.resolve(cwd, rel)
+          const info = await stat(target)
+          const inside = toPosix(path.relative(base, target)) || '.'
+          return { path: inside, type: info.isDirectory() ? ('dir' as const) : ('file' as const) }
+        } catch {
+          return null
+        }
+      }),
+    )
+  }
+
   async list(cwd: string, dir = ''): Promise<FileEntry[]> {
     const target = this.resolve(cwd, dir)
     let dirents

@@ -1,6 +1,6 @@
 # Ideas from the reference projects
 
-Reviewed the local `paseo`, `synara`, and `t3code` checkouts on 2026-10-23. This is a source and test review, not a runtime reliability comparison. The recommendations below fit BeddCode's native provider adapters, Node/SQLite host, React/Zustand client, and Tailscale connections. Reference implementations are examples; no source was copied.
+Reviewed the local `paseo`, `synara`, and `t3code` checkouts on 2026-10-23. This is a source and test review, not a runtime reliability comparison. The recommendations below fit BeddCode's native provider adapters, Node/SQLite host, React/Zustand client, and Tailscale connections. Reference implementations were examples in that first pass; later code adapted from permissive projects is listed in `THIRD_PARTY_NOTICES.md`.
 
 ## Git workflow implemented
 
@@ -13,6 +13,19 @@ This follows the useful product pattern in [Paseo's metadata generator](C:/Users
 The workflow also preserves unrelated staged files, commits both sides of a selected rename, serializes commit/push operations for a checkout, and distinguishes a saved commit from a failed push. The Commits tab can publish a branch or retry the push. PR drafts remain available when GitHub is unavailable; creating the PR still requires working `gh` authentication.
 
 Verified with the full test suite, build, typecheck, lint, Electron interactions against temporary repositories and a local bare remote, live generation through both native providers, and live ACP generation through Grok. The themed picker and ACP commit/PR flow also have Electron fixture coverage. No real GitHub PR was created during verification.
+
+## ADE features adapted (2026-10-29)
+
+A second pass over T3 Code, Paseo, Synara, MonoCode, opencode and Crystal, this time copying code where the license allows (see `THIRD_PARTY_NOTICES.md`):
+
+- **`.worktreeinclude`** (from Paseo's worktree-include plugin, MIT): a new worktree gets the ignored local files its repository lists in `.worktreeinclude` (gitignore syntax), such as `.env`. Only files git ignores are copied, existing files are kept, symlinks are skipped, and an oversized match (over 1000 files) copies nothing. The session header says how many files came along.
+- **Open in editor** (from T3 Code, MIT): `editors.list` and `editors.open` find Cursor, VS Code (+ Insiders), VSCodium, Windsurf, Trae, Kiro, Zed, JetBrains IDEs and the file manager on PATH or in their usual install folders, and open a folder, or a file at a line. Only the host machine itself may open one (loopback connections), since the editor appears on its screen. The thread header gets an "Open in" menu, and the Files pane opens the current file at the cursor.
+- **Command palette** (interaction from T3 Code, ranking adapted from its search ranking, MIT): Ctrl/Cmd+Shift+P over actions, panes, the current session (open in editor, copy path, pin, stop), projects and every session on every host, with accent-insensitive matching (Greek included).
+- **Diff review comments** (from Paseo, Apache-2.0): comment on lines in the Git pane's diffs, then send them all to the session's agent, or attach them to the message being written. The message gives each comment's file, line and the three lines around it; only the comments that went out are cleared.
+
+Item 2 of the table below (diff comments) is now done; items 1 and 4 were done earlier.
+
+Left for later: Synara's numbered browser annotations, T3's background PR status sync, MonoCode's session notes, and clickable `path:line` links in the transcript (the editor RPC is ready for it).
 
 ## Best next additions
 

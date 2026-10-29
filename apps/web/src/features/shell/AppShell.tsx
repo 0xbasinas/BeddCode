@@ -12,6 +12,8 @@ import { WindowBar } from './WindowBar.tsx'
 import { RAIL_WIDTH, openPaneWidth, rememberPaneWidth } from './paneWidth.ts'
 import { Sidebar } from './Sidebar.tsx'
 import { resolveTheme, useAppPreferences } from '../../stores/appPreferences.ts'
+import { CommandPalette, usePalette } from '../palette/CommandPalette.tsx'
+import { SplitView } from '../split/SplitView.tsx'
 import { useUiStore } from '../../stores/ui.ts'
 import { appWindowControls } from '../../ui/desktop.ts'
 import { FolderBrowserLayer } from '../folders/FolderBrowserDialog.tsx'
@@ -88,6 +90,17 @@ export function AppShell() {
   const navigate = useNavigate()
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      // Ctrl/Cmd+Shift+P: the command palette (Ctrl+K stays the session search).
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        !event.altKey &&
+        event.code === 'KeyP'
+      ) {
+        event.preventDefault()
+        usePalette.getState().setOpen(!usePalette.getState().open)
+        return
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         useUiStore.getState().setSearchOpen(true)
@@ -138,6 +151,7 @@ export function AppShell() {
   }, [navigate, settings])
   const layers = (
     <>
+      <CommandPalette />
       <FolderBrowserLayer />
       <FolderPickerHint />
       <WindowBar />
@@ -188,7 +202,7 @@ export function AppShell() {
           <Separator className="shell-sep" />
           <Panel id="main" className="shell-panel" minSize="320px">
             <div className="main-stack">
-              <Outlet />
+              <SplitView />
               <FolderToast />
             </div>
           </Panel>

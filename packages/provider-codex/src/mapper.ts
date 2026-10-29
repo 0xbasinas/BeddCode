@@ -147,6 +147,13 @@ export class CodexEventMapper {
         }
         break
       }
+      case 'item/commandExecution/outputDelta': {
+        // Streamed while the command runs; shown live in the session's agent terminal.
+        const data = str(p.delta)
+        if (data && p.itemId !== undefined)
+          out.push({ type: 'tool.output', toolId: String(p.itemId), data })
+        break
+      }
       case 'turn/plan/updated': {
         const steps = Array.isArray(p.plan) ? (p.plan as Obj[]) : []
         out.push({
@@ -249,6 +256,7 @@ export class CodexEventMapper {
           toolId: item.id,
           kind: 'command',
           title: commandTitle(String(item.command ?? '')),
+          ...(str(item.command) ? { command: String(item.command) } : {}),
         })
         break
       case 'fileChange':

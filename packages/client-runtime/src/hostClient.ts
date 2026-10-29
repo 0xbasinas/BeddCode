@@ -13,7 +13,15 @@ import { Recorder, now } from './perf.ts'
 import { RelaySocket, isRelayRoute } from './relaySocket.ts'
 
 /** `denied`: the host refused our token. It will not help to retry; the device has to be paired again. */
-export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'stopped' | 'denied'
+/**
+ * `incompatible`: the host speaks another protocol version (one of the two was updated and the
+ * other not yet). Retrying quickly cannot help, so the client retries slowly and says why.
+ */
+export type ConnectionState =
+  'connecting' | 'connected' | 'reconnecting' | 'incompatible' | 'stopped' | 'denied'
+
+/** How long an incompatible host waits between tries: someone has to update one side first. */
+const INCOMPATIBLE_RETRY_MS = 60_000
 
 export interface HostClientOptions {
   /** One address, or several routes to the same host (tried in order, e.g. tailnet name then IP). */
@@ -36,7 +44,10 @@ export interface HostClientOptions {
   onCaughtUp?(seq: number): void
   /** Terminal output and file-change notifications: live data that is not part of the event log. */
   onFrame?(
-    frame: Extract<ServerFrame, { t: 'term.out' | 'term.exit' | 'fs.changed' | 'design.changed' }>,
+    frame: Extract<
+      ServerFrame,
+      { t: 'term.out' | 'term.exit' | 'term.changed' | 'fs.changed' | 'design.changed' }
+    >,
   ): void
   onState?(state: ConnectionState, host?: HostInfo): void
   /** An agent's browser tool call to run (only after `offerBrowser` said this client can). */
@@ -52,6 +63,8 @@ export interface HostClientOptions {
   /** Inject a socket for tests; defaults to the platform WebSocket. */
   createSocket?(url: string): WebSocket
   backoff?: { minMs: number; maxMs: number }
+  /** Wait between tries while the host speaks another protocol version (default 60 s). */
+  incompatibleRetryMs?: number
 }
 
 /** Requests that change something and would otherwise be lost, or doubled, by a dropped connection. */
@@ -82,6 +95,8 @@ interface Pending {
 export class HostClient {
   private ws: WebSocket | null = null
   private state: ConnectionState = 'connecting'
+  /** Routes whose host answered with another protocol version on the last try. */
+  private readonly mismatched = new Set<number>()
   private lastSeq: number
   /** The log being followed; learned at the first welcome, or given by a restored copy. */
   private logId: string | undefined
@@ -302,14 +317,21 @@ export class HostClient {
     this.ws = ws
     this.connectStartedAt = now()
     let welcomed = false
+    let mismatch = false
+    const route = this.route
     const disconnected = () => {
       if (this.ws !== ws) return
+      // Another version on one saved address may be an old host there; only when every route
+      // says so is it this host that cannot be talked to.
+      if (mismatch) this.mismatched.add(route)
+      else this.mismatched.delete(route)
       this.clearSocketTimers()
       this.ws = null
       this.abandonSocket = null
       this.failPending(new ConnectionLost())
       if (!welcomed) this.route = (this.route + 1) % this.routes.length
-      if (this.state !== 'stopped' && this.state !== 'denied') this.scheduleReconnect()
+      if (this.state !== 'stopped' && this.state !== 'denied')
+        this.scheduleReconnect(this.mismatched.size >= this.routes.length)
     }
     // Closing a socket that is still connecting can itself take a long time in browsers.
     // Detach immediately so another route can be tried without waiting for its close event.
@@ -358,6 +380,7 @@ export class HostClient {
           frame.protocol !== PROTOCOL_VERSION ||
           (this.options.expectedHostId && frame.host.hostId !== this.options.expectedHostId)
         ) {
+          mismatch = frame.protocol !== PROTOCOL_VERSION
           abandon()
           return
         }
@@ -383,7 +406,11 @@ export class HostClient {
       } else if (!welcomed && frame.t !== 'denied') return
       this.handle(ws, frame)
     }
-    ws.onclose = disconnected
+    ws.onclose = (event?: { code?: number }) => {
+      // The host closes with 1002 when it does not speak this client's protocol version.
+      if (!welcomed && event?.code === 1002) mismatch = true
+      disconnected()
+    }
     ws.onerror = () => {
       // `close` follows; reconnect is handled there.
     }
@@ -439,6 +466,7 @@ export class HostClient {
         break
       case 'term.out':
       case 'term.exit':
+      case 'term.changed':
       case 'fs.changed':
       case 'design.changed':
         this.options.onFrame?.(frame)
@@ -476,13 +504,14 @@ export class HostClient {
     }
   }
 
-  private scheduleReconnect() {
+  private scheduleReconnect(incompatible = false) {
     const { minMs, maxMs } = this.options.backoff ?? { minMs: 250, maxMs: 10_000 }
-    this.setState('reconnecting')
+    this.setState(incompatible ? 'incompatible' : 'reconnecting')
     // Going through every route once counts as one step of backoff, so alternatives are tried quickly.
-    const delay =
-      Math.min(maxMs, minMs * 2 ** Math.floor(this.attempt / this.routes.length)) *
-      (0.75 + Math.random() * 0.5)
+    const base = incompatible
+      ? (this.options.incompatibleRetryMs ?? INCOMPATIBLE_RETRY_MS)
+      : Math.min(maxMs, minMs * 2 ** Math.floor(this.attempt / this.routes.length))
+    const delay = base * (0.75 + Math.random() * 0.5)
     this.attempt++
     this.timer = setTimeout(() => {
       this.timer = null

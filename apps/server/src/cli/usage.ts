@@ -35,6 +35,8 @@ This machine
   update              Is there a newer release? (--download [--out <folder>] fetches the installer; exit 10 when one exists)
   completion <shell>  Tab completion: bash, zsh, fish or powershell
   host install        Headless setup: run the host in the background for other machines; then \`beddcode pair\`
+                      (--at-boot: start with the machine, not at sign-in; on Windows from an administrator terminal)
+  host status         Is the background host installed, and does a host answer? (host uninstall removes it)
   serve               Run the host in this terminal
   install-service     Run the host in the background, starting at login
   uninstall-service   Stop it and remove it

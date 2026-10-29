@@ -1,7 +1,6 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import path from 'node:path'
 import type { Device } from '@beddcode/contracts'
+import { createLogger, readJsonFile, writeFileAtomic } from '@beddcode/shared'
 
 interface StoredDevice {
   id: string
@@ -27,22 +26,28 @@ export class TokenStore {
   }
 
   private load(): StoredDevice[] {
-    try {
-      const data = JSON.parse(readFileSync(this.file, 'utf8')) as { devices?: StoredDevice[] }
-      return Array.isArray(data.devices) ? data.devices : []
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
-      throw new Error(`Could not read ${this.file}: ${err instanceof Error ? err.message : err}`)
+    const read = readJsonFile<{ devices?: StoredDevice[] }>(this.file)
+    if (read.status === 'ok') {
+      const devices = read.value?.devices
+      return Array.isArray(devices)
+        ? devices.filter((d) => d && typeof d.id === 'string' && typeof d.hash === 'string')
+        : []
     }
+    if (read.status === 'corrupt') {
+      // Failing closed: no device is trusted until paired again, but the host still starts and
+      // the damaged file is kept for the user to look at.
+      createLogger('auth').error(
+        `${this.file} is damaged (${read.error}); paired devices must pair again.` +
+          (read.quarantined ? ` The old file was kept as ${read.quarantined}.` : ''),
+      )
+    }
+    return []
   }
 
   private save() {
-    mkdirSync(path.dirname(this.file), { recursive: true })
-    const tmp = `${this.file}.tmp`
-    writeFileSync(tmp, JSON.stringify({ version: 1, devices: this.devices }, null, 2), {
+    writeFileAtomic(this.file, JSON.stringify({ version: 1, devices: this.devices }, null, 2), {
       mode: 0o600,
     })
-    renameSync(tmp, this.file)
   }
 
   /** Creates a device and returns its token, the only time it is visible. */

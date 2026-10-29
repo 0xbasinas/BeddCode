@@ -20,6 +20,7 @@ import {
   MetricRecord,
   PairingCode,
   RelaySettings,
+  McpGatewaySettings,
   TailnetStatus,
 } from './hosts.ts'
 import { ConfigOption, SlashCommand } from './events.ts'
@@ -280,6 +281,31 @@ export const RpcMethods = {
     }),
     result: z.object({ url: z.string() }),
   },
+  /**
+   * Code editors (and the system file manager) installed on the host, preferred first.
+   * `canOpen` is false unless this connection is the host machine itself: an editor opens on the
+   * host's screen, which a phone or another computer cannot see.
+   */
+  'editors.list': {
+    params: z.object({}),
+    result: z.object({
+      editors: z.array(z.object({ id: z.string(), label: z.string() })),
+      canOpen: z.boolean(),
+      /** The host's `process.platform`, so the file manager can show that system's mark. */
+      platform: z.string().optional(),
+    }),
+  },
+  /** Opens a folder, and optionally a file at a line, in an installed editor. Loopback only. */
+  'editors.open': {
+    params: z.object({
+      editor: z.string().min(1),
+      cwd: z.string().min(1),
+      path: z.string().optional(),
+      line: z.number().int().positive().optional(),
+      column: z.number().int().positive().optional(),
+    }),
+    result: z.object({ opened: z.boolean() }),
+  },
   /** Deletes the worktree a session was started in (its branch is kept). */
   'worktrees.remove': {
     params: z.object({ sessionId: z.string() }),
@@ -289,6 +315,16 @@ export const RpcMethods = {
   'host.pair': { params: z.object({}), result: PairingCode },
   /** The relay that lets devices on other networks reach this host. Loopback connections only. */
   'host.relay.get': { params: z.object({}), result: RelaySettings },
+  'host.mcpGateway.get': { params: z.object({}), result: McpGatewaySettings },
+  'host.mcpGateway.set': {
+    params: z.object({
+      url: z.string().nullable(),
+      secret: z.string().optional(),
+      allowApprovals: z.boolean().optional(),
+      allowProjectRead: z.boolean().optional(),
+    }),
+    result: McpGatewaySettings,
+  },
   /** Sets (an ordinary address such as relay.example.com) or clears (null) the relay; takes effect at once. */
   'host.relay.set': {
     params: z.object({
@@ -341,12 +377,24 @@ export const RpcMethods = {
   },
   /** Ends the shell (if running) and forgets the terminal. */
   'terminals.close': { params: z.object({ id: z.string() }), result: z.object({}) },
+  /** Lets the user type into an agent terminal (it starts read-only). */
+  'terminals.takeOver': { params: z.object({ id: z.string() }), result: TerminalInfo },
   /** Folder contents; `dir` is relative to `cwd` (empty for the root). Folders first. */
   'files.list': {
     params: z.object({ cwd: z.string(), dir: z.string().optional() }),
     result: z.object({ entries: z.array(FileEntry) }),
   },
   'files.read': { params: z.object({ cwd: z.string(), path: z.string() }), result: FileContent },
+  /**
+   * Which of these paths (relative to `cwd`, or absolute) are files or folders inside `cwd`; each
+   * answer is the path relative to it, or null. Used to make paths in text clickable.
+   */
+  'files.locate': {
+    params: z.object({ cwd: z.string(), paths: z.array(z.string().max(1024)).max(200) }),
+    result: z.object({
+      found: z.array(z.object({ path: z.string(), type: z.enum(['file', 'dir']) }).nullable()),
+    }),
+  },
   /** An address for showing an image, video or audio file; null when the file is not one. */
   'files.media': {
     params: z.object({ cwd: z.string(), path: z.string() }),
@@ -430,6 +478,11 @@ export const RpcMethods = {
       /** Ids returned by attachments.upload. A prompt needs text or at least one attachment. */
       attachments: z.array(z.string()).optional(),
       mode: z.enum(['auto', 'queue']).optional(),
+      /**
+       * Chosen by the client, the same for every attempt at one message: the host sends a message
+       * it already has only once and answers the repeat like the first.
+       */
+      clientMessageId: z.string().max(200).optional(),
     }),
     result: z.object({
       state: z.enum(['started', 'steered', 'queued']),

@@ -1,6 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { StringDecoder } from 'node:string_decoder'
+import path from 'node:path'
 import { spawnProcess } from '@beddcode/shared'
+import type { AgentCommand, AgentTerminalHost } from '@beddcode/provider-core'
 
 export interface CreateTerminal {
   command: string
@@ -19,24 +21,62 @@ interface Terminal {
   child: ChildProcess
   output: string
   truncated: boolean
-  limit: number | null
+  limit: number
   exit: ExitStatus | null
   waiters: ((s: ExitStatus) => void)[]
 }
 
 const isWindows = process.platform === 'win32'
+/** Bound memory when an agent omits the optional output limit or asks for a very large one. */
+export const DEFAULT_OUTPUT_LIMIT = 1024 * 1024
+export const MAX_OUTPUT_LIMIT = 4 * 1024 * 1024
+
+/** Keep the newest complete UTF-8 characters within the byte limit. */
+export function trimOutput(text: string, limit: number): string {
+  const bytes = Buffer.from(text, 'utf8')
+  if (bytes.length <= limit) return text
+  let start = bytes.length - limit
+  while (start < bytes.length && (bytes[start]! & 0xc0) === 0x80) start++
+  return bytes.subarray(start).toString('utf8')
+}
 
 /**
- * Terminals an ACP agent asks us to run. Plain child processes for now; phase 7 backs these with
- * the same pty terminals the UI shows.
+ * Terminals an ACP agent asks us to run. With a host (the BeddCode server) they run in the
+ * session's agent terminal, a pty the user watches; otherwise as plain child processes.
  */
 export class TerminalManager {
   private readonly terminals = new Map<string, Terminal>()
+  private readonly hosted = new Map<string, AgentCommand>()
   private nextId = 1
 
-  constructor(private readonly defaultCwd: string) {}
+  constructor(
+    private readonly defaultCwd: string,
+    private readonly host?: AgentTerminalHost,
+  ) {}
 
   create(req: CreateTerminal): { terminalId: string } {
+    if (
+      req.outputByteLimit != null &&
+      (!Number.isSafeInteger(req.outputByteLimit) || req.outputByteLimit < 0)
+    ) {
+      throw new Error('Terminal output limit must be a non-negative integer')
+    }
+    if (req.cwd != null && !path.isAbsolute(req.cwd))
+      throw new Error('Terminal working directory must be an absolute path')
+    if (this.host) {
+      const id = `term-${this.nextId++}`
+      this.hosted.set(
+        id,
+        this.host.run({
+          command: req.command,
+          args: req.args,
+          env: Object.fromEntries((req.env ?? []).map((e) => [e.name, e.value])),
+          cwd: req.cwd ?? this.defaultCwd,
+          outputByteLimit: req.outputByteLimit,
+        }),
+      )
+      return { terminalId: id }
+    }
     const env = {
       ...process.env,
       ...Object.fromEntries((req.env ?? []).map((e) => [e.name, e.value])),
@@ -62,35 +102,33 @@ export class TerminalManager {
       child,
       output: '',
       truncated: false,
-      limit: req.outputByteLimit ?? null,
+      limit: Math.min(req.outputByteLimit ?? DEFAULT_OUTPUT_LIMIT, MAX_OUTPUT_LIMIT),
       exit: null,
       waiters: [],
     }
-    const add = (text: string) => {
+    const append = (text: string) => {
       term.output += text
-      if (term.limit !== null && Buffer.byteLength(term.output) > term.limit) {
+      if (Buffer.byteLength(term.output) > term.limit) {
         // Keep the tail: the end of the output is what an agent needs most.
-        term.output = tailWithin(term.output, term.limit)
+        term.output = trimOutput(term.output, term.limit)
         term.truncated = true
       }
     }
-    // A multi-byte character can arrive split across two chunks; a decoder per stream joins it.
-    const follow = (stream: NodeJS.ReadableStream | null | undefined) => {
+    const collect = (stream: NodeJS.ReadableStream | null) => {
       if (!stream) return
       const decoder = new StringDecoder('utf8')
-      stream.on('data', (chunk: Buffer) => add(decoder.write(chunk)))
-      stream.on('end', () => add(decoder.end()))
+      stream.on('data', (chunk: Buffer) => append(decoder.write(chunk)))
+      stream.on('end', () => append(decoder.end()))
     }
-    const append = (chunk: Buffer) => add(chunk.toString('utf8'))
-    follow(child.stdout)
-    follow(child.stderr)
+    collect(child.stdout)
+    collect(child.stderr)
     const finish = (status: ExitStatus) => {
       if (term.exit) return
       term.exit = status
       for (const w of term.waiters.splice(0)) w(status)
     }
     child.on('error', (err) => {
-      append(Buffer.from(`${err.message}\n`))
+      append(`${err.message}\n`)
       finish({ exitCode: 127, signal: null })
     })
     child.on('close', (code, signal) => finish({ exitCode: code, signal }))
@@ -100,6 +138,8 @@ export class TerminalManager {
   }
 
   output(id: string) {
+    const hosted = this.hosted.get(id)
+    if (hosted) return hosted.output()
     const t = this.get(id)
     return { output: t.output, truncated: t.truncated, exitStatus: t.exit }
   }
@@ -110,17 +150,26 @@ export class TerminalManager {
   }
 
   waitForExit(id: string): Promise<ExitStatus> {
+    const hosted = this.hosted.get(id)
+    if (hosted) return hosted.waitForExit()
     const t = this.get(id)
     if (t.exit) return Promise.resolve(t.exit)
     return new Promise((resolve) => t.waiters.push(resolve))
   }
 
   kill(id: string) {
+    const hosted = this.hosted.get(id)
+    if (hosted) return hosted.kill()
     const t = this.get(id)
     if (!t.exit) killTree(t.child)
   }
 
   release(id: string) {
+    const hosted = this.hosted.get(id)
+    if (hosted) {
+      this.hosted.delete(id)
+      return hosted.release()
+    }
     const t = this.terminals.get(id)
     if (!t) return
     if (!t.exit) killTree(t.child)
@@ -129,7 +178,7 @@ export class TerminalManager {
 
   releaseAll() {
     // Deleting the current entry while iterating a Map is safe.
-    for (const id of this.terminals.keys()) this.release(id)
+    for (const id of [...this.terminals.keys(), ...this.hosted.keys()]) this.release(id)
   }
 
   private get(id: string): Terminal {
@@ -137,16 +186,6 @@ export class TerminalManager {
     if (!t) throw new Error(`Unknown terminal: ${id}`)
     return t
   }
-}
-
-/** The end of `text` that fits in `limit` bytes, cut at a character boundary as the protocol asks. */
-export function tailWithin(text: string, limit: number): string {
-  const bytes = Buffer.from(text)
-  if (bytes.length <= limit) return text
-  let start = bytes.length - Math.max(0, limit)
-  // Skip continuation bytes (10xxxxxx) so the cut never lands inside a character.
-  while (start < bytes.length && (bytes[start]! & 0xc0) === 0x80) start++
-  return bytes.subarray(start).toString('utf8')
 }
 
 function killTree(child: ChildProcess) {

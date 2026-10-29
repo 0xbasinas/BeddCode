@@ -7,7 +7,7 @@ import { resolveExecutable } from '@beddcode/shared'
 export interface PtyProcess {
   readonly pid: number
   onData(listener: (data: string) => void): void
-  onExit(listener: (event: { exitCode: number }) => void): void
+  onExit(listener: (event: { exitCode: number; signal?: number }) => void): void
   write(data: string): void
   resize(cols: number, rows: number): void
   kill(): void
@@ -91,6 +91,65 @@ interface Terminal {
   exitedAt?: number
 }
 
+export interface AgentTerminalParams {
+  cwd: string
+  sessionId: string
+  /** The agent's name, e.g. `Grok`. */
+  label: string
+  instanceId?: string
+  /** The session's title, for the tab. */
+  sessionTitle?: string
+  mode: 'pty' | 'mirror'
+}
+
+/**
+ * An agent terminal has no shell of its own. It shows what the agent runs: the output of each
+ * command is fed in, and while a command runs in a pty of ours, typing (once the user has taken
+ * the terminal over), resizing and backpressure go to that command.
+ */
+class AgentChannel implements PtyProcess {
+  readonly pid = 0
+  /** The agent's commands running now, each in a pty of its own. */
+  readonly children = new Set<PtyProcess>()
+  /** The one typing goes to: the command shown in the terminal now. */
+  focus: PtyProcess | null = null
+  constructor(
+    public cols: number,
+    public rows: number,
+  ) {}
+  onData() {}
+  onExit() {}
+  write(data: string) {
+    this.focus?.write(data)
+  }
+  resize(cols: number, rows: number) {
+    this.cols = cols
+    this.rows = rows
+    for (const c of this.children) {
+      try {
+        c.resize(cols, rows)
+      } catch {
+        // the command just ended
+      }
+    }
+  }
+  kill() {
+    for (const c of this.children) {
+      try {
+        c.kill()
+      } catch {
+        // already gone
+      }
+    }
+  }
+  pause() {
+    for (const c of this.children) c.pause()
+  }
+  resume() {
+    for (const c of this.children) c.resume()
+  }
+}
+
 /**
  * Shells that live on the host. Output is batched, kept in a bounded buffer for late attachers,
  * and the shell is paused when a client cannot keep up, so a runaway command cannot flood a
@@ -98,6 +157,9 @@ interface Terminal {
  */
 export class TerminalManager {
   private readonly terminals = new Map<string, Terminal>()
+  private readonly changeListeners = new Set<
+    (change: { cwd: string; id: string; terminal: TerminalInfo | null }) => void
+  >()
 
   constructor(
     private readonly options: {
@@ -161,6 +223,7 @@ export class TerminalManager {
       poll: null,
     }
     this.terminals.set(id, term)
+    this.changed(term)
 
     pty.onData((data) => this.onData(term, data))
     pty.onExit(({ exitCode }) => this.onExit(term, exitCode))
@@ -170,10 +233,145 @@ export class TerminalManager {
     return { ...term.info }
   }
 
+  /** Called when a terminal appears, changes (an agent's command starts or ends) or goes away. */
+  onChange(
+    listener: (change: { cwd: string; id: string; terminal: TerminalInfo | null }) => void,
+  ): () => void {
+    this.changeListeners.add(listener)
+    return () => this.changeListeners.delete(listener)
+  }
+
+  private changed(term: Terminal, gone = false) {
+    const change = { cwd: term.info.cwd, id: term.info.id, terminal: gone ? null : snapshot(term) }
+    for (const l of this.changeListeners) l(change)
+  }
+
+  /**
+   * The session's agent terminal, opened on first use. It starts read-only: the agent's commands
+   * show up in it, and the user can take it over to type into a running command.
+   */
+  agentTerminal(params: AgentTerminalParams): string {
+    for (const t of this.terminals.values()) {
+      if (t.info.agent?.sessionId === params.sessionId && t.info.exited === undefined)
+        return t.info.id
+    }
+    const channel = new AgentChannel(100, 24)
+    const id = randomUUID()
+    const title = params.sessionTitle ? `${params.label} · ${params.sessionTitle}` : params.label
+    const term: Terminal = {
+      info: {
+        id,
+        cwd: params.cwd,
+        shell: params.label,
+        title: title.length > 40 ? `${title.slice(0, 39)}…` : title,
+        agent: {
+          sessionId: params.sessionId,
+          label: params.label,
+          mode: params.mode,
+          ...(params.instanceId ? { instanceId: params.instanceId } : {}),
+        },
+        readOnly: true,
+        cols: channel.cols,
+        rows: channel.rows,
+        createdAt: Date.now(),
+      },
+      pty: channel,
+      buffer: '',
+      pending: '',
+      timer: null,
+      subscribers: new Set(),
+      paused: false,
+      poll: null,
+    }
+    this.terminals.set(id, term)
+    this.changed(term)
+    return id
+  }
+
+  /** Shows output in an agent terminal. False when it is gone (the user closed it). */
+  feed(id: string, data: string): boolean {
+    const term = this.terminals.get(id)
+    if (!term?.info.agent || term.info.exited !== undefined) return false
+    if (data) this.onData(term, data)
+    return true
+  }
+
+  /** Says which command an agent terminal is running (undefined: none). */
+  setRunning(id: string, command: string | undefined) {
+    const term = this.terminals.get(id)
+    if (!term?.info.agent || term.info.agent.running === command) return
+    if (command === undefined) delete term.info.agent.running
+    else term.info.agent.running = command
+    this.changed(term)
+  }
+
+  /**
+   * Starts a command in a pty of its own, sized like the agent terminal `id`. Its output is the
+   * caller's to show (with `feed`); typing reaches it while it has the focus (`focusAgentChild`).
+   */
+  spawnInAgentTerminal(
+    id: string,
+    file: string,
+    args: string[],
+    options: { cwd: string; env: Record<string, string> },
+  ): PtyProcess {
+    const term = this.require(id)
+    if (!(term.pty instanceof AgentChannel)) throw new Error('Not an agent terminal')
+    const channel = term.pty
+    const env = {
+      ...(this.options.env ?? process.env),
+      ...options.env,
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+    } as Record<string, string>
+    const child = (this.options.pty ?? defaultPty)(file, args, {
+      cwd: options.cwd,
+      env,
+      cols: channel.cols,
+      rows: channel.rows,
+    })
+    channel.children.add(child)
+    channel.focus ??= child
+    child.onExit(() => {
+      channel.children.delete(child)
+      if (channel.focus === child) channel.focus = null
+    })
+    if (term.paused) child.pause()
+    return child
+  }
+
+  /** Sends what the user types in agent terminal `id` to this command of its. */
+  focusAgentChild(id: string, child: PtyProcess) {
+    const channel = this.terminals.get(id)?.pty
+    if (channel instanceof AgentChannel && channel.children.has(child)) channel.focus = child
+  }
+
+  /** The user types into an agent terminal from now on (into the command it is running). */
+  takeOver(id: string): TerminalInfo {
+    const term = this.require(id)
+    if (term.info.readOnly) {
+      delete term.info.readOnly
+      this.changed(term)
+    }
+    return snapshot(term)
+  }
+
+  /** The session has ended: its agent terminal stays readable until it is closed or forgotten. */
+  endAgentTerminal(id: string) {
+    const term = this.terminals.get(id)
+    if (!term?.info.agent || term.info.exited !== undefined) return
+    term.pty.kill()
+    this.onExit(term, 0)
+  }
+
+  has(id: string): boolean {
+    return this.terminals.has(id)
+  }
+
   list(cwd?: string): TerminalInfo[] {
     return [...this.terminals.values()]
       .filter((t) => cwd === undefined || sameFolder(t.info.cwd, cwd))
-      .map((t) => ({ ...t.info }))
+      .map(snapshot)
   }
 
   /** Sends the buffered history, then live output. Returns a function that detaches. */
@@ -192,7 +390,7 @@ export class TerminalManager {
 
   write(id: string, data: string) {
     const term = this.terminals.get(id)
-    if (term && term.info.exited === undefined) term.pty.write(data)
+    if (term && term.info.exited === undefined && !term.info.readOnly) term.pty.write(data)
   }
 
   resize(id: string, cols: number, rows: number) {
@@ -218,6 +416,7 @@ export class TerminalManager {
     }
     for (const s of term.subscribers) s.send({ t: 'term.exit', id, code: term.info.exited ?? null })
     term.subscribers.clear()
+    this.changed(term, true)
     return true
   }
 
@@ -273,6 +472,7 @@ export class TerminalManager {
     term.info.exited = code
     term.exitedAt = Date.now()
     for (const s of term.subscribers) s.send({ t: 'term.exit', id: term.info.id, code })
+    this.changed(term)
     this.forgetOldExited()
   }
 
@@ -297,4 +497,9 @@ function sameFolder(a: string, b: string) {
   const norm = (p: string) =>
     process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p)
   return norm(a) === norm(b)
+}
+
+/** A copy of a terminal's info that later changes to it do not reach. */
+function snapshot(term: { info: TerminalInfo }): TerminalInfo {
+  return term.info.agent ? { ...term.info, agent: { ...term.info.agent } } : { ...term.info }
 }

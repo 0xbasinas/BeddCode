@@ -87,6 +87,25 @@ describe('CodexEventMapper', () => {
     expect(events).toMatchObject([{ type: 'message.delta', text: 'Whole' }])
   })
 
+  it('streams command output for the terminal and names the command', () => {
+    const events = mapAll([
+      started({ type: 'commandExecution', id: 'c1', command: 'ls' }),
+      [
+        'item/commandExecution/outputDelta',
+        { threadId: 't', turnId: 'turn-1', itemId: 'c1', delta: 'a.ts\n' },
+      ],
+      [
+        'item/commandExecution/outputDelta',
+        { threadId: 't', turnId: 'turn-1', itemId: 'c1', delta: '' },
+      ],
+    ])
+    expect(events).toMatchObject([
+      { type: 'tool.started', toolId: 'c1', command: 'ls' },
+      { type: 'tool.output', toolId: 'c1', data: 'a.ts\n' },
+    ])
+    expect(events).toHaveLength(2)
+  })
+
   it('maps a command: started, then completed with success from the exit code', () => {
     const events = mapAll([
       started({ type: 'commandExecution', id: 'c1', command: 'git status' }),

@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { resolveExecutable, runCommand } from '@beddcode/shared'
 import { dataHome } from '../hostIdentity.ts'
 import { TailscaleService } from '../network/tailscale.ts'
+import { serviceInstalled } from '../service/install.ts'
 import { doctor, doctorExitCode, formatChecks } from './doctor.ts'
 import { fetchHealth } from './health.ts'
 import { configCmd } from './configCmd.ts'
@@ -55,6 +56,8 @@ async function doctorCmd(_args: string[], ctx: Ctx): Promise<number> {
     tailnet: () => new TailscaleService().status(),
     dataDir: dataHome(),
     dirExists: existsSync,
+    serviceInstalled: () => serviceInstalled(),
+    platform: process.platform,
   })
   ctx.io.out(`${formatChecks(checks)}\n`)
   return doctorExitCode(checks)

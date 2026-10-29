@@ -108,6 +108,30 @@ describe('ClaudeEventMapper', () => {
     expect(events[1]).not.toHaveProperty('input')
   })
 
+  it('names a Bash command and hands its whole output to the terminal before completing', () => {
+    const long = 'x'.repeat(10_000)
+    const events = mapAll([
+      {
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          id: 'm4',
+          content: [{ type: 'tool_use', id: 'b1', name: 'Bash', input: { command: 'ls' } }],
+        },
+      },
+      {
+        type: 'user',
+        message: { content: [{ type: 'tool_result', tool_use_id: 'b1', content: long }] },
+      },
+    ])
+    expect(events.map((e) => e.type)).toEqual(['tool.started', 'tool.output', 'tool.completed'])
+    expect(events[0]).toMatchObject({ command: 'ls' })
+    expect(events[1]).toMatchObject({ toolId: 'b1', data: long })
+    // The conversation keeps its short copy.
+    const done = events[2] as { output?: string }
+    expect(done.output!.length).toBeLessThan(long.length)
+  })
+
   it('maps a tool call, its result and a diff only after the edit succeeds', () => {
     const events = mapAll([
       {

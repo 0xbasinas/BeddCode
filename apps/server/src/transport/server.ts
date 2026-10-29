@@ -103,6 +103,7 @@ export interface StartServerOptions {
   reachable?: () => Promise<{ hostId: string; name: string; routes: string[]; relay?: string }>
   /** Reads and changes the relay this host is reachable through. */
   relay?: RelayControl
+  mcpGateway?: AccessServices['mcpGateway']
   telemetry?: AccessServices['telemetry']
   /** Takes the host's own measurements (see Telemetry.record). */
   telemetryRecorder?: (name: string, value: number, tags?: Record<string, string>) => void
@@ -206,6 +207,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       port: () => listeningPort,
       reachable: options.reachable,
       relay: options.relay,
+      mcpGateway: options.mcpGateway,
       telemetry: options.telemetry,
     },
     options.automation,
@@ -393,6 +395,10 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     const stopDesigns = options.automation.designs.onChange((c) => {
       if (authed) send({ t: 'design.changed', ...c })
     })
+    // Terminals that appear or change on their own (an agent's commands), so panes can show them.
+    const stopTerminals = options.workspace.terminals.onChange((c) => {
+      if (authed) send({ t: 'term.changed', ...c })
+    })
     lastSeen.set(ws, Date.now())
     const alive = () => {
       if (lastSeen.has(ws)) lastSeen.set(ws, Date.now())
@@ -414,6 +420,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       browserClient?.close()
       designClient?.close()
       stopDesigns()
+      stopTerminals()
     })
 
     ws.on('message', (raw) => {

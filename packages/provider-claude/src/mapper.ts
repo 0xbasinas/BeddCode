@@ -105,13 +105,16 @@ function argsText(input: Record<string, unknown>): { input?: string } {
   }
 }
 
-function resultText(content: unknown): string | undefined {
-  if (typeof content === 'string') return content.slice(0, MAX_OUTPUT)
+/** How much of a command's output the agent terminal gets. */
+const TERMINAL_OUTPUT = 64_000
+
+function resultText(content: unknown, max = MAX_OUTPUT): string | undefined {
+  if (typeof content === 'string') return content ? content.slice(0, max) : undefined
   const text = blocks(content)
     .filter((b) => b.type === 'text')
     .map((b) => String(b.text ?? ''))
     .join('\n')
-  return text ? text.slice(0, MAX_OUTPUT) : undefined
+  return text ? text.slice(0, max) : undefined
 }
 
 /**
@@ -274,6 +277,7 @@ export class ClaudeEventMapper {
               // MCP tools (BeddCode's agent tools among them) carry no title of their own worth
               // reading; their arguments let the UI say what they do.
               ...(name.startsWith('mcp__') ? argsText(input) : {}),
+              ...(name === 'Bash' && str(input.command) ? { command: String(input.command) } : {}),
             })
           }
         }
@@ -286,8 +290,14 @@ export class ClaudeEventMapper {
           const toolId = String(block.tool_use_id)
           if (this.hidden.delete(toolId)) continue
           const ok = block.is_error !== true
-          out.push({ type: 'tool.completed', toolId, ok, output: resultText(block.content) })
           const tool = this.tools.get(toolId)
+          // Claude runs its commands itself and reports the output only at the end; the agent
+          // terminal shows it then, in full up to a cap (the stored result keeps a short excerpt).
+          if (tool?.name === 'Bash') {
+            const full = resultText(block.content, TERMINAL_OUTPUT)
+            if (full) out.push({ type: 'tool.output', toolId, data: full })
+          }
+          out.push({ type: 'tool.completed', toolId, ok, output: resultText(block.content) })
           this.tools.delete(toolId)
           if (ok && tool) {
             const diff = diffForTool(tool.name, tool.input)

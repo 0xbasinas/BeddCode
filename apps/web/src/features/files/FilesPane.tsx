@@ -1,3 +1,4 @@
+import { paneProject } from '../shell/paneProject.ts'
 import { useEffect, useRef, useState } from 'react'
 import {
   File,
@@ -12,6 +13,7 @@ import {
 import type { PaneWorkspace } from '../../stores/composerWorkspace.ts'
 import { hostRequest, onHostFrame, sendHostFrame, useRuntime } from '../../stores/host.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
+import { OpenFileInEditor } from '../editors/OpenInEditor.tsx'
 import { formatBytes } from '../../ui/format.ts'
 import { MediaViewer } from './MediaViewer.tsx'
 import { Editor, type EditorPosition } from './Editor.tsx'
@@ -73,7 +75,7 @@ export function FilesPane({ workspace }: { workspace: PaneWorkspace }) {
   }, [hostKey, realCwd, query])
 
   const active = folder.active ? folder.docs[folder.active] : undefined
-  const name = realCwd.split(/[\\/]/).filter(Boolean).at(-1) ?? realCwd
+  const project = paneProject(workspace)
   const attach = (path: string) =>
     void attachWorkspaceFile(hostKey, workspace.draftId, realCwd, path)
 
@@ -82,8 +84,8 @@ export function FilesPane({ workspace }: { workspace: PaneWorkspace }) {
       <div className="files-tree">
         <div className="pane-head">
           <h2>Files</h2>
-          <span className="muted" title={name}>
-            {name}
+          <span className="muted pane-project" title={project.title}>
+            {project.label}
           </span>
           <span className="spacer" />
           <button className="icon-btn" aria-label="New file" onClick={() => setCreating('file')}>
@@ -159,7 +161,9 @@ export function FilesPane({ workspace }: { workspace: PaneWorkspace }) {
         </div>
       </div>
 
-      {folder.tabs.length > 0 && <EditorColumn cwd={cwd} onAttach={attach} />}
+      {folder.tabs.length > 0 && (
+        <EditorColumn cwd={cwd} hostKey={hostKey} realCwd={realCwd} onAttach={attach} />
+      )}
     </div>
   )
 }
@@ -192,7 +196,17 @@ function NewEntry({
   )
 }
 
-function EditorColumn({ cwd, onAttach }: { cwd: string; onAttach(path: string): void }) {
+function EditorColumn({
+  cwd,
+  hostKey,
+  realCwd,
+  onAttach,
+}: {
+  cwd: string
+  hostKey: string
+  realCwd: string
+  onAttach(path: string): void
+}) {
   const tabSize = useAppPreferences((s) => s.values.editorTabSize)
   const folder = useFiles((s) => s.byCwd[cwd] ?? EMPTY_FOLDER)
   const { activate, close, setDraft, save, reload } = useFiles.getState()
@@ -286,6 +300,13 @@ function EditorColumn({ cwd, onAttach }: { cwd: string; onAttach(path: string): 
           </span>
         ))}
         <span className="spacer" />
+        <OpenFileInEditor
+          hostKey={hostKey}
+          cwd={realCwd}
+          path={doc.path}
+          line={doc.media || doc.binary ? undefined : position.line}
+          column={doc.media || doc.binary ? undefined : position.col}
+        />
         <button
           className="icon-btn"
           aria-label={`Attach ${doc.path}`}
@@ -346,6 +367,7 @@ function EditorColumn({ cwd, onAttach }: { cwd: string; onAttach(path: string): 
           fileName={baseName(doc.path)}
           content={doc.draft ?? doc.content}
           version={doc.version}
+          reveal={doc.reveal}
           onChange={(text) => setDraft(cwd, doc.path, text)}
           onSave={(text) => void doSave(text)}
           textRef={textRef}

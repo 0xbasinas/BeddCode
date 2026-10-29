@@ -563,6 +563,107 @@
 }
 
 /* Tools & MCP, downloads */
+.mcp-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.mcp-kind {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.mcp-kind legend {
+  padding: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+.mcp-kind button {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-app);
+  color: var(--text);
+}
+.mcp-kind button.selected {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+.mcp-kind button span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.mcp-kind strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.mcp-kind small,
+.mcp-form-fields label small {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.mcp-form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.mcp-form-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 7px;
+  font-size: 13px;
+}
+.mcp-form-fields input,
+.mcp-form-fields textarea,
+.mcp-form-fields select {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-app);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.mcp-form-fields textarea {
+  resize: vertical;
+  font-family: var(--font-mono);
+}
+.mcp-auth-note {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.mcp-auth-note strong {
+  color: var(--text);
+  font-size: 12.5px;
+}
+.mcp-auth-note p {
+  margin: 5px 0 0;
+}
+.mcp-auth-note code {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.mcp-dialog select:focus-visible {
+  outline: 2px solid var(--text-muted);
+  outline-offset: 2px;
+}
 .mcp-form {
   display: flex;
   flex-direction: column;

@@ -23,6 +23,16 @@ export const RelaySettings = z.object({
 })
 export type RelaySettings = z.infer<typeof RelaySettings>
 
+export const McpGatewaySettings = z.object({
+  url: z.string().optional(),
+  secretSet: z.boolean(),
+  status: z.enum(['off', 'connecting', 'online', 'offline']),
+  error: z.string().optional(),
+  allowApprovals: z.boolean().default(true),
+  allowProjectRead: z.boolean().default(true),
+})
+export type McpGatewaySettings = z.infer<typeof McpGatewaySettings>
+
 /**
  * One measurement: a number and a few short labels, never content. Names and labels are
  * restricted to a small alphabet on purpose, so nothing like a prompt or a path can be sent.

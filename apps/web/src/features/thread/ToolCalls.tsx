@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react'
+import { LinkedText } from '../links/links.tsx'
 import {
   Ban,
   Check,
@@ -93,7 +94,9 @@ function ToolDetails({ tool, now, id }: { tool: Tool; now: number; id: string })
         <section className="tcall-block">
           <h4>{failed ? 'Error' : wasDenied(tool) ? 'Agent’s note' : 'Output'}</h4>
           <pre className={`tcall-output ${failed ? 'error' : ''}`}>
-            <code>{output}</code>
+            <code>
+              <LinkedText text={output} />
+            </code>
           </pre>
         </section>
       ) : (

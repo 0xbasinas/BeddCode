@@ -1,3 +1,5 @@
+import { OpenInEditor } from '../editors/OpenInEditor.tsx'
+import { LinkScope } from '../links/links.tsx'
 import {} from '../../ui/AgentMark.tsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
@@ -15,6 +17,8 @@ import {
   PinOff,
   ArrowRightLeft,
   GitPullRequest,
+  Maximize2,
+  X,
 } from 'lucide-react'
 import type { SessionView } from '@beddcode/client-runtime'
 import { Composer } from '../composer/Composer.tsx'
@@ -55,10 +59,14 @@ import { EnvironmentButton, SessionChip } from './SessionPanel.tsx'
 import { RenameSessionDialog } from './RenameSessionDialog.tsx'
 import { threadKey } from './threadState.ts'
 import { useComposerDrafts } from '../composer/drafts.ts'
+import { usePane, type PaneInfo } from '../split/paneContext.ts'
 
 export function ThreadView({ sessionId }: { sessionId: string }) {
   const navigate = useNavigate()
   const session = useSession(sessionId)
+  // Shown beside other sessions: the keyboard and the browser go to the pane last used.
+  const pane = usePane()
+  const paneActive = pane?.active ?? true
   const hostKey = useSessionHostKey(sessionId) ?? LOCAL_HOST_KEY
   const { providers, host } = useRuntime(hostKey)
   const multiHost = useHostStore((s) => s.entries.length > 1)
@@ -95,11 +103,12 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
 
   // The agent's browser tool calls go to the window showing its session.
   useEffect(() => {
+    if (!paneActive) return
     const report = () => reportShownSession(hostKey, sessionId)
     report()
     window.addEventListener('focus', report)
     return () => window.removeEventListener('focus', report)
-  }, [hostKey, sessionId])
+  }, [hostKey, sessionId, paneActive])
 
   const pending = useMemo(
     () =>
@@ -116,6 +125,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
     [hostKey, sessionId, busy, session?.worktree],
   )
   const cwd = session?.cwd
+  const linkScope = useMemo(() => ({ hostKey, cwd: cwd ?? '' }), [hostKey, cwd])
   const openFile = useCallback(
     (path: string) => {
       if (!cwd) return
@@ -148,7 +158,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
 
   // Enter allows and Escape denies the open request, unless the user is typing somewhere.
   useEffect(() => {
-    if (pending?.kind !== 'approval') return
+    if (pending?.kind !== 'approval' || !paneActive) return
     const onKey = (e: KeyboardEvent) => {
       const target = e.target instanceof Element ? e.target : null
       if (target?.closest('input, textarea, [contenteditable], button, [role="menu"]')) return
@@ -161,7 +171,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [pending, sessionId])
+  }, [pending, sessionId, paneActive])
 
   if (!session) {
     return (
@@ -171,6 +181,11 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
           : hostAway
             ? 'Session not found. It may be on a host that is offline.'
             : 'Session not found'}
+        {pane && (
+          <div className="thread-empty-actions">
+            <PaneButtons pane={pane} />
+          </div>
+        )}
       </main>
     )
   }
@@ -189,6 +204,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
         <div className="thread-heading">
           <h1 title={session.title}>{session.title}</h1>
           <div className="thread-meta" title={session.cwd}>
+            {session.mcpGateway && <>Remote MCP · </>}
             {hostKey === LOCAL_HOST_KEY ? 'This PC' : (host?.name ?? hostKey)} ·{' '}
             {session.projectless ? 'No project' : folderName(session.projectPath)}
             {session.branch ? ` · ${session.branch}` : ''}
@@ -217,6 +233,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
           </div>
         </div>
         <div className="thread-actions">
+          <OpenInEditor hostKey={hostKey} cwd={session.cwd} />
           <EnvironmentButton session={session} hostKey={hostKey} stats={stats} />
           <Dropdown
             placement="bottom"
@@ -322,6 +339,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
               </>
             )}
           </Dropdown>
+          {pane && <PaneButtons pane={pane} />}
         </div>
       </header>
       <div className="transcript" ref={scroller}>
@@ -333,26 +351,31 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
               minute: '2-digit',
             })}
             {session.worktree ? ` · worktree from ${session.worktree.baseBranch}` : ''}
+            {session.worktree?.copiedFiles
+              ? ` · ${session.worktree.copiedFiles} local ${session.worktree.copiedFiles === 1 ? 'file' : 'files'} copied from .worktreeinclude`
+              : ''}
           </div>
           {session.parent && <StartedByBanner session={session} hostKey={hostKey} />}
-          <Transcript
-            live={session.status === 'running'}
-            items={session.items}
-            cwd={session.cwd}
-            sessionId={sessionId}
-            hostKey={hostKey}
-            readingKey={memoryKey}
-            onOpenFile={openFile}
-            onApprove={approveRequest}
-            onAnswer={answerRequest}
-            onFork={canFork ? fork : undefined}
-            jumpTo={jump}
-            completedTurns={session.completedTurns}
-            stoppedTurn={
-              session.lastTurnReason === 'cancelled' ? session.completedTurns : undefined
-            }
-            changes={changes}
-          />
+          <LinkScope value={linkScope}>
+            <Transcript
+              live={session.status === 'running'}
+              items={session.items}
+              cwd={session.cwd}
+              sessionId={sessionId}
+              hostKey={hostKey}
+              readingKey={memoryKey}
+              onOpenFile={openFile}
+              onApprove={approveRequest}
+              onAnswer={answerRequest}
+              onFork={canFork ? fork : undefined}
+              jumpTo={jump}
+              completedTurns={session.completedTurns}
+              stoppedTurn={
+                session.lastTurnReason === 'cancelled' ? session.completedTurns : undefined
+              }
+              changes={changes}
+            />
+          </LinkScope>
         </div>
       </div>
       <MessageNav items={session.items} scroller={scroller} onJump={jumpToMessage} />
@@ -458,6 +481,30 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
         />
       )}
     </main>
+  )
+}
+
+/** A pane in a split: show its session alone, or close the pane. */
+function PaneButtons({ pane }: { pane: PaneInfo }) {
+  return (
+    <>
+      <button
+        className="icon-btn"
+        aria-label="Show alone"
+        title="Show this session alone"
+        onClick={pane.solo}
+      >
+        <Maximize2 size={15} />
+      </button>
+      <button
+        className="icon-btn"
+        aria-label="Close pane"
+        title="Close this pane (the session keeps running)"
+        onClick={pane.close}
+      >
+        <X size={17} />
+      </button>
+    </>
   )
 }
 

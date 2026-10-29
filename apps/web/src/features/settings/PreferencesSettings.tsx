@@ -221,6 +221,7 @@ export function PreferencesSettings({
       {section === 'shortcuts' && (
         <div className="settings-card shortcut-list">
           {[
+            ['Command palette', ['Ctrl', 'Shift', 'P']],
             ['Search sessions', ['Ctrl', 'K']],
             ['Send a message', ['Enter']],
             ['New line in a message', ['Shift', 'Enter']],
