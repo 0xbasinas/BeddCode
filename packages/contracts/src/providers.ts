@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 /** Built-in provider kinds. `acp` covers every generic ACP agent instance. */
-export const ProviderKind = z.enum(['claude', 'codex', 'acp', 'fake'])
+export const ProviderKind = z.enum(['claude', 'codex', 'grok', 'acp', 'fake'])
 export type ProviderKind = z.infer<typeof ProviderKind>
 
 /**

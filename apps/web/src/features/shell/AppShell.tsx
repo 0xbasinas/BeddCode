@@ -11,9 +11,9 @@ import { HostStatusBanner } from './HostStatusBanner.tsx'
 import { WindowBar } from './WindowBar.tsx'
 import { RAIL_WIDTH, openPaneWidth, rememberPaneWidth } from './paneWidth.ts'
 import { Sidebar } from './Sidebar.tsx'
+import { resolveTheme, useAppPreferences } from '../../stores/appPreferences.ts'
 import { CommandPalette, usePalette } from '../palette/CommandPalette.tsx'
 import { SplitView } from '../split/SplitView.tsx'
-import { useAppPreferences } from '../../stores/appPreferences.ts'
 import { useUiStore } from '../../stores/ui.ts'
 import { appWindowControls } from '../../ui/desktop.ts'
 import { FolderBrowserLayer } from '../folders/FolderBrowserDialog.tsx'
@@ -64,6 +64,17 @@ export function AppShell() {
     root.dataset.desktop = window.beddcodeDesktop ? 'true' : 'false'
     if (window.beddcodeDesktop) root.dataset.platform = window.beddcodeDesktop.platform
     root.dataset.density = preferences.density
+    const applyTheme = () => {
+      const theme = resolveTheme(preferences.theme)
+      root.dataset.theme = theme
+      document
+        .querySelector('meta[name="theme-color"]')
+        ?.setAttribute('content', theme === 'light' ? '#e6e6e9' : '#101010')
+      window.beddcodeDesktop?.setTheme?.(theme)
+    }
+    applyTheme()
+    const media = window.matchMedia?.('(prefers-color-scheme: light)')
+    media?.addEventListener('change', applyTheme)
     root.dataset.motion = preferences.reduceMotion ? 'reduced' : 'normal'
     root.style.setProperty(
       '--font-ui',
@@ -71,7 +82,8 @@ export function AppShell() {
         ? "system-ui, 'Segoe UI', sans-serif"
         : "'Inter', system-ui, 'Segoe UI', sans-serif",
     )
-  }, [preferences.density, preferences.uiFont, preferences.reduceMotion])
+    return () => media?.removeEventListener('change', applyTheme)
+  }, [preferences.theme, preferences.density, preferences.uiFont, preferences.reduceMotion])
   const settings = useLocation({ select: (location) => location.pathname === '/settings' })
   // Design is a screen of its own: the whole window, no sessions list or side panes.
   const design = useLocation({ select: (location) => location.pathname === '/design' })

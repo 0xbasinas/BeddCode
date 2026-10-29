@@ -7,12 +7,18 @@ import { hostRequest, onHostFrame, sendHostFrame, useRuntime } from '../../store
 import { useHostKey } from '../../stores/HostScope.tsx'
 import { openLocated, openUrl, wantsOutside } from '../links/links.tsx'
 
-const THEME = {
-  background: '#0e0e0e',
-  foreground: '#ececec',
-  cursor: '#d4d4d4',
-  cursorAccent: '#0e0e0e',
-  selectionBackground: 'rgba(255, 255, 255, 0.15)',
+/** The terminal's colors from the page's current theme. */
+function terminalTheme() {
+  const style = getComputedStyle(document.documentElement)
+  const color = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback
+  const light = document.documentElement.dataset.theme === 'light'
+  return {
+    background: color('--bg-terminal', '#0e0e0e'),
+    foreground: color('--text', '#ececec'),
+    cursor: color('--text-secondary', '#d4d4d4'),
+    cursorAccent: color('--bg-terminal', '#0e0e0e'),
+    selectionBackground: light ? 'rgba(0, 0, 0, 0.15)' : 'rgba(255, 255, 255, 0.15)',
+  }
 }
 
 /**
@@ -58,9 +64,16 @@ export function TerminalView({
       fontSize: 12,
       lineHeight: 1.6,
       scrollback: 5000,
-      theme: THEME,
+      theme: terminalTheme(),
       disableStdin: readOnlyRef.current,
       cursorBlink: !readOnlyRef.current,
+    })
+    const themeWatch = new MutationObserver(() => {
+      term.options.theme = terminalTheme()
+    })
+    themeWatch.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
     })
     termRef.current = term
     const fit = new FitAddon()
@@ -120,6 +133,7 @@ export function TerminalView({
       stopLinks.dispose()
       termRef.current = null
       stopSelection.dispose()
+      themeWatch.disconnect()
       term.dispose()
     }
   }, [hostKey, id, epoch])

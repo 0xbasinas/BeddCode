@@ -120,7 +120,7 @@ export class AgentCatalog {
       plan.type === 'run'
         ? { ok: true as const, launch: plan.launch }
         : { ok: true as const, launch: await installBinary(agent, this.installs!) }
-    // Claude Code and Codex have native adapters; keep their registry entries from colliding
+    // Claude Code, Codex and Grok have native adapters; keep their registry entries from colliding
     // with the reserved ids.
     const id = RESERVED_IDS.has(registryId) ? `${registryId}-acp` : registryId
     return {

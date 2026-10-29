@@ -47,6 +47,45 @@ it('batch application matches individual events, including reconnect duplicates 
   expect(applyEvents(expected, stored)).toBe(expected)
 })
 
+describe('compaction', () => {
+  const items = (s: ReplicaState) => s.sessions.s1!.items.filter((i) => i.kind === 'compaction')
+
+  it('shows one row that turns from running to done, with the sizes', () => {
+    const s = fold([
+      created,
+      { type: 'turn.started' },
+      { type: 'session.compaction', state: 'started', trigger: 'auto' },
+      { type: 'session.compaction', state: 'finished', tokensBefore: 90000, tokensAfter: 8000 },
+    ])
+    expect(items(s)).toMatchObject([
+      { state: 'done', trigger: 'auto', tokensBefore: 90000, tokensAfter: 8000 },
+    ])
+  })
+
+  it('adds a done row when only the end is reported, and a failed one on failure', () => {
+    const s = fold([
+      created,
+      { type: 'session.compaction', state: 'finished' },
+      { type: 'session.compaction', state: 'started' },
+      { type: 'session.compaction', state: 'failed' },
+    ])
+    expect(items(s).map((i) => (i.kind === 'compaction' ? i.state : ''))).toEqual([
+      'done',
+      'failed',
+    ])
+  })
+
+  it('does not leave a row spinning when the turn ends', () => {
+    const s = fold([
+      created,
+      { type: 'turn.started' },
+      { type: 'session.compaction', state: 'started' },
+      { type: 'turn.completed', reason: 'done' },
+    ])
+    expect(items(s)).toMatchObject([{ state: 'done' }])
+  })
+})
+
 describe('replica', () => {
   it('keeps what a helper reported for the current task, and adds up what it used', () => {
     const s = fold([

@@ -3,6 +3,7 @@ import path from 'node:path'
 import { AcpAgentStore, AcpRegistry, createAcpAdapter } from '@beddcode/provider-acp'
 import { createClaudeAdapter } from '@beddcode/provider-claude'
 import { createCodexAdapter } from '@beddcode/provider-codex'
+import { createGrokAdapter } from '@beddcode/provider-grok'
 import { createFakeAdapter, type ProviderAdapter } from '@beddcode/provider-core'
 import type { RelaySettings } from '@beddcode/contracts'
 import {
@@ -68,6 +69,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
   const adapters: ProviderAdapter[] = [
     createClaudeAdapter({ log: createLogger('claude') }),
     createCodexAdapter({ log: createLogger('codex') }),
+    createGrokAdapter({ log: createLogger('grok') }),
     createAcpAdapter({ store: acpStore, log: createLogger('acp') }),
   ]
   // "advanced" adds steering, plans, questions, forks and history to the scripted agent.

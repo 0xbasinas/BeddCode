@@ -354,7 +354,7 @@ a {
   font-weight: 500;
 }
 .setup-number.complete {
-  background: #243a29;
+  background: var(--chip-success-bg);
   color: var(--success);
   border-color: transparent;
 }
@@ -387,7 +387,7 @@ a {
 }
 .setup-button.primary {
   background: var(--text-secondary);
-  color: #111;
+  color: var(--on-primary);
   font-weight: 500;
 }
 .setup-button:disabled {
@@ -579,7 +579,7 @@ a {
   height: calc(42px * var(--ui-scale));
   border-radius: calc(10px * var(--ui-scale));
   background: var(--text-secondary);
-  color: #111;
+  color: var(--on-primary);
   font-weight: 500;
   font-size: calc(13.5px * var(--ui-scale));
 }
@@ -829,6 +829,47 @@ a {
 }
 .wizard-skip {
   align-self: center;
+}
+
+.compaction {
+  display: flex;
+  align-items: center;
+  gap: calc(10px * var(--ui-scale));
+  margin: calc(6px * var(--ui-scale)) 0;
+  color: var(--text-faint);
+  font-size: calc(12px * var(--ui-scale));
+}
+.compaction::before,
+.compaction::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.compaction svg {
+  flex: none;
+}
+.compaction.running {
+  color: var(--running);
+}
+.compaction.running span {
+  animation: session-working-pulse 1.8s ease-in-out infinite;
+}
+.compaction.failed {
+  color: var(--danger);
+}
+.compaction-spin {
+  animation: session-working-spin 1s linear infinite;
+}
+[data-motion='reduced'] .compaction-spin,
+[data-motion='reduced'] .compaction.running span {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .compaction-spin,
+  .compaction.running span {
+    animation: none;
+  }
 }
 
 /* Agent terminals: a session's commands, live, read-only until taken over */

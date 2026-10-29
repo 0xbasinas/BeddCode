@@ -103,7 +103,7 @@ export const TOOL_DEFINITIONS = [
       properties: {
         agent: {
           type: 'string',
-          description: 'Agent id from list_agents, e.g. "codex" or "claude".',
+          description: 'Agent id from list_agents, e.g. "codex", "claude" or "grok".',
         },
         prompt: { type: 'string', description: 'The task for the new session.' },
         title: { type: 'string', description: 'A short name for the session.' },

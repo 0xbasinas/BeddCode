@@ -226,3 +226,50 @@ describe('AcpEventMapper', () => {
     expect(inputText({ text: 'x'.repeat(10_000) })!.length).toBe(4_000)
   })
 })
+
+describe('embedded terminals and links', () => {
+  it('shows the output of a terminal the tool call embeds, even once it is released', () => {
+    let live: string | undefined = 'built ok\n'
+    const mapper = new AcpEventMapper(
+      's1',
+      () => 1,
+      () => live,
+    )
+    const map = (u: unknown) => mapper.map(u as SessionUpdate)
+    map({ sessionUpdate: 'tool_call', toolCallId: 't1', title: 'Run', kind: 'execute' })
+    map({
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 't1',
+      content: [{ type: 'terminal', terminalId: 'term-1' }],
+    })
+    live = undefined // released before the call completes
+    const done = map({ sessionUpdate: 'tool_call_update', toolCallId: 't1', status: 'completed' })
+    expect(done).toMatchObject([{ type: 'tool.completed', output: 'built ok' }])
+  })
+
+  it('turns a resource link in the agent message into a markdown link', () => {
+    const events = run([
+      {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'resource_link', name: 'Spec', uri: 'https://example.com/spec' },
+      },
+    ])
+    expect(events).toMatchObject([
+      { type: 'message.delta', text: '[Spec](https://example.com/spec)' },
+    ])
+  })
+})
+
+describe('available commands', () => {
+  it('announces a list once and again only when it changes', () => {
+    const list = (...names: string[]) => ({
+      sessionUpdate: 'available_commands_update',
+      availableCommands: names.map((name) => ({ name, description: '' })),
+    })
+    const events = run([list('a', 'b'), list('a', 'b'), list('a', 'b', 'c')])
+    expect(events).toMatchObject([
+      { type: 'session.commands', commands: [{ name: 'a' }, { name: 'b' }] },
+      { type: 'session.commands', commands: [{ name: 'a' }, { name: 'b' }, { name: 'c' }] },
+    ])
+  })
+})

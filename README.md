@@ -1,6 +1,6 @@
 # BeddCode
 
-A desktop workspace for running coding agents (Claude Code, Codex, and ACP-compatible CLIs) on local and remote hosts. See [docs/PLAN.md](docs/PLAN.md) for the architecture and roadmap, and `ui-docs/` for the designs.
+A desktop workspace for running coding agents (Claude Code, Codex, Grok, and ACP-compatible CLIs) on local and remote hosts. See [docs/PLAN.md](docs/PLAN.md) for the architecture and roadmap, and `ui-docs/` for the designs.
 
 ## Install
 
@@ -145,7 +145,7 @@ It is signed with the debug key unless you add the repository secrets `ANDROID_K
 
 - `BEDDCODE_PORT` (default 3773), `BEDDCODE_HOST` (default 127.0.0.1), `BEDDCODE_HOME` (data dir, default `~/.beddcode`)
 - `BEDDCODE_FAKE_PROVIDER=1` also registers the scripted fake agent (no CLI or login needed). In PowerShell, run `$env:BEDDCODE_FAKE_PROVIDER = "1"` before `pnpm dev`.
-- Claude Code and Codex are detected on PATH; each uses your existing CLI login and settings (`claude auth login`, `codex login`)
+- Claude Code, Codex and Grok are detected on PATH; each uses your existing CLI login and settings (`claude auth login`, `codex login`, `grok login`)
 
 ### Remote hosts
 
@@ -257,7 +257,7 @@ Any agent that speaks the [Agent Client Protocol](https://agentclientprotocol.co
 - `packages/contracts` – wire and event schemas
 - `packages/shared` – logging and async helpers
 - `packages/provider-core` – provider adapter interface
-- `packages/provider-claude`, `provider-codex` – native adapters; `provider-acp` – generic ACP client (registry agents and local commands)
+- `packages/provider-claude`, `provider-codex`, `provider-grok` – native adapters (Grok runs `grok agent stdio` on top of `provider-acp`); `provider-acp` – generic ACP client (registry agents and local commands)
 - `packages/client-runtime` – host connection runtime
 - `packaging/winget` – the winget manifests and how to submit them
 - `docs` – the plan ([PLAN.md](docs/PLAN.md)), design screenshots, and product proposals in `docs/prd` (agent orchestration "Flows" and computer use; neither is built yet)

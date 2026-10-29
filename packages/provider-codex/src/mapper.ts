@@ -247,6 +247,9 @@ export class CodexEventMapper {
     if (!item) return
     this.items.set(item.id, item)
     switch (item.type) {
+      case 'contextCompaction':
+        out.push({ type: 'session.compaction', state: 'started' })
+        break
       case 'commandExecution':
         out.push({
           type: 'tool.started',
@@ -296,6 +299,9 @@ export class CodexEventMapper {
     if (!item) return
     this.items.delete(item.id)
     switch (item.type) {
+      case 'contextCompaction':
+        out.push({ type: 'session.compaction', state: 'finished' })
+        break
       case 'exitedReviewMode': {
         // The review's findings arrive as the item that ends review mode.
         const text = str(item.review)

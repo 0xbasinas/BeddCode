@@ -90,6 +90,22 @@ export function PreferencesSettings({
           </div>
           <div className="settings-card">
             <div className="setting-row">
+              <div className="setting-label">
+                <span>Theme</span>
+              </div>
+              <div className="settings-segmented" role="group" aria-label="Color theme">
+                {(['system', 'dark', 'light'] as const).map((theme) => (
+                  <button
+                    key={theme}
+                    aria-pressed={values.theme === theme}
+                    onClick={() => update({ theme })}
+                  >
+                    {theme === 'system' ? 'System' : theme === 'dark' ? 'Dark' : 'Light'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="setting-row">
               <label className="setting-label" htmlFor="interface-font">
                 <span>Interface font</span>
               </label>

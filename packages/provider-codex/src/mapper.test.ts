@@ -61,6 +61,17 @@ describe('CodexEventMapper', () => {
   const completed = (item: Record<string, unknown>) =>
     ['item/completed', { item }] as [string, unknown]
 
+  it('reports a context compaction as it starts and ends', () => {
+    const events = mapAll([
+      started({ type: 'contextCompaction', id: 'c1' }),
+      completed({ type: 'contextCompaction', id: 'c1' }),
+    ])
+    expect(events).toMatchObject([
+      { type: 'session.compaction', state: 'started' },
+      { type: 'session.compaction', state: 'finished' },
+    ])
+  })
+
   it('streams agent text and does not repeat it in the final item', () => {
     const events = mapAll([
       ['item/agentMessage/delta', { itemId: 'm1', delta: 'Hel' }],

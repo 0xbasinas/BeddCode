@@ -15,10 +15,10 @@
   --hosts-muted: var(--text-muted);
   --hosts-dim: var(--text-faint);
   --hosts-line: var(--border);
-  --hosts-focus: #88b4fa;
-  --hosts-success: #8ac99e;
-  --hosts-warning: #d6b37e;
-  --hosts-error: #e7a0a0;
+  --hosts-focus: var(--focus-ring);
+  --hosts-success: var(--success);
+  --hosts-warning: var(--warn-text);
+  --hosts-error: var(--danger-text);
   color: var(--text);
   font: calc(13px * var(--ui-scale))/1.45 var(--font-ui);
 }
@@ -162,7 +162,7 @@
   min-width: calc(124px * var(--ui-scale));
 }
 .hosts-button.primary:hover:not(:disabled) {
-  background: #fff;
+  background: var(--text);
   color: var(--bg-panel);
 }
 .hosts-button:disabled {
@@ -579,7 +579,7 @@
   width: calc(64px * var(--ui-scale));
   height: calc(64px * var(--ui-scale));
   border-radius: 50%;
-  background: #203027;
+  background: var(--chip-success-bg);
   color: var(--hosts-success);
 }
 .hosts-overview {

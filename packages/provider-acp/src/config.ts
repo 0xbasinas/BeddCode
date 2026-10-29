@@ -1,7 +1,7 @@
 import { readJsonFile, writeFileAtomic } from '@beddcode/shared'
 import { z } from 'zod'
 
-export const RESERVED_IDS = new Set(['claude', 'codex', 'fake'])
+export const RESERVED_IDS = new Set(['claude', 'codex', 'grok', 'fake'])
 
 /** One configured ACP agent: a command that speaks ACP over stdio. */
 export const AcpAgentConfig = z.object({

@@ -444,11 +444,11 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #243a29;
+  background: var(--chip-success-bg);
   color: var(--success);
 }
 .folder-toast-icon.info {
-  background: #3a3020;
+  background: var(--chip-warn-bg);
   color: var(--accent);
 }
 .folder-toast-icon.neutral {

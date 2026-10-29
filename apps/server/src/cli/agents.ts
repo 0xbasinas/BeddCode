@@ -1,7 +1,7 @@
 import type { ProviderInstance } from '@beddcode/contracts'
 
 /** Preferred when `--agent` is not given: the first of these that is ready, then any that is. */
-const PREFERRED = ['claude', 'codex']
+const PREFERRED = ['claude', 'codex', 'grok']
 
 export function chooseAgent(providers: ProviderInstance[], wanted?: string): ProviderInstance {
   const ready = providers.filter((p) => p.status === 'ready')

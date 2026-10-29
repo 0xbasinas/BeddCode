@@ -291,6 +291,17 @@ export const SessionEvent = z.discriminatedUnion('type', [
     size: z.number().int().nonnegative(),
   }),
   /**
+   * The agent is shrinking its conversation to free context: `started` while it works on it,
+   * then `finished` (with the size before and after, when it says) or `failed`.
+   */
+  Base.extend({
+    type: z.literal('session.compaction'),
+    state: z.enum(['started', 'finished', 'failed']),
+    trigger: z.enum(['manual', 'auto']).optional(),
+    tokensBefore: z.number().int().nonnegative().optional(),
+    tokensAfter: z.number().int().nonnegative().optional(),
+  }),
+  /**
    * What a finished turn changed in the session's folder, from git snapshots the host took when
    * the turn started and ended (any edit counts: the agent's own edit tools, commands, generated
    * files). `before` and `after` are snapshot commits kept under hidden refs.

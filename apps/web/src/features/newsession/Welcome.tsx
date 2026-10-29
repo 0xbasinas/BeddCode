@@ -184,8 +184,8 @@ export function Welcome({ hostKey, onSkip }: { hostKey: string; onSkip(): void }
             </div>
             {connected && readyAgents.length === 0 && (
               <p className="wizard-note">
-                No agent is ready yet. Install one such as Claude Code or Codex and sign in, then
-                scan again — or continue and set it up in Settings.
+                No agent is ready yet. Install one such as Claude Code, Codex or Grok and sign in,
+                then scan again — or continue and set it up in Settings.
               </p>
             )}
             <button className="wizard-primary" disabled={!connected} onClick={next}>

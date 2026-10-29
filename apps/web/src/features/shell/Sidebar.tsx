@@ -36,6 +36,7 @@ import {
   PinOff,
   Trash2,
   X,
+  LoaderCircle,
   Columns2,
 } from 'lucide-react'
 import {
@@ -332,12 +333,17 @@ ${s.projectless ? 'no-project' : s.projectPath}`
       >
         {s.status === 'idle' && s.items.length > 0 && s.lastTurnReason !== 'cancelled' ? (
           <Check className="session-done" size={12} />
+        ) : s.status === 'running' ? (
+          <LoaderCircle
+            className="session-working"
+            size={13}
+            strokeWidth={2.5}
+            role="img"
+            aria-label="Working"
+          />
         ) : (
           <span
             className={`dot ${s.status === 'idle' && s.lastTurnReason === 'cancelled' ? 'cancelled' : s.status}`}
-            title={s.status === 'running' ? 'Working' : undefined}
-            role={s.status === 'running' ? 'img' : undefined}
-            aria-label={s.status === 'running' ? 'Working' : undefined}
           />
         )}
         <span className="session-main">
@@ -849,12 +855,14 @@ function FolderGroup({
           )}
           {collapsed && workingCount > 0 && (
             <span
-              className="folder-working"
               id={`${contentId}-working`}
               role="img"
               title={`${workingCount} ${workingCount === 1 ? 'session' : 'sessions'} working`}
               aria-label={`${workingCount} ${workingCount === 1 ? 'session' : 'sessions'} working`}
-            />
+              className="folder-working"
+            >
+              <LoaderCircle size={11} />
+            </span>
           )}
         </button>
         {project && !project.isRepo && <span className="folder-chip faint">no git</span>}

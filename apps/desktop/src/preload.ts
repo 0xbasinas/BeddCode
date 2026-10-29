@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('beddcodeDesktop', {
   /** Opens the system's folder picker; resolves to the chosen folder, or null when cancelled. */
   pickFolder: (options?: { defaultPath?: string }): Promise<string | null> =>
     ipcRenderer.invoke('beddcode:pick-folder', options ?? {}),
+  setTheme: (theme: 'light' | 'dark'): Promise<boolean> =>
+    ipcRenderer.invoke('beddcode:theme', theme),
   /** The local host the app keeps running (see daemon.ts). */
   daemon: {
     status: (): Promise<unknown> => ipcRenderer.invoke('beddcode:daemon', 'status'),

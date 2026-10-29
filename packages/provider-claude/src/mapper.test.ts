@@ -16,6 +16,30 @@ describe('ClaudeEventMapper', () => {
     expect(events).toMatchObject([{ type: 'session.provider-session', providerSessionId: 'abc' }])
   })
 
+  it('reports a compaction from its start to the boundary it leaves', () => {
+    const events = mapAll([
+      { type: 'system', subtype: 'status', status: 'compacting' },
+      { type: 'system', subtype: 'status', status: null },
+      {
+        type: 'system',
+        subtype: 'compact_boundary',
+        compact_metadata: { trigger: 'auto', pre_tokens: 150000, post_tokens: 9000 },
+      },
+      { type: 'system', subtype: 'status', status: null, compact_result: 'failed' },
+    ])
+    expect(events).toMatchObject([
+      { type: 'session.compaction', state: 'started' },
+      {
+        type: 'session.compaction',
+        state: 'finished',
+        trigger: 'auto',
+        tokensBefore: 150000,
+        tokensAfter: 9000,
+      },
+      { type: 'session.compaction', state: 'failed' },
+    ])
+  })
+
   it('streams text deltas and does not repeat the final assistant text', () => {
     const events = mapAll([
       {

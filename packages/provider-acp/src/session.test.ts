@@ -3,10 +3,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { SessionEvent } from '@beddcode/contracts'
-import { createLogger, type Transport } from '@beddcode/shared'
+import { createLogger, JsonRpcError, type Transport } from '@beddcode/shared'
 import { createAcpAdapter } from './adapter.ts'
 import { AcpAgentStore } from './config.ts'
-import { AcpSession, isChooser } from './session.ts'
+import { AcpSession, isChooser, type AcpHooks } from './session.ts'
 import { grokProfile } from './profiles.ts'
 
 type Msg = {
@@ -1323,3 +1323,173 @@ async function nextEventFrom(events: SessionEvent[], pred: (e: SessionEvent) => 
   }
   throw new Error('event never arrived')
 }
+
+describe('AcpSession: hardening', () => {
+  it('signs in with a method the agent runs itself, then repeats the refused request', async () => {
+    const agent = fakeAgent()
+    agent.auto.initialize = () => ({
+      protocolVersion: 1,
+      agentCapabilities: {},
+      authMethods: [
+        { id: 'login', name: 'Log in', type: 'terminal' },
+        { id: 'env', name: 'API key' },
+      ],
+    })
+    let signedIn = false
+    agent.auto.authenticate = () => {
+      signedIn = true
+      return {}
+    }
+    agent.auto['session/new'] = () =>
+      signedIn
+        ? { sessionId: 'acp-1', modes: MODES }
+        : { rpcError: { code: -32000, message: 'Authentication required' } }
+    const session = start(agent)
+    await nextEvent(session, (e) => e.type === 'session.modes')
+    expect(agent.sent('authenticate')).toMatchObject([{ params: { methodId: 'env' } }])
+    await session.close()
+  })
+
+  it('refuses a second prompt while one is running', async () => {
+    const agent = fakeAgent()
+    const session = start(agent)
+    const { turn, promptId } = await beginPrompt(session, agent)
+    await expect(session.prompt({ text: 'again' })).rejects.toThrow(/still working/)
+    agent.reply(promptId, { stopReason: 'end_turn' })
+    await turn
+    await session.close()
+  })
+
+  it('does not answer a request that names another session', async () => {
+    const agent = fakeAgent()
+    const session = start(agent)
+    await nextEvent(session, (e) => e.type === 'session.modes')
+    const res = await agent.ask('fs/read_text_file', { sessionId: 'other', path: '/x' })
+    expect(res).toMatchObject({ error: { code: -32602 } })
+    await session.close()
+  })
+
+  it('reports a missing file as resource not found', async () => {
+    const agent = fakeAgent()
+    const session = start(agent)
+    await nextEvent(session, (e) => e.type === 'session.modes')
+    const missing = path.join(tmp(), 'nope.txt')
+    const res = await agent.ask('fs/read_text_file', { sessionId: 'acp-1', path: missing })
+    expect(res).toMatchObject({ error: { code: -32002 } })
+    await session.close()
+  })
+})
+
+describe('AcpSession: agent hooks', () => {
+  const withHooks = (agent: ReturnType<typeof fakeAgent>, hooks: AcpHooks) =>
+    new AcpSession(
+      { sessionId: 's1', cwd: '/work' },
+      { transport: agent.transport, log, label: 'Fake', hooks },
+    )
+
+  it('sends the hook metadata on initialize, authenticate and cancel', async () => {
+    const agent = fakeAgent()
+    agent.auto.initialize = () => ({
+      protocolVersion: 1,
+      agentCapabilities: {},
+      authMethods: [
+        { id: 'browser', name: 'Browser' },
+        { id: 'token', name: 'Token' },
+      ],
+    })
+    let signedIn = false
+    agent.auto.authenticate = () => {
+      signedIn = true
+      return {}
+    }
+    agent.auto['session/new'] = () =>
+      signedIn
+        ? { sessionId: 'acp-1', modes: MODES }
+        : { rpcError: { code: -32000, message: 'Authentication required' } }
+    const session = withHooks(agent, {
+      initializeMeta: { clientType: 'extension' },
+      cancelMeta: { cancelTrigger: 'ctrl_c' },
+      authMeta: { headless: true },
+      authOrder: (ids) => ids.filter((id) => id === 'token'),
+    })
+    await nextEvent(session, (e) => e.type === 'session.modes')
+    expect(agent.sent('initialize')[0]!.params).toMatchObject({
+      _meta: { clientType: 'extension' },
+    })
+    expect(agent.sent('authenticate')).toMatchObject([
+      { params: { methodId: 'token', _meta: { headless: true } } },
+    ])
+    await session.interrupt()
+    expect(agent.sent('session/cancel')).toMatchObject([
+      { params: { sessionId: 'acp-1', _meta: { cancelTrigger: 'ctrl_c' } } },
+    ])
+    await session.close()
+  })
+
+  it('rewrites the prompt text, and falls back to the typed text if the hook fails', async () => {
+    const agent = fakeAgent()
+    const session = withHooks(agent, {
+      transformPrompt: (text) => {
+        if (text === 'boom') throw new Error('lookup failed')
+        return text.toUpperCase()
+      },
+    })
+    const first = await beginPrompt(session, agent, 'hello')
+    expect(agent.sent('session/prompt')[0]!.params).toMatchObject({
+      prompt: [{ type: 'text', text: 'HELLO' }],
+    })
+    agent.reply(first.promptId, { stopReason: 'end_turn' })
+    await first.turn
+    const turn = session.prompt({ text: 'boom' })
+    await agent.waitFor((m) => m.method === 'session/prompt' && m.id !== first.promptId)
+    expect(agent.sent('session/prompt')[1]!.params).toMatchObject({
+      prompt: [{ type: 'text', text: 'boom' }],
+    })
+    agent.reply(agent.sent('session/prompt')[1]!.id!, { stopReason: 'end_turn' })
+    await turn
+    await session.close()
+  })
+
+  it('words an error the agent reports in its own way', async () => {
+    const agent = fakeAgent()
+    agent.auto['session/prompt'] = () => ({ rpcError: { code: -32003, message: 'raw failure' } })
+    const session = withHooks(agent, {
+      describeError: (err) =>
+        err instanceof JsonRpcError && err.code === -32003 ? 'Limit reached' : undefined,
+    })
+    const events: SessionEvent[] = []
+    void (async () => {
+      for await (const e of session.events) events.push(e)
+    })()
+    await session.prompt({ text: 'go' })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(events.find((e) => e.type === 'error')).toMatchObject({ message: 'Limit reached' })
+    expect(events.at(-1)).toMatchObject({ type: 'turn.completed', reason: 'error' })
+    await session.close()
+  })
+
+  it('offers only the permission options the hook allows', async () => {
+    const agent = fakeAgent()
+    const session = withHooks(agent, {
+      filterPermissionOptions: (options) => options.filter((o) => o.kind !== 'allow_always'),
+    })
+    const events: SessionEvent[] = []
+    void (async () => {
+      for await (const e of session.events) events.push(e)
+    })()
+    await beginPrompt(session, agent)
+    void agent.ask('session/request_permission', {
+      sessionId: 'acp-1',
+      toolCall: { toolCallId: 't1', title: 'Run it' },
+      options: [
+        { optionId: 'once', name: 'Allow', kind: 'allow_once' },
+        { optionId: 'always', name: 'Always', kind: 'allow_always' },
+        { optionId: 'no', name: 'No', kind: 'reject_once' },
+      ],
+    })
+    await new Promise((r) => setTimeout(r, 30))
+    const asked = events.find((e) => e.type === 'approval.requested')
+    expect(asked).toMatchObject({ options: [{ id: 'once' }, { id: 'no' }] })
+    await session.close()
+  })
+})

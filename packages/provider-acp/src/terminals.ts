@@ -144,6 +144,11 @@ export class TerminalManager {
     return { output: t.output, truncated: t.truncated, exitStatus: t.exit }
   }
 
+  /** The output so far, or nothing when the terminal is unknown or already released. */
+  peek(id: string): string | undefined {
+    return this.terminals.get(id)?.output
+  }
+
   waitForExit(id: string): Promise<ExitStatus> {
     const hosted = this.hosted.get(id)
     if (hosted) return hosted.waitForExit()
