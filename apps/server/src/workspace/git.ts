@@ -107,7 +107,9 @@ export class GitService {
   private async git(cwd: string, args: string[], timeoutMs?: number): Promise<string> {
     const res = await this.gitRaw(cwd, args, timeoutMs)
     if (res.code !== 0) {
-      throw new GitError(res.stderr.trim() || res.stdout.trim() || `git ${args[0]} failed`)
+      throw new GitError(
+        explainGitError(res.stderr.trim() || res.stdout.trim() || `git ${args[0]} failed`),
+      )
     }
     return res.stdout
   }
@@ -715,6 +717,22 @@ export class GitService {
     let dir = path.join(wtRoot, slug(branch))
     for (let n = 2; existsSync(dir); n++) dir = path.join(wtRoot, `${slug(branch)}-${n}`)
 
+    // A branch name that resolves to nothing: say why, rather than git's "invalid reference".
+    const startsFrom = await this.gitRaw(info.mainRoot, [
+      'rev-parse',
+      '--verify',
+      '-q',
+      `${base}^{commit}`,
+    ])
+    if (startsFrom.code !== 0) {
+      const anyCommit = await this.gitRaw(info.mainRoot, ['rev-parse', '--verify', '-q', 'HEAD'])
+      throw new GitError(
+        anyCommit.code !== 0
+          ? 'This repository has no commits yet, so a worktree has nothing to start from. Make a first commit, then try again.'
+          : `There is no branch ${base} to start the worktree from. Pick another base branch.`,
+      )
+    }
+
     await this.excludeWorktreeDir(info.mainRoot)
     const exists =
       (
@@ -725,8 +743,26 @@ export class GitService {
           `refs/heads/${branch}`,
         ])
       ).code === 0
-    if (exists) await this.git(info.mainRoot, ['worktree', 'add', dir, branch])
-    else await this.git(info.mainRoot, ['worktree', 'add', '-b', branch, dir, base])
+    const add = () =>
+      exists
+        ? this.git(info.mainRoot!, ['worktree', 'add', dir, branch])
+        : this.git(info.mainRoot!, ['worktree', 'add', '-b', branch, dir, base])
+    try {
+      await add()
+    } catch (err) {
+      // A worktree whose folder was deleted by hand stays registered (and keeps its branch
+      // "checked out") until pruned. Prune and try once more.
+      if (
+        !(err instanceof GitError) ||
+        !/already (registered|checked out|used by worktree)|missing but (locked|already registered)/i.test(
+          err.message,
+        )
+      ) {
+        throw err
+      }
+      await this.gitRaw(info.mainRoot, ['worktree', 'prune'])
+      await add()
+    }
     return { path: dir, branch, baseBranch: base }
   }
 
@@ -770,6 +806,24 @@ export class GitService {
     mkdirSync(path.dirname(file), { recursive: true })
     appendFileSync(file, `${current.endsWith('\n') || current === '' ? '' : '\n'}/.wt/\n`)
   }
+}
+
+/**
+ * Git's own wording for a repository that is locked, with what to do about it. A crashed git (or
+ * editor plugin) leaves its lock file behind, and every later command fails until it is removed.
+ */
+export function explainGitError(message: string): string {
+  const lock = /Unable to create '([^']+\.lock)': File exists/i.exec(message)
+  if (lock) {
+    return (
+      `Another git program is working in this repository, or one stopped halfway and left ${lock[1]} behind. ` +
+      'Wait for it to finish; if none is running, delete that file and try again.'
+    )
+  }
+  if (/cannot lock ref/i.test(message)) {
+    return `${message}\n\nAnother git program may be updating the same branch; try again in a moment.`
+  }
+  return message
 }
 
 /** Removes an empty folder that sits directly inside a `.wt` directory (what a worktree leaves behind). */
