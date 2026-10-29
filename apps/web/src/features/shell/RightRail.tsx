@@ -15,6 +15,7 @@ import { useComposerWorkspace, type PaneWorkspace } from '../../stores/composerW
 import { useFocusedSession } from '../split/SplitView.tsx'
 import { useUiStore, type PaneId } from '../../stores/ui.ts'
 import { isMac } from '../../ui/desktop.ts'
+import { paneProject } from './paneProject.ts'
 import { MissingFolder, useFolderMissing } from './MissingFolder.tsx'
 import { EMPTY_FOLDER, folderId, useFiles } from '../files/filesStore.ts'
 
@@ -127,7 +128,12 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
                 needFolder((s) => <TerminalPane key={workspaceKey} workspace={s} />)}
               {activePane === 'files' &&
                 needFolder((s) => <FilesPane key={workspaceKey} workspace={s} />)}
-              {activePane === 'browser' && <BrowserPane draftId={workspace?.draftId} />}
+              {activePane === 'browser' && (
+                <BrowserPane
+                  draftId={workspace?.draftId}
+                  project={workspace ? paneProject(workspace) : undefined}
+                />
+              )}
             </Suspense>
           </HostScopeProvider>
         </section>

@@ -5941,7 +5941,8 @@ button.tcall-row:hover .tcall-chevron,
   transition: box-shadow 0.12s;
 }
 .split-group .split-pane.active > .panel {
-  box-shadow: inset 0 0 0 1px var(--border);
+  /* Very faint: just enough to tell which pane the keyboard and side tools follow. */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 6%, transparent);
 }
 :root[data-motion='reduced'] .split-group .split-pane > .panel {
   transition: none;
@@ -5996,4 +5997,23 @@ button.tcall-row:hover .tcall-chevron,
 .thread-empty {
   flex-direction: column;
   gap: calc(12px * var(--ui-scale));
+}
+
+/* The project the side tools show, beside a pane's title or in the Git branch row. */
+.pane-project {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.git-project {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(5px * var(--ui-scale));
+  color: var(--text-muted);
+  max-width: 45%;
+  margin-right: calc(6px * var(--ui-scale));
+}
+.git-project svg {
+  flex: none;
 }

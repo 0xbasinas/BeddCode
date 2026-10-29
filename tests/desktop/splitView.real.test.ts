@@ -2,7 +2,7 @@
 // Grok, then a session dragged from the list beside the open one, another opened beside them from
 // the row's menu, and a message sent in a side pane. Uses provider quota, so it runs only through
 // `pnpm test:desktop:real`; SPLIT_SCREENSHOT saves a picture of the three panes.
-import { type ChildProcess, spawn } from 'node:child_process'
+import { type ChildProcess, execFileSync, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import type { ElectronApplication, Page } from 'playwright-core'
@@ -176,5 +176,165 @@ describe('sessions side by side', () => {
     const count = await page.locator('.split-pane').count()
     await page.locator('.split-pane').last().getByRole('button', { name: 'Close pane' }).click()
     await expect.poll(() => page.locator('.split-pane').count()).toBe(count === 2 ? 1 : count - 1)
+  })
+})
+
+/** A git repository with one commit and, in the checkout, one uncommitted file. */
+function repo(dir: string, files: Record<string, string>, dirty: string) {
+  mkdirSync(dir, { recursive: true })
+  for (const [name, text] of Object.entries(files)) writeFileSync(path.join(dir, name), text)
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', ...args], {
+      cwd: dir,
+      stdio: 'ignore',
+    })
+  git('init', '-q', '-b', 'main')
+  git('add', '-A')
+  git('commit', '-q', '-m', 'init')
+  writeFileSync(path.join(dir, dirty), 'changed\n')
+}
+
+describe('side tools follow the split pane last used', () => {
+  const opened: { id: string; folder: string; label: string }[] = []
+  const shot = (name: string) =>
+    process.env.SPLIT_SHOTS
+      ? page.screenshot({ path: path.join(process.env.SPLIT_SHOTS, name) })
+      : Promise.resolve()
+  const sidePane = () => page.locator('section.side-pane')
+  const rail = (name: string) => page.locator('nav.rail').getByRole('button', { name, exact: true })
+  const focusPane = async (index: number) => {
+    await page
+      .locator('.split-pane')
+      .nth(index)
+      .locator('.transcript')
+      .click({ position: { x: 20, y: 20 } })
+    await expect
+      .poll(() => page.locator('.split-pane').nth(index).getAttribute('class'))
+      .toContain('active')
+  }
+
+  test('sessions in two projects: one in a worktree, one in the checkout', async () => {
+    const pick = agents.slice(0, 2)
+    if (pick.length < 2) return
+    const projects = [
+      {
+        folder: path.join(env.home, 'api-server'),
+        files: { 'server.ts': 'export {}\n' },
+        dirty: 'routes.ts',
+        worktree: true,
+      },
+      {
+        folder: path.join(env.home, 'web-shop'),
+        files: { 'index.html': '<h1>shop</h1>\n' },
+        dirty: 'cart.ts',
+        worktree: false,
+      },
+    ]
+    for (const [i, p] of projects.entries()) {
+      repo(p.folder, { 'README.md': `# ${path.basename(p.folder)}\n`, ...p.files }, p.dirty)
+      await page.goto(
+        `http://127.0.0.1:${env.port}/#/?compose=true&project=${encodeURIComponent(p.folder)}`,
+      )
+      await page.getByRole('button', { name: 'Agent', exact: true }).click()
+      await page.getByText(pick[i]!.label, { exact: true }).last().click()
+      const workspace = page.getByRole('button', { name: 'Workspace' })
+      await workspace.waitFor({ timeout: 30_000 })
+      if (!p.worktree) {
+        await workspace.click()
+        await page.getByRole('button', { name: /Work in the main checkout/ }).click()
+      }
+      await expect
+        .poll(() => workspace.textContent())
+        .toMatch(p.worktree ? /New worktree/ : /main checkout/)
+      const base = 9000 + i * 1000
+      await page
+        .getByLabel('Message')
+        .fill(
+          `Without using tools, reply with only the sum of ${base + 111} and ${base + 222}, as digits.`,
+        )
+      await page.getByRole('button', { name: 'Send' }).click()
+      await page.waitForURL(/#\/session\//, { timeout: 120_000 })
+      await page
+        .locator('.md', { hasText: sum(base) })
+        .first()
+        .waitFor({ timeout: 180_000 })
+      await page
+        .getByRole('button', { name: 'Stop' })
+        .waitFor({ state: 'hidden', timeout: 180_000 })
+      opened.push({
+        id: decodeURIComponent(/#\/session\/([^/?]+)/.exec(page.url())![1]!),
+        folder: p.folder,
+        label: p.worktree ? `${path.basename(p.folder)} · worktree` : path.basename(p.folder),
+      })
+    }
+  })
+
+  test('Git, Files and Terminal switch project with the pane last used', async () => {
+    if (opened.length < 2) return
+    const [a, b] = opened as [(typeof opened)[0], (typeof opened)[0]]
+    await page.goto(`http://127.0.0.1:${env.port}/#/session/${a.id}`)
+    await page.locator('.thread-head h1').first().waitFor()
+    // Start from this session alone, then drag the other project's session beside it.
+    if ((await page.locator('.split-pane').count()) > 1) {
+      await page
+        .locator(`.split-pane[data-session-id="${a.id}"]`)
+        .getByRole('button', { name: 'Show alone' })
+        .click()
+    }
+    const main = page.locator('.split-root')
+    const box = (await main.boundingBox())!
+    await page
+      .locator(`.session-row[href$="/session/${b.id}"]`)
+      .dragTo(main, { targetPosition: { x: box.width - 30, y: box.height / 2 } })
+    await expect.poll(() => page.locator('.split-pane').count()).toBe(2)
+
+    // The dropped session is the one in use: Git opens on its project, the checkout with cart.ts.
+    await rail('Git').click()
+    await expect
+      .poll(() => sidePane().locator('.pane-project').first().textContent())
+      .toContain(b.label)
+    await sidePane().getByText('cart.ts').first().waitFor({ timeout: 30_000 })
+    await page.mouse.move(5, 300)
+    await shot('beddcode-split-faint-outline.png')
+
+    // Using the other pane switches Git to its worktree, where cart.ts and routes.ts do not exist.
+    await focusPane(0)
+    await expect
+      .poll(() => sidePane().locator('.pane-project').first().textContent())
+      .toContain(a.label)
+    await expect.poll(() => sidePane().getByText('cart.ts').count()).toBe(0)
+    await page.mouse.move(5, 300)
+    await shot('beddcode-split-switch.png')
+
+    // Files follows too.
+    await rail('Files').click()
+    await expect
+      .poll(() => sidePane().locator('.pane-project').first().textContent())
+      .toContain(a.label)
+    await sidePane().locator('.tree-name', { hasText: 'server.ts' }).first().waitFor()
+    await focusPane(1)
+    await expect
+      .poll(() => sidePane().locator('.pane-project').first().textContent())
+      .toContain(b.label)
+    await sidePane().locator('.tree-name', { hasText: 'index.html' }).first().waitFor()
+    expect(await sidePane().locator('.tree-name', { hasText: 'server.ts' }).count()).toBe(0)
+
+    // Terminals belong to each folder: one started for the worktree is not shown for the checkout.
+    await focusPane(0)
+    await rail('Terminal').click()
+    await expect
+      .poll(() => sidePane().locator('.pane-project').first().textContent())
+      .toContain(a.label)
+    await sidePane().locator('.pane-empty').getByRole('button', { name: 'New terminal' }).click()
+    await sidePane().locator('.term-tab').first().waitFor({ timeout: 30_000 })
+    expect(await sidePane().textContent()).toContain('.wt')
+    await focusPane(1)
+    await expect
+      .poll(() => sidePane().locator('.pane-project').first().textContent())
+      .toContain(b.label)
+    await sidePane().getByText('No terminal yet').waitFor()
+    await focusPane(0)
+    await sidePane().locator('.term-tab').first().waitFor()
+    await rail('Terminal').click()
   })
 })
