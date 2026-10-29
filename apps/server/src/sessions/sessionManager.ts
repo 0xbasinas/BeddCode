@@ -32,6 +32,7 @@ import type { AttachmentStore } from '../attachments/store.ts'
 import type { EventStore } from '../store/eventStore.ts'
 import { summarizeUsage } from '../usage/summary.ts'
 import type { GitService } from '../workspace/git.ts'
+import type { AgentTerminals } from '../terminals/agentTerminals.ts'
 
 export interface SessionManagerDeps {
   store: EventStore
@@ -49,6 +50,8 @@ export interface SessionManagerDeps {
   previews?: PreviewCache
   /** MCP servers to add to a session that may use BeddCode's agent tools. */
   agentToolServers?: (sessionId: string) => SessionMcpServer[]
+  /** Shows the commands agents run in the Terminal pane (and runs ACP agents' commands there). */
+  agentTerminals?: AgentTerminals
   /**
    * A running turn whose agent sends nothing for this long, while no tool is running and nothing
    * waits for the user, is stopped with an explanation. Agents on stdio can hang mid-stream
@@ -323,7 +326,7 @@ export class SessionManager {
     const info = params.projectless ? null : await this.deps.git.info(folder).catch(() => null)
     let cwd = folder
     let branch = info?.isRepo ? info.branch : undefined
-    let worktree: { baseBranch: string } | undefined
+    let worktree: { baseBranch: string; copiedFiles?: number } | undefined
     if (params.workspace?.mode === 'worktree') {
       if (!info?.isRepo) throw new Error('Worktrees need a git repository')
       const made = await this.deps.git.createWorktree(folder, {
@@ -332,7 +335,10 @@ export class SessionManager {
       })
       cwd = made.path
       branch = made.branch
-      worktree = { baseBranch: made.baseBranch }
+      worktree = {
+        baseBranch: made.baseBranch,
+        ...(made.copiedFiles ? { copiedFiles: made.copiedFiles } : {}),
+      }
     }
 
     let session: ProviderSession
@@ -340,6 +346,7 @@ export class SessionManager {
       session = await adapter.startSession(instance.id, {
         sessionId,
         cwd,
+        terminalHost: this.agentTerminal(sessionId, cwd, adapter, instance, params.title),
         additionalDirectories: [this.deps.attachments.root],
         permissionMode: params.permissionMode,
         model: params.model,
@@ -1082,9 +1089,17 @@ export class SessionManager {
     const lastModel = events.map((e) => e.event).findLast((e) => e.type === 'session.model')
     const chosen = lastModel?.type === 'session.model' ? lastModel : created.event
 
+    const renamed = events.map((e) => e.event).findLast((e) => e.type === 'session.renamed')
     const input = {
       sessionId,
       cwd: created.event.cwd,
+      terminalHost: this.agentTerminal(
+        sessionId,
+        created.event.cwd,
+        adapter,
+        instance,
+        renamed?.type === 'session.renamed' ? renamed.title : created.event.title,
+      ),
       additionalDirectories: [this.deps.attachments.root],
       permissionMode: mode,
       model: chosen.model,
@@ -1472,6 +1487,25 @@ export class SessionManager {
     return ids
   }
 
+  /** The session's agent terminal; ACP agents run their commands in it. */
+  private agentTerminal(
+    sessionId: string,
+    cwd: string,
+    adapter: ProviderAdapter,
+    instance: { id: string; label: string },
+    title?: string,
+  ) {
+    const host = this.deps.agentTerminals?.register({
+      sessionId,
+      cwd,
+      label: instance.label,
+      instanceId: instance.id,
+      title,
+      hostsCommands: adapter.kind === 'acp',
+    })
+    return adapter.kind === 'acp' ? host : undefined
+  }
+
   /** Copies the provider's normalized events into the durable log. */
   private async pump(sessionId: string, session: ProviderSession) {
     let failure: unknown
@@ -1503,6 +1537,9 @@ export class SessionManager {
           continue
         }
         const event = this.explain(sessionId, raw)
+        this.deps.agentTerminals?.observe(event)
+        // Live command output is for the agent terminal only; the tool's result keeps the output.
+        if (event.type === 'tool.output') continue
         this.record(event)
         this.observe(sessionId, event)
         this.seedPreview(sessionId, event)
@@ -1526,6 +1563,7 @@ export class SessionManager {
     } finally {
       if (this.live.get(sessionId)?.session === session && !this.lostStreams.has(session)) {
         this.live.delete(sessionId)
+        this.deps.agentTerminals?.ended(sessionId)
         this.activity.delete(sessionId)
         // A session whose process ended is no longer in the middle of a turn.
         const turn = this.turns.get(sessionId)

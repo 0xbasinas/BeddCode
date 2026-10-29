@@ -93,6 +93,8 @@ interface EditorProps {
   onChange(text: string): void
   onSave(text: string): void
   onCursor(position: EditorPosition): void
+  /** Where to put the cursor; moved there again whenever `n` changes. */
+  reveal?: { line: number; column?: number; n: number }
   /** Filled with a function that returns the text currently in the editor (for the Save button). */
   textRef: { current: (() => string) | null }
 }
@@ -233,6 +235,21 @@ export function Editor(props: EditorProps) {
     latest.current.onCursor({ line: line.number, col: head - line.from + 1 })
     v.focus()
   }, [props.docKey, props.version, props.fileName])
+
+  // A link to a line was followed: show that line with the cursor on it.
+  const reveal = props.reveal
+  useEffect(() => {
+    const v = view.current
+    if (!v || !reveal) return
+    const doc = v.state.doc
+    const line = doc.line(Math.min(Math.max(1, reveal.line), doc.lines))
+    const head = Math.min(line.from + Math.max(0, (reveal.column ?? 1) - 1), line.to)
+    v.dispatch({
+      selection: { anchor: head },
+      effects: EditorView.scrollIntoView(head, { y: 'center' }),
+    })
+    v.focus()
+  }, [reveal?.n, props.docKey, props.version])
 
   useEffect(() => {
     for (const [key, entry] of held.current) {

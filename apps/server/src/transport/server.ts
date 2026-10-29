@@ -395,6 +395,10 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     const stopDesigns = options.automation.designs.onChange((c) => {
       if (authed) send({ t: 'design.changed', ...c })
     })
+    // Terminals that appear or change on their own (an agent's commands), so panes can show them.
+    const stopTerminals = options.workspace.terminals.onChange((c) => {
+      if (authed) send({ t: 'term.changed', ...c })
+    })
     lastSeen.set(ws, Date.now())
     const alive = () => {
       if (lastSeen.has(ws)) lastSeen.set(ws, Date.now())
@@ -416,6 +420,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       browserClient?.close()
       designClient?.close()
       stopDesigns()
+      stopTerminals()
     })
 
     ws.on('message', (raw) => {

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useUiStore } from '../../stores/ui.ts'
 import { Folder, GitBranch, RotateCw } from 'lucide-react'
+import { BrandIcon } from '../../ui/BrandIcon.tsx'
 import { paneProject } from '../shell/paneProject.ts'
 import type { PaneWorkspace } from '../../stores/composerWorkspace.ts'
 import { hostRequest } from '../../stores/host.ts'
@@ -49,6 +50,7 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
   if (info.error) {
     return (
       <div className="git-empty">
+        <BrandIcon brand="git" size={22} />
         <div>Git is unavailable here</div>
         <div className="muted">{info.error}</div>
       </div>
@@ -57,7 +59,7 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
   if (!info.data?.isRepo) {
     return (
       <div className="git-empty">
-        <GitBranch size={22} />
+        <BrandIcon brand="git" size={22} />
         <div>This folder is not a git repository</div>
         <div className="muted">Run `git init` in it to track changes here.</div>
       </div>
@@ -78,7 +80,7 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
           Commits
         </button>
         <button role="tab" aria-selected={tab === 'pr'} onClick={() => setTab('pr')}>
-          PR
+          <BrandIcon brand="github" size={12} /> PR
         </button>
       </div>
 
@@ -113,6 +115,7 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
             cwd={cwd}
             sessionId={workspace.sessionId}
             instanceId={workspace.instanceId}
+            draftId={workspace.draftId}
             status={status.data}
             refreshKey={key}
             onChanged={changed}

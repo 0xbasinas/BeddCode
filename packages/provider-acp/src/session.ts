@@ -153,7 +153,7 @@ export class AcpSession implements ProviderSession {
     this.sessionId = input.sessionId
     this.mapper = new AcpEventMapper(input.sessionId)
     if (input.resumeId) this.mapper.continuesEarlierConversation()
-    this.terminals = new TerminalManager(input.cwd)
+    this.terminals = new TerminalManager(input.cwd, input.terminalHost)
     this.rpc = new JsonRpcClient(deps.transport, deps.log, { jsonrpc2: true })
     this.rpc.onNotification((method, params) => this.onNotification(method, params))
     this.rpc.onRequest((method, params) => this.onClientRequest(method, params))

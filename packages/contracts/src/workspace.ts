@@ -12,6 +12,25 @@ export const TerminalInfo = z.object({
   scriptId: z.string().optional(),
   cols: z.number().int(),
   rows: z.number().int(),
+  /**
+   * A session's agent terminal: the commands its agent runs, live. `pty` when they really run in
+   * this terminal (ACP agents), `mirror` when the agent runs them itself and the host shows each
+   * command and its output (Claude Code, Codex).
+   */
+  agent: z
+    .object({
+      sessionId: z.string(),
+      /** The agent's name, e.g. `Grok`. */
+      label: z.string(),
+      /** The agent instance, e.g. `claude` or `acp:grok`, for its icon. */
+      instanceId: z.string().optional(),
+      mode: z.enum(['pty', 'mirror']),
+      /** The command the agent is running now; absent when idle. */
+      running: z.string().optional(),
+    })
+    .optional(),
+  /** Typing is ignored until the user takes the terminal over (agent terminals start this way). */
+  readOnly: z.boolean().optional(),
   /** Exit code once the shell has ended (null when killed by a signal); absent while running. */
   exited: z.number().int().nullable().optional(),
   createdAt: z.number().int(),

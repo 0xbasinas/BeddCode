@@ -229,3 +229,41 @@ describe('FileWatchers', () => {
     await watchers.closeAll()
   })
 })
+
+describe('FileService.locate', () => {
+  it('finds files and folders inside the folder, relative or absolute, and nothing outside', async () => {
+    const cwd = tmp()
+    const outside = tmp()
+    mkdirSync(path.join(cwd, 'src'))
+    writeFileSync(path.join(cwd, 'src', 'math.ts'), 'x')
+    writeFileSync(path.join(outside, 'secret.txt'), 'x')
+    symlinkSync(outside, path.join(cwd, 'escape'), 'junction')
+    expect(
+      await files.locate(cwd, [
+        'src/math.ts',
+        './src/math.ts',
+        path.join(cwd, 'src', 'math.ts'),
+        'src',
+        'missing.ts',
+        '../x.ts',
+        path.join(outside, 'secret.txt'),
+        'escape/secret.txt',
+      ]),
+    ).toEqual([
+      { path: 'src/math.ts', type: 'file' },
+      { path: 'src/math.ts', type: 'file' },
+      { path: 'src/math.ts', type: 'file' },
+      { path: 'src', type: 'dir' },
+      null,
+      null,
+      null,
+      null,
+    ])
+  })
+
+  it('answers nothing for a folder that is gone', async () => {
+    expect(await files.locate(path.join(os.tmpdir(), 'beddcode-no-such-dir'), ['a.ts'])).toEqual([
+      null,
+    ])
+  })
+})

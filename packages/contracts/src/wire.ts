@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { BrowserUnavailable, BrowserUseCall, BrowserUseResult } from './browserUse.ts'
 import { StoredEvent } from './events.ts'
+import { TerminalInfo } from './workspace.ts'
 
 export const PROTOCOL_VERSION = 1
 
@@ -148,6 +149,13 @@ export const ServerFrame = z.discriminatedUnion('t', [
     replay: z.boolean().optional(),
   }),
   z.object({ t: z.literal('term.exit'), id: z.string(), code: z.number().int().nullable() }),
+  /** A terminal appeared, changed (an agent started or finished a command) or was closed. */
+  z.object({
+    t: z.literal('term.changed'),
+    cwd: z.string(),
+    id: z.string(),
+    terminal: TerminalInfo.nullable(),
+  }),
   /** Files changed under a watched folder (paths relative to it, forward slashes). */
   z.object({ t: z.literal('fs.changed'), cwd: z.string(), paths: z.array(z.string()) }),
   /** Sent once the requested replay is complete; later `event` frames are live. */

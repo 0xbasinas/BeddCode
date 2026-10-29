@@ -19,6 +19,7 @@ import {
   Plus,
   RotateCw,
 } from 'lucide-react'
+import { BrandIcon } from '../../ui/BrandIcon.tsx'
 import type {
   GithubStatus,
   GitLog,
@@ -194,7 +195,7 @@ function GithubProblem({
   const [copied, setCopied] = useState(false)
   return (
     <div className="git-empty gh-problem">
-      <GitPullRequest size={22} />
+      <BrandIcon brand="github" size={22} />
       <div className="gh-problem-title">{problem.title}</div>
       {problem.detail && <div className="muted">{problem.detail}</div>}
       {problem.command && (
@@ -216,7 +217,7 @@ function GithubProblem({
       <div className="gh-problem-actions">
         {problem.link && (
           <a className="secondary as-button" href={problem.link} target="_blank" rel="noreferrer">
-            Get the GitHub CLI <ExternalLink size={12} />
+            <BrandIcon brand="github" size={13} /> Get the GitHub CLI <ExternalLink size={12} />
           </a>
         )}
         <button className="secondary" onClick={onRetry}>
@@ -343,7 +344,7 @@ function PrList({
       <div className="pr-foot muted">
         Signed in as <strong>{gh.login}</strong> ·{' '}
         <a href={`${gh.url}/pulls`} target="_blank" rel="noreferrer">
-          {gh.repo} <ExternalLink size={11} />
+          <BrandIcon brand="github" size={11} /> {gh.repo} <ExternalLink size={11} />
         </a>
       </div>
     </div>
@@ -491,7 +492,7 @@ function PrDetailView({
           aria-label="Open on GitHub"
           title="Open on GitHub"
         >
-          <ExternalLink size={13} />
+          <BrandIcon brand="github" size={13} />
         </a>
       )}
     </div>
@@ -748,7 +749,7 @@ function PrDetailView({
               )}
               {d.state !== 'OPEN' && (
                 <a className="primary as-button" href={d.url} target="_blank" rel="noreferrer">
-                  Open on GitHub
+                  <BrandIcon brand="github" size={13} /> Open on GitHub
                 </a>
               )}
               <div className="pr-checkout">

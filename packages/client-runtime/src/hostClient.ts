@@ -44,7 +44,10 @@ export interface HostClientOptions {
   onCaughtUp?(seq: number): void
   /** Terminal output and file-change notifications: live data that is not part of the event log. */
   onFrame?(
-    frame: Extract<ServerFrame, { t: 'term.out' | 'term.exit' | 'fs.changed' | 'design.changed' }>,
+    frame: Extract<
+      ServerFrame,
+      { t: 'term.out' | 'term.exit' | 'term.changed' | 'fs.changed' | 'design.changed' }
+    >,
   ): void
   onState?(state: ConnectionState, host?: HostInfo): void
   /** An agent's browser tool call to run (only after `offerBrowser` said this client can). */
@@ -463,6 +466,7 @@ export class HostClient {
         break
       case 'term.out':
       case 'term.exit':
+      case 'term.changed':
       case 'fs.changed':
       case 'design.changed':
         this.options.onFrame?.(frame)

@@ -200,4 +200,4 @@ Context attachments from the panes are implemented:
 - ACP adapter packages for Claude/Codex are not used here (native adapters instead), but registry agents vary in quality; capability flags must stay honest.
 - Tailscale-only auth means anyone on the tailnet can reach the port until paired; confirm that is acceptable or add Tailscale ACL guidance.
 - Embedded browser pane for remote hosts needs a design decision (proxy vs. direct tailnet URL).
-- Licenses: reference repos only; do not copy code.
+- Licenses: code may be copied only from permissively licensed projects (MIT, Apache-2.0, BSD), keeping their notices: a header in each adapted file and an entry in `THIRD_PARTY_NOTICES.md`. GPL/AGPL and closed projects are for ideas only.
