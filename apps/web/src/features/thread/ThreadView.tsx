@@ -202,7 +202,21 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
     <main className="panel thread">
       <header className="thread-head">
         <div className="thread-heading">
-          <h1 title={session.title}>{session.title}</h1>
+          <h1
+            title={
+              session.projectless
+                ? session.title
+                : `${folderName(session.projectPath)} / ${session.title}`
+            }
+          >
+            {!session.projectless && (
+              <>
+                <span className="thread-crumb">{folderName(session.projectPath)}</span>
+                <span className="thread-crumb-sep"> / </span>
+              </>
+            )}
+            {session.title}
+          </h1>
           <div className="thread-meta" title={session.cwd}>
             {session.mcpGateway && <>Remote MCP · </>}
             {hostKey === LOCAL_HOST_KEY ? 'This PC' : (host?.name ?? hostKey)} ·{' '}

@@ -3971,6 +3971,11 @@ button.tcall-row:hover .tcall-chevron,
 .thread-heading {
   flex: 1;
 }
+.thread-head h1 .thread-crumb,
+.thread-head h1 .thread-crumb-sep {
+  color: var(--text-muted);
+  font-weight: 400;
+}
 /* Second header row and the one header divider, at the same height in the thread and Git pane. */
 .thread-head .thread-meta {
   margin-top: 0;
