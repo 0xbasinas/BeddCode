@@ -332,7 +332,7 @@ export function NewSession({
               ? 'Describe a task, paste an issue link, or ask a question.'
               : loadError && providers.length === 0
                 ? `${loadError}. Trying again…`
-                : 'No agent is ready on this host yet. Install and sign in to Claude Code or Codex, or add an ACP agent.'}
+                : 'No agent is ready on this host yet. Install and sign in to Claude Code, Codex or Grok, or add an ACP agent.'}
         </p>
         <Composer
           cwd={(workspace.existing?.path ?? folder) || undefined}

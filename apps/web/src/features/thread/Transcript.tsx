@@ -7,6 +7,8 @@ import {
   Pencil,
   CirclePause,
   GitFork,
+  FoldVertical,
+  LoaderCircle,
 } from 'lucide-react'
 import type { TranscriptItem } from '@beddcode/client-runtime'
 import { Markdown } from '../../ui/Markdown.tsx'
@@ -281,6 +283,8 @@ function ItemView({
       return onAnswer ? <QuestionCard item={item} onAnswer={onAnswer} /> : null
     case 'error':
       return <div className="msg error">{item.message}</div>
+    case 'compaction':
+      return <CompactionRow item={item} />
     case 'notice':
       return (
         <div className="turn-notice">
@@ -293,6 +297,39 @@ function ItemView({
     case 'changes':
       return null // drawn by Transcript, which knows the host
   }
+}
+
+const tokens = (n: number) => (n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n))
+
+/** A line across the thread where the agent shrank its conversation to make room. */
+function CompactionRow({ item }: { item: Extract<Item, { kind: 'compaction' }> }) {
+  const running = item.state === 'running'
+  const sizes =
+    item.tokensBefore !== undefined && item.tokensAfter !== undefined
+      ? ` · ${tokens(item.tokensBefore)} → ${tokens(item.tokensAfter)} tokens`
+      : item.tokensBefore !== undefined
+        ? ` · was ${tokens(item.tokensBefore)} tokens`
+        : ''
+  const label = running
+    ? 'Compacting conversation…'
+    : item.state === 'failed'
+      ? 'Could not compact the conversation'
+      : `${item.trigger === 'auto' ? 'Conversation compacted automatically' : 'Conversation compacted'}${sizes}`
+  return (
+    <div
+      className={`compaction ${item.state}`}
+      role="status"
+      aria-live="polite"
+      title={running ? 'Summarizing earlier messages to free up context' : undefined}
+    >
+      {running ? (
+        <LoaderCircle size={13} className="compaction-spin" />
+      ) : (
+        <FoldVertical size={13} />
+      )}
+      <span>{label}</span>
+    </div>
+  )
 }
 
 export function EditedFilesCard({

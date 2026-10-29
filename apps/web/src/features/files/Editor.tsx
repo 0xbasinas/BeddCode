@@ -19,7 +19,11 @@ import {
   lineNumbers,
 } from '@codemirror/view'
 import { tags as t } from '@lezer/highlight'
-import { useAppPreferences, type AppPreferences } from '../../stores/appPreferences.ts'
+import {
+  resolveTheme,
+  useAppPreferences,
+  type AppPreferences,
+} from '../../stores/appPreferences.ts'
 
 const theme = EditorView.theme(
   {
@@ -110,6 +114,7 @@ function editorConfiguration(preferences: AppPreferences): Extension[] {
       '&': { fontSize: `${preferences.editorFontSize}px` },
       '.cm-scroller': { lineHeight: `${Math.round(preferences.editorFontSize * 1.65)}px` },
     }),
+    EditorView.darkTheme.of(resolveTheme(preferences.theme) === 'dark'),
     EditorState.tabSize.of(preferences.editorTabSize),
     ...(preferences.editorLineNumbers ? [lineNumbers()] : []),
     ...(preferences.editorWordWrap ? [EditorView.lineWrapping] : []),

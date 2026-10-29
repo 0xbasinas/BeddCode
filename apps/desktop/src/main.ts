@@ -267,6 +267,14 @@ ipcMain.handle('beddcode:window', (event, action: unknown) => {
   return runWindowAction(win, action)
 })
 
+// The page's theme sets the colour shown behind it (while resizing, and before it paints).
+ipcMain.handle('beddcode:theme', (event, theme: unknown) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win || event.sender !== win.webContents) return false
+  win.setBackgroundColor(theme === 'light' ? '#e6e6e9' : '#101010')
+  return true
+})
+
 // Only the app's own page may ask about the host or restart it (never a page in the browser pane).
 ipcMain.handle('beddcode:daemon', async (event, action: unknown) => {
   const win = BrowserWindow.fromWebContents(event.sender)

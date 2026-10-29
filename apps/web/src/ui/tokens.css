@@ -92,5 +92,70 @@
   /* Rail icons: 20px in a button this tall; the space above the first one under the notch matches
      the space between icons. */
   --rail-btn-h: calc(34px * var(--ui-scale));
+  --on-primary: #111;
+  --violet: #b39cf0;
+  --violet-strong: #8b7cff;
+  --agent-claude: #e8a07a;
+  --agent-codex: #9ec5ff;
+  --agent-grok: #d9d9d9;
+  --scrollbar: rgba(255, 255, 255, 0.14);
+  --scrollbar-hover: rgba(255, 255, 255, 0.28);
+  --bg-terminal: #0e0e0e;
+  --chip-success-bg: #243a29;
+  --chip-warn-bg: #3a3020;
+  --toggle-knob: #707070;
+  --toggle-on: #565656;
+  --focus-ring: #88b4fa;
+  --warn-text: #dcb87d;
+  --warn-bg: #251e15;
+  --warn-border: #403322;
+  --danger-text: #e9a7a3;
+  --danger-bg: #2b1d1d;
+  --danger-border: #4b3030;
   color-scheme: dark;
+}
+
+/* Light: the same roles on a pale surface stack, with the accent and status colors darkened to
+   keep their contrast. */
+:root[data-theme='light'] {
+  --bg-app: #e6e6e9;
+  --bg-panel: #f7f7f8;
+  --bg-raised: #ffffff;
+  --bg-hover: #ededf0;
+  --bg-active: #e3e3e7;
+  --border: #dadade;
+  --bg-card: #fbfbfc;
+  --text: #1b1b1f;
+  --text-muted: #5d5d66;
+  --text-faint: #80808a;
+  --accent: #b36b00;
+  --success: #2c8447;
+  --running: #4a7a62;
+  --danger: #c23b36;
+  --bg-input: #ffffff;
+  --bg-code: #f1f1f3;
+  --border-subtle: #e6e6ea;
+  --border-strong: #c6c6cd;
+  --text-secondary: #34343b;
+  --on-primary: #ffffff;
+  --violet: #6b4fc4;
+  --violet-strong: #6652e0;
+  --agent-claude: #b8582a;
+  --agent-codex: #2f6fc4;
+  --agent-grok: #3a3a40;
+  --scrollbar: rgba(0, 0, 0, 0.18);
+  --scrollbar-hover: rgba(0, 0, 0, 0.34);
+  --bg-terminal: #fbfbfc;
+  --chip-success-bg: #d9efe0;
+  --chip-warn-bg: #f6e6c8;
+  --toggle-knob: #9a9aa3;
+  --toggle-on: #b9b9c2;
+  --focus-ring: #2f6fc4;
+  --warn-text: #8a5a00;
+  --warn-bg: #fbf1dc;
+  --warn-border: #ecd5a3;
+  --danger-text: #a52f2a;
+  --danger-bg: #fbe7e6;
+  --danger-border: #efc0be;
+  color-scheme: light;
 }

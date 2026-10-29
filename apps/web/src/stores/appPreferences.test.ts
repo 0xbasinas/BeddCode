@@ -12,6 +12,7 @@ describe('app preferences', () => {
   it('restores valid choices for the editor, interface and new sessions', () => {
     const values = {
       ...DEFAULT_APP_PREFERENCES,
+      theme: 'light',
       density: 'compact',
       uiFont: 'system',
       editorFontSize: 16,
@@ -35,6 +36,7 @@ describe('app preferences', () => {
           defaultHostKey: '',
           uiFont: 'unknown',
           density: 'spacious',
+          theme: 'blue',
           reduceMotion: 'true',
           editorWordWrap: 1,
           editorLineNumbers: 'false',

@@ -232,11 +232,11 @@
   display: block;
   width: calc(16px * var(--ui-scale));
   height: calc(16px * var(--ui-scale));
-  background: #707070;
+  background: var(--toggle-knob);
   border-radius: 50%;
 }
 .settings-toggle[aria-checked='true'] {
-  background: #565656;
+  background: var(--toggle-on);
 }
 .settings-toggle[aria-checked='true'] span {
   transform: translateX(14px);
@@ -341,16 +341,16 @@
   font-size: calc(12px * var(--ui-scale));
   line-height: 1.6;
   padding: calc(12px * var(--ui-scale)) calc(14px * var(--ui-scale));
-  border: 1px solid #403322;
+  border: 1px solid var(--warn-border);
   border-radius: calc(8px * var(--ui-scale));
-  background: #251e15;
-  color: #dcb87d;
+  background: var(--warn-bg);
+  color: var(--warn-text);
   overflow-wrap: anywhere;
 }
 .settings-error {
-  color: #e9a7a3;
-  background: #2b1d1d;
-  border-color: #4b3030;
+  color: var(--danger-text);
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
 }
 .settings-card > .settings-notice {
   margin: 0 calc(12px * var(--ui-scale)) calc(12px * var(--ui-scale));

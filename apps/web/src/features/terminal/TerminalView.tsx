@@ -5,12 +5,18 @@ import '@xterm/xterm/css/xterm.css'
 import { onHostFrame, sendHostFrame, useRuntime } from '../../stores/host.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
 
-const THEME = {
-  background: '#0e0e0e',
-  foreground: '#ececec',
-  cursor: '#d4d4d4',
-  cursorAccent: '#0e0e0e',
-  selectionBackground: 'rgba(255, 255, 255, 0.15)',
+/** The terminal's colors from the page's current theme. */
+function terminalTheme() {
+  const style = getComputedStyle(document.documentElement)
+  const color = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback
+  const light = document.documentElement.dataset.theme === 'light'
+  return {
+    background: color('--bg-terminal', '#0e0e0e'),
+    foreground: color('--text', '#ececec'),
+    cursor: color('--text-secondary', '#d4d4d4'),
+    cursorAccent: color('--bg-terminal', '#0e0e0e'),
+    selectionBackground: light ? 'rgba(0, 0, 0, 0.15)' : 'rgba(255, 255, 255, 0.15)',
+  }
 }
 
 /**
@@ -46,7 +52,14 @@ export function TerminalView({
       lineHeight: 1.6,
       cursorBlink: true,
       scrollback: 5000,
-      theme: THEME,
+      theme: terminalTheme(),
+    })
+    const themeWatch = new MutationObserver(() => {
+      term.options.theme = terminalTheme()
+    })
+    themeWatch.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
@@ -96,6 +109,7 @@ export function TerminalView({
       stopFrames()
       stopInput.dispose()
       stopSelection.dispose()
+      themeWatch.disconnect()
       term.dispose()
     }
   }, [hostKey, id, epoch])

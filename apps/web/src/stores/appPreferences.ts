@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
 export interface AppPreferences {
+  theme: 'system' | 'dark' | 'light'
   density: 'comfortable' | 'compact'
   uiFont: 'inter' | 'system'
   reduceMotion: boolean
@@ -13,6 +14,7 @@ export interface AppPreferences {
 }
 
 export const DEFAULT_APP_PREFERENCES: AppPreferences = {
+  theme: 'dark',
   density: 'comfortable',
   uiFont: 'inter',
   reduceMotion: false,
@@ -32,6 +34,7 @@ export function parseAppPreferences(raw: string | null): AppPreferences {
       return DEFAULT_APP_PREFERENCES
     const value = saved as Record<string, unknown>
     return {
+      theme: value.theme === 'light' || value.theme === 'system' ? value.theme : 'dark',
       density: value.density === 'compact' ? 'compact' : 'comfortable',
       uiFont: value.uiFont === 'system' ? 'system' : 'inter',
       reduceMotion: value.reduceMotion === true,
@@ -53,6 +56,16 @@ export function parseAppPreferences(raw: string | null): AppPreferences {
     }
   } catch {
     return DEFAULT_APP_PREFERENCES
+  }
+}
+
+/** The theme to draw: `system` follows the operating system's light or dark setting. */
+export function resolveTheme(theme: AppPreferences['theme']): 'light' | 'dark' {
+  if (theme !== 'system') return theme
+  try {
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+  } catch {
+    return 'dark'
   }
 }
 
