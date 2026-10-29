@@ -7,7 +7,6 @@ import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { create } from 'zustand'
 import {
   CalendarClock,
-  Code2,
   Copy,
   FolderOpen,
   FolderPlus,
@@ -36,6 +35,7 @@ import {
 } from '../../stores/host.ts'
 import { useUiStore, type PaneId } from '../../stores/ui.ts'
 import { chooseFolder, useFolderFlow } from '../folders/folderFlow.ts'
+import { EditorIcon } from '../editors/EditorIcon.tsx'
 import { openInEditor, useEditors } from '../editors/editors.ts'
 
 export const usePalette = create<{ open: boolean; setOpen(open: boolean): void }>((set) => ({
@@ -191,7 +191,7 @@ function PaletteDialog() {
                 ? 'Reveal folder in the file manager'
                 : `Open folder in ${editor.label}`,
             group: 'This session',
-            icon: editor.id === 'file-manager' ? <FolderOpen size={15} /> : <Code2 size={15} />,
+            icon: <EditorIcon id={editor.id} platform={editors.platform} size={15} />,
             keywords: ['editor', 'ide', 'open in', 'code'],
             bias: editor.id === editors.preferredId ? -5 : 0,
             run: () => void openInEditor(hostKey, editor.id, target).catch(() => {}),

@@ -6119,3 +6119,20 @@ button.patch-comment-btn:hover {
   padding: calc(14px * var(--ui-scale));
   text-align: center;
 }
+
+/* Brand logos (theSVG): square, never squeezed, aligned with the text beside them. */
+.brand-icon {
+  flex: none;
+  display: inline-block;
+  vertical-align: -0.15em;
+}
+.as-button .brand-icon {
+  margin-right: calc(4px * var(--ui-scale));
+}
+.editor-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(16px * var(--ui-scale));
+  flex: none;
+}

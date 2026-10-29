@@ -1,5 +1,6 @@
-import { Check, Code2, FolderOpen } from 'lucide-react'
+import { Check, Code2 } from 'lucide-react'
 import { Dropdown } from '../../ui/Dropdown.tsx'
+import { EditorIcon } from './EditorIcon.tsx'
 import { openInEditor, useEditors, useOpenError } from './editors.ts'
 
 /**
@@ -8,9 +9,10 @@ import { openInEditor, useEditors, useOpenError } from './editors.ts'
  * the editor opens on that machine's screen.
  */
 export function OpenInEditor({ hostKey, cwd }: { hostKey: string; cwd: string }) {
-  const { editors, canOpen, preferredId } = useEditors(hostKey)
+  const { editors, canOpen, platform, preferredId } = useEditors(hostKey)
   const [error, setError] = useOpenError()
   if (!canOpen || editors.length === 0) return null
+  const preferred = editors.find((e) => e.id === preferredId)
   const open = (id: string) =>
     openInEditor(hostKey, id, { cwd }).catch((err: unknown) =>
       setError(err instanceof Error ? err.message : 'Could not open the editor'),
@@ -27,7 +29,11 @@ export function OpenInEditor({ hostKey, cwd }: { hostKey: string; cwd: string })
           aria-expanded={expanded}
           onClick={toggle}
         >
-          <Code2 size={17} />
+          {preferred && preferred.id !== 'file-manager' ? (
+            <EditorIcon id={preferred.id} platform={platform} size={16} />
+          ) : (
+            <Code2 size={17} />
+          )}
         </button>
       )}
     >
@@ -43,7 +49,9 @@ export function OpenInEditor({ hostKey, cwd }: { hostKey: string; cwd: string })
                 void open(editor.id)
               }}
             >
-              {editor.id === 'file-manager' ? <FolderOpen size={15} /> : <Code2 size={15} />}
+              <span className="editor-menu-icon">
+                <EditorIcon id={editor.id} platform={platform} size={15} />
+              </span>
               <span className="menu-title">{editor.label}</span>
               {editor.id === preferredId && <Check size={14} className="menu-check" />}
             </button>
@@ -88,7 +96,7 @@ export function OpenFileInEditor({
         )
       }
     >
-      <Code2 size={15} />
+      <EditorIcon id={editor.id} size={15} />
     </button>
   )
 }

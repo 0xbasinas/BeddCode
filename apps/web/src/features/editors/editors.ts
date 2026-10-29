@@ -45,7 +45,7 @@ export function useEditors(hostKey: string): EditorList & { preferredId?: string
   }, [hostKey, epoch, connection, known?.epoch])
   const editors = known?.editors ?? []
   const preferredId = editors.some((e) => e.id === preferred) ? preferred : editors[0]?.id
-  return { editors, canOpen: known?.canOpen ?? false, preferredId }
+  return { editors, canOpen: known?.canOpen ?? false, platform: known?.platform, preferredId }
 }
 
 /** Opens the folder (and a file at a line) in an editor, remembering it as the preferred one. */

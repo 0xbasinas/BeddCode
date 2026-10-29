@@ -290,6 +290,8 @@ export const RpcMethods = {
     result: z.object({
       editors: z.array(z.object({ id: z.string(), label: z.string() })),
       canOpen: z.boolean(),
+      /** The host's `process.platform`, so the file manager can show that system's mark. */
+      platform: z.string().optional(),
     }),
   },
   /** Opens a folder, and optionally a file at a line, in an installed editor. Loopback only. */

@@ -201,6 +201,7 @@ export function createRpcRouter(
     'editors.list': async (_p, context) => ({
       editors: listEditors().map(({ id, label }) => ({ id, label })),
       canOpen: context.peer === 'loopback',
+      platform: process.platform,
     }),
     'editors.open': async (p) => {
       const editor = listEditors(true).find((e) => e.id === p.editor)
