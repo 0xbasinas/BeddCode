@@ -20,6 +20,7 @@ import {
   MetricRecord,
   PairingCode,
   RelaySettings,
+  McpGatewaySettings,
   TailnetStatus,
 } from './hosts.ts'
 import { ConfigOption, SlashCommand } from './events.ts'
@@ -289,6 +290,16 @@ export const RpcMethods = {
   'host.pair': { params: z.object({}), result: PairingCode },
   /** The relay that lets devices on other networks reach this host. Loopback connections only. */
   'host.relay.get': { params: z.object({}), result: RelaySettings },
+  'host.mcpGateway.get': { params: z.object({}), result: McpGatewaySettings },
+  'host.mcpGateway.set': {
+    params: z.object({
+      url: z.string().nullable(),
+      secret: z.string().optional(),
+      allowApprovals: z.boolean().optional(),
+      allowProjectRead: z.boolean().optional(),
+    }),
+    result: McpGatewaySettings,
+  },
   /** Sets (an ordinary address such as relay.example.com) or clears (null) the relay; takes effect at once. */
   'host.relay.set': {
     params: z.object({

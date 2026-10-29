@@ -39,7 +39,8 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
   const online = connection === 'connected'
   // ACP agents only say what they offer (including how much they ask) when a session starts, so
   // the host starts one briefly to find out; the answer is remembered there.
-  const [offered, setOffered] = useState<{ id: string; data?: AgentPreview; failed?: boolean }>()
+  const [offered, setOffered] = useState<{ id: string; data?: AgentPreview; error?: string }>()
+  const [previewAttempt, setPreviewAttempt] = useState(0)
   const acpId = providers.find(
     (p) => p.id === (selected ?? defaults.instanceId ?? providers[0]?.id),
   )
@@ -50,12 +51,12 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
     setOffered({ id: previewId })
     hostRequest(hostKey, 'agents.preview', { instanceId: previewId, cwd: host?.defaultCwd }).then(
       (data) => !cancelled && setOffered({ id: previewId, data }),
-      () => !cancelled && setOffered({ id: previewId, failed: true }),
+      (err: unknown) => !cancelled && setOffered({ id: previewId, error: errorMessage(err) }),
     )
     return () => {
       cancelled = true
     }
-  }, [hostKey, online, previewId, epoch, host?.defaultCwd])
+  }, [hostKey, online, previewId, epoch, host?.defaultCwd, previewAttempt])
   const current =
     providers.find((p) => p.id === selected) ??
     providers.find((p) => p.id === defaults.instanceId) ??
@@ -199,7 +200,9 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                 </span>
                 <span className="agent-status">
                   <span className={`dot ${provider.status === 'ready' ? 'ok' : 'warn'}`} />
-                  {STATUS[provider.status]}
+                  {provider.kind === 'acp' && provider.status === 'ready'
+                    ? 'Installed'
+                    : STATUS[provider.status]}
                 </span>
               </button>
               {configured && (
@@ -298,6 +301,28 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
             </div>
           </div>
           <div className="settings-card">
+            {current.kind === 'acp' && (
+              <p className="settings-empty">
+                Installed means the launch command was found. The agent checks sign-in when it
+                starts.
+              </p>
+            )}
+            {agentOffer?.error && (
+              <div className="setting-row" role="alert">
+                <div className="setting-label">
+                  <span>Could not read agent settings</span>
+                  <small>{agentOffer.error}</small>
+                </div>
+                <button
+                  type="button"
+                  className="settings-button"
+                  disabled={!online}
+                  onClick={() => setPreviewAttempt((n) => n + 1)}
+                >
+                  Try again
+                </button>
+              </div>
+            )}
             {current.capabilities.models?.length ? (
               <div className="setting-row">
                 <div className="setting-label">
@@ -393,9 +418,10 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
             )}
             {!current.capabilities.models?.length &&
               !current.capabilities.efforts?.length &&
-              permissionModes.length === 0 && (
+              permissionModes.length === 0 &&
+              !agentOffer?.error && (
                 <p className="settings-empty">
-                  {current.kind === 'acp' && online && !agentOffer?.failed
+                  {current.kind === 'acp' && online && !agentOffer?.data
                     ? "Reading this agent's settings…"
                     : 'This agent reports its choices when a session starts. Its own configuration supplies the defaults.'}
                 </p>

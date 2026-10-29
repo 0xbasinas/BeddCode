@@ -157,6 +157,16 @@ export class EventStore {
     return rows.map((r) => ({ seq: r.seq, event: SessionEvent.parse(JSON.parse(r.payload)) }))
   }
 
+  /** Session IDs with recorded creation events, ordered by their most recent activity. */
+  listSessionIds(before = Number.MAX_SAFE_INTEGER, limit = 101): { id: string; latest: number }[] {
+    const rows = this.db
+      .prepare(
+        "SELECT session_id AS id, MAX(seq) AS latest FROM events WHERE session_id IN (SELECT session_id FROM events WHERE type = 'session.created') GROUP BY session_id HAVING MAX(seq) < ? ORDER BY latest DESC LIMIT ?",
+      )
+      .all(before, limit) as { id: string; latest: number }[]
+    return rows
+  }
+
   /** Removes a session's events before `beforeSeq`; the log keeps its numbers, with a gap. */
   purgeSession(sessionId: string, beforeSeq: number): void {
     this.db.prepare('DELETE FROM events WHERE session_id = ? AND seq < ?').run(sessionId, beforeSeq)
