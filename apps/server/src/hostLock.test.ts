@@ -42,10 +42,12 @@ describe('acquireHostLock', () => {
 
   it('takes over a lock whose process id now belongs to another program', async () => {
     const dir = home()
-    // This test process is alive, but did not start an hour ago.
-    const other = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
-      stdio: 'ignore',
-    })
+    // Alive, but not a host: it did not start an hour ago, and it is not node either (on Windows
+    // without readable start times, the program name decides).
+    const other =
+      process.platform === 'win32'
+        ? spawn('ping', ['-n', '30', '127.0.0.1'], { stdio: 'ignore', windowsHide: true })
+        : spawn('sleep', ['30'], { stdio: 'ignore' })
     await new Promise((r) => setTimeout(r, 100))
     writeFileSync(
       path.join(dir, 'host.lock'),
