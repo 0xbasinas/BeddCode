@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { StringDecoder } from 'node:string_decoder'
 import { spawnProcess } from '@beddcode/shared'
 
 export interface CreateTerminal {
@@ -16,7 +17,9 @@ export interface ExitStatus {
 
 interface Terminal {
   child: ChildProcess
-  output: string
+  /** Decoded output in arrival order, with each piece's size in bytes. */
+  pieces: { text: string; bytes: number }[]
+  bytes: number
   truncated: boolean
   limit: number | null
   exit: ExitStatus | null
@@ -24,6 +27,22 @@ interface Terminal {
 }
 
 const isWindows = process.platform === 'win32'
+
+/**
+ * Output kept when the agent sets no limit: a command that prints without end (a dev server, a
+ * `yes`) must not grow the host's memory until it runs out.
+ */
+export const DEFAULT_OUTPUT_LIMIT = 4 * 1024 * 1024
+
+/** The last `limit` bytes of `text`, starting on a whole character. */
+export function tailBytes(text: string, limit: number): string {
+  const buf = Buffer.from(text)
+  if (buf.length <= limit) return text
+  let start = buf.length - limit
+  // Skip UTF-8 continuation bytes (10xxxxxx), so no character is cut in half.
+  while (start < buf.length && (buf[start]! & 0xc0) === 0x80) start++
+  return buf.subarray(start).toString('utf8')
+}
 
 /**
  * Terminals an ACP agent asks us to run. Plain child processes for now; phase 7 backs these with
@@ -59,22 +78,34 @@ export class TerminalManager {
     const id = `term-${this.nextId++}`
     const term: Terminal = {
       child,
-      output: '',
+      pieces: [],
+      bytes: 0,
       truncated: false,
-      limit: req.outputByteLimit ?? null,
+      limit: req.outputByteLimit ?? DEFAULT_OUTPUT_LIMIT,
       exit: null,
       waiters: [],
     }
-    const append = (chunk: Buffer) => {
-      term.output += chunk.toString('utf8')
-      if (term.limit !== null && Buffer.byteLength(term.output) > term.limit) {
-        // Keep the tail: the end of the output is what an agent needs most.
-        term.output = Buffer.from(term.output).subarray(-term.limit).toString('utf8')
+    const add = (text: string) => {
+      if (!text) return
+      const bytes = Buffer.byteLength(text)
+      term.pieces.push({ text, bytes })
+      term.bytes += bytes
+      // Keep the tail: the end of the output is what an agent needs most. Whole pieces are
+      // dropped here; `output` trims the first one to the exact limit.
+      const limit = term.limit
+      if (limit === null) return
+      while (term.pieces.length > 1 && term.bytes - term.pieces[0]!.bytes >= limit) {
+        term.bytes -= term.pieces.shift()!.bytes
         term.truncated = true
       }
     }
-    child.stdout?.on('data', append)
-    child.stderr?.on('data', append)
+    // One decoder per stream: a character split across two chunks stays whole.
+    const decoders = { stdout: new StringDecoder('utf8'), stderr: new StringDecoder('utf8') }
+    const append = (chunk: Buffer) => add(chunk.toString('utf8'))
+    child.stdout?.on('data', (chunk: Buffer) => add(decoders.stdout.write(chunk)))
+    child.stderr?.on('data', (chunk: Buffer) => add(decoders.stderr.write(chunk)))
+    child.stdout?.on('end', () => add(decoders.stdout.end()))
+    child.stderr?.on('end', () => add(decoders.stderr.end()))
     const finish = (status: ExitStatus) => {
       if (term.exit) return
       term.exit = status
@@ -92,7 +123,13 @@ export class TerminalManager {
 
   output(id: string) {
     const t = this.get(id)
-    return { output: t.output, truncated: t.truncated, exitStatus: t.exit }
+    let output = t.pieces.map((p) => p.text).join('')
+    let truncated = t.truncated
+    if (t.limit !== null && t.bytes > t.limit) {
+      output = tailBytes(output, t.limit)
+      truncated = true
+    }
+    return { output, truncated, exitStatus: t.exit }
   }
 
   waitForExit(id: string): Promise<ExitStatus> {
