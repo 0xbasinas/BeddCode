@@ -19,4 +19,38 @@ describe('onDeviceWake', () => {
     win.dispatchEvent(new Event('online'))
     expect(wakes).toBe(3)
   })
+
+  it('fires when timers come back far too late (the machine slept), only while visible', () => {
+    let now = 0
+    let tick = () => {}
+    let stopped = false
+    const clock = {
+      now: () => now,
+      every: (_ms: number, fn: () => void) => {
+        tick = fn
+        return () => (stopped = true)
+      },
+    }
+    const doc = Object.assign(new EventTarget(), { visibilityState: 'visible' })
+    let wakes = 0
+    const off = onDeviceWake(() => wakes++, new EventTarget(), doc, clock)
+    now += 5_000
+    tick()
+    now += 6_000
+    tick()
+    expect(wakes).toBe(0)
+    now += 3_600_000
+    tick()
+    expect(wakes).toBe(1)
+    // The clock set back by an hour.
+    now -= 3_600_000
+    tick()
+    expect(wakes).toBe(2)
+    doc.visibilityState = 'hidden'
+    now += 60_000
+    tick()
+    expect(wakes).toBe(2)
+    off()
+    expect(stopped).toBe(true)
+  })
 })

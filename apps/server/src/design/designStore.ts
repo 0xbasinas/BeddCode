@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { writeFileAtomic } from '@beddcode/shared'
 import path from 'node:path'
 import type { Design, DesignProject, DesignSummary } from '@beddcode/contracts'
 
@@ -57,9 +58,7 @@ export class DesignStore {
   private write(design: Design): void {
     mkdirSync(this.dir, { recursive: true })
     const file = this.file(design.id)
-    const tmp = `${file}.${process.pid}.tmp`
-    writeFileSync(tmp, JSON.stringify(design))
-    renameSync(tmp, file)
+    writeFileAtomic(file, JSON.stringify(design))
     this.cache.set(design.id, design)
   }
 

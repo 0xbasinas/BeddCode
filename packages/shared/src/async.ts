@@ -74,3 +74,13 @@ export function createAsyncQueue<T>(): AsyncQueue<T> {
     },
   }
 }
+
+/** Rejects when `promise` has not settled within `ms`; the work itself is not cancelled. */
+export function withTimeout<T>(promise: Promise<T>, ms: number, what = 'operation'): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} did not finish within ${ms} ms`)), ms)
+    timer.unref?.()
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}

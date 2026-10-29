@@ -1,5 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import path from 'node:path'
+import { readJsonFile, writeFileAtomic } from '@beddcode/shared'
 import { z } from 'zod'
 
 export const RESERVED_IDS = new Set(['claude', 'codex', 'fake'])
@@ -26,12 +25,14 @@ export class AcpAgentStore {
   constructor(private readonly file: string) {}
 
   list(): AcpAgentConfig[] {
-    try {
-      return FileShape.parse(JSON.parse(readFileSync(this.file, 'utf8'))).agents
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
-      throw new Error(`Could not read ${this.file}: ${err instanceof Error ? err.message : err}`)
-    }
+    const read = readJsonFile(this.file)
+    if (read.status === 'missing') return []
+    if (read.status === 'corrupt')
+      throw new Error(
+        `Could not read ${this.file}: ${read.error}` +
+          (read.quarantined ? ` (kept as ${read.quarantined}; add the agents again)` : ''),
+      )
+    return FileShape.parse(read.value).agents
   }
 
   get(id: string): AcpAgentConfig | undefined {
@@ -55,9 +56,6 @@ export class AcpAgentStore {
   }
 
   private write(agents: AcpAgentConfig[]) {
-    mkdirSync(path.dirname(this.file), { recursive: true })
-    const tmp = `${this.file}.tmp`
-    writeFileSync(tmp, JSON.stringify({ version: 1, agents }, null, 2))
-    renameSync(tmp, this.file)
+    writeFileAtomic(this.file, JSON.stringify({ version: 1, agents }, null, 2))
   }
 }

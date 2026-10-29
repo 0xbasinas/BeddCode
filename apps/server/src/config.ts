@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { readJsonFile, writeFileAtomic } from '@beddcode/shared'
 import path from 'node:path'
 import { defaultGuard, type GuardOptions } from './auth/guard.ts'
 import { dataHome } from './hostIdentity.ts'
@@ -31,19 +31,68 @@ export interface ConfigFile {
 export const configPath = () => path.join(dataHome(), 'config.json')
 
 export function readConfigFile(file = configPath()): ConfigFile {
-  try {
-    const parsed = JSON.parse(readFileSync(file, 'utf8')) as unknown
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as ConfigFile)
-      : {}
-  } catch {
+  // A damaged file is moved aside (not overwritten by the next save), and defaults apply.
+  const read = readJsonFile(file)
+  if (read.status === 'corrupt') {
+    console.warn(
+      `${file} is damaged (${read.error}); using the default settings.` +
+        (read.quarantined ? ` The old file was kept as ${read.quarantined}.` : ''),
+    )
+  }
+  if (read.status !== 'ok') return {}
+  return sanitizeConfig(read.value, (m) => console.warn(`${file}: ${m}`))
+}
+
+/**
+ * Keeps the settings of a config file that make sense, and says which were ignored. The file may
+ * have been edited by hand, or written by an older or newer BeddCode: one odd value must not stop
+ * the host from starting (an unknown setting is kept, for the version that knows it).
+ */
+export function sanitizeConfig(raw: unknown, warn: (message: string) => void): ConfigFile {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    warn('is not a settings object; using the default settings')
     return {}
   }
+  const config = { ...(raw as Record<string, unknown>) }
+  const drop = (key: string, why: string) => {
+    warn(`ignoring ${key} (${why}); using the default`)
+    delete config[key]
+  }
+  if (config.port !== undefined) {
+    const port = typeof config.port === 'string' ? Number(config.port) : config.port
+    if (typeof port !== 'number' || !Number.isInteger(port) || port < 0 || port > 65535) {
+      drop('port', `${JSON.stringify(config.port)} is not a port number`)
+    } else config.port = port
+  }
+  if (config.host !== undefined && (typeof config.host !== 'string' || !config.host.trim())) {
+    drop('host', 'not an address')
+  }
+  for (const key of ['allowLan', 'requireToken', 'telemetry']) {
+    if (config[key] !== undefined && typeof config[key] !== 'boolean')
+      drop(key, 'not true or false')
+  }
+  if (config.allowedOrigins !== undefined) {
+    const origins = config.allowedOrigins
+    if (typeof origins === 'string') config.allowedOrigins = [origins]
+    else if (!Array.isArray(origins)) drop('allowedOrigins', 'not a list of addresses')
+    else config.allowedOrigins = origins.filter((o): o is string => typeof o === 'string')
+  }
+  if (config.relayUrl !== undefined && config.relayUrl !== null) {
+    try {
+      normalizeRelayUrl(String(config.relayUrl))
+    } catch (err) {
+      drop('relayUrl', err instanceof Error ? err.message : 'not an address')
+    }
+  }
+  if (config.relayPassword !== undefined && typeof config.relayPassword !== 'string') {
+    drop('relayPassword', 'not text')
+  }
+  return config as ConfigFile
 }
 
 export function writeConfigFile(config: ConfigFile, file = configPath()): void {
-  mkdirSync(path.dirname(file), { recursive: true })
-  writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`)
+  // May hold the relay password, so only this user reads it.
+  writeFileAtomic(file, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 })
 }
 
 /**

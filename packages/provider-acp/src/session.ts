@@ -234,7 +234,7 @@ export class AcpSession implements ProviderSession {
       if (this.input.resumeId) {
         this.acpSessionId = this.input.resumeId
         if (caps?.sessionCapabilities?.resume) {
-          const res = await this.setup<SetupResponse>('session/resume', {
+          const res = await this.reopen<SetupResponse>('session/resume', {
             sessionId: this.acpSessionId,
             ...base,
           })
@@ -246,7 +246,7 @@ export class AcpSession implements ProviderSession {
           this.lastReplayAt = Date.now()
           const startedAt = Date.now()
           try {
-            const res = await this.setup<SetupResponse>('session/load', {
+            const res = await this.reopen<SetupResponse>('session/load', {
               sessionId: this.acpSessionId,
               ...base,
             })
@@ -354,6 +354,28 @@ export class AcpSession implements ProviderSession {
         if (!isStorageNotFound(err) || attempt >= STORAGE_RETRIES) throw err
         await new Promise((resolve) => setTimeout(resolve, STORAGE_RETRY_MS))
       }
+    }
+  }
+
+  /**
+   * Reopens an earlier conversation. An agent whose files for it are gone answers with a bare
+   * "not found" (Grok: "Path not found.: No such file or directory"); say that it is the
+   * conversation that is missing, so the host can continue in a new one.
+   */
+  private async reopen<T>(method: string, params: Obj): Promise<T> {
+    try {
+      return await this.setup<T>(method, params)
+    } catch (err) {
+      const message = describeRpcError(err)
+      const code = err instanceof JsonRpcError ? err.code : undefined
+      if (
+        isStorageNotFound(err) ||
+        code === -32002 ||
+        /not found|no such file|does not exist|os error 2|ENOENT/i.test(message)
+      ) {
+        throw new Error(`session not found (${message})`, { cause: err })
+      }
+      throw err
     }
   }
 

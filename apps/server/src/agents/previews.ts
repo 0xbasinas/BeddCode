@@ -1,5 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import path from 'node:path'
+import { readJsonFile, writeFileAtomic } from '@beddcode/shared'
 import type { AgentPreview, SessionEvent } from '@beddcode/contracts'
 
 const TTL_MS = 7 * 24 * 60 * 60_000
@@ -30,21 +29,14 @@ export class PreviewCache {
 
   private load(): Record<string, Stored> {
     if (!this.file) return {}
-    try {
-      const data = JSON.parse(readFileSync(this.file, 'utf8')) as Record<string, Stored>
-      return data && typeof data === 'object' ? data : {}
-    } catch {
-      return {}
-    }
+    const read = readJsonFile<Record<string, Stored>>(this.file)
+    return read.status === 'ok' && read.value && typeof read.value === 'object' ? read.value : {}
   }
 
   private save() {
     if (!this.file) return
     try {
-      mkdirSync(path.dirname(this.file), { recursive: true })
-      const tmp = `${this.file}.tmp`
-      writeFileSync(tmp, JSON.stringify(this.entries))
-      renameSync(tmp, this.file)
+      writeFileAtomic(this.file, JSON.stringify(this.entries))
     } catch {
       // The cache is only a convenience; the next screen load probes again.
     }

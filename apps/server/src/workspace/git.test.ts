@@ -526,3 +526,50 @@ describe('GitService snapshots (turn checkpoints)', () => {
     expect(sh(dir, 'for-each-ref', 'refs/beddcode/').trim()).toBe('')
   })
 })
+
+describe('GitService in odd repository states', () => {
+  it('reuses a branch whose worktree folder was deleted by hand', async () => {
+    const dir = repo()
+    const first = await git.createWorktree(dir, { branch: 'again' })
+    rmSync(first.path, { recursive: true, force: true })
+    const second = await git.createWorktree(dir, { branch: 'again' })
+    expect(second.branch).toBe('again')
+    expect(existsSync(path.join(second.path, 'a.txt'))).toBe(true)
+  })
+
+  it('explains a repository with no commits, and a base branch that does not exist', async () => {
+    const empty = tmp()
+    sh(empty, 'init', '-q', '-b', 'main')
+    await expect(git.createWorktree(empty)).rejects.toThrow(/no commits yet/)
+    await expect(git.createWorktree(repo(), { baseBranch: 'nope' })).rejects.toThrow(
+      /no branch nope/,
+    )
+  })
+
+  it('says what to do about a lock file a crashed git left behind', async () => {
+    const dir = repo()
+    writeFileSync(path.join(dir, 'a.txt'), 'changed\n')
+    writeFileSync(path.join(dir, '.git', 'index.lock'), '')
+    await expect(git.commit(dir, 'change', ['a.txt'])).rejects.toThrow(
+      /left .*index\.lock behind\. Wait for it to finish; if none is running, delete that file/,
+    )
+  })
+
+  it('works in folders with spaces and non-ASCII names', async () => {
+    const base = tmp()
+    const dir = path.join(base, 'Γιώργος code ü')
+    mkdirSync(dir)
+    sh(dir, 'init', '-q', '-b', 'main')
+    sh(dir, 'config', 'user.name', 'Test User')
+    sh(dir, 'config', 'user.email', 'test@example.com')
+    sh(dir, 'config', 'commit.gpgsign', 'false')
+    writeFileSync(path.join(dir, 'αρχείο με κενά.txt'), 'x\n')
+    sh(dir, 'add', '-A')
+    sh(dir, 'commit', '-q', '-m', 'init')
+    const wt = await git.createWorktree(dir, { branch: 'δοκιμή' })
+    expect(existsSync(path.join(wt.path, 'αρχείο με κενά.txt'))).toBe(true)
+    writeFileSync(path.join(wt.path, 'αρχείο με κενά.txt'), 'y\n')
+    expect((await git.status(wt.path)).files.map((f) => f.path)).toEqual(['αρχείο με κενά.txt'])
+    expect(await git.removeWorktree(wt.path)).toBe(true)
+  })
+})

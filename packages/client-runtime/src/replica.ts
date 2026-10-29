@@ -113,6 +113,8 @@ export interface SessionView {
   pinned?: boolean
   status: SessionStatus
   lastTurnReason?: 'done' | 'cancelled' | 'error'
+  /** Why the last turn ended, when it was not the agent finishing (stopped, crashed, host restart). */
+  lastTurnMessage?: string
   /**
    * The user turned down a request in the turn that is running (or just ended). Some agents (Grok)
    * end the turn right after a "no", which then reads as cancelled although nobody pressed Stop.
@@ -354,6 +356,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.turns = current.turns + 1
       next.status = 'running'
       next.lastTurnReason = undefined
+      next.lastTurnMessage = undefined
       next.declined = undefined
       break
     case 'message.delta': {
@@ -531,6 +534,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.completedTurns = current.completedTurns + 1
       next.status = e.reason === 'error' ? 'failed' : 'idle'
       next.lastTurnReason = e.reason
+      next.lastTurnMessage = e.message
       next.items = current.items.map((item) => {
         if (item.kind === 'approval' && !item.resolvedOptionId) return { ...item, cancelled: true }
         if (item.kind === 'question' && !item.answers && !item.dismissed)

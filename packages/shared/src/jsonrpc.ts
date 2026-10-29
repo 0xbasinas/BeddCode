@@ -1,6 +1,6 @@
-import readline from 'node:readline'
 import type { Logger } from './log.ts'
-import { spawnProcess } from './process.ts'
+import { readLines } from './lines.ts'
+import { spawnProcess, stopProcess } from './process.ts'
 
 /** Line-oriented duplex channel; the real one wraps a child's stdio. */
 export interface Transport {
@@ -225,11 +225,15 @@ export function spawnTransport(
     tail = (tail + text).slice(-2000)
   }
   child.stderr.on('data', (d: Buffer) => {
-    remember(String(d))
-    log?.debug(`${executable} stderr: ${String(d).trimEnd()}`)
+    // Only the tail is kept; a chatty agent must not grow the log line without bound either.
+    const text = d.length > 8_192 ? d.subarray(-8_192).toString('utf8') : d.toString('utf8')
+    remember(text)
+    log?.debug(`${executable} stderr: ${text.trimEnd()}`)
   })
   // Writes to a dead process surface as EPIPE; the close handler already reports the exit.
   child.stdin.on('error', () => {})
+  child.stdout.on('error', (err) => log?.warn(`${executable} stdout failed`, err))
+  child.stderr.on('error', () => {})
   child.on('error', (err) => {
     remember(`${err.message}\n`)
     log?.error(`${executable} failed to start`, err)
@@ -237,14 +241,39 @@ export function spawnTransport(
 
   return {
     send: (line) => {
-      if (child.stdin.writable) child.stdin.write(`${line}\n`)
+      if (!child.stdin.writable) return
+      try {
+        child.stdin.write(`${line}\n`)
+      } catch (err) {
+        // A pipe that broke between the check and the write; the close handler reports the exit.
+        log?.warn(`could not write to ${executable}`, err)
+      }
     },
-    onLine: (handler) => readline.createInterface({ input: child.stdout }).on('line', handler),
-    onClose: (handler) => child.once('close', handler),
-    close: () => {
-      child.stdin.end()
-      child.kill()
+    // Line by line, but a runaway line (a huge tool result, binary garbage) is dropped instead of
+    // being buffered until the host runs out of memory.
+    onLine: (handler) =>
+      readLines(child.stdout, handler, {
+        onOversize: (bytes) =>
+          log?.error(
+            `${executable} wrote a line of ${Math.round(bytes / 1_048_576)} MB; it was dropped`,
+          ),
+        onError: (err) => log?.error(`could not handle a line from ${executable}`, err),
+      }),
+    onClose: (handler) => {
+      let fired = false
+      const fire = () => {
+        if (fired) return
+        fired = true
+        handler()
+      }
+      child.once('close', fire)
+      // `close` waits for every stdio pipe to end. A grandchild that inherited them (a shell the
+      // agent ran, or the agent itself behind a Windows .cmd shim) can keep them open long after
+      // the process we talk to has died; do not wait for it forever.
+      child.once('exit', () => setTimeout(fire, 2_000).unref?.())
     },
+    // Ends stdin first and escalates to a kill of the whole process tree if it does not exit.
+    close: () => void stopProcess(child),
     stderrTail: () => tail.trim(),
   }
 }

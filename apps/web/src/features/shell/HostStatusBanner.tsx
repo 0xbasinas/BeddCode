@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-import { useRuntime } from '../../stores/host.ts'
+import { reconnectHostNow, useRuntime } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { desktopBridge, type DesktopDaemonState } from '../../ui/desktop.ts'
-import { hostNotice } from './hostStatus.ts'
+import { HOST_LOST_AFTER_MS, hostNotice } from './hostStatus.ts'
 
 /**
- * In the desktop app, says what is happening when the local host is not reachable: starting,
- * starting again, or not staying up (with the last thing it said, a retry and its log).
+ * Says what is happening when the local host is not reachable: in the desktop app starting,
+ * starting again, or not staying up (with the last thing it said, a retry and its log); anywhere,
+ * reconnecting, unreachable for a while, or a version the app cannot talk to.
  */
 export function HostStatusBanner() {
   const daemon = desktopBridge()?.daemon
@@ -15,6 +16,22 @@ export function HostStatusBanner() {
   const [busy, setBusy] = useState(false)
   // A brief gap while connecting is normal; only a lasting one is worth a banner.
   const [late, setLate] = useState(false)
+  // When the link went down, to tell a blip from a host that is gone.
+  const [downSince, setDownSince] = useState<number | null>(null)
+  const [, setTick] = useState(0)
+
+  useEffect(() => {
+    if (connection === 'connected') return setDownSince(null)
+    setDownSince((since) => since ?? Date.now())
+  }, [connection])
+  useEffect(() => {
+    if (downSince === null) return
+    const timer = setTimeout(
+      () => setTick((n) => n + 1),
+      Math.max(0, downSince + HOST_LOST_AFTER_MS - Date.now()) + 50,
+    )
+    return () => clearTimeout(timer)
+  }, [downSince])
 
   useEffect(() => {
     if (!daemon) return
@@ -27,14 +44,14 @@ export function HostStatusBanner() {
     }
   }, [daemon])
 
-  const notice = hostNotice(connection, state)
+  const notice = hostNotice(connection, state, downSince === null ? 0 : Date.now() - downSince)
   useEffect(() => {
     if (!notice) return setLate(false)
     const timer = setTimeout(() => setLate(true), notice.tone === 'error' ? 0 : 900)
     return () => clearTimeout(timer)
   }, [notice?.text, notice?.tone])
 
-  if (!daemon || !notice || !late) return null
+  if (!notice || !late) return null
   return (
     <div
       className={`host-banner ${notice.tone}`}
@@ -49,13 +66,17 @@ export function HostStatusBanner() {
           <button
             disabled={busy}
             onClick={() => {
-              setBusy(true)
-              void daemon.restart().finally(() => setBusy(false))
+              if (daemon && state?.status === 'failed') {
+                setBusy(true)
+                void daemon.restart().finally(() => setBusy(false))
+              } else reconnectHostNow(LOCAL_HOST_KEY)
             }}
           >
             Try again
           </button>
-          <button onClick={() => void daemon.revealLog()}>Show log</button>
+          {daemon && state?.status === 'failed' && (
+            <button onClick={() => void daemon.revealLog()}>Show log</button>
+          )}
         </div>
       )}
     </div>
