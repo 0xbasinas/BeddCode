@@ -171,6 +171,9 @@ const time = (iso: string | undefined) => {
 }
 const who = (l: Login) => l?.login || 'ghost'
 
+/** How long a folder's pull request answer is reused before gh is asked again. */
+const PR_CACHE_MS = 20_000
+
 const AUTH_RE = /gh auth login|not logged in|authentication|auth token|HTTP 401|bad credentials/i
 const NO_REPO_RE =
   /none of the git remotes|not a github|no github remote|not a git repository|no git remotes/i
@@ -178,6 +181,11 @@ const NO_REPO_RE =
 /** Pull requests through the user's own signed-in GitHub CLI; we never hold or log a token. */
 export class GithubService {
   private readonly statusCache = new Map<string, { at: number; value: GithubStatus }>()
+  /** The branch's pull request per folder: every session row asks, so answers are shared briefly. */
+  private readonly prCache = new Map<
+    string,
+    { at: number; pending?: Promise<PullRequest | null>; value?: PullRequest | null }
+  >()
 
   constructor(private readonly run: Runner = defaultRunner) {}
 
@@ -345,6 +353,24 @@ export class GithubService {
 
   /** The pull request for the current branch, or null when there is none. */
   async pullRequest(cwd: string): Promise<PullRequest | null> {
+    const cached = this.prCache.get(cwd)
+    if (cached?.pending) return cached.pending
+    if (cached && cached.value !== undefined && Date.now() - cached.at < PR_CACHE_MS) {
+      return cached.value
+    }
+    const pending = this.readPullRequest(cwd)
+    this.prCache.set(cwd, { at: Date.now(), pending })
+    try {
+      const value = await pending
+      this.prCache.set(cwd, { at: Date.now(), value })
+      return value
+    } catch (err) {
+      this.prCache.delete(cwd)
+      throw err
+    }
+  }
+
+  private async readPullRequest(cwd: string): Promise<PullRequest | null> {
     const res = await this.gh(cwd, ['pr', 'view', '--json', PR_FIELDS])
     if (res.code !== 0) {
       if (/no pull requests found/i.test(res.stderr)) return null
@@ -396,6 +422,7 @@ export class GithubService {
 
   /** Mark ready, back to draft, close, reopen, comment or merge. */
   async act(cwd: string, number: number, action: PrAction): Promise<{ message?: string }> {
+    this.prCache.delete(cwd)
     const n = String(number)
     switch (action.action) {
       case 'ready':
@@ -470,6 +497,7 @@ export class GithubService {
     git: GitService,
     options: { worktree?: boolean } = {},
   ): Promise<{ branch: string; path: string }> {
+    this.prCache.delete(cwd)
     const n = String(number)
     if (!options.worktree) {
       await this.ok(cwd, ['pr', 'checkout', n], 120_000)
@@ -529,6 +557,7 @@ export class GithubService {
     cwd: string,
     options: { title: string; body: string; draft?: boolean; base?: string },
   ): Promise<string> {
+    this.prCache.delete(cwd)
     const stdout = await this.withBodyFile(options.body, (file) => {
       const args = ['pr', 'create', '--title', options.title, '--body-file', file]
       if (options.draft) args.push('--draft')

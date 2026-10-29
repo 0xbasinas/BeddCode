@@ -3826,6 +3826,25 @@ button.tcall-row:hover .tcall-chevron,
   font-size: calc(11px * var(--ui-scale));
   color: var(--ok, #3fb950);
 }
+.session-pr {
+  cursor: pointer;
+}
+.session-pr:hover {
+  text-decoration: underline;
+}
+.pr-checks {
+  width: calc(6px * var(--ui-scale));
+  height: calc(6px * var(--ui-scale));
+  margin-left: calc(2px * var(--ui-scale));
+  border-radius: 50%;
+  background: var(--ok, #3fb950);
+}
+.pr-checks.failure {
+  background: var(--danger);
+}
+.pr-checks.pending {
+  background: var(--accent);
+}
 .session-pr.draft {
   color: var(--text-faint);
 }

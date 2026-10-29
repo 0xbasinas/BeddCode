@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
 } from 'react'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
@@ -65,9 +66,8 @@ import {
   setSessionPinned,
   useAllSessions,
   useHostStore,
-  hostRequest,
 } from '../../stores/host.ts'
-import { usePolled } from '../git/usePolled.ts'
+import { useSessionPr } from '../../stores/sessionPr.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { HostsDialog } from '../hosts/HostsDialog.tsx'
 import { HistoryDialog } from '../history/HistoryDialog.tsx'
@@ -382,7 +382,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               {agentLabel(s)}
             </span>
             {s.branch && !isFiledAway(s) && (
-              <SessionPr hostKey={hostOf.get(s.id) ?? LOCAL_HOST_KEY} cwd={s.cwd} branch={s.branch} />
+              <SessionPr hostKey={hostOf.get(s.id) ?? LOCAL_HOST_KEY} cwd={s.cwd} />
             )}
             {s.pinned && !showPinned && (
               <Pin className="session-pin" size={11} aria-label="Pinned" />
@@ -785,23 +785,40 @@ ${s.projectless ? 'no-project' : s.projectPath}`
   )
 }
 
-/** The pull request of a session's branch as a small chip: its number, coloured by state. */
-function SessionPr({ hostKey, cwd, branch }: { hostKey: string; cwd: string; branch: string }) {
-  const { data: pr } = usePolled(
-    () => hostRequest(hostKey, 'git.pr.get', { cwd }),
-    `${hostKey}:${cwd}:${branch}`,
-    60_000,
-  )
+/** The pull request of a session's branch: its number by state, a dot for its checks, opens on GitHub. */
+function SessionPr({ hostKey, cwd }: { hostKey: string; cwd: string }) {
+  const pr = useSessionPr(hostKey, cwd)
   if (!pr) return null
   const kind = prStateKind(pr)
+  const checks =
+    pr.checks === 'failure'
+      ? `${pr.checksFailed} checks failing`
+      : pr.checks === 'pending'
+        ? `${pr.checksPending} checks running`
+        : pr.checks === 'success'
+          ? 'checks passed'
+          : undefined
+  // The row is a link, so this opens GitHub itself instead of the session.
+  const open = (event: MouseEvent | KeyboardEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    window.open(pr.url, '_blank', 'noopener,noreferrer')
+  }
   return (
     <span
       className={`session-pr ${kind}`}
-      title={`#${pr.number} ${pr.title} · ${PR_STATE_LABEL[kind]}${
-        pr.checks.some((c) => c.state === 'failure') ? ' · checks failing' : ''
-      }`}
+      role="link"
+      tabIndex={0}
+      title={`#${pr.number} ${pr.title} · ${PR_STATE_LABEL[kind]}${checks ? ` · ${checks}` : ''}`}
+      onClick={open}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') open(event)
+      }}
     >
       <GitPullRequest size={11} />#{pr.number}
+      {kind === 'open' && pr.checks && pr.checks !== 'skipped' && (
+        <span className={`pr-checks ${pr.checks}`} aria-hidden="true" />
+      )}
     </span>
   )
 }
