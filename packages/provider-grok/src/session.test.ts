@@ -73,6 +73,11 @@ const collect = (session: GrokSession) => {
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 150))
+/** The nth process, waiting for it: the prompt file is written (real disk) before it is spawned. */
+async function run(runs: ReturnType<typeof fakeProcess>[], n: number) {
+  for (let i = 0; i < 500 && !runs[n]; i++) await new Promise((r) => setTimeout(r, 10))
+  return runs[n]!
+}
 const arg = (args: string[], flag: string) => args[args.indexOf(flag) + 1]
 
 const END = (extra: object = {}) => ({
@@ -89,9 +94,9 @@ describe('GrokSession', () => {
     const events = collect(session)
     const turn = session.prompt({ text: 'hi' })
     await tick()
-    runs[0]!.say({ type: 'text', data: 'Hello' })
-    runs[0]!.say(END())
-    runs[0]!.finish(0)
+    ;(await run(runs, 0)).say({ type: 'text', data: 'Hello' })
+    ;(await run(runs, 0)).say(END())
+    ;(await run(runs, 0)).finish(0)
     await turn
     await tick()
     const types = events.map((e) => e.type)
@@ -117,17 +122,17 @@ describe('GrokSession', () => {
     const { session, runs, argLists } = setup()
     const first = session.prompt({ text: 'one' })
     await tick()
-    runs[0]!.say({ type: 'text', data: 'a' })
-    runs[0]!.say(END())
-    runs[0]!.finish(0)
+    ;(await run(runs, 0)).say({ type: 'text', data: 'a' })
+    ;(await run(runs, 0)).say(END())
+    ;(await run(runs, 0)).finish(0)
     await first
 
     await session.setPermissionMode('full-access')
     await session.setModel('grok-4.7', 'high')
     const second = session.prompt({ text: 'two' })
     await tick()
-    runs[1]!.say(END())
-    runs[1]!.finish(0)
+    ;(await run(runs, 1)).say(END())
+    ;(await run(runs, 1)).finish(0)
     await second
 
     expect(arg(argLists[1]!, '--resume')).toBe('g-1')
@@ -142,8 +147,8 @@ describe('GrokSession', () => {
     const { session, runs, argLists } = setup({ resumeId: 'old-id' })
     const turn = session.prompt({ text: 'again' })
     await tick()
-    runs[0]!.say(END({ sessionId: 'old-id' }))
-    runs[0]!.finish(0)
+    ;(await run(runs, 0)).say(END({ sessionId: 'old-id' }))
+    ;(await run(runs, 0)).finish(0)
     await turn
     expect(arg(argLists[0]!, '--resume')).toBe('old-id')
     await session.close()
@@ -154,10 +159,10 @@ describe('GrokSession', () => {
     const events = collect(session)
     const turn = session.prompt({ text: 'x' })
     await tick()
-    runs[0]!.raw('not json at all\n{"type":"text","da')
-    runs[0]!.raw('ta":"split"}\n')
-    runs[0]!.say(END())
-    runs[0]!.finish(0)
+    ;(await run(runs, 0)).raw('not json at all\n{"type":"text","da')
+    ;(await run(runs, 0)).raw('ta":"split"}\n')
+    ;(await run(runs, 0)).say(END())
+    ;(await run(runs, 0)).finish(0)
     await turn
     await tick()
     expect(events.filter((e) => e.type === 'message.delta')).toMatchObject([{ text: 'split' }])
@@ -169,8 +174,8 @@ describe('GrokSession', () => {
     const events = collect(session)
     const turn = session.prompt({ text: 'x' })
     await tick()
-    runs[0]!.stderr('Error: not logged in, please run grok login\n')
-    runs[0]!.finish(1)
+    ;(await run(runs, 0)).stderr('Error: not logged in, please run grok login\n')
+    ;(await run(runs, 0)).finish(1)
     await turn
     await tick()
     expect(events.find((e) => e.type === 'error')).toMatchObject({
@@ -185,13 +190,13 @@ describe('GrokSession', () => {
     const events = collect(session)
     const a = session.prompt({ text: 'x' })
     await tick()
-    runs[0]!.say({ type: 'error', message: 'model overloaded' })
-    runs[0]!.finish(1)
+    ;(await run(runs, 0)).say({ type: 'error', message: 'model overloaded' })
+    ;(await run(runs, 0)).finish(1)
     await a
     const b = session.prompt({ text: 'y' })
     await tick()
-    runs[1]!.say(END({ stopReason: 'max_tokens' }))
-    runs[1]!.finish(0)
+    ;(await run(runs, 1)).say(END({ stopReason: 'max_tokens' }))
+    ;(await run(runs, 1)).finish(0)
     await b
     await tick()
     expect(events.filter((e) => e.type === 'error')).toMatchObject([
@@ -205,12 +210,12 @@ describe('GrokSession', () => {
     const { session, runs, argLists } = setup()
     const a = session.prompt({ text: 'x' })
     await tick()
-    runs[0]!.finish(1)
+    ;(await run(runs, 0)).finish(1)
     await a
     const b = session.prompt({ text: 'y' })
     await tick()
-    runs[1]!.say(END())
-    runs[1]!.finish(0)
+    ;(await run(runs, 1)).say(END())
+    ;(await run(runs, 1)).finish(0)
     await b
     expect(argLists[1]).toContain('--session-id')
     expect(argLists[1]).not.toContain('--resume')
@@ -222,7 +227,7 @@ describe('GrokSession', () => {
     const events = collect(session)
     const turn = session.prompt({ text: 'long' })
     await tick()
-    runs[0]!.say({ type: 'tool_call', toolCallId: 't', title: 'x', kind: 'other' })
+    ;(await run(runs, 0)).say({ type: 'tool_call', toolCallId: 't', title: 'x', kind: 'other' })
     await tick()
     await session.interrupt()
     await turn
@@ -237,8 +242,8 @@ describe('GrokSession', () => {
     const turn = session.prompt({ text: 'a' })
     await tick()
     await expect(session.prompt({ text: 'b' })).rejects.toThrow(/still working/)
-    runs[0]!.say(END())
-    runs[0]!.finish(0)
+    ;(await run(runs, 0)).say(END())
+    ;(await run(runs, 0)).finish(0)
     await turn
     await session.close()
   })
@@ -247,9 +252,9 @@ describe('GrokSession', () => {
     const { session, runs, argLists } = setup({ textOnly: true, resumeId: 'ignored' })
     const turn = session.prompt({ text: 'write a message' })
     await tick()
-    runs[0]!.say({ type: 'text', data: 'ok' })
-    runs[0]!.say(END())
-    runs[0]!.finish(0)
+    ;(await run(runs, 0)).say({ type: 'text', data: 'ok' })
+    ;(await run(runs, 0)).say(END())
+    ;(await run(runs, 0)).finish(0)
     await turn
     const args = argLists[0]!
     expect(args).toEqual(
@@ -317,18 +322,18 @@ describe('GrokSession', () => {
       )
       const a = session.prompt({ text: 'look', attachments: [png, path.join(dir, 'notes.txt')] })
       await tick()
-      runs[0]!.say(END())
-      runs[0]!.finish(0)
+      ;(await run(runs, 0)).say(END())
+      ;(await run(runs, 0)).finish(0)
       await a
       const b = session.prompt({ text: '[1, 2, 3]' })
       await tick()
-      runs[1]!.say(END())
-      runs[1]!.finish(0)
+      ;(await run(runs, 1)).say(END())
+      ;(await run(runs, 1)).finish(0)
       await b
       const c = session.prompt({ text: 'plain words' })
       await tick()
-      runs[2]!.say(END())
-      runs[2]!.finish(0)
+      ;(await run(runs, 2)).say(END())
+      ;(await run(runs, 2)).finish(0)
       await c
 
       expect(JSON.parse(sent[0]!)).toEqual([
