@@ -17,9 +17,12 @@ import path from 'node:path'
  * - `attached`: one was already running (a terminal, a service); the app uses it and leaves it alone,
  * - `restarting`: it stopped on its own and is being started again,
  * - `failed`: it keeps stopping; the app tries once a minute from then on, or when asked,
+ * - `waiting`: the app does not start a host of its own (see `spawn`) and none answers yet; it keeps
+ *   looking, and starts the background host when there is one,
  * - `stopped`: the app is closing it, or was never asked to start.
  */
-export type DaemonStatus = 'starting' | 'running' | 'attached' | 'restarting' | 'failed' | 'stopped'
+export type DaemonStatus =
+  'starting' | 'running' | 'attached' | 'restarting' | 'failed' | 'waiting' | 'stopped'
 
 export interface DaemonState {
   status: DaemonStatus
@@ -49,6 +52,15 @@ export interface HostProcess {
 
 export interface DaemonOptions {
   launch: LaunchSpec
+  /**
+   * Whether the app may start a host of its own when none answers (default true). Off, it only ever
+   * uses a host started separately: a terminal, or the background host (`startService`).
+   */
+  spawn?: boolean
+  /** Starts the installed background host (a scheduled task or user service), when there is one. */
+  startService?(): Promise<void>
+  /** What `waiting` says, such as how to start a host. */
+  waitingDetail?: string
   /** True when a host answers on the port. */
   probe(): Promise<boolean>
   /** Starts the process; replaced in tests. */
@@ -71,6 +83,8 @@ const STABLE_MS = 20_000
 const MAX_FAILURES = 5
 /** After giving up, try again this often: a machine waking up or a port coming free fixes many. */
 const FAILED_RETRY_MS = 60_000
+/** While waiting for a background host, ask it to start again this often (it may have crashed). */
+const SERVICE_RETRY_MS = 30_000
 const STOP_GRACE_MS = 5_000
 const MAX_LOG_BYTES = 1_000_000
 
@@ -94,6 +108,8 @@ export class Daemon {
   private requested = false
   /** The user asked to retry while it had failed. */
   private retryNow = false
+  /** When the background host was last asked to start; null means ask now. */
+  private serviceAskedAt: number | null = null
   private readonly tail: string[] = []
   private readonly sleep: (ms: number) => Promise<void>
   private readonly now: () => number
@@ -165,6 +181,13 @@ export class Daemon {
    */
   async restart(): Promise<boolean> {
     if (this.state.status === 'attached') return false
+    if (this.state.status === 'waiting') {
+      // Nothing of ours to restart: ask the background host to start again, now.
+      if (!this.options.startService) return false
+      this.serviceAskedAt = null
+      this.wake?.()
+      return true
+    }
     if (this.wanted && this.child) {
       this.requested = true
       this.terminate(this.child)
@@ -198,6 +221,23 @@ export class Daemon {
           await this.sleep(ATTACHED_POLL_MS)
           misses = (await this.options.probe()) ? 0 : misses + 1
         }
+        continue
+      }
+
+      if (this.options.spawn === false) {
+        // Not ours to start: keep looking, and start the background host when there is one.
+        if (this.state.status !== 'waiting') {
+          this.set({ status: 'waiting', detail: this.options.waitingDetail })
+        }
+        const asked = this.serviceAskedAt
+        if (
+          this.options.startService &&
+          (asked === null || this.now() - asked >= SERVICE_RETRY_MS)
+        ) {
+          this.serviceAskedAt = this.now()
+          await this.options.startService().catch(() => undefined)
+        }
+        await this.sleep(ATTACHED_POLL_MS)
         continue
       }
 
@@ -353,8 +393,9 @@ export async function probeHealth(port: number, fetchFn: typeof fetch = fetch): 
       signal: AbortSignal.timeout(1500),
     })
     if (!res.ok) return false
-    const body = (await res.json()) as { ok?: boolean }
-    return body.ok === true
+    // A BeddCode host says which protocol it speaks; anything else on the port is not one.
+    const body = (await res.json()) as { ok?: boolean; protocol?: unknown }
+    return body.ok === true && typeof body.protocol === 'number'
   } catch {
     return false
   }

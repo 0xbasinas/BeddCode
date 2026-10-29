@@ -395,6 +395,9 @@ importers:
       chokidar:
         specifier: ^6.0.0
         version: 6.0.0
+      pngjs:
+        specifier: 7.0.0
+        version: 7.0.0
       ws:
         specifier: ^8.18.0
         version: 8.22.0
@@ -405,12 +408,19 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.5
+      '@types/pngjs':
+        specifier: ^6.0.5
+        version: 6.0.5
       '@types/ws':
         specifier: ^8.5.0
         version: 8.18.2
       tsx:
         specifier: ^4.20.0
         version: 4.23.15
+    optionalDependencies:
+      '@trycua/cua-driver':
+        specifier: 0.37.0
+        version: 0.37.0
 
   apps/web:
     dependencies:
@@ -541,6 +551,12 @@ importers:
       zod:
         specifier: ^4.0.0
         version: 4.6.7
+
+  packages/mcp-gateway:
+    dependencies:
+      '@cloudflare/workers-oauth-provider':
+        specifier: ^1.2.4
+        version: 1.2.4
 
   packages/provider-acp:
     dependencies:
@@ -1116,6 +1132,9 @@ packages:
   '@clack/prompts@1.8.1':
     resolution: {integrity: sha512-dlT1m5e/0yUL0kRNcQn7yGLVThkgbB0Ga/1AmfDDC/8ik6AIiSf2QLQO2zPYvefsHP0aFgxO93cVLCCfDp7kzQ==}
     engines: {node: '>= 20.12.0'}
+
+  '@cloudflare/workers-oauth-provider@1.2.4':
+    resolution: {integrity: sha512-ayo6Z8DBHdAxwDpplFU8BrEoxoSn6wNo+E7ypTENRHUOc8R89A8/+nZ+a8pMZjjXzF0JXfpYXhw/7qqG+DC18Q==}
 
   '@cloudflare/workers-types@4.20260702.1':
     resolution: {integrity: sha512-mOhf5TUEB1m2vPrxtqoIGfz0fUC9xyxRDx5gWHy5s+OCo6dcV+g7wI1R7gYCMFohhqF/2y2xeKVwMwCJjfn/WA==}
@@ -3249,6 +3268,41 @@ packages:
   '@tanstack/store@0.11.2':
     resolution: {integrity: sha512-sJ4mjol8uQsHV0gOJzzjwXfh2Fwm+Sz0+8deqiTm4jGbMdjzNSW+xZCFm0kUa870uhd8yi+DpKnZb5Kc4apa0Q==}
 
+  '@trycua/cua-driver-darwin-arm64@0.37.0':
+    resolution: {integrity: sha512-nm4+ZvqjwGNvEqQ9IZUqeEgBXG5s5sM9WS66q+XD5fpEUbHUueg4zG3zg5RR6ciWN8258n+si2MPjqZHfbwsgw==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@trycua/cua-driver-darwin-x64@0.37.0':
+    resolution: {integrity: sha512-2Ax0fM1eqHfEIPRiqselPRaBZdP3Pk6TNHaIveyZwg/SMS+ybgmx21BjNLKkE+dsnoEDjsJaQvaSA+YsPLOf9g==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@trycua/cua-driver-linux-arm64-gnu@0.37.0':
+    resolution: {integrity: sha512-HrLUzj12a7beydPRjPmfdQnOVMFdBkOi/kNF5jXCSIFdv8hXtrQDraYErVesCZv05HfBbBD4MUv1ZCZYlAKa/Q==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@trycua/cua-driver-linux-x64-gnu@0.37.0':
+    resolution: {integrity: sha512-Wz5tWdEoBEfDR5ABgauK4jWWGdEJnWMTgIkyaMygUIuZ6V8k3YFbj6pMnaTjycAsoZY6/xN3d0fvSeNMgcGbuQ==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@trycua/cua-driver-win32-arm64-msvc@0.37.0':
+    resolution: {integrity: sha512-huN5AWHsnT5e0cfMuzAiFSFkAq13aVKLCoCpe+p/zSHW6JOPP3GReoAIAS3mLB0/5upyySWgWH3B7c/CSZHvTA==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@trycua/cua-driver-win32-x64-msvc@0.37.0':
+    resolution: {integrity: sha512-PrrxPvdT6Odw0t03TkN3EakHX3vpFHh8fvzWjaIPbrHlHu0RqyC4XUdrtBNVaVN9aw0glXoycmJcz44gnUBmTQ==}
+    cpu: [x64]
+    os: [win32]
+
+  '@trycua/cua-driver@0.37.0':
+    resolution: {integrity: sha512-n8b6pqi6u8Is/ZrHqao6bYe5fi0CCRRHHxaY0kLiCMM39sto1tD8g2JPMOkjxsMPFp2MN77+M29wUpZJ6EJCmw==}
+
   '@turbo/darwin-64@2.11.9':
     resolution: {integrity: sha512-OkW+EESJjo248CThWe9DfuUqzGcRwHe1DXKWRw9DSZ0lMkocKbbwNMjWVCiO+WNBcARDM0ibu0c9SbuIe4mw6w==}
     cpu: [x64]
@@ -3342,6 +3396,9 @@ packages:
   '@types/pako@2.0.4':
     resolution: {integrity: sha512-VWDCbrLeVXJM9fihYodcLiIv0ku+AlOa/TQ1SvYOaBuyrSKgEcro95LJyIsJ4vSo6BXIxOKxiJAat04CmST9Fw==}
 
+  '@types/pngjs@6.0.5':
+    resolution: {integrity: sha512-0k5eKfrA83JOZPppLtS2C7OUtyNAl2wKNxfyYl9Q5g9lPkgBl/9hNyAu6HuEH2J4XmIv2znEpkDd0SaZVxW6iQ==}
+
   '@types/prismjs@1.26.6':
     resolution: {integrity: sha512-vqlvI7qlMvcCBbVe0AKAb4f97//Hy0EBTaiW8AalRnG/xAN5zOiWWyrNqNXeq8+KAuvRewjCVY1+IPxk4RdNYw==}
 
@@ -3382,6 +3439,56 @@ packages:
 
   '@types/yauzl@2.10.3':
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
+
+  '@ubjs/core@0.31.0-3':
+    resolution: {integrity: sha512-39XrJgUZ2VVb561sSnkXPhczNoeBsNiSRArecsV0JE7CJq69ajFkcn9/tBAUS2NpgHkLIDU+z6Ks2+1wXnboxg==}
+
+  '@ubjs/node-darwin-arm64@0.31.0-3':
+    resolution: {integrity: sha512-GGQVPLkVo4Gc8qVLW4IGvS8bjl8eHXyeP4a97ntGmsAdXwE5gsS29o8xUEFROjhwHKD+9sgVeblCSWVG3CpHsw==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@ubjs/node-darwin-x64@0.31.0-3':
+    resolution: {integrity: sha512-2sc47u4XFYOsbmP5EW+Gx8m/yGrYnfFDFQm6+kz7goSWTNg84eEiz3COs9HKJDVuNJ5Khv5XipTO8CFadMLXCw==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@ubjs/node-linux-arm64-gnu@0.31.0-3':
+    resolution: {integrity: sha512-YStVXhYz/5jvlWf/p4fhiVT72unYAbGugifFC9QmO/+hnroQDAQ5t8SARbsc15G4olMcamdIB+GETiUB7gmaYg==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@ubjs/node-linux-arm64-musl@0.31.0-3':
+    resolution: {integrity: sha512-Izp4nvfy/LmibzFowAztkoDOksCR2fb2zl6fh1ojR1HEsg0rAGruxtI8d3fn8DI0lBXwqmn6SF///oD4mFNJPQ==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@ubjs/node-linux-x64-gnu@0.31.0-3':
+    resolution: {integrity: sha512-Xdm21blyg5U/kW6s7OMvgrr8coGTkUlt26DVR9x8gKISif+E3YwdEskbFScWqystAiJnfjw7xHEc8UMu0Qlz7Q==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@ubjs/node-linux-x64-musl@0.31.0-3':
+    resolution: {integrity: sha512-fFQ9BWS6i2LUH9SJgD9oEiKXXo/say59vHy7usFe1t7C2xvwvP34f5SuxXmWP9R8fHyA0aC4kIZ+TTwyHSv1Kw==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@ubjs/node-win32-arm64-msvc@0.31.0-3':
+    resolution: {integrity: sha512-ID6rSz1NmPsWTNBBNAw4OnJ5Dj8pcbtNJtdPB3OxcGigLBd/e0x7buhSI7os6Mo5iYtEdCynBRQHFJwub5XSPg==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@ubjs/node-win32-x64-msvc@0.31.0-3':
+    resolution: {integrity: sha512-wevs+Y+szwcCUT8IJFbB4/1nfxyRv/51l8oG7FGUPWD1xLPyuHfJBG27C+PDeC7KRzes/2n6aLo4DGZbr/LYTw==}
+    cpu: [x64]
+    os: [win32]
+
+  '@ubjs/node@0.31.0-3':
+    resolution: {integrity: sha512-qNMpi2LICNwxGXZyRF8fSDBSpbezyZbEsydrbiMPJOmtOWr4tmZIEl7jkWGHVGShoBvHfFo4eHp5B4UVP928Cg==}
 
   '@ungap/structured-clone@1.4.0':
     resolution: {integrity: sha512-1mEZtMKPM09vDmQt5y7YvmN2+DFTP7Tg0EWXdic8/C6VRnpb33e4ghisCIE3WZjsE2N8mf+QV1Zqh7ZFYLWInQ==}
@@ -7678,6 +7785,8 @@ snapshots:
       fast-wrap-ansi: 0.2.2
       sisteransi: 1.0.5
 
+  '@cloudflare/workers-oauth-provider@1.2.4': {}
+
   '@cloudflare/workers-types@4.20260702.1': {}
 
   '@codemirror/autocomplete@6.20.4':
@@ -9916,6 +10025,37 @@ snapshots:
 
   '@tanstack/store@0.11.2': {}
 
+  '@trycua/cua-driver-darwin-arm64@0.37.0':
+    optional: true
+
+  '@trycua/cua-driver-darwin-x64@0.37.0':
+    optional: true
+
+  '@trycua/cua-driver-linux-arm64-gnu@0.37.0':
+    optional: true
+
+  '@trycua/cua-driver-linux-x64-gnu@0.37.0':
+    optional: true
+
+  '@trycua/cua-driver-win32-arm64-msvc@0.37.0':
+    optional: true
+
+  '@trycua/cua-driver-win32-x64-msvc@0.37.0':
+    optional: true
+
+  '@trycua/cua-driver@0.37.0':
+    dependencies:
+      '@ubjs/core': 0.31.0-3
+      '@ubjs/node': 0.31.0-3
+    optionalDependencies:
+      '@trycua/cua-driver-darwin-arm64': 0.37.0
+      '@trycua/cua-driver-darwin-x64': 0.37.0
+      '@trycua/cua-driver-linux-arm64-gnu': 0.37.0
+      '@trycua/cua-driver-linux-x64-gnu': 0.37.0
+      '@trycua/cua-driver-win32-arm64-msvc': 0.37.0
+      '@trycua/cua-driver-win32-x64-msvc': 0.37.0
+    optional: true
+
   '@turbo/darwin-64@2.11.9':
     optional: true
 
@@ -10015,6 +10155,10 @@ snapshots:
 
   '@types/pako@2.0.4': {}
 
+  '@types/pngjs@6.0.5':
+    dependencies:
+      '@types/node': 22.20.5
+
   '@types/prismjs@1.26.6': {}
 
   '@types/raf@3.4.3':
@@ -10056,6 +10200,45 @@ snapshots:
   '@types/yauzl@2.10.3':
     dependencies:
       '@types/node': 22.20.5
+    optional: true
+
+  '@ubjs/core@0.31.0-3':
+    optional: true
+
+  '@ubjs/node-darwin-arm64@0.31.0-3':
+    optional: true
+
+  '@ubjs/node-darwin-x64@0.31.0-3':
+    optional: true
+
+  '@ubjs/node-linux-arm64-gnu@0.31.0-3':
+    optional: true
+
+  '@ubjs/node-linux-arm64-musl@0.31.0-3':
+    optional: true
+
+  '@ubjs/node-linux-x64-gnu@0.31.0-3':
+    optional: true
+
+  '@ubjs/node-linux-x64-musl@0.31.0-3':
+    optional: true
+
+  '@ubjs/node-win32-arm64-msvc@0.31.0-3':
+    optional: true
+
+  '@ubjs/node-win32-x64-msvc@0.31.0-3':
+    optional: true
+
+  '@ubjs/node@0.31.0-3':
+    optionalDependencies:
+      '@ubjs/node-darwin-arm64': 0.31.0-3
+      '@ubjs/node-darwin-x64': 0.31.0-3
+      '@ubjs/node-linux-arm64-gnu': 0.31.0-3
+      '@ubjs/node-linux-arm64-musl': 0.31.0-3
+      '@ubjs/node-linux-x64-gnu': 0.31.0-3
+      '@ubjs/node-linux-x64-musl': 0.31.0-3
+      '@ubjs/node-win32-arm64-msvc': 0.31.0-3
+      '@ubjs/node-win32-x64-msvc': 0.31.0-3
     optional: true
 
   '@ungap/structured-clone@1.4.0': {}

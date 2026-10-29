@@ -16,6 +16,25 @@ const turnStarted = (sessionId: string): SessionEvent => ({
 })
 
 describe('EventStore', () => {
+  it('lists created sessions in activity order using a sequence cursor', () => {
+    const store = new EventStore(':memory:')
+    const created = (id: string): SessionEvent => ({
+      type: 'session.created',
+      sessionId: id,
+      title: id,
+      cwd: '/project',
+      instanceId: 'agent',
+      at: 1,
+    })
+    store.append(created('first'))
+    store.append(created('second'))
+    store.append(turnStarted('first'))
+    store.append(turnStarted('no-creation'))
+    expect(store.listSessionIds(undefined, 1)).toEqual([{ id: 'first', latest: 3 }])
+    expect(store.listSessionIds(3, 2)).toEqual([{ id: 'second', latest: 2 }])
+    store.close()
+  })
+
   it('rolls back a failed batch without notifying clients or retaining uncommitted snapshot keys', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'bc-store-rollback-'))
     const file = path.join(dir, 'events.db')

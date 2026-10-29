@@ -1,3 +1,4 @@
+import { paneProject } from '../shell/paneProject.ts'
 import { useCallback, useEffect, useState } from 'react'
 import { placeTerminal } from './terminalTabs.ts'
 import { Paperclip, Plus, SquareTerminal, Trash2, X } from 'lucide-react'
@@ -71,7 +72,7 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
 
   const current = terminals?.find((t) => t.id === active)
   const selectedText = selection.terminalId === current?.id ? selection.text : ''
-  const folder = cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? cwd
+  const shown = paneProject(workspace)
   const attachSelection = () => {
     if (!current || !selectedText.trim()) return
     void attachUpload(
@@ -97,8 +98,9 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
     <div className="pane-body">
       <div className="pane-head">
         <h2>Terminal</h2>
-        <span className="muted" title={cwd}>
-          {workspace.branch ?? folder}
+        <span className="muted pane-project" title={shown.title}>
+          {shown.label}
+          {workspace.branch ? ` · ${workspace.branch}` : ''}
         </span>
         <span className="spacer" />
         <button
@@ -144,7 +146,7 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
             <SquareTerminal size={26} />
           </span>
           <h3>No terminal yet</h3>
-          <p>Start a shell in {folder} to run commands.</p>
+          <p>Start a shell in {shown.label} to run commands.</p>
           <button className="primary-btn" onClick={() => void create()}>
             New terminal
           </button>

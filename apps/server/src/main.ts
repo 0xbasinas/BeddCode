@@ -3,6 +3,7 @@ import { HANDLERS, runHandler } from './cli/dispatch.ts'
 import { USAGE } from './cli/usage.ts'
 import { runServer } from './runServer.ts'
 import { installService, uninstallService } from './service/install.ts'
+import { hostStatus } from './service/status.ts'
 
 // `node --watch` (the dev script) makes every worker thread report the files it loads. The terminal
 // library keeps one worker per shell and takes any message from it for its own, which crashes the
@@ -25,18 +26,22 @@ const command = COMMANDS.includes(first)
     : first
 let args = command === first ? rest : [first, ...rest]
 // `beddcode host install|uninstall` is the headless way to say install-service.
-let hostAction: 'install-service' | 'uninstall-service' | null = null
+let hostAction: 'install-service' | 'uninstall-service' | 'status' | null = null
 if (command === 'host') {
   const [action, ...more] = args
-  if (action !== 'install' && action !== 'uninstall') {
-    console.error('Usage: beddcode host install|uninstall [--port n] [--host address] [--dry-run]')
+  if (action !== 'install' && action !== 'uninstall' && action !== 'status') {
+    console.error(
+      'Usage: beddcode host install|uninstall|status [--port n] [--host address] [--at-boot] [--dry-run]',
+    )
     process.exit(1)
   }
-  hostAction = action === 'install' ? 'install-service' : 'uninstall-service'
+  hostAction =
+    action === 'install' ? 'install-service' : action === 'uninstall' ? 'uninstall-service' : action
   args = more
 }
 const dryRun = args.includes('--dry-run')
-const serveArgs = args.filter((a) => a !== '--dry-run')
+const atBoot = args.includes('--at-boot')
+const serveArgs = args.filter((a) => a !== '--dry-run' && a !== '--at-boot')
 
 try {
   if (wantsHelp || !COMMANDS.includes(command)) {
@@ -47,10 +52,12 @@ try {
     // A background host exists to be reached from other machines, so it listens beyond loopback
     // unless told otherwise. Only the tailnet and paired devices get in (see auth/guard.ts).
     const withHost = serveArgs.includes('--host') ? serveArgs : ['--host', '0.0.0.0', ...serveArgs]
-    await installService({ serveArgs: withHost, dryRun })
+    await installService({ serveArgs: withHost, dryRun, atBoot })
     if (hostAction && !dryRun) {
       console.log('Installed. Pair a device with: beddcode pair')
     }
+  } else if (hostAction === 'status') {
+    process.exitCode = await hostStatus(parseServeArgs(serveArgs).port)
   } else if (command === 'uninstall-service' || hostAction === 'uninstall-service') {
     await uninstallService({ dryRun })
   } else if (command === 'serve') {

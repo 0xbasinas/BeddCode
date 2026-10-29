@@ -5,7 +5,7 @@ type Obj = Record<string, unknown>
 
 interface Capabilities {
   loadSession?: boolean
-  sessionCapabilities?: { list?: unknown; resume?: unknown }
+  sessionCapabilities?: { list?: unknown; resume?: unknown; close?: unknown }
 }
 
 const INIT_TIMEOUT = 30_000
@@ -27,14 +27,23 @@ export async function withAcpAgent<T>(
       'initialize',
       {
         protocolVersion: 1,
-        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+        clientCapabilities: {
+          fs: { readTextFile: false, writeTextFile: false },
+          terminal: false,
+          session: { configOptions: { boolean: {} } },
+        },
         clientInfo: { name: 'beddcode', title: 'BeddCode', version: '0.0.0' },
       },
       { timeoutMs: INIT_TIMEOUT },
     )
+    if (init.protocolVersion !== 1) {
+      throw new Error(
+        `${label} speaks ACP v${String(init.protocolVersion)}, which is not supported yet`,
+      )
+    }
     return await fn(rpc, init.agentCapabilities ?? {})
   } catch (err) {
-    const tail = rpc.stderrTail.split('\n').at(-1)
+    const tail = rpc.stderrTail.split('\n').filter(Boolean).at(-1)
     const message = err instanceof Error ? err.message : String(err)
     throw new Error(tail && /ended|closed/.test(message) ? `${label}: ${tail}` : message)
   } finally {

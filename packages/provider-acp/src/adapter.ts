@@ -125,7 +125,7 @@ export function createAcpAdapter(options: AcpAdapterOptions): ProviderAdapter {
         }>('session/new', { cwd: folder, mcpServers: [] }, { timeoutMs: 60_000 })
         // Commands arrive as a notification right after the session exists.
         await new Promise((resolve) => setTimeout(resolve, 500))
-        if (caps.sessionCapabilities && 'close' in caps.sessionCapabilities) {
+        if (caps.sessionCapabilities?.close != null) {
           // Leave no empty session behind in the agent's own history.
           await rpc
             .request('session/close', { sessionId: res.sessionId }, { timeoutMs: 5_000 })

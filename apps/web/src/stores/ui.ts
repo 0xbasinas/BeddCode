@@ -1,10 +1,10 @@
 import { create } from 'zustand'
 
-export type PaneId = 'terminal' | 'files' | 'git' | 'browser'
+export type PaneId = 'terminal' | 'files' | 'git' | 'browser' | 'desktop'
 export type GitTab = 'changes' | 'commits' | 'pr'
 
 const PANE_KEY = 'beddcode.right-pane'
-const PANES: PaneId[] = ['terminal', 'files', 'git', 'browser']
+const PANES: PaneId[] = ['terminal', 'files', 'git', 'browser', 'desktop']
 
 interface PaneState {
   /** The tool the right pane shows when expanded; kept while it is collapsed. */

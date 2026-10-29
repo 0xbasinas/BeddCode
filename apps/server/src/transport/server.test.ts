@@ -147,7 +147,7 @@ async function boot(
     attachments,
     workspace,
     watchers,
-    automation,
+    automation: { ...automation, computer: automation.computerPane },
     agentTools: automation.agentTools,
     log,
   })
@@ -500,6 +500,19 @@ describe('server', () => {
     const c = await Client.connect(server.port)
     expect((await c.rpc('nope', {})).ok).toBe(false)
     expect((await c.rpc('sessions.prompt', { sessionId: 1 })).ok).toBe(false)
+  })
+
+  it('serves the Desktop pane: nothing for a session without the computer, and the take-over switch', async () => {
+    const { server } = await boot()
+    const c = await Client.connect(server.port)
+    const created = await c.rpc('sessions.create', { instanceId: 'fake', title: 'Plain' })
+    const { sessionId } = created.result as { sessionId: string }
+    const view = await c.rpc('computer.view', { sessionId })
+    expect(view.result).toMatchObject({ enabled: false, paused: false, active: false, actions: [] })
+    const control = await c.rpc('computer.control', { sessionId, paused: true })
+    expect(control.result).toEqual({ paused: true })
+    expect((await c.rpc('computer.view', { sessionId })).result).toMatchObject({ paused: true })
+    await c.rpc('computer.control', { sessionId, paused: false })
   })
 
   it('runs a fake session and streams its events to a subscriber', async () => {

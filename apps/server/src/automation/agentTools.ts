@@ -16,6 +16,12 @@ import {
   isDesignToolName,
   type DesignTools,
 } from '../design/designTools.ts'
+import {
+  COMPUTER_INSTRUCTIONS,
+  COMPUTER_TOOL_DEFINITIONS,
+  isComputerToolName,
+  type ComputerTools,
+} from '../computer/computerTools.ts'
 import { digest, transcript, type SessionDigest } from './digest.ts'
 
 /** How deep sessions may nest: a child (1) may start children of its own (2), and those none. */
@@ -287,19 +293,29 @@ export class AgentTools {
     private readonly bridge: { file: string; url: () => string; execPath?: string },
     private readonly browser?: BrowserTools,
     private readonly design?: DesignTools,
+    private readonly computer?: ComputerTools,
   ) {}
 
   /** Which tool sets a session was given when it was created. */
-  private features(sessionId: string): { agents: boolean; browser: boolean; design: boolean } {
+  private features(sessionId: string): {
+    agents: boolean
+    browser: boolean
+    design: boolean
+    computer: boolean
+  } {
     const created = this.host.readSession(sessionId).find((e) => e.event.type === 'session.created')
     const event = created?.event.type === 'session.created' ? created.event : undefined
     return {
-      // The server is only given to sessions with one of the three; without the other flags it
+      // The server is only given to sessions with one of the four; without the other flags it
       // was for the agent tools.
       agents:
-        event?.agentTools === true || (event?.browserTools !== true && event?.designTools !== true),
+        event?.agentTools === true ||
+        (event?.browserTools !== true &&
+          event?.designTools !== true &&
+          event?.computerTools !== true),
       browser: event?.browserTools === true && this.browser !== undefined,
       design: event?.designTools === true && this.design !== undefined,
+      computer: event?.computerTools === true && this.computer !== undefined,
     }
   }
 
@@ -341,6 +357,7 @@ export class AgentTools {
         has.agents && INSTRUCTIONS,
         has.browser && BROWSER_INSTRUCTIONS,
         has.design && DESIGN_INSTRUCTIONS,
+        has.computer && COMPUTER_INSTRUCTIONS,
       ]
         .filter(Boolean)
         .join('\n\n')
@@ -354,6 +371,7 @@ export class AgentTools {
           ...(has.agents && d?.parentSessionId ? [REPORT_TOOL] : []),
           ...(has.browser ? BROWSER_TOOL_DEFINITIONS : []),
           ...(has.design ? DESIGN_TOOL_DEFINITIONS : []),
+          ...(has.computer ? COMPUTER_TOOL_DEFINITIONS : []),
         ],
       }
     }
@@ -375,6 +393,14 @@ export class AgentTools {
           isError: true,
         }
       return this.design.callAsync(name, p.arguments ?? {})
+    }
+    if (isComputerToolName(name)) {
+      if (!has.computer || !this.computer)
+        return {
+          content: [{ type: 'text', text: 'This session may not operate the computer.' }],
+          isError: true,
+        }
+      return this.computer.call(sessionId, name, p.arguments ?? {})
     }
     if (!has.agents)
       return {
@@ -524,6 +550,7 @@ export class AgentTools {
   /** Drops what is kept for a session that no longer exists. */
   forget(sessionId: string) {
     this.unwatch(sessionId)
+    this.computer?.revoke(sessionId)
     this.reported.delete(sessionId)
     const token = this.bySession.get(sessionId)
     if (token) this.tokens.delete(token)

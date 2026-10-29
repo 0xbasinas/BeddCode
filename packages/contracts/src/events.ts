@@ -109,8 +109,11 @@ export const SessionEvent = z.discriminatedUnion('type', [
     browserTools: z.boolean().optional(),
     /** The agent may read and draw on the host's design canvases through BeddCode's design tools. */
     designTools: z.boolean().optional(),
+    /** The agent may operate the host's desktop through BeddCode's computer tools. */
+    computerTools: z.boolean().optional(),
     /** Set when a schedule started this session. */
     schedule: z.object({ id: z.string(), name: z.string() }).optional(),
+    mcpGateway: z.boolean().optional(),
   }),
   /** The provider's own session id, kept so a stopped session can be resumed later. */
   Base.extend({ type: z.literal('session.provider-session'), providerSessionId: z.string() }),

@@ -136,12 +136,15 @@ export interface SessionView {
   parent?: { sessionId: string; depth: number }
   /** Started by a schedule. */
   schedule?: { id: string; name: string }
+  mcpGateway?: boolean
   /** Can start and manage other sessions. */
   agentTools?: boolean
   /** The agent may use the desktop app's browser pane. */
   browserTools?: boolean
   /** The agent may draw on the host's design canvases. */
   designTools?: boolean
+  /** The agent may operate the host's desktop. */
+  computerTools?: boolean
   /** The agent's own per-session settings (model, thinking level, ...). */
   config: ConfigOption[]
   /** The session this one continues, when it was forked. */
@@ -248,9 +251,11 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       imported: e.imported,
       parent: e.parent,
       schedule: e.schedule,
+      mcpGateway: e.mcpGateway,
       agentTools: e.agentTools,
       browserTools: e.browserTools,
       designTools: e.designTools,
+      computerTools: e.computerTools,
     }
     return {
       lastSeq: stored.seq,

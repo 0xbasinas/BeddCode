@@ -242,3 +242,77 @@ describe('Daemon', () => {
     await daemon.stop()
   })
 })
+
+describe('Daemon that does not start a host of its own', () => {
+  function setupExternal(withService: boolean) {
+    const clock = { t: 0 }
+    const world = { up: false, spawned: 0, serviceStarts: 0 }
+    let ticks = 0
+    const daemon = new Daemon({
+      launch,
+      spawn: false,
+      waitingDetail: 'Start one with beddcode serve',
+      probe: async () => world.up,
+      sleep: async (ms) => {
+        clock.t += ms
+        // Let the test look around between polls.
+        if (++ticks % 5 === 0) await new Promise((r) => setTimeout(r, 0))
+      },
+      now: () => clock.t,
+      spawnHost() {
+        world.spawned++
+        return { exited: new Promise<number | null>(() => undefined), kill() {} }
+      },
+      ...(withService && {
+        startService: async () => {
+          world.serviceStarts++
+        },
+      }),
+    })
+    const until = (test: (s: DaemonState) => boolean) =>
+      new Promise<DaemonState>((resolve) => {
+        if (test(daemon.current)) return resolve(daemon.current)
+        const off = daemon.onChange((s) => {
+          if (test(s)) {
+            off()
+            resolve(s)
+          }
+        })
+      })
+    return { daemon, world, clock, until }
+  }
+
+  it('waits, never starts one, and uses a host once it answers', async () => {
+    const { daemon, world, until } = setupExternal(false)
+    daemon.start()
+    const waiting = await until((s) => s.status === 'waiting')
+    expect(waiting.detail).toBe('Start one with beddcode serve')
+    world.up = true
+    await until((s) => s.status === 'attached')
+    expect(world.spawned).toBe(0)
+    // Gone again: back to waiting, still without starting one.
+    world.up = false
+    await until((s) => s.status === 'waiting')
+    expect(world.spawned).toBe(0)
+    expect(await daemon.restart()).toBe(false)
+    await daemon.stop()
+  })
+
+  it('starts the background host, again every half minute, and at once when asked', async () => {
+    const { daemon, world, clock, until } = setupExternal(true)
+    daemon.start()
+    await until((s) => s.status === 'waiting')
+    await new Promise((r) => setTimeout(r, 5))
+    expect(world.serviceStarts).toBeGreaterThanOrEqual(1)
+    const before = world.serviceStarts
+    const at = clock.t
+    // Roughly one start per 30 s of polling.
+    while (clock.t - at < 31_000) await new Promise((r) => setTimeout(r, 0))
+    expect(world.serviceStarts).toBeGreaterThan(before)
+    expect(await daemon.restart()).toBe(true)
+    world.up = true
+    await until((s) => s.status === 'attached')
+    expect(world.spawned).toBe(0)
+    await daemon.stop()
+  })
+})

@@ -78,7 +78,14 @@ function permissionText(p: Extract<BrowserPrompt, { type: 'permission' }>): stri
 const dataUrlBase64 = (url: string) => url.slice(url.indexOf(',') + 1)
 
 /** A small tabbed browser for previewing the app an agent is building. */
-export function BrowserPane({ draftId }: { draftId?: string }) {
+export function BrowserPane({
+  draftId,
+  project,
+}: {
+  draftId?: string
+  /** The session's project, which screenshots and picked elements are attached to. */
+  project?: { label: string; title: string }
+}) {
   const hostKey = useHostKey()
   const { tabs, active, open, close, activate, pages, prompts, requests } = useBrowser()
   const current = tabs.find((t) => t.id === active)
@@ -258,6 +265,14 @@ export function BrowserPane({ draftId }: { draftId?: string }) {
     >
       <div className="pane-head">
         <h2>Browser</h2>
+        {project && (
+          <span
+            className="muted pane-project"
+            title={`Screenshots and picked elements go to this session (${project.title})`}
+          >
+            {project.label}
+          </span>
+        )}
         <span className="spacer" />
         <button
           className="icon-btn"

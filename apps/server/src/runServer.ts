@@ -46,6 +46,7 @@ import { ProjectStore } from './workspace/projects.ts'
 import { createShutdown, watchForCrashes } from './shutdown.ts'
 import type { AgentTools } from './automation/agentTools.ts'
 import { createAutomation } from './automation/index.ts'
+import { GatewayControl } from './mcpGateway/control.ts'
 
 /** Starts the host and keeps running until SIGINT/SIGTERM. */
 export async function runServer(config: ServerConfig): Promise<void> {
@@ -182,6 +183,9 @@ export async function runServer(config: ServerConfig): Promise<void> {
     })
     relay.start()
   }
+  const mcpGateway = new GatewayControl({ home, sessions, store, log }, async () =>
+    (await workspace.projects.list()).map((p) => p.path),
+  )
   let server: Awaited<ReturnType<typeof startServer>>
   try {
     server = await startServer({
@@ -212,9 +216,10 @@ export async function runServer(config: ServerConfig): Promise<void> {
         }),
       }),
       relay: relayControl,
+      mcpGateway,
       telemetry,
       telemetryRecorder: (name, value, tags) => telemetry.record(name, value, tags),
-      automation: { schedules, alerts, designs },
+      automation: { schedules, alerts, designs, computer: automation.computerPane },
       agentTools,
       browser: automation.browser,
       designLink: automation.designLink,
@@ -247,6 +252,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     exit: (code) => process.exit(code),
     close: async () => {
       relay?.stop()
+      mcpGateway.stop()
       telemetry.stop()
       automation.stop()
       await sessions.close()

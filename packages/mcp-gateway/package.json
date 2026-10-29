@@ -1,0 +1,13 @@
+{
+  "name": "@beddcode/mcp-gateway",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "^1.2.4"
+  }
+}
