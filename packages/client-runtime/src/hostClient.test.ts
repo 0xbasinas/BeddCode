@@ -8,7 +8,7 @@ class FakeSocket {
   sent: Record<string, unknown>[] = []
   onopen: (() => void) | null = null
   onmessage: ((m: { data: string }) => void) | null = null
-  onclose: (() => void) | null = null
+  onclose: ((e?: { code?: number }) => void) | null = null
   onerror: (() => void) | null = null
   constructor(readonly url: string) {
     FakeSocket.instances.push(this)
@@ -26,9 +26,9 @@ class FakeSocket {
   receive(frame: ServerFrame) {
     this.onmessage?.({ data: JSON.stringify(frame) })
   }
-  drop() {
+  drop(code?: number) {
     this.readyState = 3
-    this.onclose?.()
+    this.onclose?.(code === undefined ? undefined : { code })
   }
 }
 
@@ -124,6 +124,41 @@ describe('HostClient', () => {
     right.open()
     right.receive(welcome)
     expect(client.connectionState).toBe('connected')
+    client.stop()
+  })
+
+  it('says a host on another protocol version is incompatible, retries it slowly, and recovers', () => {
+    const states: string[] = []
+    const client = new HostClient({
+      url: 'ws://host/ws',
+      onEvent: () => {},
+      onState: (s) => states.push(s),
+      createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
+      backoff: { minMs: 100, maxMs: 100 },
+      incompatibleRetryMs: 10_000,
+    })
+    client.start()
+    // The host refuses the hello with 1002 (it was updated and this app not yet).
+    FakeSocket.instances[0]!.open()
+    FakeSocket.instances[0]!.drop(1002)
+    expect(client.connectionState).toBe('incompatible')
+    vi.advanceTimersByTime(1_000)
+    expect(FakeSocket.instances).toHaveLength(1)
+    vi.advanceTimersByTime(12_500)
+    expect(FakeSocket.instances).toHaveLength(2)
+    // A welcome on another version counts the same.
+    FakeSocket.instances[1]!.open()
+    FakeSocket.instances[1]!.receive({ ...welcome, protocol: 99 })
+    expect(client.connectionState).toBe('incompatible')
+    // Retry now (after updating) does not wait out the slow retry.
+    client.reconnectNow()
+    FakeSocket.instances[2]!.open()
+    FakeSocket.instances[2]!.receive(welcome)
+    expect(client.connectionState).toBe('connected')
+    // An ordinary drop is "reconnecting" again, with the quick back-off.
+    FakeSocket.instances[2]!.drop(1006)
+    expect(client.connectionState).toBe('reconnecting')
+    expect(states).toContain('incompatible')
     client.stop()
   })
 

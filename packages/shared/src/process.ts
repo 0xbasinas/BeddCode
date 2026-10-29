@@ -1,4 +1,10 @@
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import {
+  execFile,
+  spawn,
+  spawnSync,
+  type ChildProcess,
+  type ChildProcessWithoutNullStreams,
+} from 'node:child_process'
 import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
 
@@ -105,7 +111,7 @@ export function spawnProcess(
   options: SpawnOptions = {},
 ): ChildProcessWithoutNullStreams {
   const viaShell = isWindows && /\.(cmd|bat)$/i.test(file)
-  return spawn(
+  const child = spawn(
     viaShell ? 'cmd.exe' : file,
     viaShell ? ['/d', '/s', '/c', quoteForCmd(file), ...args.map(quoteForCmd)] : args,
     {
@@ -116,4 +122,110 @@ export function spawnProcess(
       windowsVerbatimArguments: viaShell,
     },
   )
+  track(child)
+  return child
+}
+
+/** Long-running children still alive, so the host can make sure none outlives it. */
+const running = new Set<ChildProcess>()
+
+function track(child: ChildProcess) {
+  running.add(child)
+  const forget = () => running.delete(child)
+  child.once('exit', forget)
+  child.once('error', forget)
+}
+
+/** How many children started with `spawnProcess` are still running. */
+export function runningChildren(): number {
+  return running.size
+}
+
+const exited = (child: ChildProcess) => child.exitCode !== null || child.signalCode !== null
+
+/**
+ * Kills a child and, on Windows, everything it started. There `child.kill()` ends only the direct
+ * process, which for an npm-installed agent is the `cmd.exe` running its `.cmd` shim: the real
+ * agent (and anything it ran) would be left running. `taskkill /T` ends the whole tree.
+ */
+export function killProcessTree(child: ChildProcess, options: { sync?: boolean } = {}) {
+  if (exited(child) || child.pid === undefined) return
+  if (isWindows) {
+    const args = ['/pid', String(child.pid), '/T', '/F']
+    try {
+      if (options.sync) spawnSync('taskkill', args, { windowsHide: true, timeout: 5_000 })
+      else spawn('taskkill', args, { windowsHide: true, stdio: 'ignore' }).on('error', () => {})
+    } catch {
+      // Fall back to the direct child at least.
+    }
+    try {
+      child.kill()
+    } catch {
+      // already gone
+    }
+    return
+  }
+  try {
+    child.kill('SIGKILL')
+  } catch {
+    // already gone
+  }
+}
+
+/**
+ * Asks a child to stop and makes sure it does. Closing its stdin is the polite request (agents
+ * on stdio exit when their input ends) and gives it a moment to save its own state: killing an
+ * agent mid-write can leave its conversation file unreadable, so the next resume fails. Then
+ * SIGTERM (after up to a second), and after `graceMs` a hard kill of the whole tree.
+ */
+export function stopProcess(
+  child: ChildProcess,
+  options: { graceMs?: number } = {},
+): Promise<void> {
+  if (exited(child) || child.pid === undefined) return Promise.resolve()
+  const graceMs = options.graceMs ?? 3_000
+  return new Promise((resolve) => {
+    let hard: ReturnType<typeof setTimeout> | undefined
+    const done = () => {
+      if (hard) clearTimeout(hard)
+      resolve()
+    }
+    child.once('exit', done)
+    try {
+      child.stdin?.end()
+    } catch {
+      // a broken pipe is fine: the process is going away
+    }
+    // Then SIGTERM, for a child that does not watch its input. Not on Windows: there a signal is a
+    // hard kill of the shim only, so stdin EOF and then the tree kill are all there is.
+    const term = isWindows
+      ? undefined
+      : setTimeout(
+          () => {
+            try {
+              child.kill('SIGTERM')
+            } catch {
+              // already gone
+            }
+          },
+          Math.min(1_000, graceMs / 3),
+        )
+    term?.unref?.()
+    child.once('exit', () => term && clearTimeout(term))
+    hard = setTimeout(() => {
+      killProcessTree(child)
+      // Whatever happens next, do not keep the caller waiting on a process that will not report.
+      setTimeout(resolve, 1_000).unref?.()
+    }, graceMs)
+    hard.unref?.()
+  })
+}
+
+/**
+ * Last resort when the host is exiting: kills every child still running, synchronously, so no
+ * agent is left orphaned (on Windows, children are not ended with their parent).
+ */
+export function killAllChildren() {
+  for (const child of Array.from(running)) killProcessTree(child, { sync: true })
+  running.clear()
 }

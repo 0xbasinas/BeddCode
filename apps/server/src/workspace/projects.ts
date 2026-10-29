@@ -1,5 +1,6 @@
-import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { statSync } from 'node:fs'
 import path from 'node:path'
+import { createLogger, readJsonFile, writeFileAtomic } from '@beddcode/shared'
 import type { Project, ProjectScript } from '@beddcode/contracts'
 import type { GitService } from './git.ts'
 
@@ -14,18 +15,23 @@ export class ProjectStore {
   ) {}
 
   private read(): { paths: string[]; scripts: Record<string, ProjectScript[]> } {
-    try {
-      const data = JSON.parse(readFileSync(this.file, 'utf8')) as {
-        paths?: string[]
-        scripts?: Record<string, ProjectScript[]>
-      }
-      return {
-        paths: Array.isArray(data.paths) ? data.paths : [],
-        scripts: data.scripts && typeof data.scripts === 'object' ? data.scripts : {},
-      }
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { paths: [], scripts: {} }
-      throw new Error(`Could not read ${this.file}: ${err instanceof Error ? err.message : err}`)
+    const read = readJsonFile<{ paths?: unknown; scripts?: Record<string, ProjectScript[]> }>(
+      this.file,
+    )
+    if (read.status === 'corrupt') {
+      createLogger('projects').error(
+        `${this.file} is damaged (${read.error}); starting with no projects.` +
+          (read.quarantined ? ` The old file was kept as ${read.quarantined}.` : ''),
+      )
+    }
+    if (read.status !== 'ok' || !read.value || typeof read.value !== 'object')
+      return { paths: [], scripts: {} }
+    const data = read.value
+    return {
+      paths: Array.isArray(data.paths)
+        ? data.paths.filter((p): p is string => typeof p === 'string')
+        : [],
+      scripts: data.scripts && typeof data.scripts === 'object' ? data.scripts : {},
     }
   }
 
@@ -34,8 +40,6 @@ export class ProjectStore {
   }
 
   private write(paths: string[], scripts = this.read().scripts) {
-    mkdirSync(path.dirname(this.file), { recursive: true })
-    const tmp = `${this.file}.tmp`
     // Scripts of folders no longer in the list are dropped.
     const kept = Object.fromEntries(
       Object.entries(scripts).filter(
@@ -44,8 +48,7 @@ export class ProjectStore {
     )
     const data =
       Object.keys(kept).length > 0 ? { version: 1, paths, scripts: kept } : { version: 1, paths }
-    writeFileSync(tmp, JSON.stringify(data, null, 2))
-    renameSync(tmp, this.file)
+    writeFileAtomic(this.file, JSON.stringify(data, null, 2))
   }
 
   /** The saved commands of a folder (of the repository a worktree belongs to, for a worktree). */

@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { readJsonFile, writeFileAtomic } from '@beddcode/shared'
 import path from 'node:path'
 import { defaultGuard, type GuardOptions } from './auth/guard.ts'
 import { dataHome } from './hostIdentity.ts'
@@ -31,19 +31,24 @@ export interface ConfigFile {
 export const configPath = () => path.join(dataHome(), 'config.json')
 
 export function readConfigFile(file = configPath()): ConfigFile {
-  try {
-    const parsed = JSON.parse(readFileSync(file, 'utf8')) as unknown
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as ConfigFile)
-      : {}
-  } catch {
-    return {}
+  // A damaged file is moved aside (not overwritten by the next save), and defaults apply.
+  const read = readJsonFile(file)
+  if (read.status === 'corrupt') {
+    console.warn(
+      `${file} is damaged (${read.error}); using the default settings.` +
+        (read.quarantined ? ` The old file was kept as ${read.quarantined}.` : ''),
+    )
   }
+  if (read.status !== 'ok') return {}
+  const parsed = read.value
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? (parsed as ConfigFile)
+    : {}
 }
 
 export function writeConfigFile(config: ConfigFile, file = configPath()): void {
-  mkdirSync(path.dirname(file), { recursive: true })
-  writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`)
+  // May hold the relay password, so only this user reads it.
+  writeFileAtomic(file, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 })
 }
 
 /**

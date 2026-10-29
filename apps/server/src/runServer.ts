@@ -5,7 +5,7 @@ import { createClaudeAdapter } from '@beddcode/provider-claude'
 import { createCodexAdapter } from '@beddcode/provider-codex'
 import { createFakeAdapter, type ProviderAdapter } from '@beddcode/provider-core'
 import type { RelaySettings } from '@beddcode/contracts'
-import { createLogger } from '@beddcode/shared'
+import { createLogger, killAllChildren, runningChildren } from '@beddcode/shared'
 import { AgentCatalog } from './agents/catalog.ts'
 import { PreviewCache } from './agents/previews.ts'
 import { AttachmentStore } from './attachments/store.ts'
@@ -28,7 +28,7 @@ import { TailscaleService } from './network/tailscale.ts'
 import { reachableRoutes } from './network/reachable.ts'
 import { SessionManager } from './sessions/sessionManager.ts'
 import { recoverInterruptedTurns } from './sessions/recovery.ts'
-import { EventStore } from './store/eventStore.ts'
+import { openEventStore } from './store/eventStore.ts'
 import { startServer } from './transport/server.ts'
 import { FileService } from './files/files.ts'
 import { FileWatchers } from './files/watcher.ts'
@@ -57,7 +57,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     adapters.push(createFakeAdapter({ advanced: fake === 'advanced', delayMs: 120 }))
   }
 
-  const store = new EventStore(path.join(home, 'beddcode.db'))
+  const store = openEventStore(path.join(home, 'beddcode.db'))
   recoverInterruptedTurns(store)
   const attachments = new AttachmentStore(path.join(home, 'attachments'))
   const git = new GitService()
@@ -221,12 +221,30 @@ export async function runServer(config: ServerConfig): Promise<void> {
       automation.stop()
       await sessions.close()
       workspace.terminals.shutdown()
+      // Agents were asked to stop (stdin closed): give them a moment to save their conversation,
+      // then end whatever is left so no agent outlives the host.
+      await waitForChildren(2_500)
+      killAllChildren()
       await watchers.closeAll()
       await server.close()
       store.close()
     },
+    timeoutMs: 8_000,
   })
   process.on('SIGINT', () => shutdown('SIGINT'))
   process.on('SIGTERM', () => shutdown('SIGTERM'))
+  // A closed terminal window (SIGHUP), and Ctrl+Break or a closed console on Windows (SIGBREAK).
+  process.on('SIGHUP', () => shutdown('SIGHUP'))
+  if (process.platform === 'win32') process.on('SIGBREAK', () => shutdown('SIGBREAK'))
+  // Whatever way the process ends, agents it started do not keep running without it.
+  process.on('exit', () => killAllChildren())
   watchForCrashes(log, shutdown)
+}
+
+/** Resolves when every agent process has exited, or after `ms`. */
+async function waitForChildren(ms: number) {
+  const deadline = Date.now() + ms
+  while (runningChildren() > 0 && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
 }

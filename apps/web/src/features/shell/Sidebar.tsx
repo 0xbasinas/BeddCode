@@ -89,6 +89,8 @@ function hostState(connection: string | undefined): { label: string; tone: strin
       return { label: 'Reconnecting…', tone: 'warn' }
     case 'denied':
       return { label: 'Needs pairing', tone: 'failed' }
+    case 'incompatible':
+      return { label: 'Needs update', tone: 'failed' }
     default:
       return { label: 'Offline', tone: 'failed' }
   }

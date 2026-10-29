@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import path from 'node:path'
+import { readFileSync } from 'node:fs'
+import { quarantineFile, writeFileAtomic } from '@beddcode/shared'
 import {
   Schedule,
   ScheduleRun,
@@ -70,19 +70,22 @@ export class ScheduleService {
         return parsed.success ? [parsed.data] : []
       })
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT')
-        this.options.log.warn(`could not read ${this.options.file}`, err)
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        // Keep the damaged file rather than overwrite it at the next save.
+        const kept = quarantineFile(this.options.file)
+        this.options.log.warn(
+          `could not read ${this.options.file}${kept ? `; kept as ${kept}` : ''}`,
+          err,
+        )
+      }
     }
   }
 
   private save() {
-    mkdirSync(path.dirname(this.options.file), { recursive: true })
-    const tmp = `${this.options.file}.tmp`
-    writeFileSync(
-      tmp,
+    writeFileAtomic(
+      this.options.file,
       JSON.stringify({ version: 1, schedules: this.schedules, runs: this.runs }, null, 2),
     )
-    renameSync(tmp, this.options.file)
   }
 
   /** Starts the timer and follows the sessions runs work in. */

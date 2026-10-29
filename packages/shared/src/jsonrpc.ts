@@ -1,6 +1,6 @@
 import readline from 'node:readline'
 import type { Logger } from './log.ts'
-import { spawnProcess } from './process.ts'
+import { spawnProcess, stopProcess } from './process.ts'
 
 /** Line-oriented duplex channel; the real one wraps a child's stdio. */
 export interface Transport {
@@ -230,6 +230,8 @@ export function spawnTransport(
   })
   // Writes to a dead process surface as EPIPE; the close handler already reports the exit.
   child.stdin.on('error', () => {})
+  child.stdout.on('error', (err) => log?.warn(`${executable} stdout failed`, err))
+  child.stderr.on('error', () => {})
   child.on('error', (err) => {
     remember(`${err.message}\n`)
     log?.error(`${executable} failed to start`, err)
@@ -237,14 +239,30 @@ export function spawnTransport(
 
   return {
     send: (line) => {
-      if (child.stdin.writable) child.stdin.write(`${line}\n`)
+      if (!child.stdin.writable) return
+      try {
+        child.stdin.write(`${line}\n`)
+      } catch (err) {
+        // A pipe that broke between the check and the write; the close handler reports the exit.
+        log?.warn(`could not write to ${executable}`, err)
+      }
     },
     onLine: (handler) => readline.createInterface({ input: child.stdout }).on('line', handler),
-    onClose: (handler) => child.once('close', handler),
-    close: () => {
-      child.stdin.end()
-      child.kill()
+    onClose: (handler) => {
+      let fired = false
+      const fire = () => {
+        if (fired) return
+        fired = true
+        handler()
+      }
+      child.once('close', fire)
+      // `close` waits for every stdio pipe to end. A grandchild that inherited them (a shell the
+      // agent ran, or the agent itself behind a Windows .cmd shim) can keep them open long after
+      // the process we talk to has died; do not wait for it forever.
+      child.once('exit', () => setTimeout(fire, 2_000).unref?.())
     },
+    // Ends stdin first and escalates to a kill of the whole process tree if it does not exit.
+    close: () => void stopProcess(child),
     stderrTail: () => tail.trim(),
   }
 }

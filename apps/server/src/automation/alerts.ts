@@ -1,5 +1,5 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import path from 'node:path'
+import { readFileSync } from 'node:fs'
+import { quarantineFile, writeFileAtomic } from '@beddcode/shared'
 import {
   AlertSettings,
   DEFAULT_ALERT_EVENTS,
@@ -75,17 +75,22 @@ export class AlertService {
         }),
       }
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT')
-        this.options.log.warn(`could not read ${this.options.file}`, err)
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        // Keep the damaged file rather than overwrite it at the next save.
+        const kept = quarantineFile(this.options.file)
+        this.options.log.warn(
+          `could not read ${this.options.file}${kept ? `; kept as ${kept}` : ''}`,
+          err,
+        )
+      }
     }
   }
 
   private save() {
-    mkdirSync(path.dirname(this.options.file), { recursive: true })
-    const tmp = `${this.options.file}.tmp`
     // Push tokens are not secrets that unlock anything here, but keep the file private anyway.
-    writeFileSync(tmp, JSON.stringify({ version: 1, ...this.data }, null, 2), { mode: 0o600 })
-    renameSync(tmp, this.options.file)
+    writeFileAtomic(this.options.file, JSON.stringify({ version: 1, ...this.data }, null, 2), {
+      mode: 0o600,
+    })
   }
 
   view() {
