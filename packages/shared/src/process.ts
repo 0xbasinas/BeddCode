@@ -73,7 +73,7 @@ export function runCommand(
 ): Promise<RunResult> {
   const viaShell = isWindows && /\.(cmd|bat)$/i.test(file)
   return new Promise((resolve, reject) => {
-    execFile(
+    const child = execFile(
       viaShell ? 'cmd.exe' : file,
       viaShell ? ['/d', '/s', '/c', quoteForCmd(file), ...args.map(quoteForCmd)] : args,
       {
@@ -91,6 +91,9 @@ export function runCommand(
         resolve({ code: error ? (error.code as number) : 0, stdout, stderr })
       },
     )
+    // Nothing is ever written to it. Left open, some programs wait on it: PowerShell never
+    // exits (nodejs/node#25645), and git could sit at a prompt.
+    child.stdin?.end()
   })
 }
 
@@ -314,6 +317,8 @@ export async function processInfos(
         [
           '-NoProfile',
           '-NonInteractive',
+          '-InputFormat',
+          'None',
           '-Command',
           `Get-Process -Id ${ids.join(',')} -ErrorAction SilentlyContinue | ForEach-Object { '{0}|{1}|{2}' -f $_.Id, $_.StartTime.ToUniversalTime().ToString('o'), $_.Path }`,
         ],
