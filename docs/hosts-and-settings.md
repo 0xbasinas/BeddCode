@@ -40,9 +40,10 @@ Settings → Hosts → **Share this PC** shows this computer's address and a one
 
 ## Agents
 
-- Claude and Codex keep their own login. Run the login command in a terminal on the host, then refresh the agent list:
+- Claude, Codex and Grok keep their own login. Run the login command in a terminal on the host, then refresh the agent list:
   - Claude: `claude auth login`
   - Codex: `codex login`
+  - Grok: `grok login` (or set `XAI_API_KEY` on the host)
 - Other agents are installed and signed in with their own CLI on the host.
 - The scripted test agent simulates messages, approvals and file changes without any CLI login.
 - Custom ACP agents show their launch command (executable plus arguments) in the agent's own configuration.

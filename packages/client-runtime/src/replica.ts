@@ -87,6 +87,14 @@ export type TranscriptItem =
       /** The user undid these changes. */
       reverted?: boolean
     }
+  | {
+      kind: 'compaction'
+      id: string
+      state: 'running' | 'done' | 'failed'
+      trigger?: 'manual' | 'auto'
+      tokensBefore?: number
+      tokensAfter?: number
+    }
   | { kind: 'notice'; id: string; message: string }
   | { kind: 'error'; id: string; message: string }
 
@@ -326,6 +334,27 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     case 'session.context':
       next.context = { used: e.used, size: e.size }
       break
+    case 'session.compaction': {
+      const running = current.items.findLastIndex(
+        (item) => item.kind === 'compaction' && item.state === 'running',
+      )
+      const state = e.state === 'started' ? 'running' : e.state === 'finished' ? 'done' : 'failed'
+      const item: Extract<TranscriptItem, { kind: 'compaction' }> = {
+        kind: 'compaction',
+        id: running >= 0 ? current.items[running]!.id : id,
+        state,
+        trigger: e.trigger,
+        tokensBefore: e.tokensBefore,
+        tokensAfter: e.tokensAfter,
+      }
+      next.items =
+        running >= 0
+          ? current.items.map((it, i) =>
+              i === running ? { ...item, trigger: e.trigger ?? (it as typeof item).trigger } : it,
+            )
+          : [...current.items, item]
+      break
+    }
     case 'session.result':
       next.result = { status: e.status, summary: e.summary }
       break
@@ -533,6 +562,8 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
         if (item.kind === 'approval' && !item.resolvedOptionId) return { ...item, cancelled: true }
         if (item.kind === 'question' && !item.answers && !item.dismissed)
           return { ...item, dismissed: true }
+        if (item.kind === 'compaction' && item.state === 'running')
+          return { ...item, state: e.reason === 'done' ? 'done' : 'failed' }
         if (item.kind === 'tool' && item.status === 'running' && e.reason !== 'done')
           return {
             ...item,

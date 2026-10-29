@@ -386,6 +386,9 @@ importers:
       '@beddcode/provider-core':
         specifier: workspace:*
         version: link:../../packages/provider-core
+      '@beddcode/provider-grok':
+        specifier: workspace:*
+        version: link:../../packages/provider-grok
       '@beddcode/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -614,6 +617,28 @@ importers:
       '@beddcode/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@beddcode/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.5
+
+  packages/provider-grok:
+    dependencies:
+      '@agentclientprotocol/sdk':
+        specifier: 2.0.0
+        version: 2.0.0(zod@4.6.7)
+      '@beddcode/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@beddcode/provider-acp':
+        specifier: workspace:*
+        version: link:../provider-acp
+      '@beddcode/provider-core':
+        specifier: workspace:*
+        version: link:../provider-core
       '@beddcode/shared':
         specifier: workspace:*
         version: link:../shared
