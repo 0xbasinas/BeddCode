@@ -29,6 +29,16 @@ const sleeper = () => {
   return { child, exited, startedAt: Date.now() }
 }
 
+/**
+ * Whether this machine can tell when a process started. On Windows that takes PowerShell, which
+ * on CI machines may not answer; then the checks must stay on the safe side instead.
+ */
+const startTimesReadable = async (pid: number) => {
+  const readable = Number.isFinite((await processInfos([pid]))?.get(pid)?.startedAt ?? NaN)
+  if (!readable) console.warn('process start times cannot be read here; checking the safe side')
+  return readable
+}
+
 // On Windows every process check starts PowerShell, which is slow on CI machines.
 describe('child ledger', { timeout: process.platform === 'win32' ? 60_000 : 5_000 }, () => {
   it('lists running children in the file, and drops them as they exit', async () => {
@@ -75,9 +85,16 @@ describe('child ledger', { timeout: process.platform === 'win32' ? 60_000 : 5_00
     writeFileSync(file, JSON.stringify(records))
     const warnings: string[] = []
     const log = { debug() {}, info() {}, warn: (m: string) => warnings.push(m), error() {} }
-    expect(await reapOrphans(file, log)).toBe(1)
-    await orphan.exited
-    expect(warnings[0]).toMatch(/left running by a host that was killed/)
+    if (await startTimesReadable(orphan.child.pid!)) {
+      expect(await reapOrphans(file, log)).toBe(1)
+      await orphan.exited
+      expect(warnings[0]).toMatch(/left running by a host that was killed/)
+    } else {
+      // Unidentifiable processes are never ended.
+      expect(await reapOrphans(file, log)).toBe(0)
+      expect(orphan.child.exitCode).toBeNull()
+      orphan.child.kill()
+    }
     expect(ownedByLiveHost.child.exitCode).toBeNull()
     expect(reusedPid.child.exitCode).toBeNull()
     ownedByLiveHost.child.kill()
@@ -87,6 +104,13 @@ describe('child ledger', { timeout: process.platform === 'win32' ? 60_000 : 5_00
   it('tells a process from another that later got its id', async () => {
     const { child, startedAt } = sleeper()
     await new Promise((r) => setTimeout(r, 100))
+    if (!(await startTimesReadable(child.pid!))) {
+      expect(await isSameProcess(child.pid!, startedAt, node)).toBe(false)
+      const byName = { ifUnknown: (program: string) => /node/i.test(program) }
+      expect(await isSameProcess(child.pid!, startedAt, node, byName)).toBe(true)
+      child.kill()
+      return
+    }
     expect(await isSameProcess(child.pid!, startedAt, node)).toBe(true)
     expect(await isSameProcess(child.pid!, startedAt, '/usr/bin/some-other-agent')).toBe(false)
     expect(await isSameProcess(child.pid!, startedAt - 600_000, node)).toBe(false)
@@ -100,7 +124,9 @@ describe('child ledger', { timeout: process.platform === 'win32' ? 60_000 : 5_00
     const infos = await processInfos([a.child.pid!, b.child.pid!, gone])
     expect(infos).toBeDefined()
     expect([...infos!.keys()].sort()).toEqual([a.child.pid!, b.child.pid!].sort())
-    expect(Math.abs(infos!.get(a.child.pid!)!.startedAt - a.startedAt)).toBeLessThan(15_000)
+    if (await startTimesReadable(a.child.pid!)) {
+      expect(Math.abs(infos!.get(a.child.pid!)!.startedAt - a.startedAt)).toBeLessThan(15_000)
+    }
     a.child.kill()
     b.child.kill()
   })

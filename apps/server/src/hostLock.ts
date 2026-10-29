@@ -55,8 +55,9 @@ export async function acquireHostLock(
     const alive =
       held !== undefined &&
       held.pid !== process.pid &&
-      // When the system cannot be asked, a live pid counts as the host: never run two at once.
-      (await isSameProcess(held.pid, held.startedAt, undefined, { ifUnknown: true }))
+      // When its start time cannot be read, a live pid counts as the host unless it now runs a
+      // program a host never is (Windows hands ids out again quickly): never run two at once.
+      (await isSameProcess(held.pid, held.startedAt, undefined, { ifUnknown: couldBeHost }))
     if (!alive) {
       options.log?.info(
         held
@@ -117,4 +118,9 @@ export function listenError(err: unknown, host: string, port: number): unknown {
     )
   }
   return err
+}
+
+/** Program names a host can run as: node, Electron or the packaged app. Unknown counts as one. */
+function couldBeHost(program: string): boolean {
+  return program === '' || /node|electron|beddcode/i.test(program)
 }

@@ -330,8 +330,8 @@ type ProcessFacts = { startedAt: number; command: string }
 
 /**
  * When each process started and what it runs, in one look-up. A pid missing from the map is not
- * running. Undefined when the system could not be asked (e.g. PowerShell too slow to start), which
- * callers must treat as "cannot tell", not as "gone".
+ * running. Undefined when the system could not be asked, which callers must treat as "cannot
+ * tell", not as "gone". On Windows `startedAt` is NaN when PowerShell did not answer.
  */
 export async function processInfos(
   pids: readonly number[],
@@ -340,34 +340,7 @@ export async function processInfos(
   const ids = [...new Set(pids)].filter((pid) => Number.isInteger(pid) && pid > 0)
   if (ids.length === 0) return found
   try {
-    if (isWindows) {
-      // One PowerShell for every pid: it can take seconds to start on a busy machine.
-      const res = await runCommand(
-        'powershell.exe',
-        [
-          '-NoProfile',
-          '-NonInteractive',
-          '-NoLogo',
-          '-InputFormat',
-          'None',
-          '-Command',
-          `Get-Process -Id ${ids.join(',')} -ErrorAction SilentlyContinue | ForEach-Object { '{0}|{1}|{2}' -f $_.Id, $_.StartTime.ToUniversalTime().ToString('o'), $_.Path }`,
-        ],
-        { timeoutMs: 30_000 },
-      )
-      for (const line of res.stdout.split(/\r?\n/)) {
-        const [id = '', when = '', ...command] = line.trim().split('|')
-        const startedAt = Date.parse(when)
-        if (/^\d+$/.test(id) && Number.isFinite(startedAt))
-          found.set(Number(id), { startedAt, command: command.join('|') })
-      }
-      // Get-Process exits non-zero when some pid is gone; only output that says nothing at all
-      // while it failed means PowerShell itself did not work.
-      if (found.size === 0 && res.code !== 0 && !/cannot find a process/i.test(res.stderr)) {
-        return ids.some(isAlive) ? undefined : found
-      }
-      return found
-    }
+    if (isWindows) return await windowsProcessInfos(ids)
     const res = await runCommand('ps', ['-o', 'pid=,etime=,command=', '-p', ids.join(',')], {
       timeoutMs: 10_000,
     })
@@ -383,12 +356,53 @@ export async function processInfos(
   }
 }
 
+/**
+ * Windows: tasklist says quickly and reliably which pids run and what program they are. Their
+ * start times need PowerShell, which can be slow to start or not answer at all (seen on CI); then
+ * `startedAt` is NaN, and only the program name is known.
+ */
+async function windowsProcessInfos(ids: number[]): Promise<Map<number, ProcessFacts> | undefined> {
+  const list = await runCommand('tasklist', ['/FO', 'CSV', '/NH'], { timeoutMs: 15_000 })
+  if (list.code !== 0) return undefined
+  const found = new Map<number, ProcessFacts>()
+  const wanted = new Set(ids)
+  for (const line of list.stdout.split(/\r?\n/)) {
+    const m = /^"([^"]*)","(\d+)"/.exec(line.trim())
+    if (m && wanted.has(Number(m[2]))) found.set(Number(m[2]), { startedAt: NaN, command: m[1]! })
+  }
+  if (found.size === 0) return found
+  const times = await runCommand(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-NoLogo',
+      '-InputFormat',
+      'None',
+      '-Command',
+      `Get-Process -Id ${[...found.keys()].join(',')} -ErrorAction SilentlyContinue | ForEach-Object { '{0}|{1}|{2}' -f $_.Id, $_.StartTime.ToUniversalTime().ToString('o'), $_.Path }`,
+    ],
+    { timeoutMs: 15_000 },
+  ).catch(() => undefined)
+  for (const line of times?.stdout.split(/\r?\n/) ?? []) {
+    const [id = '', when = '', ...command] = line.trim().split('|')
+    const startedAt = Date.parse(when)
+    const known = found.get(Number(id))
+    if (known && Number.isFinite(startedAt)) {
+      found.set(Number(id), { startedAt, command: command.join('|') || known.command })
+    }
+  }
+  return found
+}
+
 /** When a process started and what it runs, or undefined when that cannot be told. */
 export async function processInfo(pid: number): Promise<ProcessFacts | undefined> {
   return (await processInfos([pid]))?.get(pid)
 }
 
 function matches(info: ProcessFacts, startedAt: number, command?: string): boolean {
+  // Without a start time the process cannot be told from a later one that got the same id.
+  if (!Number.isFinite(info.startedAt)) return false
   // `ps` reports whole seconds; allow for that and for a slow spawn.
   if (Math.abs(info.startedAt - startedAt) > 15_000) return false
   if (!command) return true
@@ -402,20 +416,23 @@ function matches(info: ProcessFacts, startedAt: number, command?: string): boole
 /**
  * True when `pid` is still the process described: alive, started within a few seconds of the
  * recorded time, and running the recorded program. Process ids are reused, so an id alone could
- * name some unrelated program by now. When the system cannot be asked, `ifUnknown` is returned
- * for a pid that is alive (default false: never act on a process that cannot be identified).
+ * name some unrelated program by now. When its start time cannot be read (Windows without a
+ * working PowerShell), `ifUnknown` decides from the program name alone; by default the answer is
+ * false: never act on a process that cannot be identified.
  */
 export async function isSameProcess(
   pid: number,
   startedAt: number,
   command?: string,
-  options: { ifUnknown?: boolean } = {},
+  options: { ifUnknown?: (program: string) => boolean } = {},
 ): Promise<boolean> {
   if (!isAlive(pid)) return false
   const infos = await processInfos([pid])
-  if (!infos) return options.ifUnknown ?? false
+  if (!infos) return options.ifUnknown?.('') ?? false
   const info = infos.get(pid)
-  return info !== undefined && matches(info, startedAt, command)
+  if (!info) return false
+  if (!Number.isFinite(info.startedAt)) return options.ifUnknown?.(info.command) ?? false
+  return matches(info, startedAt, command)
 }
 
 /** Every process below `pid`, deepest first (POSIX; on Windows taskkill /T does this itself). */

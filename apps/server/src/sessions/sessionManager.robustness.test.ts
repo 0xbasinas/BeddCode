@@ -371,7 +371,7 @@ describe('SessionManager robustness', () => {
   })
 
   it('stops a turn whose tool runs far longer than any build, with its own message', async () => {
-    const { manager, events, state, interrupted } = setup(60, 150)
+    const { manager, events, state, interrupted } = setup(400, 900)
     state.onPrompt = (e) => {
       e({ type: 'turn.started', turnId: 't1' })
       e({ type: 'tool.started', turnId: 't1', toolId: 'hang', title: 'Bash', kind: 'command' })
