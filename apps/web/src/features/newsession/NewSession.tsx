@@ -13,6 +13,7 @@ import {
   PenTool,
   MessageSquare,
   Monitor,
+  MousePointer2,
   Server,
 } from 'lucide-react'
 import type {
@@ -110,6 +111,7 @@ export function NewSession({
   const [agentTools, setAgentTools] = useState(false)
   const [browserTools, setBrowserTools] = useState(false)
   const [designTools, setDesignTools] = useState(false)
+  const [computerTools, setComputerTools] = useState(false)
   const [repo, setRepo] = useState<RepoState | null | 'loading'>('loading')
   const [commands, setCommands] = useState<SlashCommand[]>([])
   const [preview, setPreview] = useState<{ key: string; data?: AgentPreview; failed?: boolean }>()
@@ -293,6 +295,7 @@ export function NewSession({
         agentTools: agentTools || undefined,
         browserTools: browserTools || undefined,
         designTools: designTools || undefined,
+        computerTools: computerTools || undefined,
       })
       await prompt(sessionId, value, attachments)
       if (activeDraft.current === memoryKey)
@@ -428,6 +431,15 @@ export function NewSession({
                   onClick={() => setDesignTools((v) => !v)}
                 >
                   <PenTool size={15} aria-hidden="true" />
+                </button>
+                <button
+                  className="capability-toggle"
+                  aria-label="Use computer"
+                  aria-pressed={computerTools}
+                  title={`Use computer: ${computerTools ? 'on' : 'off'}. Let the agent open and operate apps on this machine's desktop. You approve each app it did not open.`}
+                  onClick={() => setComputerTools((v) => !v)}
+                >
+                  <MousePointer2 size={15} aria-hidden="true" />
                 </button>
               </div>
               {repo && repo !== 'loading' && (

@@ -195,7 +195,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     relay: relayControl,
     telemetry,
     telemetryRecorder: (name, value, tags) => telemetry.record(name, value, tags),
-    automation: { schedules, alerts, designs },
+    automation: { schedules, alerts, designs, computer: automation.computerPane },
     agentTools,
     browser: automation.browser,
     designLink: automation.designLink,

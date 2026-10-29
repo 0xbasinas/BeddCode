@@ -274,7 +274,7 @@ export class SessionManager {
         config: params.config,
         mcpServers: this.toolServersFor(
           sessionId,
-          params.agentTools || params.browserTools || params.designTools,
+          params.agentTools || params.browserTools || params.designTools || params.computerTools,
         ),
       })
     } catch (err) {
@@ -306,6 +306,8 @@ export class SessionManager {
       agentTools: (params.agentTools && this.deps.agentToolServers !== undefined) || undefined,
       browserTools: (params.browserTools && this.deps.agentToolServers !== undefined) || undefined,
       designTools: (params.designTools && this.deps.agentToolServers !== undefined) || undefined,
+      computerTools:
+        (params.computerTools && this.deps.agentToolServers !== undefined) || undefined,
     })
     this.announceModes(sessionId, adapter, instance.id, params.permissionMode)
     void this.pump(sessionId, session)
@@ -909,7 +911,10 @@ export class SessionManager {
       resumeId,
       mcpServers: this.toolServersFor(
         sessionId,
-        created.event.agentTools || created.event.browserTools || created.event.designTools,
+        created.event.agentTools ||
+          created.event.browserTools ||
+          created.event.designTools ||
+          created.event.computerTools,
       ),
     })
     const live = { session, adapter }
