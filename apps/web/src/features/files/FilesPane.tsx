@@ -1,3 +1,4 @@
+import { paneProject } from '../shell/paneProject.ts'
 import { useEffect, useRef, useState } from 'react'
 import {
   File,
@@ -73,7 +74,7 @@ export function FilesPane({ workspace }: { workspace: PaneWorkspace }) {
   }, [hostKey, realCwd, query])
 
   const active = folder.active ? folder.docs[folder.active] : undefined
-  const name = realCwd.split(/[\\/]/).filter(Boolean).at(-1) ?? realCwd
+  const project = paneProject(workspace)
   const attach = (path: string) =>
     void attachWorkspaceFile(hostKey, workspace.draftId, realCwd, path)
 
@@ -82,8 +83,8 @@ export function FilesPane({ workspace }: { workspace: PaneWorkspace }) {
       <div className="files-tree">
         <div className="pane-head">
           <h2>Files</h2>
-          <span className="muted" title={name}>
-            {name}
+          <span className="muted pane-project" title={project.title}>
+            {project.label}
           </span>
           <span className="spacer" />
           <button className="icon-btn" aria-label="New file" onClick={() => setCreating('file')}>

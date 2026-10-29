@@ -51,6 +51,40 @@ jobs:
             apps/desktop/release/*.AppImage
             apps/desktop/release/*.deb
           if-no-files-found: error
+      # The Windows host alone, for scripts/install-host.ps1. Built here rather than in a job of its own,
+      # because this runner already has the dependencies and the web app, and the terminal library is native.
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          node apps/desktop/scripts/build-host.mjs --out dist-host/beddcode-host
+          Copy-Item scripts/host-bundle/beddcode.cmd dist-host/beddcode-host/beddcode.cmd
+          Compress-Archive -Path dist-host/beddcode-host/* -DestinationPath dist-host/beddcode-host-win-x64.zip
+          # The installer checks the download against this.
+          "$((Get-FileHash dist-host/beddcode-host-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant())  beddcode-host-win-x64.zip" |
+            Set-Content -Encoding ascii dist-host/beddcode-host-win-x64.zip.sha256
+          # Smoke test: the unpacked host starts and reports its version, plans its scheduled task, and
+          # the installer script parses.
+          Expand-Archive dist-host/beddcode-host-win-x64.zip -DestinationPath smoke
+          ./smoke/beddcode.cmd completion powershell | Out-Null
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          ./smoke/beddcode.cmd config
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $plan = ./smoke/beddcode.cmd host install --dry-run --port 3874 | Out-String
+          if ($LASTEXITCODE -ne 0 -or $plan -notmatch 'conhost.exe' -or $plan -notmatch '--port 3874') { $plan; exit 1 }
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD/scripts/install-host.ps1", [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors; exit 1 }
+      - if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v5
+        with:
+          name: beddcode-host-win-x64
+          path: dist-host/beddcode-host-win-x64.zip*
+      # On a tag the installer step above made the draft release; add the zip to it.
+      - if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/')
+        run: gh release upload "$env:GITHUB_REF_NAME" dist-host/beddcode-host-win-x64.zip dist-host/beddcode-host-win-x64.zip.sha256 --clobber
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # A manual run replaces the desktop-dev prerelease, recreated so its tag moves to the built commit.
   rolling:
@@ -73,7 +107,8 @@ jobs:
             --target "$GITHUB_SHA" --title desktop-dev \
             --notes "Built from $GITHUB_SHA by run $GITHUB_RUN_NUMBER. Replaced by the next manual run."
 
-  # The host alone, for machines with no desktop (see scripts/install-host.sh). It is built on the
+  # The host alone, for Linux machines with no desktop (see scripts/install-host.sh; the Windows one
+  # is built in the installers job above). It is built on the
   # same Ubuntu release as the Linux installer, because the terminal library is native.
   host:
     name: Headless host (linux-x64)
@@ -93,6 +128,7 @@ jobs:
           cp scripts/host-bundle/beddcode dist-host/beddcode-host/beddcode
           chmod +x dist-host/beddcode-host/beddcode
           tar -czf dist-host/beddcode-host-linux-x64.tar.gz -C dist-host/beddcode-host .
+          (cd dist-host && sha256sum beddcode-host-linux-x64.tar.gz > beddcode-host-linux-x64.tar.gz.sha256)
       # Smoke test: the unpacked host starts and reports its version.
       - run: |
           mkdir smoke && tar -xzf dist-host/beddcode-host-linux-x64.tar.gz -C smoke
@@ -101,9 +137,9 @@ jobs:
       - uses: actions/upload-artifact@v5
         with:
           name: beddcode-host-linux-x64
-          path: dist-host/beddcode-host-linux-x64.tar.gz
+          path: dist-host/beddcode-host-linux-x64.tar.gz*
       # On a tag the installers job has made the draft release; add the tarball to it.
       - if: startsWith(github.ref, 'refs/tags/')
-        run: gh release upload "$GITHUB_REF_NAME" dist-host/beddcode-host-linux-x64.tar.gz --clobber
+        run: gh release upload "$GITHUB_REF_NAME" dist-host/beddcode-host-linux-x64.tar.gz dist-host/beddcode-host-linux-x64.tar.gz.sha256 --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

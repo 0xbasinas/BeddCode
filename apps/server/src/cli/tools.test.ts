@@ -101,6 +101,16 @@ describe('update', () => {
     expect(pickAsset(assets, 'linux', 'x64', true)?.browser_download_url).toBe('d')
     expect(pickAsset(assets, 'darwin', 'arm64')?.browser_download_url).toBe('e')
   })
+
+  it('picks the host archive for a host installed on its own', () => {
+    const assets = [
+      { name: 'BeddCode-Setup-0.2.0-x64.exe', browser_download_url: 'a' },
+      { name: 'beddcode-host-win-x64.zip', browser_download_url: 'w' },
+      { name: 'beddcode-host-linux-x64.tar.gz', browser_download_url: 'l' },
+    ]
+    expect(pickAsset(assets, 'win32', 'x64', false, true)?.browser_download_url).toBe('w')
+    expect(pickAsset(assets, 'linux', 'x64', false, true)?.browser_download_url).toBe('l')
+  })
 })
 
 describe('logs level', () => {

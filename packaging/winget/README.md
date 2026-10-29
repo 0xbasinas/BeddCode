@@ -22,3 +22,11 @@ with `public_repo`). Until the first submission is merged the action has nothing
 The installer is unsigned unless `CSC_LINK` and `CSC_KEY_PASSWORD` are set in the release workflow.
 Winget accepts unsigned installers, but SmartScreen and Defender are harsher on them and validation may
 need a manual review.
+
+## The host without the app
+
+winget only has the desktop app (`BeddCode.BeddCode`, the NSIS installer). The host-only install for
+Windows is `scripts/install-host.ps1`, which uses the `beddcode-host-win-x64.zip` release asset. It is not
+on winget: a zip package there needs a portable `.exe` inside it, and the host is a Node script with a
+`.cmd` launcher, so it would take a separately built executable (a Node single-executable or similar)
+first.
