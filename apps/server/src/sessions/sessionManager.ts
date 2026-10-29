@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
+import { performance } from 'node:perf_hooks'
 import path from 'node:path'
 import { mkdir, mkdtemp, rm, rmdir } from 'node:fs/promises'
 import os from 'node:os'
@@ -23,6 +24,7 @@ import type {
   ProviderAdapter,
   ProviderSession,
   SessionMcpServer,
+  StartSessionInput,
 } from '@beddcode/provider-core'
 import { withTimeout, type Logger } from '@beddcode/shared'
 import { PreviewSeeds, type PreviewCache } from '../agents/previews.ts'
@@ -53,6 +55,12 @@ export interface SessionManagerDeps {
    * without exiting. Default 15 minutes; 0 turns the check off. `BEDDCODE_TURN_STALL_MS` too.
    */
   stallMs?: number
+  /**
+   * The same for a turn whose tool runs this long with no word from the agent at all: builds and
+   * test runs are quiet, but not for hours. Default 2 hours; 0 turns it off.
+   * `BEDDCODE_TOOL_STALL_MS` too.
+   */
+  toolStallMs?: number
 }
 
 /** Where a session came from, when not straight from the user. */
@@ -64,6 +72,16 @@ export interface SessionOrigin {
 interface LiveSession {
   session: ProviderSession
   adapter: ProviderAdapter
+  /** How it was started, to start it again without the conversation if that turns out lost. */
+  instanceId?: string
+  label?: string
+  input?: StartSessionInput
+  /** The conversation it was asked to resume, until the agent shows it really has it. */
+  resumedFrom?: string
+  /** The agent has answered since it resumed, so the conversation is there. */
+  confirmed?: boolean
+  /** A turn is already open in the log for this process's first `turn.started`. */
+  skipTurnStart?: boolean
 }
 
 interface QueuedPrompt {
@@ -89,10 +107,15 @@ interface TurnState {
   settling?: Promise<void>
   /** The user (or another agent) pressed stop on the running turn. */
   stopRequested?: boolean
+  /** What the running turn was started with, to send again in a new conversation if need be. */
+  lastPrompt?: { text: string; attachments: { name: string; path: string }[] }
+  /** The agent reported the running turn as started. */
+  agentStarted?: boolean
 }
 
 /** What the host watches of a live session to tell a stalled agent from a busy one. */
 interface Activity {
+  /** Monotonic time (see `now`): a clock change or a sleeping laptop must not look like silence. */
   lastAt: number
   /** Tools started and not finished: a long build is quiet but not stuck. */
   tools: Set<string>
@@ -128,10 +151,15 @@ export class SessionManager {
   private readonly turns = new Map<string, TurnState>()
   private readonly activity = new Map<string, Activity>()
   private stallTimer: ReturnType<typeof setInterval> | undefined
+  /** Events that must reach the log but that the database refused (see `record`). */
+  private readonly unsaved: SessionEvent[] = []
+  private storeFailedAt = -Infinity
   /** Set while the host shuts down: agents ending then is expected, not a failure. */
   private closing = false
   /** Agents the host itself closed (stalled, deleted): their failing prompt is no news. */
   private readonly closedOnPurpose = new WeakSet<ProviderSession>()
+  /** Agents that could not find the conversation they resumed: the rest of their stream is dropped. */
+  private readonly lostStreams = new WeakSet<ProviderSession>()
   private detected: {
     at: number
     instances: { adapter: ProviderAdapter; instance: ProviderInstance }[]
@@ -139,16 +167,19 @@ export class SessionManager {
   private readonly gitGenerations = new Set<string>()
 
   constructor(private readonly deps: SessionManagerDeps) {
-    const stallMs = this.stallMs
-    if (stallMs > 0) {
-      this.stallTimer = setInterval(() => this.checkStalls(), Math.min(30_000, stallMs / 4))
-      this.stallTimer.unref?.()
-    }
+    // Also retries events the database refused, so it runs even with both stall limits off.
+    const limits = [this.stallMs, this.toolStallMs].filter((ms) => ms > 0)
+    const every = Math.max(10, Math.min(30_000, ...limits.map((ms) => ms / 4)))
+    this.stallTimer = setInterval(() => this.checkStalls(), every)
+    this.stallTimer.unref?.()
   }
 
   private get stallMs(): number {
-    const env = Number(process.env.BEDDCODE_TURN_STALL_MS)
-    return this.deps.stallMs ?? (Number.isFinite(env) && env >= 0 ? env : 15 * 60_000)
+    return this.deps.stallMs ?? envMs('BEDDCODE_TURN_STALL_MS', 15 * 60_000)
+  }
+
+  private get toolStallMs(): number {
+    return this.deps.toolStallMs ?? envMs('BEDDCODE_TOOL_STALL_MS', 2 * 60 * 60_000)
   }
 
   async generateGitText(params: RpcParams<'git.generate'>): Promise<RpcResult<'git.generate'>> {
@@ -323,7 +354,7 @@ export class SessionManager {
       if (params.projectless) await rmdir(folder).catch(() => {})
       throw err
     }
-    this.live.set(sessionId, { session, adapter })
+    this.live.set(sessionId, { session, adapter, instanceId: instance.id, label: instance.label })
 
     const projectPath = info?.isRepo ? (info.mainRoot ?? info.root ?? folder) : folder
     this.deps.store.append({
@@ -379,9 +410,12 @@ export class SessionManager {
       return { state: 'started' }
     }
 
+    // Stop was pressed and the turn has not ended yet: this message is what the user wants next,
+    // not more input for the turn being stopped (which could swallow it). Send it once it ends.
+    const afterStop = turn.stopRequested === true
     // The agent is working. Steer the message into the running turn when it can take it there,
     // otherwise keep it for after the turn.
-    if (mode === 'auto' && live.session.steer) {
+    if (mode === 'auto' && live.session.steer && !afterStop) {
       try {
         await live.session.steer(promptInput(text, attachments))
         this.appendUserMessage(sessionId, text, attachments)
@@ -392,6 +426,7 @@ export class SessionManager {
       }
     }
     const queueId = randomUUID()
+    if (afterStop && turn.queue.length === 0) turn.sendAfterInterrupt = queueId
     turn.queue.push({ queueId, text, attachments })
     this.deps.store.append({
       type: 'prompt.queued',
@@ -501,22 +536,11 @@ export class SessionManager {
     const turn = this.turnState(sessionId)
     turn.busy = true
     turn.stopRequested = false
+    turn.lastPrompt = { text, attachments }
+    turn.agentStarted = false
     this.touch(sessionId)
     this.appendUserMessage(sessionId, text, attachments)
-    const failed = (err: unknown) => {
-      turn.busy = false
-      turn.before = undefined
-      // The host is shutting down and closed the agent under the turn: the next start closes the
-      // turn with that reason (see recovery.ts). An "error: session closed" here would hide it.
-      if (this.closing || this.closedOnPurpose.has(session)) return
-      this.deps.log.error(`prompt failed for ${sessionId}`, err)
-      this.deps.store.append({
-        type: 'error',
-        sessionId,
-        at: Date.now(),
-        message: err instanceof Error ? err.message : String(err),
-      })
-    }
+    const failed = (err: unknown) => this.promptFailed(sessionId, session, err)
     // The sender is answered now, with its message already in the log; waiting for the snapshot
     // of the folder would hold the composer for as long as git takes.
     const starting = (async () => {
@@ -533,6 +557,40 @@ export class SessionManager {
     void starting.finally(() => {
       if (turn.starting === starting) turn.starting = undefined
     })
+  }
+
+  /** The agent did not take a message, or its turn failed before the agent could say why. */
+  private promptFailed(sessionId: string, session: ProviderSession, err: unknown) {
+    const turn = this.turnState(sessionId)
+    // Another process has the session by now (a new conversation replaced a lost one).
+    if (this.live.get(sessionId) && this.live.get(sessionId)?.session !== session) return
+    turn.busy = false
+    turn.before = undefined
+    // The host is shutting down or closed the agent itself: the next start closes the turn with
+    // that reason (see recovery.ts). An "error: session closed" here would hide it.
+    if (this.closing || this.closedOnPurpose.has(session) || this.lostStreams.has(session)) {
+      this.deps.log.debug(`prompt for ${sessionId} ended with its agent: ${errorText(err)}`)
+      return
+    }
+    const gone = !this.live.has(sessionId)
+    // The process died mid-turn: closing that turn, with the reason, is `endOrphanedTurn`'s job.
+    if (gone && turn.agentStarted) {
+      this.deps.log.debug(`prompt for ${sessionId} ended with its agent: ${errorText(err)}`)
+      return
+    }
+    this.deps.log.error(`prompt failed for ${sessionId}`, err)
+    try {
+      this.deps.store.append({
+        type: 'error',
+        sessionId,
+        at: Date.now(),
+        message: gone
+          ? `The agent stopped before it could take this message (${errorText(err)}). Send it again to start the agent anew.`
+          : withHint(errorText(err)),
+      })
+    } catch (appendErr) {
+      this.deps.log.error(`could not record the failure of ${sessionId}`, appendErr)
+    }
   }
 
   /** Where a session's turn snapshots go, or null when its folder is not a git repository. */
@@ -768,13 +826,19 @@ export class SessionManager {
   async delete(sessionId: string): Promise<void> {
     if (!this.createdEvent(sessionId)) throw new Error(`Unknown session: ${sessionId}`)
     // Nothing is left working for a session that no longer exists.
-    for (const id of this.descendants(sessionId)) await this.interruptOne(id).catch(() => undefined)
+    for (const id of this.descendants(sessionId))
+      await this.interruptOne(id).catch((err: unknown) =>
+        this.deps.log.warn(`could not stop ${id} while deleting ${sessionId}`, err),
+      )
     const live = this.live.get(sessionId)
     if (live) {
       this.live.delete(sessionId)
       this.dropAsks(sessionId)
       this.closedOnPurpose.add(live.session)
-      await live.session.close().catch(() => undefined)
+      // The session goes either way; a stuck agent must not hold the delete up.
+      await withTimeout(live.session.close(), 5_000, 'closing the agent').catch((err: unknown) =>
+        this.deps.log.warn(`could not close the agent of ${sessionId} cleanly`, err),
+      )
     }
     this.turns.delete(sessionId)
     const { seq } = this.deps.store.append({ type: 'session.deleted', sessionId, at: Date.now() })
@@ -790,7 +854,9 @@ export class SessionManager {
     if (live) {
       this.live.delete(sessionId)
       this.closedOnPurpose.add(live.session)
-      await live.session.close()
+      await withTimeout(live.session.close(), 5_000, 'closing the agent').catch((err: unknown) =>
+        this.deps.log.warn(`could not close the agent of ${sessionId} cleanly`, err),
+      )
     }
     // Its turn snapshots go too (they live in the shared repository).
     await this.deps.git
@@ -898,11 +964,23 @@ export class SessionManager {
   }
 
   private async findInstance(instanceId: string) {
-    const found = (await this.detect()).find((d) => d.instance.id === instanceId)
+    let found = (await this.detect()).find((d) => d.instance.id === instanceId)
+    // Detection is cached: an agent installed or signed in a moment ago is looked for again.
+    if (found?.instance.status !== 'ready')
+      found = (await this.detect(true)).find((d) => d.instance.id === instanceId)
     if (!found) throw new Error(`Unknown provider instance: ${instanceId}`)
-    if (found.instance.status !== 'ready') {
-      throw new Error(`${found.instance.label} is not ready (${found.instance.status})`)
+    const { label, status } = found.instance
+    if (status === 'not-installed') {
+      throw new Error(
+        `${label} is not ready: it is not installed on the host computer, or not on the host's PATH. Install it there, then try again.`,
+      )
     }
+    if (status === 'needs-sign-in') {
+      throw new Error(
+        `${label} is not ready: it needs you to sign in on the host computer. Sign in there, then try again.`,
+      )
+    }
+    if (status !== 'ready') throw new Error(`${label} is not ready (${status})`)
     return found
   }
 
@@ -977,22 +1055,31 @@ export class SessionManager {
       ),
     }
     let session: ProviderSession
+    let resumedFrom: string | undefined = resumeId
     try {
       session = await adapter.startSession(instance.id, { ...input, resumeId })
     } catch (err) {
       // The agent lost its copy of the conversation (cleaned up, or cut short by a crash mid-write).
       // Keep the session usable: continue in a new conversation and say what was lost.
-      if (!isLostConversation(err)) throw err
+      if (!isLostConversation(err)) throw new Error(withHint(errorText(err)), { cause: err })
       this.deps.log.warn(`${instance.label} could not resume ${sessionId}; starting fresh`, err)
       session = await adapter.startSession(instance.id, input)
+      resumedFrom = undefined
       this.deps.store.append({
         type: 'error',
         sessionId,
         at: Date.now(),
-        message: `${instance.label} no longer has this conversation (${errorText(err)}), so it continues in a new one. The history above is kept here, but the agent does not remember it.`,
+        message: lostConversationText(instance.label, errorText(err)),
       })
     }
-    const live = { session, adapter }
+    const live: LiveSession = {
+      session,
+      adapter,
+      instanceId: instance.id,
+      label: instance.label,
+      input,
+      resumedFrom,
+    }
     this.live.set(sessionId, live)
     void this.pump(sessionId, session)
     return live
@@ -1346,21 +1433,34 @@ export class SessionManager {
   private async pump(sessionId: string, session: ProviderSession) {
     let failure: unknown
     this.activity.set(sessionId, {
-      lastAt: Date.now(),
+      lastAt: now(),
       tools: new Set(),
       waiting: new Set(),
       denials: new Map(),
     })
     try {
       for await (const raw of session.events) {
-        const event = this.explain(sessionId, raw)
-        try {
-          this.deps.store.append(event)
-        } catch (err) {
-          // A full disk or a locked database: losing one event beats losing the whole stream,
-          // which would leave the session looking stuck.
-          this.deps.log.error(`could not record ${event.type} for ${sessionId}`, err)
+        if (this.lostStreams.has(session)) continue
+        const live = this.live.get(sessionId)
+        if (live?.session === session && live.resumedFrom && !live.confirmed) {
+          // Some agents (Claude) only find out at the first message that the conversation they
+          // resumed is gone. Continue in a new one and send that message again.
+          if (raw.type === 'error' && isLostConversation(raw.message)) {
+            this.lostStreams.add(session)
+            void this.continueFresh(sessionId, live, raw.message)
+            continue
+          }
+          if (confirmsConversation(raw)) live.confirmed = true
         }
+        if (raw.type === 'turn.started') this.turnState(sessionId).agentStarted = true
+        if (raw.type === 'turn.started' && live?.session === session && live.skipTurnStart) {
+          // The turn this answers is already open in the log.
+          live.skipTurnStart = false
+          this.observe(sessionId, raw)
+          continue
+        }
+        const event = this.explain(sessionId, raw)
+        this.record(event)
         this.observe(sessionId, event)
         this.seedPreview(sessionId, event)
         if (event.type === 'turn.started') this.turnState(sessionId).busy = true
@@ -1381,7 +1481,7 @@ export class SessionManager {
       failure = err
       this.deps.log.error(`event stream failed for ${sessionId}`, err)
     } finally {
-      if (this.live.get(sessionId)?.session === session) {
+      if (this.live.get(sessionId)?.session === session && !this.lostStreams.has(session)) {
         this.live.delete(sessionId)
         this.activity.delete(sessionId)
         // A session whose process ended is no longer in the middle of a turn.
@@ -1389,6 +1489,99 @@ export class SessionManager {
         if (turn) turn.busy = false
         if (!this.closing) this.endOrphanedTurn(sessionId, failure)
       }
+    }
+  }
+
+  /**
+   * Saves an agent event. A full disk or a locked database loses the event rather than the whole
+   * stream (which would leave the session looking stuck); the ones that open and close turns or
+   * name the conversation are kept and saved once the database takes writes again, so no turn
+   * stays "running" forever and the next resume finds the conversation.
+   */
+  private record(event: SessionEvent) {
+    if (this.unsaved.length > 0 && !this.saveUnsaved()) {
+      this.keepUnsaved(event)
+      return
+    }
+    try {
+      this.deps.store.append(event)
+    } catch (err) {
+      this.keepUnsaved(event)
+      const at = now()
+      if (at - this.storeFailedAt > 60_000) {
+        this.storeFailedAt = at
+        this.deps.log.error(`could not record ${event.type} for ${event.sessionId}`, err)
+      }
+    }
+  }
+
+  private keepUnsaved(event: SessionEvent) {
+    if (!MUST_SAVE.has(event.type)) return
+    this.unsaved.push(event)
+    if (this.unsaved.length > 1_000) this.unsaved.shift()
+  }
+
+  /** Saves the events kept by `record`; false while the database still refuses them. */
+  private saveUnsaved(): boolean {
+    while (this.unsaved.length > 0) {
+      try {
+        this.deps.store.append(this.unsaved[0]!)
+      } catch {
+        return false
+      }
+      this.unsaved.shift()
+    }
+    this.deps.log.info('the database takes writes again; saved the events kept meanwhile')
+    return true
+  }
+
+  /**
+   * The agent resumed without complaint but then could not find the conversation. Replaces its
+   * process with one in a new conversation, says so, and gives it the message again; the turn the
+   * user sees just carries on.
+   */
+  private async continueFresh(sessionId: string, old: LiveSession, reason: string) {
+    this.closedOnPurpose.add(old.session)
+    void withTimeout(old.session.close(), 5_000).catch(() => undefined)
+    const turn = this.turnState(sessionId)
+    const label = old.label ?? 'The agent'
+    this.deps.log.warn(`${label} lost the conversation of ${sessionId} (${reason}); starting fresh`)
+    try {
+      if (!old.input || !old.instanceId) throw new Error(reason)
+      const session = await old.adapter.startSession(old.instanceId, old.input)
+      if (this.live.get(sessionId) !== old || this.closing) {
+        // Deleted, or the host is stopping, while the new process started.
+        this.closedOnPurpose.add(session)
+        await session.close().catch(() => undefined)
+        return
+      }
+      const resend = turn.busy ? turn.lastPrompt : undefined
+      const live: LiveSession = { ...old, session, resumedFrom: undefined, skipTurnStart: !!resend }
+      this.live.set(sessionId, live)
+      void this.pump(sessionId, session)
+      this.deps.store.append({
+        type: 'error',
+        sessionId,
+        at: Date.now(),
+        message: lostConversationText(label, reason),
+      })
+      if (resend) {
+        this.touch(sessionId)
+        session
+          .prompt(promptInput(resend.text, resend.attachments))
+          .catch((err: unknown) => this.promptFailed(sessionId, session, err))
+      }
+    } catch (err) {
+      this.deps.log.error(`could not continue ${sessionId} in a new conversation`, err)
+      if (this.live.get(sessionId) === old) {
+        this.live.delete(sessionId)
+        this.activity.delete(sessionId)
+      }
+      turn.busy = false
+      this.endOrphanedTurn(
+        sessionId,
+        new Error(`${reason}; a new conversation did not start either (${errorText(err)})`),
+      )
     }
   }
 
@@ -1441,6 +1634,10 @@ export class SessionManager {
    * reads as if the user did.
    */
   private explain(sessionId: string, event: SessionEvent): SessionEvent {
+    if (event.type === 'error') {
+      const message = withHint(event.message)
+      return message === event.message ? event : { ...event, message }
+    }
     if (event.type !== 'turn.completed' || event.reason !== 'cancelled' || event.message)
       return event
     const turn = this.turns.get(sessionId)
@@ -1456,14 +1653,14 @@ export class SessionManager {
 
   private touch(sessionId: string) {
     const activity = this.activity.get(sessionId)
-    if (activity) activity.lastAt = Date.now()
+    if (activity) activity.lastAt = now()
   }
 
   /** Keeps what the stall check needs: the last sign of life, running tools, open requests. */
   private observe(sessionId: string, event: SessionEvent) {
     const activity = this.activity.get(sessionId)
     if (!activity) return
-    activity.lastAt = Date.now()
+    activity.lastAt = now()
     switch (event.type) {
       case 'tool.started':
         activity.tools.add(event.toolId)
@@ -1509,34 +1706,38 @@ export class SessionManager {
    * the session would otherwise show "running" forever.
    */
   private checkStalls() {
-    const limit = this.stallMs
-    if (limit <= 0) return
-    const now = Date.now()
+    if (this.unsaved.length > 0) this.saveUnsaved()
+    const at = now()
     for (const [sessionId, activity] of this.activity) {
       const turn = this.turns.get(sessionId)
       if (!turn?.busy || activity.stalled) continue
-      if (activity.tools.size > 0 || activity.waiting.size > 0) continue
-      if (now - activity.lastAt < limit) continue
+      // Waiting for the user is never a stall: they may be away for hours.
+      if (activity.waiting.size > 0) continue
+      const inTool = activity.tools.size > 0
+      const limit = inTool ? this.toolStallMs : this.stallMs
+      if (limit <= 0 || at - activity.lastAt < limit) continue
       activity.stalled = true
-      void this.stopStalled(sessionId, now - activity.lastAt)
+      void this.stopStalled(sessionId, at - activity.lastAt, inTool)
     }
   }
 
-  private async stopStalled(sessionId: string, silentMs: number) {
+  private async stopStalled(sessionId: string, silentMs: number, inTool = false) {
     const live = this.live.get(sessionId)
     if (!live) return
-    const minutes = Math.round(silentMs / 60_000)
-    const silence =
-      minutes >= 1
-        ? `${minutes} minute${minutes === 1 ? '' : 's'}`
-        : `${Math.round(silentMs / 1_000)} seconds`
+    const silence = describeDuration(silentMs)
     this.deps.log.warn(`${sessionId}: no word from the agent for ${silence}; stopping the turn`)
-    this.deps.store.append({
-      type: 'error',
-      sessionId,
-      at: Date.now(),
-      message: `The agent sent nothing for ${silence}, so its turn was stopped. Send a message to continue.`,
-    })
+    try {
+      this.deps.store.append({
+        type: 'error',
+        sessionId,
+        at: Date.now(),
+        message: inTool
+          ? `A tool the agent started has run for ${silence} without any word from the agent, so the turn was stopped. Send a message to continue.`
+          : `The agent sent nothing for ${silence}, so its turn was stopped. Send a message to continue.`,
+      })
+    } catch (err) {
+      this.deps.log.error(`could not record the stall of ${sessionId}`, err)
+    }
     // A hung agent may not answer the interrupt request either.
     await withTimeout(live.session.interrupt(), 10_000, 'interrupt').catch(() => undefined)
     // An agent that is truly hung does not answer the interrupt either: end its process, which
@@ -1547,6 +1748,76 @@ export class SessionManager {
       await withTimeout(live.session.close(), 5_000).catch(() => undefined)
     }
   }
+}
+
+/** Monotonic milliseconds: unaffected by clock changes, and paused while the computer sleeps. */
+function now(): number {
+  return performance.now()
+}
+
+function envMs(name: string, fallback: number): number {
+  const raw = process.env[name]
+  const value = raw === undefined || raw.trim() === '' ? NaN : Number(raw)
+  return Number.isFinite(value) && value >= 0 ? value : fallback
+}
+
+function describeDuration(ms: number): string {
+  const hours = Math.floor(ms / 3_600_000)
+  if (hours >= 2) return `${hours} hours`
+  const minutes = Math.round(ms / 60_000)
+  if (minutes >= 1) return `${minutes} minute${minutes === 1 ? '' : 's'}`
+  return `${Math.round(ms / 1_000)} seconds`
+}
+
+/** Events that show a resumed agent really has its conversation. */
+function confirmsConversation(event: SessionEvent): boolean {
+  switch (event.type) {
+    case 'message.delta':
+      return event.role === 'assistant'
+    case 'tool.started':
+    case 'approval.requested':
+    case 'question.requested':
+    case 'plan.updated':
+      return true
+    case 'turn.completed':
+      return event.reason === 'done'
+    default:
+      return false
+  }
+}
+
+function lostConversationText(label: string, reason: string): string {
+  return `${label} no longer has this conversation (${reason}), so it continues in a new one. The history above is kept here, but the agent does not remember it.`
+}
+
+const SIGN_IN =
+  /invalid api key|not logged in|please run \/login|\/login\b|authentication[_ ]error|\b401\b|unauthori[sz]ed|(token|credentials?|login|session) (has )?expired|login required|not authenticated|sign in again|re-?authenticate/i
+/** Agent events `record` keeps until the database takes them. */
+const MUST_SAVE = new Set<string>([
+  'session.provider-session',
+  'turn.started',
+  'turn.completed',
+  'error',
+  'approval.requested',
+  'approval.resolved',
+])
+
+const LIMITED = /rate[ _-]?limit|\b429\b|too many requests|usage limit|quota|overloaded|\b529\b/i
+const MISSING =
+  /\bENOENT\b|command not found|is not recognized as an internal or external command|executable not found/i
+
+/**
+ * Adds what to do to an agent error that does not say: sign in again, wait for a rate limit, or
+ * install the agent. These are the failures people hit most, and the raw text rarely helps.
+ */
+export function withHint(message: string): string {
+  if (SIGN_IN.test(message) && !/sign in on the host/i.test(message))
+    return `${message}\n\nThe agent needs you to sign in again: sign in to it on the host computer (for example run \`claude\` and then /login, or \`codex login\`), then send your message again.`
+  if (LIMITED.test(message) && !/(reset|try again|retry|wait)/i.test(message))
+    return `${message}\n\nThe agent's provider is busy or limiting requests right now. Wait a little, then send your message again.`
+  if (MISSING.test(message) && !/install/i.test(message))
+    return `${message}\n\nThe agent's program could not be found on the host computer. Check that it is installed and on the host's PATH, then send your message again.`
+  return message
 }
 
 /** The agent could not find the conversation it was asked to resume. */

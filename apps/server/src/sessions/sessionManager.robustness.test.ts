@@ -33,6 +33,8 @@ function scriptedAdapter() {
   let current: ReturnType<typeof createAsyncQueue<SessionEvent>> | undefined
   let sessionId = ''
   const interrupted: number[] = []
+  const steered: string[] = []
+  const prompts: string[] = []
   let failWith: Error | undefined
   // The stream of a process that died: it ends, with the transport's error if there was one.
   async function* stream(queue: AsyncIterable<SessionEvent>) {
@@ -40,7 +42,7 @@ function scriptedAdapter() {
     if (failWith) throw failWith
   }
   const state = {
-    onPrompt: (_emit: (e: Draft) => void) => {},
+    onPrompt: (_emit: (e: Draft) => void): void | Promise<void> => {},
     onInterrupt: (_emit: (e: Draft) => void) => {},
     failResume: undefined as string | undefined,
   }
@@ -68,7 +70,13 @@ function scriptedAdapter() {
       return {
         sessionId: input.sessionId,
         events: stream(queue),
-        prompt: async () => state.onPrompt(emit),
+        prompt: async (input) => {
+          prompts.push(input.text)
+          await state.onPrompt(emit)
+        },
+        steer: async (input) => {
+          steered.push(input.text)
+        },
         interrupt: async () => {
           interrupted.push(Date.now())
           state.onInterrupt(emit)
@@ -81,7 +89,10 @@ function scriptedAdapter() {
   }
   return {
     adapter,
+    instance,
     starts,
+    steered,
+    prompts,
     interrupted,
     state,
     emit,
@@ -92,7 +103,7 @@ function scriptedAdapter() {
   }
 }
 
-function setup(stallMs = 0) {
+function setup(stallMs = 0, toolStallMs?: number) {
   const store = new EventStore(':memory:')
   const stub = scriptedAdapter()
   const manager = new SessionManager({
@@ -103,6 +114,7 @@ function setup(stallMs = 0) {
     log: createLogger('test', 'error'),
     defaultCwd: os.tmpdir(),
     stallMs,
+    toolStallMs,
   })
   const events = (sessionId: string) => store.readSession(sessionId).map((s) => s.event)
   return { store, manager, events, ...stub }
@@ -270,6 +282,164 @@ describe('SessionManager robustness', () => {
     expect(events(sessionId).find((e) => e.type === 'error')).toMatchObject({
       message: expect.stringMatching(/no longer has this conversation/),
     })
+    await manager.close()
+  })
+
+  it('continues in a new conversation when the agent finds out only at the first message, sending it again', async () => {
+    const { manager, events, state, crash, starts, prompts } = setup()
+    const { sessionId } = await manager.create({ instanceId: 'stub' })
+    crash()
+    await new Promise((r) => setTimeout(r, 20))
+    // Like Claude: the resume itself succeeds, the first message fails.
+    state.onPrompt = (emit) => {
+      if (starts.at(-1)?.resumeId) {
+        emit({ type: 'turn.started', turnId: 'turn-1' })
+        emit({
+          type: 'error',
+          turnId: 'turn-1',
+          message: 'No conversation found with session ID: native-1',
+        })
+        emit({ type: 'turn.completed', turnId: 'turn-1', reason: 'error' })
+      } else {
+        emit({ type: 'turn.started', turnId: 'turn-1' })
+        emit({ type: 'message.delta', turnId: 'turn-1', role: 'assistant', text: 'fresh' })
+        emit({ type: 'turn.completed', turnId: 'turn-1', reason: 'done' })
+      }
+    }
+    await manager.prompt(sessionId, 'hi')
+    await until(() => events(sessionId).some((e) => e.type === 'turn.completed'))
+    expect(starts.at(-1)?.resumeId).toBeUndefined()
+    expect(prompts).toEqual(['hi', 'hi'])
+    const log = events(sessionId)
+    // One message, one turn, one explanation, and the answer.
+    expect(log.filter((e) => e.type === 'message.delta' && e.role === 'user')).toHaveLength(1)
+    expect(log.filter((e) => e.type === 'turn.started')).toHaveLength(1)
+    expect(log.filter((e) => e.type === 'turn.completed')).toEqual([
+      expect.objectContaining({ reason: 'done' }),
+    ])
+    const errors = log.filter((e) => e.type === 'error')
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatchObject({
+      message: expect.stringMatching(/no longer has this conversation/),
+    })
+    expect(log.some((e) => e.type === 'message.delta' && e.text === 'fresh')).toBe(true)
+    // The new conversation is the one resumed next time.
+    expect(manager.isBusy(sessionId)).toBe(false)
+    await manager.close()
+  })
+
+  it('sends a message typed right after stop once the stopped turn ends, instead of steering it into that turn', async () => {
+    const { manager, events, state, steered, prompts, emit } = setup()
+    state.onPrompt = (e) => e({ type: 'turn.started', turnId: `t${prompts.length}` })
+    const { sessionId } = await manager.create({ instanceId: 'stub' })
+    await manager.prompt(sessionId, 'first')
+    await until(() => events(sessionId).some((e) => e.type === 'turn.started'))
+    const stopping = manager.interrupt(sessionId)
+    const sent = await manager.prompt(sessionId, 'do this instead')
+    await stopping
+    expect(sent.state).toBe('queued')
+    expect(steered).toEqual([])
+    emit({ type: 'turn.completed', turnId: 't1', reason: 'cancelled' })
+    await until(() => prompts.length === 2)
+    expect(prompts[1]).toBe('do this instead')
+    expect(events(sessionId).find((e) => e.type === 'prompt.dequeued')).toMatchObject({
+      reason: 'sent',
+    })
+    await manager.close()
+  })
+
+  it('stops a turn whose tool runs far longer than any build, with its own message', async () => {
+    const { manager, events, state, interrupted } = setup(60, 150)
+    state.onPrompt = (e) => {
+      e({ type: 'turn.started', turnId: 't1' })
+      e({ type: 'tool.started', turnId: 't1', toolId: 'hang', title: 'Bash', kind: 'command' })
+    }
+    state.onInterrupt = (e) => e({ type: 'turn.completed', turnId: 't1', reason: 'cancelled' })
+    const { sessionId } = await manager.create({ instanceId: 'stub' })
+    await manager.prompt(sessionId, 'hi')
+    await until(() => events(sessionId).some((e) => e.type === 'turn.completed'))
+    expect(interrupted).toHaveLength(1)
+    expect(events(sessionId).find((e) => e.type === 'error')).toMatchObject({
+      message: expect.stringMatching(/A tool the agent started has run for/),
+    })
+    await manager.close()
+  })
+
+  it('says the agent stopped before taking a message when its process dies first', async () => {
+    const { manager, events, state, crash } = setup()
+    const { sessionId } = await manager.create({ instanceId: 'stub' })
+    state.onPrompt = async () => {
+      crash()
+      await new Promise((r) => setTimeout(r, 20))
+      throw new Error('The agent process ended')
+    }
+    await manager.prompt(sessionId, 'hi')
+    await until(() => events(sessionId).some((e) => e.type === 'error'))
+    expect(events(sessionId).find((e) => e.type === 'error')).toMatchObject({
+      message: expect.stringMatching(/stopped before it could take this message/),
+    })
+    expect(events(sessionId).some((e) => e.type === 'turn.completed')).toBe(false)
+    expect(manager.isBusy(sessionId)).toBe(false)
+    await manager.close()
+  })
+
+  it('says to sign in again when the agent reports it is signed out', async () => {
+    const { manager, events, state } = setup()
+    state.onPrompt = (e) => {
+      e({ type: 'turn.started', turnId: 't1' })
+      e({ type: 'error', turnId: 't1', message: 'Invalid API key · Please run /login' })
+      e({ type: 'turn.completed', turnId: 't1', reason: 'error' })
+    }
+    const { sessionId } = await manager.create({ instanceId: 'stub' })
+    await manager.prompt(sessionId, 'hi')
+    await until(() => events(sessionId).some((e) => e.type === 'turn.completed'))
+    expect(events(sessionId).find((e) => e.type === 'error')).toMatchObject({
+      message: expect.stringMatching(/Please run \/login\n\nThe agent needs you to sign in again/),
+    })
+    await manager.close()
+  })
+
+  it('looks for an agent again when it was missing a moment ago, and says what to do when it still is', async () => {
+    const { manager, instance } = setup()
+    instance.status = 'not-installed'
+    await expect(manager.create({ instanceId: 'stub' })).rejects.toThrow(
+      /not installed on the host/,
+    )
+    instance.status = 'ready'
+    // Detection is cached for a minute, but a missing agent is looked for again.
+    await expect(manager.create({ instanceId: 'stub' })).resolves.toHaveProperty('sessionId')
+    await manager.close()
+  })
+
+  it('keeps the end of a turn the full disk refused, and saves it once there is room', async () => {
+    const { manager, events, state, emit, store } = setup(0, 40)
+    const db = (store as unknown as { db: import('node:sqlite').DatabaseSync }).db
+    state.onPrompt = (e) => e({ type: 'turn.started', turnId: 't1' })
+    const { sessionId } = await manager.create({ instanceId: 'stub' })
+    await manager.prompt(sessionId, 'hi')
+    await until(() => events(sessionId).some((e) => e.type === 'turn.started'))
+    const { page_count } = db.prepare('PRAGMA page_count').get() as { page_count: number }
+    db.exec(`PRAGMA max_page_count = ${page_count}`)
+    // Fill what room is left, so even a small event no longer fits.
+    for (let i = 0; i < 10_000; i++) {
+      try {
+        store.append({
+          type: 'session.renamed',
+          sessionId: 'filler',
+          at: Date.now(),
+          title: `${i}`,
+        })
+      } catch {
+        break
+      }
+    }
+    emit({ type: 'message.delta', turnId: 't1', role: 'assistant', text: 'x'.repeat(64 * 1024) })
+    emit({ type: 'turn.completed', turnId: 't1', reason: 'done' })
+    await until(() => !manager.isBusy(sessionId))
+    expect(events(sessionId).some((e) => e.type === 'turn.completed')).toBe(false)
+
+    db.exec('PRAGMA max_page_count = 1000000')
+    await until(() => events(sessionId).some((e) => e.type === 'turn.completed'))
     await manager.close()
   })
 })
