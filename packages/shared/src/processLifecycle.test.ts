@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { killAllChildren, runningChildren, spawnProcess, stopProcess } from './process.ts'
+import {
+  killAllChildren,
+  runCommand,
+  runningChildren,
+  spawnProcess,
+  stopProcess,
+} from './process.ts'
 import { spawnTransport } from './jsonrpc.ts'
 import { withTimeout } from './async.ts'
 
@@ -63,5 +69,24 @@ describe('withTimeout', () => {
     await expect(withTimeout(new Promise(() => {}), 20, 'close')).rejects.toThrow(
       /close did not finish within 20 ms/,
     )
+  })
+})
+
+describe('runCommand', () => {
+  it('gives a command no input to wait for, so one that reads it to the end still finishes', async () => {
+    // Like PowerShell: reads stdin before it exits.
+    const res = await runCommand(
+      process.execPath,
+      ['-e', 'process.stdin.resume(); process.stdin.on("end", () => { console.log("done") })'],
+      { timeoutMs: 5_000 },
+    )
+    expect(res).toMatchObject({ code: 0, stdout: expect.stringContaining('done') })
+  })
+
+  it('reports the exit code, and gives up on a command that runs too long', async () => {
+    expect(await runCommand(process.execPath, ['-e', 'process.exit(3)'])).toMatchObject({ code: 3 })
+    await expect(
+      runCommand(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { timeoutMs: 200 }),
+    ).rejects.toThrow(/timed out/)
   })
 })

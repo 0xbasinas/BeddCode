@@ -1750,7 +1750,7 @@ export class SessionManager {
   }
 }
 
-/** Monotonic milliseconds: unaffected by clock changes, and paused while the computer sleeps. */
+/** Monotonic milliseconds: unaffected by the wall clock being set back or forward. */
 function now(): number {
   return performance.now()
 }

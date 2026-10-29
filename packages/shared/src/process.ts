@@ -1,5 +1,4 @@
 import {
-  execFile,
   spawn,
   spawnSync,
   type ChildProcess,
@@ -72,28 +71,59 @@ export function runCommand(
   options: RunOptions = {},
 ): Promise<RunResult> {
   const viaShell = isWindows && /\.(cmd|bat)$/i.test(file)
+  const limit = 4 * 1024 * 1024
   return new Promise((resolve, reject) => {
-    const child = execFile(
+    // stdin is not even a pipe: nothing is ever written to it, and some programs wait on an open
+    // one. PowerShell never exits (nodejs/node#25645, nodejs/node#60077), git could sit at a prompt.
+    const child = spawn(
       viaShell ? 'cmd.exe' : file,
       viaShell ? ['/d', '/s', '/c', quoteForCmd(file), ...args.map(quoteForCmd)] : args,
       {
-        timeout: options.timeoutMs ?? 10_000,
         env: options.env,
         cwd: options.cwd,
         windowsHide: true,
         windowsVerbatimArguments: viaShell,
-        maxBuffer: 4 * 1024 * 1024,
-      },
-      (error, stdout, stderr) => {
-        if (error && 'killed' in error && error.killed)
-          return reject(new Error(`${file} timed out`))
-        if (error && typeof error.code !== 'number') return reject(error)
-        resolve({ code: error ? (error.code as number) : 0, stdout, stderr })
+        stdio: ['ignore', 'pipe', 'pipe'],
       },
     )
-    // Nothing is ever written to it. Left open, some programs wait on it: PowerShell never
-    // exits (nodejs/node#25645), and git could sit at a prompt.
-    child.stdin?.end()
+    const out: Buffer[] = []
+    const err: Buffer[] = []
+    let size = 0
+    let failure: Error | undefined
+    const collect = (into: Buffer[]) => (chunk: Buffer) => {
+      size += chunk.length
+      if (size > limit) {
+        failure ??= new Error(`${file} wrote more than ${limit} bytes`)
+        child.kill()
+        return
+      }
+      into.push(chunk)
+    }
+    child.stdout.on('data', collect(out))
+    child.stderr.on('data', collect(err))
+    const timer = setTimeout(() => {
+      failure ??= new Error(`${file} timed out`)
+      if (isWindows && child.pid) {
+        spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+          stdio: 'ignore',
+          windowsHide: true,
+        }).on('error', () => undefined)
+      } else child.kill('SIGKILL')
+    }, options.timeoutMs ?? 10_000)
+    child.on('error', (error) => {
+      clearTimeout(timer)
+      reject(error)
+    })
+    child.on('close', (code, signal) => {
+      clearTimeout(timer)
+      if (failure) return reject(failure)
+      if (code === null) return reject(new Error(`${file} was ended by ${signal ?? 'a signal'}`))
+      resolve({
+        code,
+        stdout: Buffer.concat(out).toString('utf8'),
+        stderr: Buffer.concat(err).toString('utf8'),
+      })
+    })
   })
 }
 
@@ -317,6 +347,7 @@ export async function processInfos(
         [
           '-NoProfile',
           '-NonInteractive',
+          '-NoLogo',
           '-InputFormat',
           'None',
           '-Command',

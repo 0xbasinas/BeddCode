@@ -235,7 +235,8 @@ describe('SessionManager robustness', () => {
   })
 
   it('stops a turn whose agent went silent, but not one running a long tool', async () => {
-    const { manager, events, state, interrupted, emit } = setup(60)
+    // Long enough that a slow machine records the tool start well inside it (Windows CI did not).
+    const { manager, events, state, interrupted, emit } = setup(250)
     state.onPrompt = (e) => {
       e({ type: 'turn.started', turnId: 't1' })
       e({ type: 'tool.started', turnId: 't1', toolId: 'build', title: 'Bash', kind: 'command' })
@@ -243,7 +244,7 @@ describe('SessionManager robustness', () => {
     state.onInterrupt = (e) => e({ type: 'turn.completed', turnId: 't1', reason: 'cancelled' })
     const { sessionId } = await manager.create({ instanceId: 'stub' })
     await manager.prompt(sessionId, 'hi')
-    await new Promise((r) => setTimeout(r, 200))
+    await new Promise((r) => setTimeout(r, 700))
     expect(interrupted).toHaveLength(0)
 
     emit({ type: 'tool.completed', turnId: 't1', toolId: 'build', ok: true })
