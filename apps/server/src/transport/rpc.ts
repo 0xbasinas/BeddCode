@@ -239,12 +239,14 @@ export function createRpcRouter(
       return terminals.create(p)
     },
     'terminals.list': async (p) => terminals.list(p.cwd),
+    'terminals.takeOver': async (p) => terminals.takeOver(p.id),
     'terminals.close': async (p) => {
       terminals.close(p.id)
       return {}
     },
     'files.list': async (p) => ({ entries: await files.list(p.cwd, p.dir) }),
     'files.read': (p) => files.read(p.cwd, p.path),
+    'files.locate': async (p) => ({ found: await files.locate(p.cwd, p.paths) }),
     'files.media': (p) => files.mediaFor(p.cwd, p.path),
     'files.write': async (p) => ({
       mtime: await files.write(p.cwd, p.path, p.content, p.expectedMtime),

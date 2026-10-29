@@ -366,6 +366,7 @@ function EditorColumn({
           fileName={baseName(doc.path)}
           content={doc.draft ?? doc.content}
           version={doc.version}
+          reveal={doc.reveal}
           onChange={(text) => setDraft(cwd, doc.path, text)}
           onSave={(text) => void doSave(text)}
           textRef={textRef}

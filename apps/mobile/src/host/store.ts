@@ -81,7 +81,7 @@ const savers = new Map<string, ReplicaSaver>()
 
 type LiveFrame = Extract<
   ServerFrame,
-  { t: 'term.out' | 'term.exit' | 'fs.changed' | 'design.changed' }
+  { t: 'term.out' | 'term.exit' | 'term.changed' | 'fs.changed' | 'design.changed' }
 >
 const frameListeners = new Map<string, Set<(frame: LiveFrame) => void>>()
 

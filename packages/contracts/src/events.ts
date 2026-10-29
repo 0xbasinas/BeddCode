@@ -169,6 +169,8 @@ export const SessionEvent = z.discriminatedUnion('type', [
     input: z.string().optional(),
     /** Files the tool touches, in full, when the agent says. */
     paths: z.array(z.string()).optional(),
+    /** For commands: the command line as the agent wrote it (shown in its agent terminal). */
+    command: z.string().optional(),
   }),
   /** The agent said more about a tool it already announced: what kind it is, a better title. */
   Base.extend({
@@ -178,6 +180,16 @@ export const SessionEvent = z.discriminatedUnion('type', [
     title: z.string().optional(),
     input: z.string().optional(),
     paths: z.array(z.string()).optional(),
+    command: z.string().optional(),
+  }),
+  /**
+   * Output of a running command as it is produced, for the session's agent terminal. Live only:
+   * the host shows it in the terminal and never stores it (the tool's result holds the output).
+   */
+  Base.extend({
+    type: z.literal('tool.output'),
+    toolId: z.string(),
+    data: z.string(),
   }),
   Base.extend({
     type: z.literal('tool.completed'),

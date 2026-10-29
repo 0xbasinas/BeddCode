@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
-import { Terminal } from '@xterm/xterm'
+import { Terminal, type ILink } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { onHostFrame, sendHostFrame, useRuntime } from '../../stores/host.ts'
+import { findTextLinks } from '@beddcode/client-runtime'
+import { hostRequest, onHostFrame, sendHostFrame, useRuntime } from '../../stores/host.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
+import { openLocated, openUrl, wantsOutside } from '../links/links.tsx'
 
 const THEME = {
   background: '#0e0e0e',
@@ -20,10 +22,16 @@ const THEME = {
  */
 export function TerminalView({
   id,
+  cwd,
+  readOnly = false,
   onSize,
   onSelection,
 }: {
   id: string
+  /** The terminal's folder: paths printed in it are read against this one. */
+  cwd?: string
+  /** Typing is not sent (an agent's terminal until the user takes it over). */
+  readOnly?: boolean
   onSize?(size: { cols: number; rows: number }): void
   onSelection?(text: string): void
 }) {
@@ -35,6 +43,11 @@ export function TerminalView({
   onSizeRef.current = onSize
   const onSelectionRef = useRef(onSelection)
   onSelectionRef.current = onSelection
+  const readOnlyRef = useRef(readOnly)
+  readOnlyRef.current = readOnly
+  const cwdRef = useRef(cwd)
+  cwdRef.current = cwd
+  const termRef = useRef<Terminal | null>(null)
 
   useEffect(() => {
     const el = container.current
@@ -44,10 +57,12 @@ export function TerminalView({
       fontFamily: "'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace",
       fontSize: 12,
       lineHeight: 1.6,
-      cursorBlink: true,
       scrollback: 5000,
       theme: THEME,
+      disableStdin: readOnlyRef.current,
+      cursorBlink: !readOnlyRef.current,
     })
+    termRef.current = term
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(el)
@@ -72,7 +87,14 @@ export function TerminalView({
         term.write(`\r\n\x1b[90m[process exited${how}]\x1b[0m\r\n`)
       }
     })
-    const stopInput = term.onData((data) => sendHostFrame(hostKey, { t: 'term.input', id, data }))
+    const stopInput = term.onData((data) => {
+      if (!readOnlyRef.current) sendHostFrame(hostKey, { t: 'term.input', id, data })
+    })
+    const stopLinks = term.registerLinkProvider({
+      provideLinks(y, callback) {
+        void lineLinks(term, hostKey, cwdRef.current, y).then(callback, () => callback(undefined))
+      },
+    })
     const stopSelection = term.onSelectionChange(() =>
       onSelectionRef.current?.(term.getSelection()),
     )
@@ -95,10 +117,71 @@ export function TerminalView({
       sendHostFrame(hostKey, { t: 'term.detach', id })
       stopFrames()
       stopInput.dispose()
+      stopLinks.dispose()
+      termRef.current = null
       stopSelection.dispose()
       term.dispose()
     }
   }, [hostKey, id, epoch])
 
+  useEffect(() => {
+    const term = termRef.current
+    if (!term) return
+    term.options.disableStdin = readOnly
+    term.options.cursorBlink = !readOnly
+    if (!readOnly) term.focus()
+  }, [readOnly])
+
   return <div className="terminal-host" ref={container} />
+}
+
+/**
+ * The links on one row of the terminal: web addresses, and paths the host says are inside the
+ * folder. Asked for when the pointer moves over the row, so only that row's paths are looked up.
+ */
+async function lineLinks(
+  term: Terminal,
+  hostKey: string,
+  cwd: string | undefined,
+  y: number,
+): Promise<ILink[] | undefined> {
+  const text = term.buffer.active.getLine(y - 1)?.translateToString(true) ?? ''
+  const found = findTextLinks(text).slice(0, 20)
+  if (!found.length) return undefined
+  const paths = found.flatMap((l) => (l.kind === 'path' ? [l.path] : []))
+  const located =
+    cwd && paths.length
+      ? await hostRequest(hostKey, 'files.locate', { cwd, paths })
+          .then((r) => r.found)
+          .catch(() => [])
+      : []
+  const where = new Map(paths.map((p, i) => [p, located[i] ?? null]))
+  const links: ILink[] = []
+  for (const link of found) {
+    const range = { start: { x: link.start + 1, y }, end: { x: link.end, y } }
+    if (link.kind === 'url') {
+      links.push({
+        range,
+        text: link.text,
+        decorations: { underline: true, pointerCursor: true },
+        activate: (event) => openUrl(link.url, wantsOutside(event)),
+      })
+      continue
+    }
+    const spot = where.get(link.path)
+    if (!spot || !cwd) continue
+    links.push({
+      range,
+      text: link.text,
+      decorations: { underline: true, pointerCursor: true },
+      activate: (event) =>
+        void openLocated(
+          { hostKey, cwd },
+          spot,
+          { line: link.line, column: link.column },
+          event.altKey,
+        ),
+    })
+  }
+  return links.length ? links : undefined
 }

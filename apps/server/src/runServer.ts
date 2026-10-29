@@ -33,6 +33,7 @@ import { startServer } from './transport/server.ts'
 import { FileService } from './files/files.ts'
 import { FileWatchers } from './files/watcher.ts'
 import { TerminalManager } from './terminals/manager.ts'
+import { AgentTerminals } from './terminals/agentTerminals.ts'
 import { GitService } from './workspace/git.ts'
 import { GithubService } from './workspace/github.ts'
 import { ProjectStore } from './workspace/projects.ts'
@@ -73,6 +74,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
   let port = config.port
   let agentTools: AgentTools | undefined
   const sessions = new SessionManager({
+    agentTerminals: new AgentTerminals(workspace.terminals),
     agentToolServers: (sessionId) => agentTools?.serversFor(sessionId) ?? [],
     store,
     attachments,

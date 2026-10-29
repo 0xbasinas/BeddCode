@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { spawnProcess } from '@beddcode/shared'
+import type { AgentCommand, AgentTerminalHost } from '@beddcode/provider-core'
 
 export interface CreateTerminal {
   command: string
@@ -26,16 +27,34 @@ interface Terminal {
 const isWindows = process.platform === 'win32'
 
 /**
- * Terminals an ACP agent asks us to run. Plain child processes for now; phase 7 backs these with
- * the same pty terminals the UI shows.
+ * Terminals an ACP agent asks us to run. With a host (the BeddCode server) they run in the
+ * session's agent terminal, a pty the user watches; otherwise as plain child processes.
  */
 export class TerminalManager {
   private readonly terminals = new Map<string, Terminal>()
+  private readonly hosted = new Map<string, AgentCommand>()
   private nextId = 1
 
-  constructor(private readonly defaultCwd: string) {}
+  constructor(
+    private readonly defaultCwd: string,
+    private readonly host?: AgentTerminalHost,
+  ) {}
 
   create(req: CreateTerminal): { terminalId: string } {
+    if (this.host) {
+      const id = `term-${this.nextId++}`
+      this.hosted.set(
+        id,
+        this.host.run({
+          command: req.command,
+          args: req.args,
+          env: Object.fromEntries((req.env ?? []).map((e) => [e.name, e.value])),
+          cwd: req.cwd ?? this.defaultCwd,
+          outputByteLimit: req.outputByteLimit,
+        }),
+      )
+      return { terminalId: id }
+    }
     const env = {
       ...process.env,
       ...Object.fromEntries((req.env ?? []).map((e) => [e.name, e.value])),
@@ -91,22 +110,33 @@ export class TerminalManager {
   }
 
   output(id: string) {
+    const hosted = this.hosted.get(id)
+    if (hosted) return hosted.output()
     const t = this.get(id)
     return { output: t.output, truncated: t.truncated, exitStatus: t.exit }
   }
 
   waitForExit(id: string): Promise<ExitStatus> {
+    const hosted = this.hosted.get(id)
+    if (hosted) return hosted.waitForExit()
     const t = this.get(id)
     if (t.exit) return Promise.resolve(t.exit)
     return new Promise((resolve) => t.waiters.push(resolve))
   }
 
   kill(id: string) {
+    const hosted = this.hosted.get(id)
+    if (hosted) return hosted.kill()
     const t = this.get(id)
     if (!t.exit) killTree(t.child)
   }
 
   release(id: string) {
+    const hosted = this.hosted.get(id)
+    if (hosted) {
+      this.hosted.delete(id)
+      return hosted.release()
+    }
     const t = this.terminals.get(id)
     if (!t) return
     if (!t.exit) killTree(t.child)
@@ -115,7 +145,7 @@ export class TerminalManager {
 
   releaseAll() {
     // Deleting the current entry while iterating a Map is safe.
-    for (const id of this.terminals.keys()) this.release(id)
+    for (const id of [...this.terminals.keys(), ...this.hosted.keys()]) this.release(id)
   }
 
   private get(id: string): Terminal {

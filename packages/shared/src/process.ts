@@ -86,7 +86,7 @@ export function runCommand(
   })
 }
 
-function quoteForCmd(arg: string): string {
+export function quoteForCmd(arg: string): string {
   return /[\s"&|<>^()]/.test(arg) ? `"${arg.replace(/"/g, '""')}"` : arg
 }
 

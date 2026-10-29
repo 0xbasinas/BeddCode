@@ -366,12 +366,24 @@ export const RpcMethods = {
   },
   /** Ends the shell (if running) and forgets the terminal. */
   'terminals.close': { params: z.object({ id: z.string() }), result: z.object({}) },
+  /** Lets the user type into an agent terminal (it starts read-only). */
+  'terminals.takeOver': { params: z.object({ id: z.string() }), result: TerminalInfo },
   /** Folder contents; `dir` is relative to `cwd` (empty for the root). Folders first. */
   'files.list': {
     params: z.object({ cwd: z.string(), dir: z.string().optional() }),
     result: z.object({ entries: z.array(FileEntry) }),
   },
   'files.read': { params: z.object({ cwd: z.string(), path: z.string() }), result: FileContent },
+  /**
+   * Which of these paths (relative to `cwd`, or absolute) are files or folders inside `cwd`; each
+   * answer is the path relative to it, or null. Used to make paths in text clickable.
+   */
+  'files.locate': {
+    params: z.object({ cwd: z.string(), paths: z.array(z.string().max(1024)).max(200) }),
+    result: z.object({
+      found: z.array(z.object({ path: z.string(), type: z.enum(['file', 'dir']) }).nullable()),
+    }),
+  },
   /** An address for showing an image, video or audio file; null when the file is not one. */
   'files.media': {
     params: z.object({ cwd: z.string(), path: z.string() }),

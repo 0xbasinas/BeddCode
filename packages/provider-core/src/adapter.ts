@@ -27,6 +27,38 @@ export interface StartSessionInput {
   textOnly?: boolean
   /** MCP servers the host adds for this session only (BeddCode's agent tools), next to the agent's own. */
   mcpServers?: SessionMcpServer[]
+  /**
+   * Runs the commands an agent asks the host to run (ACP `terminal/*`) in a terminal the user can
+   * watch. Without it adapters run them as plain child processes.
+   */
+  terminalHost?: AgentTerminalHost
+}
+
+export interface AgentCommandRequest {
+  command: string
+  args?: string[]
+  env?: Record<string, string>
+  cwd: string
+  /** Keep at most this many bytes of output (the end of it). */
+  outputByteLimit?: number | null
+}
+
+export interface AgentCommandExit {
+  exitCode: number | null
+  signal: string | null
+}
+
+/** A command the host is running for an agent. */
+export interface AgentCommand {
+  output(): { output: string; truncated: boolean; exitStatus: AgentCommandExit | null }
+  waitForExit(): Promise<AgentCommandExit>
+  kill(): void
+  /** The agent is done with it: stops it if still running and forgets its output. */
+  release(): void
+}
+
+export interface AgentTerminalHost {
+  run(request: AgentCommandRequest): AgentCommand
 }
 
 /** A stdio MCP server to start alongside a session. */

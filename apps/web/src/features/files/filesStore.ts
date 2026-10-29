@@ -46,6 +46,8 @@ export interface Doc {
   /** Bumped whenever the content is replaced from disk, so the editor reloads it. */
   version: number
   error?: string
+  /** A place to show: the editor moves its cursor there when `n` changes (a link was clicked). */
+  reveal?: { line: number; column?: number; n: number }
 }
 
 /** What the files pane remembers about one folder. */
@@ -66,6 +68,10 @@ interface FilesState {
   toggleDir(cwd: string, dir: string): Promise<void>
   collapseAll(cwd: string): void
   open(cwd: string, path: string): Promise<void>
+  /** Opens the file and puts the cursor on `line` (and `column`). */
+  openAt(cwd: string, path: string, line?: number, column?: number): Promise<void>
+  /** Shows a folder in the tree: its parents and itself expanded. */
+  revealDir(cwd: string, dir: string): Promise<void>
   activate(cwd: string, path: string): void
   close(cwd: string, path: string): void
   setDirty(cwd: string, path: string, dirty: boolean): void
@@ -154,6 +160,28 @@ export const useFiles = create<FilesState>((set, get) => {
             },
           },
         }))
+      }
+    },
+
+    async openAt(cwd, path, line, column) {
+      await get().open(cwd, path)
+      if (!line) return
+      const n = (get().byCwd[cwd]?.docs[path]?.reveal?.n ?? 0) + 1
+      patchDoc(cwd, path, { reveal: { line, ...(column ? { column } : {}), n } })
+    },
+
+    async revealDir(cwd, dir) {
+      const parts = dir === '.' ? [] : dir.split('/').filter(Boolean)
+      const chain = parts.map((_, i) => parts.slice(0, i + 1).join('/'))
+      update(cwd, (f) => ({
+        ...f,
+        expanded: { ...f.expanded, ...Object.fromEntries(chain.map((d) => [d, true])) },
+      }))
+      for (const d of ['', ...chain]) {
+        if (!get().byCwd[cwd]?.entries[d])
+          await get()
+            .loadDir(cwd, d)
+            .catch(() => undefined)
       }
     },
 
