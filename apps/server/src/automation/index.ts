@@ -10,8 +10,17 @@ import { writeBridge } from './bridge.ts'
 import { DesignStore } from '../design/designStore.ts'
 import { DesignTools } from '../design/designTools.ts'
 import { DesignLink } from '../design/designLink.ts'
-import { BrowserBroker, BrowserTools } from './browserUse.ts'
+import { BrowserBroker, BrowserTools, type BrowserToolsHost } from './browserUse.ts'
+import { auditFile } from '../computer/audit.ts'
+import { ComputerTools, type ComputerToolsHost } from '../computer/computerTools.ts'
+import { CuaDesktopDriver } from '../computer/cuaDriver.ts'
 import { ScheduleService } from './schedules.ts'
+
+/** The Desktop pane's view of a session's computer use. */
+export interface ComputerPane {
+  view(sessionId: string, since?: number): ReturnType<ComputerTools['viewOf']>
+  control(sessionId: string, paused: boolean): boolean
+}
 
 export interface AutomationDeps {
   home: string
@@ -23,6 +32,8 @@ export interface AutomationDeps {
   port: () => number
   /** Where pictures of the browser pages agents use are kept. */
   browserImageDir?: string
+  /** Where pictures of the windows agents operate are kept. */
+  computerImageDir?: string
   fetch?: ConstructorParameters<typeof AlertService>[0]['fetch']
   tickMs?: number
 }
@@ -58,25 +69,32 @@ export function createAutomation(deps: AutomationDeps) {
     tickMs: deps.tickMs,
   })
   const broker = new BrowserBroker()
+  const toolHost: BrowserToolsHost & ComputerToolsHost = {
+    currentMode: (id) => sessions.currentMode(id),
+    modeLevel,
+    askUser: (id, ask) => sessions.askUser(id, ask),
+    async describe(id) {
+      const created = store.readSession(id).find((e) => e.event.type === 'session.created')
+      const event = created?.event.type === 'session.created' ? created.event : undefined
+      const providers = await sessions.listProviders().catch(() => [])
+      const label = providers.find((p) => p.id === event?.instanceId)?.label
+      const agent = (label ?? event?.instanceId ?? 'Agent').replace(/\s*\(.*\)$/, '')
+      let title = event?.title
+      for (const { event: e } of store.readSession(id))
+        if (e.type === 'session.renamed') title = e.title
+      return { agent, title }
+    },
+  }
   const browser = new BrowserTools(
     broker,
-    {
-      currentMode: (id) => sessions.currentMode(id),
-      modeLevel,
-      askUser: (id, ask) => sessions.askUser(id, ask),
-      async describe(id) {
-        const created = store.readSession(id).find((e) => e.event.type === 'session.created')
-        const event = created?.event.type === 'session.created' ? created.event : undefined
-        const providers = await sessions.listProviders().catch(() => [])
-        const label = providers.find((p) => p.id === event?.instanceId)?.label
-        const agent = (label ?? event?.instanceId ?? 'Agent').replace(/\s*\(.*\)$/, '')
-        let title = event?.title
-        for (const { event: e } of store.readSession(id))
-          if (e.type === 'session.renamed') title = e.title
-        return { agent, title }
-      },
-    },
+    toolHost,
     deps.browserImageDir ?? path.join(home, 'browser-images'),
+  )
+  const computer = new ComputerTools(
+    () => CuaDesktopDriver.load(),
+    toolHost,
+    deps.computerImageDir ?? path.join(home, 'computer-images'),
+    { audit: auditFile(path.join(home, 'computer-audit.jsonl')) },
   )
   const designs = new DesignStore(path.join(home, 'designs'))
   const designLink = new DesignLink()
@@ -104,12 +122,30 @@ export function createAutomation(deps: AutomationDeps) {
     { file: writeBridge(home), url: () => `http://127.0.0.1:${deps.port()}/agent-tools` },
     browser,
     new DesignTools(designs, designLink),
+    computer,
   )
   const stopAlerts = store.subscribe((stored) => {
     alerts.onEvent(stored)
     if (stored.event.type === 'session.deleted') agentTools.forget(stored.event.sessionId)
+    // A turn that ends frees the desktop for other sessions; a stopped one also loses its access.
+    if (stored.event.type === 'turn.started') computer.resume(stored.event.sessionId)
+    if (stored.event.type === 'turn.completed') {
+      computer.release(stored.event.sessionId)
+      if (stored.event.reason === 'cancelled') computer.halt(stored.event.sessionId)
+    }
   })
+  // What the Desktop pane reads and does for a session that may use the computer.
+  const computerPane: ComputerPane = {
+    view: (sessionId, since) => {
+      const created = store.readSession(sessionId).find((e) => e.event.type === 'session.created')
+      const enabled =
+        created?.event.type === 'session.created' && created.event.computerTools === true
+      return computer.viewOf(sessionId, enabled, since)
+    },
+    control: (sessionId, paused) => computer.setPaused(sessionId, paused),
+  }
   return {
+    computerPane,
     schedules,
     alerts,
     agentTools,
@@ -119,6 +155,7 @@ export function createAutomation(deps: AutomationDeps) {
     stop() {
       schedules.stop()
       stopAlerts()
+      void computer.dispose()
     },
   }
 }

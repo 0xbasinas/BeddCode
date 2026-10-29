@@ -456,6 +456,40 @@ describe('ACP history', () => {
 })
 
 describe('previewing an agent before a session', () => {
+  it('advertises boolean settings support to agents during previews', async () => {
+    const dir = tmp()
+    const store = new AcpAgentStore(path.join(dir, 'acp.json'))
+    store.put({ id: 'demo', label: 'Demo', command: process.execPath })
+    let supportsBoolean = false
+    const a = agent({
+      initialize: (params) => {
+        const capabilities = params.clientCapabilities as {
+          session?: { configOptions?: { boolean?: unknown } }
+        }
+        supportsBoolean = capabilities.session?.configOptions?.boolean !== undefined
+        return { protocolVersion: 1, agentCapabilities: {} }
+      },
+      'session/new': () => ({
+        sessionId: 'acp-1',
+        configOptions: supportsBoolean
+          ? [{ type: 'boolean', id: 'web', name: 'Web search', currentValue: true }]
+          : [],
+      }),
+    })
+    const adapter = createAcpAdapter({ store, log, createTransport: () => a.transport })
+    const preview = await adapter.preview?.('acp:demo', '/w')
+    expect(preview?.config).toEqual([
+      expect.objectContaining({ id: 'web', type: 'boolean', value: true }),
+    ])
+  })
+
+  it('rejects unsupported ACP versions during previews', async () => {
+    const a = agent({ initialize: () => ({ protocolVersion: 2 }) })
+    await expect(withAcpAgent(a.transport, log, 'Demo', async () => {})).rejects.toThrow(
+      'Demo speaks ACP v2, which is not supported yet',
+    )
+  })
+
   it('reads modes, settings and commands from a throwaway session, then closes it', async () => {
     const dir = tmp()
     const store = new AcpAgentStore(path.join(dir, 'acp.json'))

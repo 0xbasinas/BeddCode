@@ -2,6 +2,7 @@ import {
   FolderOpen,
   GitBranch,
   Globe,
+  Monitor,
   PanelRightClose,
   PanelRightOpen,
   SquareTerminal,
@@ -22,6 +23,9 @@ import { EMPTY_FOLDER, folderId, useFiles } from '../files/filesStore.ts'
 const BrowserPane = lazy(() =>
   import('../browser/BrowserPane.tsx').then((m) => ({ default: m.BrowserPane })),
 )
+const DesktopPane = lazy(() =>
+  import('../desktop/DesktopPane.tsx').then((m) => ({ default: m.DesktopPane })),
+)
 const FilesPane = lazy(() =>
   import('../files/FilesPane.tsx').then((m) => ({ default: m.FilesPane })),
 )
@@ -35,6 +39,7 @@ const panes: { id: PaneId; label: string; Icon: ComponentType<{ size?: number }>
   { id: 'files', label: 'Files', Icon: FolderOpen },
   { id: 'git', label: 'Git', Icon: GitBranch },
   { id: 'browser', label: 'Browser', Icon: Globe },
+  { id: 'desktop', label: 'Desktop', Icon: Monitor },
 ]
 
 /** The session the thread view shows, or in a split the pane last used. */
@@ -134,6 +139,16 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
                   project={workspace ? paneProject(workspace) : undefined}
                 />
               )}
+              {activePane === 'desktop' &&
+                (session ? (
+                  <DesktopPane
+                    key={`${hostKey}:${session.id}`}
+                    sessionId={session.id}
+                    working={session.status !== 'idle'}
+                  />
+                ) : (
+                  <div className="git-empty muted">Open a session to see its desktop.</div>
+                ))}
             </Suspense>
           </HostScopeProvider>
         </section>

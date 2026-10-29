@@ -201,6 +201,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
         <div className="thread-heading">
           <h1 title={session.title}>{session.title}</h1>
           <div className="thread-meta" title={session.cwd}>
+            {session.mcpGateway && <>Remote MCP · </>}
             {hostKey === LOCAL_HOST_KEY ? 'This PC' : (host?.name ?? hostKey)} ·{' '}
             {session.projectless ? 'No project' : folderName(session.projectPath)}
             {session.branch ? ` · ${session.branch}` : ''}
