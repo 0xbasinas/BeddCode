@@ -4,6 +4,7 @@ import type { McpServer } from '@beddcode/contracts'
 import { Select } from '../../ui/Select.tsx'
 import { hostRequest, useRuntime } from '../../stores/host.ts'
 import { emptyMcpForm, mcpInputFromForm, type McpForm } from './mcpForm.ts'
+import { AddMcpDialog } from './AddMcpDialog.tsx'
 
 const STATUS: Record<McpServer['status'], string> = {
   connected: 'Connected',
@@ -136,112 +137,27 @@ export function ToolsSettings({ hostKey }: { hostKey: string }) {
             </div>
           </div>
 
-          {error && (
+          {error && !adding && (
             <p className="settings-error" role="alert">
               {error}
             </p>
           )}
 
-          {adding && (
-            <form
-              className="settings-card mcp-form"
-              onSubmit={(e) => {
-                e.preventDefault()
-                void add()
+          {adding && current && (
+            <AddMcpDialog
+              agent={current.label}
+              kind={current.kind}
+              form={form}
+              setForm={setForm}
+              busy={busy}
+              error={error}
+              onAdd={() => void add()}
+              onClose={() => {
+                setAdding(false)
+                setError(undefined)
+                setForm(emptyMcpForm())
               }}
-            >
-              <label>
-                Name
-                <input
-                  autoFocus
-                  value={form.name}
-                  placeholder="github"
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                />
-              </label>
-              <label>
-                Kind
-                <Select
-                  value={form.kind}
-                  onChange={(e) => setForm({ ...form, kind: e.target.value as McpForm['kind'] })}
-                >
-                  <option value="stdio">Local command</option>
-                  <option value="http">Remote (HTTP)</option>
-                  {current?.kind === 'claude' && <option value="sse">Remote (SSE)</option>}
-                </Select>
-              </label>
-              {form.kind === 'stdio' ? (
-                <>
-                  <label>
-                    Command
-                    <input
-                      value={form.command}
-                      placeholder="npx"
-                      onChange={(e) => setForm({ ...form, command: e.target.value })}
-                    />
-                  </label>
-                  <label>
-                    Arguments
-                    <textarea
-                      rows={3}
-                      value={form.args}
-                      placeholder={'-y\n@modelcontextprotocol/server-github'}
-                      onChange={(e) => setForm({ ...form, args: e.target.value })}
-                    />
-                    <small>One argument per line.</small>
-                  </label>
-                  <label>
-                    Environment
-                    <textarea
-                      rows={2}
-                      value={form.env}
-                      placeholder="GITHUB_TOKEN=…"
-                      onChange={(e) => setForm({ ...form, env: e.target.value })}
-                    />
-                    <small>
-                      NAME=value, one per line. Saved in the agent&apos;s own config file.
-                    </small>
-                  </label>
-                </>
-              ) : (
-                <label>
-                  Address
-                  <input
-                    value={form.url}
-                    placeholder="https://example.com/mcp"
-                    onChange={(e) => setForm({ ...form, url: e.target.value })}
-                  />
-                </label>
-              )}
-              {current?.kind === 'claude' && (
-                <label>
-                  Available in
-                  <Select
-                    value={form.scope ?? 'user'}
-                    onChange={(e) =>
-                      setForm({ ...form, scope: e.target.value as McpForm['scope'] })
-                    }
-                  >
-                    <option value="user">All my projects</option>
-                    <option value="project">This project (shared via .mcp.json)</option>
-                    <option value="local">This project, only for me</option>
-                  </Select>
-                </label>
-              )}
-              <div className="settings-actions">
-                <button
-                  type="button"
-                  className="settings-button"
-                  disabled={busy}
-                  onClick={() => setAdding(false)}
-                >
-                  Cancel
-                </button>
-                <button className="settings-button primary" disabled={busy}>
-                  {busy ? 'Adding…' : 'Add server'}
-                </button>
-              </div>
-            </form>
+            />
           )}
 
           <div className="settings-card">

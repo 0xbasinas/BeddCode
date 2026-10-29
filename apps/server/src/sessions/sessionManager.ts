@@ -53,6 +53,7 @@ export interface SessionManagerDeps {
 export interface SessionOrigin {
   parent?: { sessionId: string; depth: number; requestId?: string }
   schedule?: { id: string; name: string }
+  mcpGateway?: boolean
 }
 
 interface LiveSession {
@@ -303,6 +304,7 @@ export class SessionManager {
       effort: params.effort,
       parent: origin.parent,
       schedule: origin.schedule,
+      mcpGateway: origin.mcpGateway,
       agentTools: (params.agentTools && this.deps.agentToolServers !== undefined) || undefined,
       browserTools: (params.browserTools && this.deps.agentToolServers !== undefined) || undefined,
       designTools: (params.designTools && this.deps.agentToolServers !== undefined) || undefined,

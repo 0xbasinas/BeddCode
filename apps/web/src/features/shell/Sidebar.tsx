@@ -331,6 +331,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               className="session-where"
               title={[s.branch, agentLabel(s)].filter(Boolean).join(' · ')}
             >
+              {s.mcpGateway && <span title="Started through remote MCP">MCP · </span>}
               {s.branch && (
                 <>
                   <GitBranch size={11} /> <code>{s.branch}</code> ·{' '}

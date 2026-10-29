@@ -113,6 +113,7 @@ export const SessionEvent = z.discriminatedUnion('type', [
     computerTools: z.boolean().optional(),
     /** Set when a schedule started this session. */
     schedule: z.object({ id: z.string(), name: z.string() }).optional(),
+    mcpGateway: z.boolean().optional(),
   }),
   /** The provider's own session id, kept so a stopped session can be resumed later. */
   Base.extend({ type: z.literal('session.provider-session'), providerSessionId: z.string() }),

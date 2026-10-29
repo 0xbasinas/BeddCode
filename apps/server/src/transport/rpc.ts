@@ -4,6 +4,7 @@ import {
   type MetricPlatform,
   type MetricRecord,
   type RelaySettings,
+  type McpGatewaySettings,
   type RpcMethodName,
   type RpcParams,
   type RpcResult,
@@ -91,6 +92,15 @@ export interface AccessServices {
   reachable?: () => Promise<{ hostId: string; name: string; routes: string[]; relay?: string }>
   /** Reads and changes the relay this host is reachable through. */
   relay?: RelayControl
+  mcpGateway?: {
+    get(): McpGatewaySettings
+    set(
+      url: string | null,
+      secret?: string,
+      allowApprovals?: boolean,
+      allowProjectRead?: boolean,
+    ): Promise<McpGatewaySettings>
+  }
   /** Where apps' speed measurements go (kept only while the owner has uploads switched on). */
   telemetry?: { report(platform: MetricPlatform, records: MetricRecord[]): boolean }
 }
@@ -112,6 +122,8 @@ const LOOPBACK_ONLY: ReadonlySet<RpcMethodName> = new Set([
   'host.pair',
   'host.relay.get',
   'host.relay.set',
+  'host.mcpGateway.get',
+  'host.mcpGateway.set',
   'devices.list',
   'devices.revoke',
 ])
@@ -145,6 +157,14 @@ export function createRpcRouter(
     'host.relay.get': async () => {
       if (!access.relay) throw new Error('This host does not support relays')
       return access.relay.get()
+    },
+    'host.mcpGateway.get': async () => {
+      if (!access.mcpGateway) throw new Error('This host does not support the MCP gateway')
+      return access.mcpGateway.get()
+    },
+    'host.mcpGateway.set': (p) => {
+      if (!access.mcpGateway) throw new Error('This host does not support the MCP gateway')
+      return access.mcpGateway.set(p.url, p.secret, p.allowApprovals, p.allowProjectRead)
     },
     'host.relay.set': (p) => {
       if (!access.relay) throw new Error('This host does not support relays')

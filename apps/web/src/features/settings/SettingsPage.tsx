@@ -30,6 +30,7 @@ import { ToolsSettings } from './ToolsSettings.tsx'
 import { NotificationsSettings } from './NotificationsSettings.tsx'
 import { UsageSettings } from './UsageSettings.tsx'
 import { AlertsSettings } from './AlertsSettings.tsx'
+import { RemoteMcpSettings } from './RemoteMcpSettings.tsx'
 import './settings.css'
 import { Select } from '../../ui/Select.tsx'
 import { Logo } from '../../ui/Logo.tsx'
@@ -42,6 +43,7 @@ export type SettingsSection =
   | 'agents'
   | 'permissions'
   | 'tools'
+  | 'remote-mcp'
   | 'alerts'
   | 'hosts'
   | 'git'
@@ -56,6 +58,7 @@ const SECTIONS = [
   { id: 'agents', label: 'Agents', group: 'Agents', icon: Sparkles },
   { id: 'permissions', label: 'Permissions', group: 'Agents', icon: Shield },
   { id: 'tools', label: 'Tools & MCP', group: 'Agents', icon: Wrench },
+  { id: 'remote-mcp', label: 'Remote MCP', group: 'Agents', icon: Server },
   { id: 'alerts', label: 'Phone alerts', group: 'Automation', icon: BellRing },
   { id: 'hosts', label: 'Hosts', group: 'Workspace', icon: Server },
   { id: 'git', label: 'Git', group: 'Workspace', icon: GitBranch },
@@ -223,6 +226,14 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
               </>
             )}
             {section === 'notifications' && <NotificationsSettings />}
+            {section === 'remote-mcp' && (
+              <>
+                <header className="settings-heading">
+                  <h2>Remote MCP</h2>
+                </header>
+                <RemoteMcpSettings />
+              </>
+            )}
             {section === 'hosts' && (
               <HostsOverview
                 onAdd={() => setHostsOpen('add')}
