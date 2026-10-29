@@ -50,7 +50,10 @@ export class EventStore {
   private readonly badRows = new Set<number>()
 
   /** `file` is a path, or ':memory:' for tests. */
-  constructor(file: string, log: Logger = createLogger('store')) {
+  constructor(
+    private readonly file: string,
+    log: Logger = createLogger('store'),
+  ) {
     this.log = log
     if (file !== ':memory:') mkdirSync(path.dirname(file), { recursive: true })
     this.db = new DatabaseSync(file)
@@ -84,6 +87,13 @@ export class EventStore {
 
   private migrate() {
     const row = this.db.prepare('PRAGMA user_version').get() as { user_version: number }
+    if (row.user_version > migrations.length) {
+      // An older BeddCode after a newer one: the log stays readable (unknown events are skipped),
+      // but say why some history may be missing until BeddCode is updated again.
+      this.log.warn(
+        `the history database was last used by a newer BeddCode (schema ${row.user_version}, this version knows ${migrations.length}); events this version does not know are skipped`,
+      )
+    }
     for (let v = row.user_version; v < migrations.length; v++) {
       this.db.exec('BEGIN')
       try {
@@ -119,9 +129,14 @@ export class EventStore {
       stored = parsed.map((event) => this.writeEvent(event))
       this.db.exec('COMMIT')
     } catch (err) {
-      this.db.exec('ROLLBACK')
+      // SQLite may already have rolled back (a full disk does); that must not hide the reason.
+      try {
+        this.db.exec('ROLLBACK')
+      } catch {
+        // no transaction left
+      }
       this.snapshots.clear()
-      throw err
+      throw storageError(err, this.file)
     } finally {
       this.notificationBatch = null
     }
@@ -138,12 +153,14 @@ export class EventStore {
       if (previous?.key === key) return { seq: previous.seq, event: parsed }
       snapshot = { slot, key }
     }
-    const row = this.insert.get(
-      parsed.sessionId,
-      parsed.type,
-      parsed.at,
-      JSON.stringify(parsed),
-    ) as { seq: number }
+    let row: { seq: number }
+    try {
+      row = this.insert.get(parsed.sessionId, parsed.type, parsed.at, JSON.stringify(parsed)) as {
+        seq: number
+      }
+    } catch (err) {
+      throw storageError(err, this.file)
+    }
     const stored: StoredEvent = { seq: row.seq, event: parsed }
     if (snapshot) this.snapshots.set(snapshot.slot, { seq: row.seq, key: snapshot.key })
     if (this.notificationBatch) this.notificationBatch.push(stored)
@@ -299,6 +316,66 @@ export class EventStore {
 
   close() {
     this.db.close()
+  }
+}
+
+/** SQLite's primary result codes this store explains. */
+const SQLITE_BUSY = 5
+const SQLITE_LOCKED = 6
+const SQLITE_READONLY = 8
+const SQLITE_IOERR = 10
+const SQLITE_FULL = 13
+
+/** A write the database refused, with what the user can do about it. */
+export class StorageError extends Error {
+  constructor(
+    message: string,
+    readonly reason: 'full' | 'busy' | 'read-only' | 'io',
+    options?: { cause?: unknown },
+  ) {
+    super(message, options)
+    this.name = 'StorageError'
+  }
+}
+
+/**
+ * Turns SQLite's terse write errors into ones that say what is wrong and what to do: they reach
+ * the user as the answer to whatever they were doing (sending a message, creating a session).
+ */
+export function storageError(err: unknown, file: string): unknown {
+  if (err instanceof StorageError) return err
+  const code = (err as { errcode?: number }).errcode
+  if (typeof code !== 'number') return err
+  const where = file === ':memory:' ? 'its data folder' : path.dirname(file)
+  const detail = err instanceof Error ? err.message : String(err)
+  switch (code & 0xff) {
+    case SQLITE_FULL:
+      return new StorageError(
+        `The disk BeddCode saves to is full, so nothing new can be saved (${where}). Free up some space there and try again; nothing needs restarting.`,
+        'full',
+        { cause: err },
+      )
+    case SQLITE_BUSY:
+    case SQLITE_LOCKED:
+      return new StorageError(
+        `BeddCode's database is busy: another program is holding it (another BeddCode host using ${where}?). Try again in a moment.`,
+        'busy',
+        { cause: err },
+      )
+    case SQLITE_READONLY:
+      return new StorageError(
+        `BeddCode cannot save to its database: ${file} or its folder is read-only. Check the permissions of ${where}.`,
+        'read-only',
+        { cause: err },
+      )
+    case SQLITE_IOERR:
+      return new StorageError(
+        `BeddCode could not save to its database: the disk reported an error (${detail}). Check the disk that holds ${where}.`,
+        'io',
+        { cause: err },
+      )
+    default:
+      return err
   }
 }
 

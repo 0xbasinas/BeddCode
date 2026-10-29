@@ -40,10 +40,54 @@ export function readConfigFile(file = configPath()): ConfigFile {
     )
   }
   if (read.status !== 'ok') return {}
-  const parsed = read.value
-  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-    ? (parsed as ConfigFile)
-    : {}
+  return sanitizeConfig(read.value, (m) => console.warn(`${file}: ${m}`))
+}
+
+/**
+ * Keeps the settings of a config file that make sense, and says which were ignored. The file may
+ * have been edited by hand, or written by an older or newer BeddCode: one odd value must not stop
+ * the host from starting (an unknown setting is kept, for the version that knows it).
+ */
+export function sanitizeConfig(raw: unknown, warn: (message: string) => void): ConfigFile {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    warn('is not a settings object; using the default settings')
+    return {}
+  }
+  const config = { ...(raw as Record<string, unknown>) }
+  const drop = (key: string, why: string) => {
+    warn(`ignoring ${key} (${why}); using the default`)
+    delete config[key]
+  }
+  if (config.port !== undefined) {
+    const port = typeof config.port === 'string' ? Number(config.port) : config.port
+    if (typeof port !== 'number' || !Number.isInteger(port) || port < 0 || port > 65535) {
+      drop('port', `${JSON.stringify(config.port)} is not a port number`)
+    } else config.port = port
+  }
+  if (config.host !== undefined && (typeof config.host !== 'string' || !config.host.trim())) {
+    drop('host', 'not an address')
+  }
+  for (const key of ['allowLan', 'requireToken', 'telemetry']) {
+    if (config[key] !== undefined && typeof config[key] !== 'boolean')
+      drop(key, 'not true or false')
+  }
+  if (config.allowedOrigins !== undefined) {
+    const origins = config.allowedOrigins
+    if (typeof origins === 'string') config.allowedOrigins = [origins]
+    else if (!Array.isArray(origins)) drop('allowedOrigins', 'not a list of addresses')
+    else config.allowedOrigins = origins.filter((o): o is string => typeof o === 'string')
+  }
+  if (config.relayUrl !== undefined && config.relayUrl !== null) {
+    try {
+      normalizeRelayUrl(String(config.relayUrl))
+    } catch (err) {
+      drop('relayUrl', err instanceof Error ? err.message : 'not an address')
+    }
+  }
+  if (config.relayPassword !== undefined && typeof config.relayPassword !== 'string') {
+    drop('relayPassword', 'not text')
+  }
+  return config as ConfigFile
 }
 
 export function writeConfigFile(config: ConfigFile, file = configPath()): void {

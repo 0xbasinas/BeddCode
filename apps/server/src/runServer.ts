@@ -5,7 +5,14 @@ import { createClaudeAdapter } from '@beddcode/provider-claude'
 import { createCodexAdapter } from '@beddcode/provider-codex'
 import { createFakeAdapter, type ProviderAdapter } from '@beddcode/provider-core'
 import type { RelaySettings } from '@beddcode/contracts'
-import { createLogger, killAllChildren, runningChildren } from '@beddcode/shared'
+import {
+  createLogger,
+  killAllChildren,
+  reapOrphans,
+  recordChildrenIn,
+  runningChildren,
+} from '@beddcode/shared'
+import { acquireHostLock, listenError } from './hostLock.ts'
 import { AgentCatalog } from './agents/catalog.ts'
 import { PreviewCache } from './agents/previews.ts'
 import { AttachmentStore } from './attachments/store.ts'
@@ -44,6 +51,16 @@ import { createAutomation } from './automation/index.ts'
 export async function runServer(config: ServerConfig): Promise<void> {
   const log = createLogger('server')
   const home = dataHome()
+  // One host per data folder; a second one says so instead of corrupting the first one's state.
+  const lock = await acquireHostLock(home, config.port, { log })
+  process.on('exit', () => lock.release())
+  // Agents a killed host left running (nothing ran its exit handlers): end them, then keep the
+  // list for this host, so the next start can do the same.
+  const ledger = path.join(home, 'children.json')
+  await reapOrphans(ledger, log).catch((err: unknown) =>
+    log.warn('could not check for agents a previous host left running', err),
+  )
+  recordChildrenIn(ledger)
 
   const acpStore = new AcpAgentStore(path.join(home, 'acp-agents.json'))
   const adapters: ProviderAdapter[] = [
@@ -165,42 +182,55 @@ export async function runServer(config: ServerConfig): Promise<void> {
     })
     relay.start()
   }
-  const server = await startServer({
-    port: config.port,
-    host: config.host,
-    guard: config.guard,
-    hostId,
-    defaultCwd: process.cwd(),
-    webRoot: findWebRoot(),
-    store,
-    sessions,
-    agents,
-    attachments,
-    workspace,
-    watchers,
-    tokens,
-    pairing: new PairingManager(),
-    tailscale,
-    reachable: async () => ({
+  let server: Awaited<ReturnType<typeof startServer>>
+  try {
+    server = await startServer({
+      port: config.port,
+      host: config.host,
+      guard: config.guard,
       hostId,
-      name: os.hostname(),
-      relay: relayRoute,
-      routes: await reachableRoutes({
-        tailscale,
-        port,
-        listenHost: config.host,
-        allowLan: config.guard.allowLan,
+      defaultCwd: process.cwd(),
+      webRoot: findWebRoot(),
+      store,
+      sessions,
+      agents,
+      attachments,
+      workspace,
+      watchers,
+      tokens,
+      pairing: new PairingManager(),
+      tailscale,
+      reachable: async () => ({
+        hostId,
+        name: os.hostname(),
+        relay: relayRoute,
+        routes: await reachableRoutes({
+          tailscale,
+          port,
+          listenHost: config.host,
+          allowLan: config.guard.allowLan,
+        }),
       }),
-    }),
-    relay: relayControl,
-    telemetry,
-    telemetryRecorder: (name, value, tags) => telemetry.record(name, value, tags),
-    automation: { schedules, alerts, designs },
-    agentTools,
-    browser: automation.browser,
-    designLink: automation.designLink,
-    log,
-  })
+      relay: relayControl,
+      telemetry,
+      telemetryRecorder: (name, value, tags) => telemetry.record(name, value, tags),
+      automation: { schedules, alerts, designs },
+      agentTools,
+      browser: automation.browser,
+      designLink: automation.designLink,
+      log,
+    })
+  } catch (err) {
+    // Nothing started yet: let go of what was opened, so the process can end with the reason.
+    telemetry.stop()
+    automation.stop()
+    await sessions.close().catch(() => {})
+    killAllChildren()
+    store.close()
+    recordChildrenIn(undefined)
+    lock.release()
+    throw listenError(err, config.host, config.port)
+  }
   port = server.port
   if (relayUrl) startRelay(relayUrl)
   schedules.start()
@@ -228,6 +258,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
       await watchers.closeAll()
       await server.close()
       store.close()
+      lock.release()
     },
     timeoutMs: 8_000,
   })

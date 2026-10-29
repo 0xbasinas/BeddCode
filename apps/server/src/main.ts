@@ -61,4 +61,7 @@ try {
 } catch (err) {
   console.error(err instanceof Error ? err.message : err)
   process.exitCode = 1
+  // A host that failed to start may still hold a timer or socket open: end anyway, so whoever
+  // started it (the desktop app, a service manager) sees the failure.
+  setTimeout(() => process.exit(1), 2_000).unref()
 }
