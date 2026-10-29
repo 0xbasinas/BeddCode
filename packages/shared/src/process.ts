@@ -375,11 +375,20 @@ async function descendantsOf(pid: number): Promise<number[]> {
 export async function reapOrphans(file: string, log?: Logger): Promise<number> {
   const read = readJsonFile<ChildRecord[]>(file)
   if (read.status !== 'ok' || !Array.isArray(read.value)) return 0
+  const candidates = read.value.filter(
+    (rec) =>
+      typeof rec?.pid === 'number' &&
+      typeof rec.startedAt === 'number' &&
+      rec.owner !== process.pid &&
+      !(typeof rec.owner === 'number' && isAlive(rec.owner)),
+  )
+  // Checked side by side: on Windows each check starts PowerShell, which takes a second or two.
+  const same = await Promise.all(
+    candidates.map((rec) => isSameProcess(rec.pid, rec.startedAt, rec.command)),
+  )
   let ended = 0
-  for (const rec of read.value) {
-    if (typeof rec?.pid !== 'number' || typeof rec.startedAt !== 'number') continue
-    if (rec.owner === process.pid || (typeof rec.owner === 'number' && isAlive(rec.owner))) continue
-    if (!(await isSameProcess(rec.pid, rec.startedAt, rec.command))) continue
+  for (const [i, rec] of candidates.entries()) {
+    if (!same[i]) continue
     try {
       if (isWindows) {
         await runCommand('taskkill', ['/pid', String(rec.pid), '/T', '/F'], { timeoutMs: 10_000 })

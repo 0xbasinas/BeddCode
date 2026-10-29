@@ -28,7 +28,8 @@ const sleeper = () => {
   return { child, exited, startedAt: Date.now() }
 }
 
-describe('child ledger', () => {
+// On Windows every process check starts PowerShell, which is slow on CI machines.
+describe('child ledger', { timeout: process.platform === 'win32' ? 60_000 : 5_000 }, () => {
   it('lists running children in the file, and drops them as they exit', async () => {
     const file = path.join(dir, 'children.json')
     recordChildrenIn(file)
