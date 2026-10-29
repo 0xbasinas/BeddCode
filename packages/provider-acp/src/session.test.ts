@@ -1127,6 +1127,22 @@ describe('AcpSession: starting and resuming', () => {
     await session.close()
   })
 
+  it('says the conversation is gone when the agent cannot find its files to resume it', async () => {
+    const agent = fakeAgent({ sessionCapabilities: {} })
+    agent.auto['session/load'] = () => ({
+      rpcError: {
+        code: -32603,
+        message: 'Path not found.: No such file or directory (os error 2)',
+      },
+    })
+    const session = start(agent, { resumeId: 'acp-gone' })
+    const failed = await nextEvent(session, (e) => e.type === 'error')
+    expect(failed).toMatchObject({
+      message: expect.stringMatching(/^session not found \(Path not found/),
+    })
+    await session.close()
+  })
+
   it("reports the agent's own reason when it refuses", async () => {
     const agent = fakeAgent()
     agent.auto['session/new'] = () => ({
