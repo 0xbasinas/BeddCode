@@ -55,7 +55,8 @@ export async function acquireHostLock(
     const alive =
       held !== undefined &&
       held.pid !== process.pid &&
-      (await isSameProcess(held.pid, held.startedAt))
+      // When the system cannot be asked, a live pid counts as the host: never run two at once.
+      (await isSameProcess(held.pid, held.startedAt, undefined, { ifUnknown: true }))
     if (!alive) {
       options.log?.info(
         held

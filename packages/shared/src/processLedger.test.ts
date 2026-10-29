@@ -5,6 +5,7 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import {
   isSameProcess,
+  processInfos,
   reapOrphans,
   recordChildrenIn,
   spawnProcess,
@@ -90,6 +91,18 @@ describe('child ledger', { timeout: process.platform === 'win32' ? 60_000 : 5_00
     expect(await isSameProcess(child.pid!, startedAt, '/usr/bin/some-other-agent')).toBe(false)
     expect(await isSameProcess(child.pid!, startedAt - 600_000, node)).toBe(false)
     child.kill()
+  })
+
+  it('looks up several processes at once, leaving out ones that are gone', async () => {
+    const a = sleeper()
+    const b = sleeper()
+    const gone = deadPid()
+    const infos = await processInfos([a.child.pid!, b.child.pid!, gone])
+    expect(infos).toBeDefined()
+    expect([...infos!.keys()].sort()).toEqual([a.child.pid!, b.child.pid!].sort())
+    expect(Math.abs(infos!.get(a.child.pid!)!.startedAt - a.startedAt)).toBeLessThan(15_000)
+    a.child.kill()
+    b.child.kill()
   })
 
   it('reads a missing or damaged ledger as empty', async () => {
