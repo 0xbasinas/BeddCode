@@ -12,6 +12,7 @@ import { useSession, useSessionHostKey } from '../../stores/host.ts'
 import { HostScopeProvider } from '../../stores/HostScope.tsx'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { useComposerWorkspace, type PaneWorkspace } from '../../stores/composerWorkspace.ts'
+import { useFocusedSession } from '../split/SplitView.tsx'
 import { useUiStore, type PaneId } from '../../stores/ui.ts'
 import { isMac } from '../../ui/desktop.ts'
 import { MissingFolder, useFolderMissing } from './MissingFolder.tsx'
@@ -35,11 +36,8 @@ const panes: { id: PaneId; label: string; Icon: ComponentType<{ size?: number }>
   { id: 'browser', label: 'Browser', Icon: Globe },
 ]
 
-/** The session currently open in the thread view, from the route. */
-function useActiveSessionId(): string | undefined {
-  const path = useRouterState({ select: (s) => s.location.pathname })
-  return /^\/session\/([^/]+)/.exec(path)?.[1]
-}
+/** The session the thread view shows, or in a split the pane last used. */
+const useActiveSessionId = useFocusedSession
 
 export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
   const activePane = useUiStore((s) => s.activePane)

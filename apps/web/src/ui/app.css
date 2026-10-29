@@ -5904,3 +5904,96 @@ button.tcall-row:hover .tcall-chevron,
   color: var(--text);
   background: var(--bg-hover);
 }
+
+/*
+ * Sessions side by side. The main area holds one session, or up to three in resizable panes with
+ * the same gutters as the shell. A session row dragged over it shows where it will open.
+ */
+.split-root {
+  position: relative;
+  display: flex;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+}
+.split-group {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+.split-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+}
+.split-pane.solo {
+  flex: 1;
+}
+.split-pane > * {
+  flex: 1;
+  min-height: 0;
+}
+/* The pane the keyboard and side tools follow carries a quiet outline. */
+.split-group .split-pane > .panel {
+  box-shadow: inset 0 0 0 1px transparent;
+  transition: box-shadow 0.12s;
+}
+.split-group .split-pane.active > .panel {
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+:root[data-motion='reduced'] .split-group .split-pane > .panel {
+  transition: none;
+}
+.split-drop {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-panel);
+  border: 1.5px dashed var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  transition:
+    left 0.08s,
+    width 0.08s;
+}
+:root[data-motion='reduced'] .split-drop {
+  transition: none;
+}
+.split-drop span {
+  padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-radius: var(--radius-control);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: calc(12.5px * var(--ui-scale));
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
+}
+/* While a session is dragged, the panes underneath do not react to it. */
+.split-dragging .split-pane {
+  pointer-events: none;
+}
+/* Rows showing in a pane beside the main one. */
+.session-row[data-shown='true'] {
+  position: relative;
+}
+.session-row[data-shown='true']:not(.active) {
+  border-color: var(--border-subtle);
+}
+.session-row[data-shown='true']:not(.active)::after {
+  content: '';
+  position: absolute;
+  left: calc(2px * var(--ui-scale));
+  top: 30%;
+  bottom: 30%;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--text-faint);
+}
+.thread-empty {
+  flex-direction: column;
+  gap: calc(12px * var(--ui-scale));
+}

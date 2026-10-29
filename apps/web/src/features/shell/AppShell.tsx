@@ -11,6 +11,7 @@ import { HostStatusBanner } from './HostStatusBanner.tsx'
 import { WindowBar } from './WindowBar.tsx'
 import { RAIL_WIDTH, openPaneWidth, rememberPaneWidth } from './paneWidth.ts'
 import { Sidebar } from './Sidebar.tsx'
+import { SplitView } from '../split/SplitView.tsx'
 import { useAppPreferences } from '../../stores/appPreferences.ts'
 import { useUiStore } from '../../stores/ui.ts'
 import { appWindowControls } from '../../ui/desktop.ts'
@@ -176,7 +177,7 @@ export function AppShell() {
           <Separator className="shell-sep" />
           <Panel id="main" className="shell-panel" minSize="320px">
             <div className="main-stack">
-              <Outlet />
+              <SplitView />
               <FolderToast />
             </div>
           </Panel>
