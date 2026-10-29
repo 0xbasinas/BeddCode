@@ -32,7 +32,7 @@ done
 
 die() { echo "error: $*" >&2; exit 1; }
 
-[ "$(uname -s)" = "Linux" ] || die "this installer is for Linux; on Windows or macOS use the desktop app"
+[ "$(uname -s)" = "Linux" ] || die "this installer is for Linux; on Windows use scripts/install-host.ps1, on macOS the desktop app"
 case "$(uname -m)" in x86_64|amd64) ;; *) die "only x64 is built so far (this is $(uname -m))" ;; esac
 command -v curl >/dev/null 2>&1 || die "curl is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"

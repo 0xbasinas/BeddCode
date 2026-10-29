@@ -62,6 +62,15 @@ beddcode pair        # then pair your phone or another computer with the code it
 
 It downloads `beddcode-host-linux-x64.tar.gz` from the latest release, unpacks it to `~/.local/share/beddcode-host`, puts `beddcode` in `~/.local/bin` and runs `beddcode host install`. If the machine has no Node.js 22+, it downloads the official Node 22 (checked against nodejs.org's hash) into the same folder; nothing is installed system-wide, and `--own-node` forces that even when Node exists. Pass `--version <tag>`, `--no-service` or `--own-node` after `sh -s --`. Run `sudo loginctl enable-linger "$USER"` so it keeps running after you log out, and install and sign in to an agent CLI (Claude Code, Codex) on that machine; `beddcode doctor` checks.
 
+On Windows, the same without the desktop app, from PowerShell (no administrator rights needed):
+
+```powershell
+irm https://raw.githubusercontent.com/0xbasinas/BeddCode/main/scripts/install-host.ps1 | iex
+beddcode pair        # in a new terminal, so it sees the updated PATH
+```
+
+It downloads `beddcode-host-win-x64.zip` from the latest release, unpacks it to `%LOCALAPPDATA%\beddcode-host`, puts `beddcode.cmd` in `%USERPROFILE%\.local\bin` (added to your user PATH) and registers the `BeddCode Server` scheduled task that `beddcode host install` uses, so it starts whenever you sign in; it runs in a hidden window and `beddcode host uninstall` removes it. Node.js works as on Linux (a private Node 22, hash-checked, when there is no Node 22+). For options, run it as a script block: `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/0xbasinas/BeddCode/main/scripts/install-host.ps1))) -Version <tag> -NoService -OwnNode`. `BEDDCODE_PREFIX` and `BEDDCODE_BIN` change the folders, as on Linux. If the desktop app is also installed, run only one host: both use port 3773 and the same scheduled task.
+
 ## Develop
 
 Requires Node 22+ and pnpm.
