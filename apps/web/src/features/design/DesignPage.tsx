@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Bot, Plus, Trash2 } from 'lucide-react'
+import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels'
 import { useHostStore } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { Select } from '../../ui/Select.tsx'
@@ -10,6 +11,15 @@ import { Toaster } from './components/ui/toaster.tsx'
 import './design.css'
 
 const AGENT_KEY = 'beddcode.design.agent'
+const PANEL_IDS = ['design-editor', 'design-agent']
+
+function layoutStorage(): Storage | undefined {
+  try {
+    return globalThis.localStorage
+  } catch {
+    return undefined
+  }
+}
 
 const SYNC_LABEL: Record<DesignSync, string> = {
   loading: 'Opening…',
@@ -25,6 +35,11 @@ export function DesignPage() {
   const [hostKey, setHostKey] = useState(LOCAL_HOST_KEY)
   const selected = entries.some((e) => e.key === hostKey) ? hostKey : LOCAL_HOST_KEY
   const { designs, currentId, sync, create, remove, switchTo } = useHostDesign(selected)
+  const layout = useDefaultLayout({
+    id: 'beddcode-design',
+    panelIds: PANEL_IDS,
+    storage: layoutStorage(),
+  })
   const [agentOpen, setAgentOpen] = useState(() => {
     try {
       return localStorage.getItem(AGENT_KEY) !== 'closed'
@@ -104,12 +119,34 @@ export function DesignPage() {
           <Bot size={14} />
         </button>
       </div>
-      <div className="design-body">
-        <div className="design-editor">
-          <EditorLayout />
+      {agentOpen ? (
+        <Group
+          orientation="horizontal"
+          className="design-body"
+          defaultLayout={layout.defaultLayout}
+          onLayoutChanged={layout.onLayoutChanged}
+        >
+          <Panel id="design-editor" className="design-editor" minSize="320px">
+            <EditorLayout />
+          </Panel>
+          <Separator className="shell-sep design-separator" aria-label="Resize agent panel" />
+          <Panel
+            id="design-agent"
+            className="design-agent-panel"
+            defaultSize="340px"
+            minSize="260px"
+            maxSize="720px"
+          >
+            <DesignAgentPanel hostKey={selected} />
+          </Panel>
+        </Group>
+      ) : (
+        <div className="design-body">
+          <div className="design-editor">
+            <EditorLayout />
+          </div>
         </div>
-        {agentOpen && <DesignAgentPanel hostKey={selected} />}
-      </div>
+      )}
       <Toaster />
     </main>
   )
