@@ -151,6 +151,8 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
           onChanged={changed}
           ahead={info.data.ahead}
           hasUpstream={Boolean(info.data.upstream)}
+          uncommitted={status.data?.files.length}
+          isWorktree={info.data.isWorktree}
         />
       )}
     </div>

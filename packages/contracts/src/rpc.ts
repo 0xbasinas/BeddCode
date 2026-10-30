@@ -8,6 +8,7 @@ import {
   Project,
   ProjectScript,
   CiReport,
+  PrCleanupResult,
   PullRequest,
   PullRequestDetail,
   PullRequestSummary,
@@ -242,6 +243,24 @@ export const RpcMethods = {
   'git.push': { params: z.object({ cwd: z.string() }), result: z.object({}) },
   /** The pull request for the current branch, or null when there is none. */
   'git.pr.get': { params: z.object({ cwd: z.string() }), result: PullRequest.nullable() },
+  /**
+   * Tidies up after a pull request was merged: brings the base branch up to date in the main
+   * checkout, removes the worktree the branch was in, and deletes the branch. Each step is checked
+   * for safety (local commits the pull request does not have, uncommitted files) and is skipped,
+   * with the reason, when it is not safe.
+   */
+  'git.pr.cleanup': {
+    params: z.object({
+      cwd: z.string(),
+      number: z.number().int().positive(),
+      /** The session working in `cwd`, so its agent is stopped before its worktree goes. */
+      sessionId: z.string().optional(),
+      updateBase: z.boolean(),
+      removeWorktree: z.boolean(),
+      deleteBranch: z.boolean(),
+    }),
+    result: PrCleanupResult,
+  },
   /** The branch's recent GitHub Actions runs and the logs of its failed checks, for an agent to fix. */
   'git.ci.report': { params: z.object({ cwd: z.string() }), result: CiReport },
   /** Whether the host's GitHub CLI is installed and signed in, and the folder's GitHub repo. */

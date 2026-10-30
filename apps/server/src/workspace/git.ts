@@ -700,6 +700,80 @@ export class GitService {
       })
   }
 
+  /** Whether everything on `ref`'s history already contains HEAD: nothing here would be lost. */
+  async headIsContainedIn(cwd: string, ref: string): Promise<boolean> {
+    const root = await this.root(cwd)
+    const head = await this.gitRaw(root, ['rev-parse', '--verify', '-q', 'HEAD'])
+    const target = await this.gitRaw(root, ['rev-parse', '--verify', '-q', `${ref}^{commit}`])
+    if (head.code !== 0 || target.code !== 0) return false
+    if (head.stdout.trim() === target.stdout.trim()) return true
+    return (await this.gitRaw(root, ['merge-base', '--is-ancestor', 'HEAD', ref])).code === 0
+  }
+
+  /** Whether the folder has any change that is not committed (untracked files included). */
+  async isDirty(cwd: string): Promise<boolean> {
+    const root = await this.root(cwd)
+    return (await this.git(root, ['status', '--porcelain'])).trim() !== ''
+  }
+
+  /**
+   * Brings the local `base` branch up to date with origin in the checkout at `cwd` without ever
+   * making a merge commit: the checked out branch is fast-forwarded when its folder is clean, and
+   * another branch is moved on its own.
+   */
+  async fastForwardBase(
+    cwd: string,
+    base: string,
+  ): Promise<{ status: 'done' | 'skipped'; detail: string }> {
+    const root = await this.root(cwd)
+    const fetched = await this.gitRaw(root, ['fetch', 'origin', base], 60_000)
+    if (fetched.code !== 0)
+      return { status: 'skipped', detail: `Could not fetch ${base}: ${fetched.stderr.trim()}` }
+    const current = (
+      await this.gitRaw(root, ['symbolic-ref', '--short', '-q', 'HEAD'])
+    ).stdout.trim()
+    if (current === base) {
+      if (await this.isDirty(root))
+        return {
+          status: 'skipped',
+          detail: `The main checkout has uncommitted changes, so ${base} was not moved`,
+        }
+      const merged = await this.gitRaw(root, ['merge', '--ff-only', `origin/${base}`])
+      return merged.code === 0
+        ? { status: 'done', detail: `${base} is up to date` }
+        : { status: 'skipped', detail: `${base} has local commits, so it was not fast-forwarded` }
+    }
+    const moved = await this.gitRaw(root, ['fetch', 'origin', `${base}:${base}`], 60_000)
+    return moved.code === 0
+      ? { status: 'done', detail: `${base} is up to date` }
+      : {
+          status: 'skipped',
+          detail: `Could not move ${base}: ${moved.stderr.trim() || 'not a fast-forward'}`,
+        }
+  }
+
+  /** Switches the checkout at `cwd` to an existing branch. */
+  async switchTo(cwd: string, branch: string): Promise<void> {
+    await this.git(await this.root(cwd), ['checkout', branch])
+  }
+
+  /** The folder a branch is checked out in, when it is checked out in a linked worktree. */
+  async branchWorktree(cwd: string, name: string): Promise<string | undefined> {
+    return (await this.branches(cwd)).find((b) => b.name === name)?.worktree
+  }
+
+  /** Keeps HEAD under refs/beddcode/backup/<branch>, so deleting the branch loses nothing. */
+  async backupHead(cwd: string, branch: string): Promise<string> {
+    const ref = `refs/beddcode/backup/${branch}`
+    await this.git(await this.root(cwd), ['update-ref', ref, 'HEAD'])
+    return ref
+  }
+
+  /** Deletes a local branch, which the caller has already checked is fully in the pull request. */
+  async deleteBranch(cwd: string, name: string): Promise<void> {
+    await this.git(await this.root(cwd), ['branch', '-D', name])
+  }
+
   /** Creates `name` (from `base` when given) and checks it out in the checkout at `cwd`. */
   async createBranch(cwd: string, name: string, base?: string): Promise<void> {
     const root = await this.root(cwd)
@@ -807,6 +881,9 @@ export class GitService {
         await this.git(info.mainRoot, ['worktree', 'remove', '--force', target])
         break
       } catch (err) {
+        // An earlier attempt may have unregistered the worktree and failed only on a file that
+        // was locked (Windows, while an agent or dev server lets go). Nothing is left for git.
+        if (attempt > 1 && /is not a working tree/i.test(String(err))) break
         const locked = /permission denied|being used by another process|failed to delete/i.test(
           String(err),
         )
@@ -814,8 +891,9 @@ export class GitService {
         await new Promise((r) => setTimeout(r, 400 * attempt))
       }
     }
-    // Git unregisters the worktree even when the folder itself could not be removed.
-    removeLeftoverDir(target)
+    // Git unregisters the worktree even when the folder itself could not be removed, and what it
+    // left is what it was told to delete.
+    removeLeftoverDir(target, true)
     return true
   }
 
@@ -850,10 +928,11 @@ export function explainGitError(message: string): string {
 }
 
 /** Removes an empty folder that sits directly inside a `.wt` directory (what a worktree leaves behind). */
-function removeLeftoverDir(dir: string): boolean {
+function removeLeftoverDir(dir: string, unregistered = false): boolean {
   try {
     if (path.basename(path.dirname(dir)) !== '.wt' || !statSync(dir).isDirectory()) return false
-    if (readdirSync(dir).length > 0) return false
+    // Only a folder git has already let go of may be removed with files still in it.
+    if (!unregistered && readdirSync(dir).length > 0) return false
     rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
     return !existsSync(dir)
   } catch {

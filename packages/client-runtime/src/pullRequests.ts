@@ -1,6 +1,7 @@
 import type {
   GitCommit,
   GithubStatus,
+  PrCleanupResult,
   PrFilter,
   PullRequest,
   PullRequestDetail,
@@ -124,6 +125,112 @@ export function mergeWarning(pr: PullRequestDetail): string | undefined {
   if (pr.mergeState === 'UNKNOWN' || pr.mergeable === 'UNKNOWN')
     return 'GitHub is still working out whether it can merge'
   return undefined
+}
+
+/** What is true of the folder the pull request's branch is checked out in. */
+export interface MergeLocalState {
+  /** Commits on the branch that are not pushed, so they would not be merged. */
+  unpushed: number
+  /** Files changed here and not committed, which are not in the pull request. */
+  uncommitted: number
+}
+
+export interface ReadinessItem {
+  level: 'ok' | 'warn' | 'bad'
+  text: string
+  /** What the user can do about it from here. */
+  fix?: 'push' | 'agent'
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
+/**
+ * Everything worth knowing before merging, in the order to read it: what GitHub says (draft,
+ * conflicts, branch behind, required reviews and checks, the reviews themselves), then what only
+ * this folder knows (commits not pushed, files not committed), which a merge would leave behind.
+ */
+export function mergeReadiness(pr: PullRequestDetail, local?: MergeLocalState): ReadinessItem[] {
+  if (pr.state !== 'OPEN') return []
+  const items: ReadinessItem[] = []
+  const blocker = mergeBlocker(pr)
+  const needsSync =
+    pr.mergeable === 'CONFLICTING' || pr.mergeState === 'DIRTY' || pr.mergeState === 'BEHIND'
+  if (blocker)
+    items.push({ level: 'bad', text: blocker, ...(needsSync ? { fix: 'agent' as const } : {}) })
+  else if (pr.mergeState === 'CLEAN' || pr.mergeState === 'HAS_HOOKS')
+    items.push({ level: 'ok', text: `No conflicts, up to date with ${pr.baseBranch}` })
+
+  const failed = pr.checks.filter((c) => c.state === 'failure').length
+  const pending = pr.checks.filter((c) => c.state === 'pending').length
+  const passed = pr.checks.filter((c) => c.state === 'success').length
+  if (failed > 0) items.push({ level: 'bad', text: `${plural(failed, 'check', 'checks')} failing` })
+  else if (pending > 0)
+    items.push({ level: 'warn', text: `${plural(pending, 'check', 'checks')} still running` })
+  else if (passed > 0) items.push({ level: 'ok', text: `All ${passed} checks passed` })
+
+  switch (pr.reviewDecision) {
+    case 'CHANGES_REQUESTED':
+      items.push({ level: 'bad', text: 'A reviewer requested changes' })
+      break
+    case 'REVIEW_REQUIRED':
+      items.push({ level: 'warn', text: 'A review is required' })
+      break
+    case 'APPROVED':
+      items.push({ level: 'ok', text: 'Approved' })
+      break
+  }
+  if (!blocker && failed === 0 && pending === 0 && pr.mergeState === 'UNKNOWN')
+    items.push({ level: 'warn', text: 'GitHub is still working out whether it can merge' })
+
+  if (local && local.unpushed > 0)
+    items.push({
+      level: 'warn',
+      text: `${plural(local.unpushed, 'local commit is', 'local commits are')} not pushed, so ${
+        local.unpushed === 1 ? 'it' : 'they'
+      } will not be merged`,
+      fix: 'push',
+    })
+  if (local && local.uncommitted > 0)
+    items.push({
+      level: 'warn',
+      text: `${plural(local.uncommitted, 'file has', 'files have')} uncommitted changes here that are not in the pull request`,
+    })
+  return items
+}
+
+/** One short line per cleanup step: what was done, and why anything was left alone. */
+export function cleanupLines(steps: PrCleanupResult['steps']): string[] {
+  const noun = {
+    'update-base': 'updating the base branch',
+    'remove-worktree': 'removing the worktree',
+    'delete-branch': 'deleting the branch',
+  } as const
+  return steps.map((s) => {
+    if (s.status === 'done') {
+      if (s.step === 'update-base') return s.detail ?? 'Base branch is up to date'
+      return s.step === 'remove-worktree'
+        ? 'Removed the worktree'
+        : `Deleted ${s.detail ?? 'the branch'}`
+    }
+    const prefix = s.status === 'failed' ? 'Could not do' : 'Skipped'
+    return `${prefix} ${noun[s.step]}${s.detail ? `: ${s.detail}` : ''}`
+  })
+}
+
+/** The message that asks an agent to bring a branch up to date with its base and fix any conflicts. */
+export function syncPrompt(
+  pr: Pick<PullRequestDetail, 'number' | 'baseBranch' | 'headBranch' | 'mergeable' | 'mergeState'>,
+): string {
+  const conflicting = pr.mergeable === 'CONFLICTING' || pr.mergeState === 'DIRTY'
+  return [
+    `Pull request #${pr.number} (${pr.headBranch}) ${
+      conflicting ? `has conflicts with ${pr.baseBranch}` : `is behind ${pr.baseBranch}`
+    }. Bring this branch up to date:`,
+    `1. git fetch origin, then merge origin/${pr.baseBranch} into ${pr.headBranch} (no rebase, no force push).`,
+    '2. Resolve any conflicts, keeping the intent of both sides.',
+    '3. Run the project checks and fix what the merge broke.',
+    '4. Commit the merge and push the branch.',
+  ].join('\n')
 }
 
 export const MERGE_METHOD_LABEL = {

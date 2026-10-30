@@ -37,17 +37,21 @@ import {
   checksSummary,
   commentText,
   githubProblem,
+  cleanupLines,
   mergeBlocker,
-  mergeWarning,
+  mergeReadiness,
   prDraftFromCommits,
   prStateKind,
   reviewLabel,
   reviewStateLabel,
+  syncPrompt,
+  type MergeLocalState,
   type PrStateKind,
+  type ReadinessItem,
 } from '@beddcode/client-runtime'
 import { Markdown } from '../../ui/Markdown.tsx'
 import { agoLabel } from '../../ui/format.ts'
-import { hostRequest } from '../../stores/host.ts'
+import { hostRequest, prompt } from '../../stores/host.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
 import { useUiStore } from '../../stores/ui.ts'
 import { usePolled } from './usePolled.ts'
@@ -98,6 +102,8 @@ export function PullRequestTab({
   defaultBase,
   ahead,
   hasUpstream,
+  uncommitted,
+  isWorktree,
 }: {
   cwd: string
   branch: string | undefined
@@ -109,6 +115,10 @@ export function PullRequestTab({
   defaultBase?: string
   ahead?: number
   hasUpstream?: boolean
+  /** Files changed in the folder and not committed. */
+  uncommitted?: number
+  /** The folder is a linked worktree. */
+  isWorktree?: boolean
 }) {
   const hostKey = useHostKey()
   const [view, setView] = useState<View>({ kind: 'list' })
@@ -170,6 +180,11 @@ export function PullRequestTab({
         refreshKey={refreshKey}
         onBack={() => setView({ kind: 'list' })}
         onChanged={onChanged}
+        sessionId={sessionId}
+        branch={branch}
+        ahead={ahead}
+        uncommitted={uncommitted}
+        isWorktree={isWorktree}
       />
     )
   }
@@ -416,6 +431,48 @@ function PrRow({
   )
 }
 
+/** What to know before merging, one line each: green is fine, amber is a heads up, red blocks. */
+function Readiness({
+  items,
+  busy,
+  onPush,
+  onAgent,
+}: {
+  items: ReadinessItem[]
+  busy: boolean
+  onPush(): void
+  /** Hands the problem to the session's agent; absent when there is no session. */
+  onAgent?(): void
+}) {
+  if (items.length === 0) return null
+  return (
+    <ul className="pr-ready" aria-label="Merge readiness">
+      {items.map((item, i) => (
+        <li key={i} className={`pr-ready-item ${item.level}`}>
+          {item.level === 'ok' ? (
+            <CircleCheck size={13} className="ok" />
+          ) : item.level === 'bad' ? (
+            <CircleX size={13} className="bad" />
+          ) : (
+            <CircleDot size={13} className="wait" />
+          )}
+          <span>{item.text}</span>
+          {item.fix === 'agent' && onAgent && (
+            <button className="link-btn" disabled={busy} onClick={onAgent}>
+              Fix with agent
+            </button>
+          )}
+          {item.fix === 'push' && (
+            <button className="link-btn" disabled={busy} onClick={onPush}>
+              Push
+            </button>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function PrDetailView({
   cwd,
   number,
@@ -423,6 +480,11 @@ function PrDetailView({
   refreshKey,
   onBack,
   onChanged,
+  sessionId,
+  branch,
+  ahead,
+  uncommitted,
+  isWorktree,
 }: {
   cwd: string
   number: number
@@ -430,6 +492,12 @@ function PrDetailView({
   refreshKey: unknown
   onBack(): void
   onChanged(): void
+  sessionId?: string
+  /** The branch the folder is on now. */
+  branch?: string
+  ahead?: number
+  uncommitted?: number
+  isWorktree?: boolean
 }) {
   const hostKey = useHostKey()
   const navigate = useNavigate()
@@ -447,6 +515,8 @@ function PrDetailView({
   const [method, setMethod] = useState(gh.mergeMethods[0] ?? 'merge')
   const [deleteBranch, setDeleteBranch] = useState(gh.deleteBranchOnMerge)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
+  const [cleanupAfter, setCleanupAfter] = useState(true)
+  const [tidy, setTidy] = useState({ updateBase: true, removeWorktree: true, deleteBranch: true })
 
   const run = async (label: string, work: () => Promise<{ message?: string; path?: string }>) => {
     setBusy(label)
@@ -511,7 +581,33 @@ function PrDetailView({
   const isAuthor = d.author === gh.login
   const canManage = canWrite || isAuthor
   const blocker = mergeBlocker(d)
-  const warning = mergeWarning(d)
+  // What only this folder knows matters only while it is on the pull request's branch.
+  const onBranch = branch !== undefined && branch === d.headBranch
+  const local: MergeLocalState | undefined = onBranch
+    ? { unpushed: ahead ?? 0, uncommitted: uncommitted ?? 0 }
+    : undefined
+  const readiness = mergeReadiness(d, local)
+  // Conflicts and a branch behind its base are the agent's to sort out, in this folder.
+  const fixWithAgent = () =>
+    run('agent', async () => {
+      if (!sessionId) throw new Error('Open this from a session to hand it to its agent')
+      await prompt(sessionId, syncPrompt(d))
+      return { message: 'Sent to the agent' }
+    })
+  const push = () =>
+    run('push', async () => {
+      await hostRequest(hostKey, 'git.push', { cwd })
+      return { message: 'Pushed' }
+    })
+  // After a merge: bring the base branch up to date and remove what the branch left behind.
+  const cleanup = (what: { updateBase: boolean; removeWorktree: boolean; deleteBranch: boolean }) =>
+    run('cleanup', async () => {
+      const res = await hostRequest(hostKey, 'git.pr.cleanup', { cwd, number, sessionId, ...what })
+      // The session's folder is gone; there is nothing left here to show.
+      if (res.steps.some((s) => s.step === 'remove-worktree' && s.status === 'done'))
+        void navigate({ to: '/' })
+      return { message: cleanupLines(res.steps).join(' · ') }
+    })
   const counts = checkCounts(d.checks)
   const filesAdded = d.added ?? d.files.reduce((n, f) => n + f.added, 0)
   const filesRemoved = d.removed ?? d.files.reduce((n, f) => n + f.removed, 0)
@@ -676,6 +772,57 @@ function PrDetailView({
             {error}
           </div>
         )}
+        {d.state === 'MERGED' && onBranch && (
+          <div className="pr-merge">
+            <div className="pr-merge-title">Clean up after the merge</div>
+            <label className="check-line">
+              <input
+                type="checkbox"
+                checked={tidy.updateBase}
+                onChange={(e) => setTidy({ ...tidy, updateBase: e.target.checked })}
+              />
+              Bring <code>{d.baseBranch}</code> up to date in the main checkout
+            </label>
+            {isWorktree && (
+              <label className="check-line">
+                <input
+                  type="checkbox"
+                  checked={tidy.removeWorktree}
+                  onChange={(e) => setTidy({ ...tidy, removeWorktree: e.target.checked })}
+                />
+                Remove this worktree (its agent stops)
+              </label>
+            )}
+            <label className="check-line">
+              <input
+                type="checkbox"
+                checked={tidy.deleteBranch}
+                onChange={(e) => setTidy({ ...tidy, deleteBranch: e.target.checked })}
+              />
+              Delete the local branch <code>{d.headBranch}</code>
+            </label>
+            <div className="muted small">
+              Anything this folder has that the pull request does not (extra commits, uncommitted
+              files) is kept.
+            </div>
+            <div className="git-actions">
+              <button
+                className="primary"
+                disabled={
+                  Boolean(busy) || !(tidy.updateBase || tidy.removeWorktree || tidy.deleteBranch)
+                }
+                onClick={() =>
+                  void cleanup({
+                    ...tidy,
+                    removeWorktree: tidy.removeWorktree && isWorktree === true,
+                  })
+                }
+              >
+                {busy === 'cleanup' ? 'Cleaning up…' : 'Clean up'}
+              </button>
+            </div>
+          </div>
+        )}
         {d.state === 'OPEN' && canWrite && merging ? (
           <div className="pr-merge">
             <div className="pr-merge-title">
@@ -705,7 +852,24 @@ function PrDetailView({
                 Delete <code>{d.headBranch}</code> on GitHub afterwards
               </label>
             )}
-            {warning && <div className="pr-warn">{warning}</div>}
+            <Readiness
+              items={readiness}
+              busy={Boolean(busy)}
+              onPush={() => void push()}
+              onAgent={sessionId ? () => void fixWithAgent() : undefined}
+            />
+            {onBranch && (
+              <label className="check-line">
+                <input
+                  type="checkbox"
+                  checked={cleanupAfter}
+                  onChange={(e) => setCleanupAfter(e.target.checked)}
+                />
+                {isWorktree
+                  ? `Then remove this worktree and update ${d.baseBranch}`
+                  : `Then switch to ${d.baseBranch} and delete this branch`}
+              </label>
+            )}
             <div className="git-actions">
               <button
                 className="secondary"
@@ -718,12 +882,22 @@ function PrDetailView({
                 className="primary danger-ok"
                 disabled={Boolean(busy)}
                 onClick={() =>
-                  void act('merge', {
-                    action: 'merge',
-                    method,
-                    headOid: d.headOid,
-                    deleteBranch: !d.fromFork && deleteBranch,
-                  }).then((ok) => ok && setMerging(false))
+                  void (async () => {
+                    const merged = await act('merge', {
+                      action: 'merge',
+                      method,
+                      headOid: d.headOid,
+                      deleteBranch: !d.fromFork && deleteBranch,
+                    })
+                    if (!merged) return
+                    setMerging(false)
+                    if (cleanupAfter && onBranch)
+                      await cleanup({
+                        updateBase: true,
+                        removeWorktree: isWorktree === true,
+                        deleteBranch: true,
+                      })
+                  })()
                 }
               >
                 {busy === 'merge'
@@ -734,8 +908,13 @@ function PrDetailView({
           </div>
         ) : (
           <>
-            {d.state === 'OPEN' && canWrite && (blocker || warning) && (
-              <div className={blocker ? 'pr-warn bad' : 'pr-warn'}>{blocker ?? warning}</div>
+            {d.state === 'OPEN' && canWrite && (
+              <Readiness
+                items={readiness}
+                busy={Boolean(busy)}
+                onPush={() => void push()}
+                onAgent={sessionId ? () => void fixWithAgent() : undefined}
+              />
             )}
             <div className="git-actions pr-actions">
               {d.state === 'OPEN' && canWrite && (

@@ -324,6 +324,26 @@ describe('GitService.commit, push and log', () => {
 })
 
 describe('GitService worktrees and branches', () => {
+  it('finishes removing a worktree whose first attempt unregistered it but hit a locked file', async () => {
+    const dir = repo()
+    const wt = await git.createWorktree(dir, { branch: 'locked' })
+    let removes = 0
+    const flaky = new GitService(async (file, args, options) => {
+      if (args.includes('worktree') && args.includes('remove') && ++removes === 1) {
+        // Git does the removal, but a locked file is left behind, as on Windows.
+        await runCommand(file, args, options)
+        mkdirSync(wt.path)
+        writeFileSync(path.join(wt.path, 'left.txt'), 'locked')
+        return { code: 1, stdout: '', stderr: "error: failed to delete 'x': Permission denied" }
+      }
+      return runCommand(file, args, options)
+    })
+    expect(await flaky.removeWorktree(wt.path)).toBe(true)
+    expect(removes).toBe(2)
+    expect(existsSync(wt.path)).toBe(false)
+    expect(await git.branchWorktree(dir, 'locked')).toBeUndefined()
+  })
+
   it('creates and checks out a new branch in the checkout', async () => {
     const dir = repo()
     await git.createBranch(dir, 'feat/new-thing', 'main')

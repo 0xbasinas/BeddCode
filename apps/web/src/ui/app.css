@@ -5617,6 +5617,35 @@ button.tcall-row:hover .tcall-chevron,
   font-size: calc(12px * var(--ui-scale));
   color: var(--accent);
 }
+.pr-ready {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: calc(4px * var(--ui-scale));
+  font-size: calc(12px * var(--ui-scale));
+}
+.pr-ready-item {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  color: var(--text-muted);
+}
+.pr-ready-item.warn {
+  color: var(--accent);
+}
+.pr-ready-item.bad {
+  color: var(--danger);
+}
+.pr-ready .ok {
+  color: var(--success);
+}
+.pr-ready .bad {
+  color: var(--danger);
+}
+.pr-ready .wait {
+  color: var(--accent);
+}
 .pr-warn.bad {
   color: var(--danger);
 }

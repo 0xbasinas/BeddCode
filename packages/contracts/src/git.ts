@@ -143,6 +143,18 @@ export const CiReport = z.object({
 })
 export type CiReport = z.infer<typeof CiReport>
 
+/** What cleaning up after a merged pull request did, step by step. */
+export const PrCleanupResult = z.object({
+  steps: z.array(
+    z.object({
+      step: z.enum(['update-base', 'remove-worktree', 'delete-branch']),
+      status: z.enum(['done', 'skipped', 'failed']),
+      detail: z.string().optional(),
+    }),
+  ),
+})
+export type PrCleanupResult = z.infer<typeof PrCleanupResult>
+
 export const PullRequest = z.object({
   number: z.number().int(),
   title: z.string(),

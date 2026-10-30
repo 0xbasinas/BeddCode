@@ -60,6 +60,7 @@ export function TurnChangesCard({
   const count = item.files.length
   const pr = useSessionPr(hostKey, cwd)
   const openPr = pr && pr.state === 'OPEN' ? pr : null
+  const mergedPr = pr && pr.state === 'MERGED' ? pr : null
   // A turn just finished: ask GitHub now, so the pull request is already known (and the host has
   // it cached for the Git pane) by the time it is wanted.
   useEffect(() => {
@@ -153,7 +154,16 @@ export function TurnChangesCard({
             </button>
           </>
         )}
-        {offerPr && !item.reverted && !confirming && !openPr && (
+        {offerPr && !item.reverted && !confirming && mergedPr && (
+          <button
+            className="turn-undo"
+            onClick={() => useUiStore.getState().showPr()}
+            title="It was merged. Bring main up to date and remove this worktree and branch."
+          >
+            <GitPullRequest size={14} /> #{mergedPr.number} merged · Clean up
+          </button>
+        )}
+        {offerPr && !item.reverted && !confirming && !openPr && !mergedPr && (
           <button
             className="turn-undo"
             onClick={() => useUiStore.getState().showChanges()}

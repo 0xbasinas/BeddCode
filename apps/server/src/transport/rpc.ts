@@ -21,6 +21,7 @@ import type { AttachmentStore } from '../attachments/store.ts'
 import type { SessionManager } from '../sessions/sessionManager.ts'
 import type { GitService } from '../workspace/git.ts'
 import type { GithubService } from '../workspace/github.ts'
+import { cleanupAfterMerge } from '../workspace/afterMerge.ts'
 import type { ProjectStore } from '../workspace/projects.ts'
 import { browseFolders } from '../workspace/folders.ts'
 import { detectEditors, launchEditor, type DetectedEditor } from '../workspace/editors.ts'
@@ -220,6 +221,11 @@ export function createRpcRouter(
     },
     'git.pr.get': (p) => github.pullRequest(p.cwd),
     'git.ci.report': (p) => github.ciReport(p.cwd),
+    'git.pr.cleanup': (p) =>
+      cleanupAfterMerge(
+        { git, github, removeSessionWorktree: (id) => sessions.removeWorktree(id) },
+        p,
+      ),
     'git.gh.status': (p) => github.status(p.cwd),
     'git.pr.list': async (p) => ({ items: await github.list(p.cwd, p.filter, p.limit) }),
     'git.pr.view': (p) => github.view(p.cwd, p.number),
