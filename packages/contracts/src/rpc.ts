@@ -7,6 +7,7 @@ import {
   GitStatus,
   Project,
   ProjectScript,
+  CiReport,
   PullRequest,
   PullRequestDetail,
   PullRequestSummary,
@@ -241,6 +242,8 @@ export const RpcMethods = {
   'git.push': { params: z.object({ cwd: z.string() }), result: z.object({}) },
   /** The pull request for the current branch, or null when there is none. */
   'git.pr.get': { params: z.object({ cwd: z.string() }), result: PullRequest.nullable() },
+  /** The branch's recent GitHub Actions runs and the logs of its failed checks, for an agent to fix. */
+  'git.ci.report': { params: z.object({ cwd: z.string() }), result: CiReport },
   /** Whether the host's GitHub CLI is installed and signed in, and the folder's GitHub repo. */
   'git.gh.status': { params: z.object({ cwd: z.string() }), result: GithubStatus },
   /** The repo's pull requests: open, the user's own, those awaiting their review, or closed. */

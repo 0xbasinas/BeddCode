@@ -86,6 +86,70 @@ describe('GithubService.pullRequest', () => {
   })
 })
 
+describe('GithubService.ciReport', () => {
+  it('reads the failed log once per run and lists the branch runs', async () => {
+    const pr = {
+      number: 9,
+      title: 'Fix it',
+      url: 'https://github.com/o/r/pull/9',
+      state: 'OPEN',
+      isDraft: false,
+      headRefName: 'fix/x',
+      baseRefName: 'main',
+      statusCheckRollup: [
+        {
+          name: 'Check (ubuntu)',
+          status: 'COMPLETED',
+          conclusion: 'FAILURE',
+          workflowName: 'CI',
+          detailsUrl: 'https://github.com/o/r/actions/runs/555/job/1',
+        },
+        {
+          name: 'Check (windows)',
+          status: 'COMPLETED',
+          conclusion: 'FAILURE',
+          workflowName: 'CI',
+          detailsUrl: 'https://github.com/o/r/actions/runs/555/job/2',
+        },
+        { name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS' },
+      ],
+    }
+    const { gh, calls } = service((args) => {
+      if (args[0] === 'pr') return ok(JSON.stringify(pr))
+      if (args[1] === 'list')
+        return ok(
+          JSON.stringify([
+            {
+              databaseId: 555,
+              workflowName: 'CI',
+              displayTitle: 'fix: it',
+              status: 'completed',
+              conclusion: 'failure',
+              headSha: 'abcdef123456',
+              createdAt: '2026-10-30T15:00:00Z',
+              url: 'https://github.com/o/r/actions/runs/555',
+            },
+          ]),
+        )
+      return ok('Check\tRun fmt\t2026-10-30T15:34:45.31Z \u001b[31mprettier failed\u001b[0m')
+    })
+    const report = await gh.ciReport('/r')
+    expect(report.pr).toMatchObject({ number: 9 })
+    expect(report.runs).toEqual([
+      expect.objectContaining({ id: 555, conclusion: 'failure', sha: 'abcdef1' }),
+    ])
+    expect(report.failures).toHaveLength(1)
+    expect(report.failures[0]!.checks).toEqual(['Check (ubuntu)', 'Check (windows)'])
+    expect(report.failures[0]!.log).toBe('Check\tRun fmt\tprettier failed')
+    expect(calls.filter((c) => c[1] === 'view' && c[2] === '555')).toHaveLength(1)
+  })
+
+  it('is empty when there is no pull request', async () => {
+    const { gh } = service(() => fail('no pull requests found for branch'))
+    expect(await gh.ciReport('/r')).toEqual({ pr: null, branch: undefined, runs: [], failures: [] })
+  })
+})
+
 describe('GithubService.createPullRequest', () => {
   it('passes title, body, draft and base and returns the link', async () => {
     const { gh, calls, bodies } = service(() =>

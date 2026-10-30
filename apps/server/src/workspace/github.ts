@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type {
+  CiReport,
   GithubStatus,
   PrAction,
   PrCheckState,
@@ -173,6 +174,30 @@ const who = (l: Login) => l?.login || 'ghost'
 
 /** How long a folder's pull request answer is reused before gh is asked again. */
 const PR_CACHE_MS = 20_000
+/** At most this many failing runs have their logs read, and each log keeps its last stretch. */
+const MAX_CI_LOGS = 3
+const CI_LOG_CHARS = 8_000
+
+interface RawRun {
+  databaseId: number
+  workflowName: string
+  displayTitle: string
+  status: string
+  conclusion?: string
+  headSha?: string
+  createdAt?: string
+  url: string
+}
+
+/** A failed-steps log without colour codes and the timestamp that starts every line. */
+function cleanLog(text: string): string {
+  return text
+    .replace(/\u001b\[[0-9;]*[A-Za-z]/g, '')
+    .split('\n')
+    .map((line) => line.replace(/\d{4}-\d\d-\d\dT[\d:.]+Z\s?/, ''))
+    .join('\n')
+    .trim()
+}
 
 const AUTH_RE = /gh auth login|not logged in|authentication|auth token|HTTP 401|bad credentials/i
 const NO_REPO_RE =
@@ -367,6 +392,74 @@ export class GithubService {
     } catch (err) {
       this.prCache.delete(cwd)
       throw err
+    }
+  }
+
+  /**
+   * The branch's recent Actions runs, and the failed steps' logs of its pull request's failing
+   * checks, so an agent can be told what broke. A run's log is read once however many of its jobs
+   * failed.
+   */
+  async ciReport(cwd: string): Promise<CiReport> {
+    const pr = await this.pullRequest(cwd)
+    const branch = pr?.headBranch
+    const runs: CiReport['runs'] = []
+    if (branch) {
+      const listed = await this.gh(cwd, [
+        'run',
+        'list',
+        '--branch',
+        branch,
+        '--limit',
+        '8',
+        '--json',
+        'databaseId,workflowName,displayTitle,status,conclusion,headSha,createdAt,url',
+      ])
+      if (listed.code === 0) {
+        try {
+          for (const r of JSON.parse(listed.stdout) as RawRun[])
+            runs.push({
+              id: r.databaseId,
+              workflow: r.workflowName,
+              title: r.displayTitle,
+              status: r.status,
+              conclusion: r.conclusion || undefined,
+              sha: r.headSha?.slice(0, 7),
+              at: time(r.createdAt),
+              url: r.url,
+            })
+        } catch {
+          // A run list we cannot read leaves the logs, which matter more.
+        }
+      }
+    }
+    const byRun = new Map<string, CiReport['failures'][number]>()
+    for (const check of pr?.checks ?? []) {
+      if (check.state !== 'failure') continue
+      const runId = /\/runs\/(\d+)/.exec(check.url ?? '')?.[1]
+      const key = runId ?? `check:${check.name}`
+      const known = byRun.get(key)
+      if (known) known.checks.push(check.name)
+      else byRun.set(key, { checks: [check.name], workflow: check.workflow, url: check.url })
+    }
+    const failures = [...byRun.entries()].slice(0, MAX_CI_LOGS)
+    await Promise.all(
+      failures.map(async ([key, failure]) => {
+        if (key.startsWith('check:')) return
+        const res = await this.gh(cwd, ['run', 'view', key, '--log-failed'], 60_000).catch(
+          () => undefined,
+        )
+        if (!res || res.code !== 0) return
+        const log = cleanLog(res.stdout)
+        failure.truncated = log.length > CI_LOG_CHARS || undefined
+        failure.log = log.slice(-CI_LOG_CHARS)
+      }),
+    )
+    return {
+      pr: pr ? { number: pr.number, title: pr.title, url: pr.url } : null,
+      branch,
+      runs,
+      failures: failures.map(([, f]) => f),
     }
   }
 

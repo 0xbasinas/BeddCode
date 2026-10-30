@@ -460,6 +460,35 @@ kbd {
   flex-direction: column;
   gap: calc(8px * var(--ui-scale));
 }
+.user-text.folded {
+  max-height: calc(1.6em * 8);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2.6em), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 2.6em), transparent);
+}
+.user-fold-toggle {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  color: var(--text-faint);
+  font-size: calc(12px * var(--ui-scale));
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.msg.user:hover .user-fold-toggle,
+.user-fold-toggle:focus-visible {
+  opacity: 1;
+}
+.user-fold-toggle:hover {
+  color: var(--text);
+}
+@media (hover: none) {
+  .user-fold-toggle {
+    opacity: 1;
+  }
+}
 .msg .plain {
   white-space: pre-wrap;
   line-height: 1.73;
@@ -3837,17 +3866,20 @@ button.tcall-row:hover .tcall-chevron,
 .session-pr:hover {
   text-decoration: underline;
 }
-.pr-checks {
+.session-pr .pr-checks,
+.turn-undo .pr-checks {
   width: calc(6px * var(--ui-scale));
   height: calc(6px * var(--ui-scale));
   margin-left: calc(2px * var(--ui-scale));
   border-radius: 50%;
   background: var(--ok, #3fb950);
 }
-.pr-checks.failure {
+.session-pr .pr-checks.failure,
+.turn-undo .pr-checks.failure {
   background: var(--danger);
 }
-.pr-checks.pending {
+.session-pr .pr-checks.pending,
+.turn-undo .pr-checks.pending {
   background: var(--accent);
 }
 .session-pr.draft {

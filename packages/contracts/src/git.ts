@@ -113,6 +113,36 @@ export type GitBranch = z.infer<typeof GitBranch>
 export const PrCheckState = z.enum(['success', 'failure', 'pending', 'skipped'])
 export type PrCheckState = z.infer<typeof PrCheckState>
 
+/** What CI said about a branch: its recent Actions runs, and the logs of the checks that failed. */
+export const CiReport = z.object({
+  pr: z.object({ number: z.number().int(), title: z.string(), url: z.string() }).nullable(),
+  branch: z.string().optional(),
+  runs: z.array(
+    z.object({
+      id: z.number(),
+      workflow: z.string(),
+      title: z.string(),
+      status: z.string(),
+      conclusion: z.string().optional(),
+      sha: z.string().optional(),
+      at: z.number().optional(),
+      url: z.string(),
+    }),
+  ),
+  failures: z.array(
+    z.object({
+      /** The failing checks of one run (or one check with no Actions run behind it). */
+      checks: z.array(z.string()),
+      workflow: z.string().optional(),
+      url: z.string().optional(),
+      /** The failed steps' output, cut to its end when long. */
+      log: z.string().optional(),
+      truncated: z.boolean().optional(),
+    }),
+  ),
+})
+export type CiReport = z.infer<typeof CiReport>
+
 export const PullRequest = z.object({
   number: z.number().int(),
   title: z.string(),

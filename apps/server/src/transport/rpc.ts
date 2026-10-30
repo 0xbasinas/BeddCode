@@ -217,6 +217,7 @@ export function createRpcRouter(
       return {}
     },
     'git.pr.get': (p) => github.pullRequest(p.cwd),
+    'git.ci.report': (p) => github.ciReport(p.cwd),
     'git.gh.status': (p) => github.status(p.cwd),
     'git.pr.list': async (p) => ({ items: await github.list(p.cwd, p.filter, p.limit) }),
     'git.pr.view': (p) => github.view(p.cwd, p.number),

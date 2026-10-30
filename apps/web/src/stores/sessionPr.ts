@@ -97,6 +97,9 @@ function refresh(hostKey: string, cwd: string): Promise<void> {
   return request
 }
 
+/** Asks GitHub for a folder's pull request now, however fresh the last answer is. */
+export const refreshSessionPr = refresh
+
 /**
  * The pull request of a folder's current branch for a session row. Shows the last known answer
  * straight away, then refreshes it when it is stale and every few minutes while the row is shown.

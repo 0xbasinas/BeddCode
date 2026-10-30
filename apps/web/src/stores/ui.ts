@@ -34,6 +34,8 @@ interface UiState extends PaneState {
   setGitTab(tab: GitTab): void
   /** Opens the Git pane on its Changes tab, whatever the pane showed before. */
   showChanges(): void
+  /** Opens the Git pane on its PR tab. */
+  showPr(): void
   /** Asks the PR tab to open its new pull request form; bumps so each ask is seen once. */
   prCreateAsk: number
   /** Opens the Git pane's PR tab on the form for a new pull request from the current branch. */
@@ -97,6 +99,7 @@ export const useUiStore = create<UiState>((set) => ({
   gitTab: 'changes',
   setGitTab: (gitTab) => set({ gitTab }),
   showChanges: () => set({ ...pane('git', false), gitTab: 'changes' }),
+  showPr: () => set({ ...pane('git', false), gitTab: 'pr' }),
   prCreateAsk: 0,
   showCreatePr: () =>
     set((s) => ({ ...pane('git', false), gitTab: 'pr', prCreateAsk: s.prCreateAsk + 1 })),

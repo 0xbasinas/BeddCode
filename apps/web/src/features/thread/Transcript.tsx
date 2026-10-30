@@ -153,6 +153,7 @@ export const Transcript = memo(function Transcript({
               item={block.item}
               hostKey={changes.hostKey}
               sessionId={changes.sessionId}
+              cwd={cwd}
               canUndo={changes.idle && block.item.id === latestChanges}
               offerPr={changes.worktree && changes.idle && block.item.id === latestChanges}
               onOpenFile={onOpenFile}
@@ -244,6 +245,52 @@ export const Transcript = memo(function Transcript({
   )
 })
 
+const FOLD_LINES = 8
+
+/** A long message of yours starts folded to a few lines; a quiet button on hover opens it. */
+function UserText({ text }: { text: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [expanded, setExpanded] = useState(false)
+  const [long, setLong] = useState(false)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = () => {
+      const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 24
+      setLong(el.scrollHeight > lineHeight * FOLD_LINES + 2)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [text])
+  return (
+    <>
+      <div ref={ref} className={`plain user-text ${long && !expanded ? 'folded' : ''}`}>
+        {text}
+      </div>
+      {long && (
+        <button
+          type="button"
+          className="user-fold-toggle"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? (
+            <>
+              <ChevronUp size={12} /> Show less
+            </>
+          ) : (
+            <>
+              <ChevronDown size={12} /> Show more
+            </>
+          )}
+        </button>
+      )}
+    </>
+  )
+}
+
 function ItemView({
   item,
   cwd,
@@ -270,7 +317,7 @@ function ItemView({
               ))}
             </div>
           )}
-          {item.text && <div className="plain">{item.text}</div>}
+          {item.text && <UserText text={item.text} />}
         </div>
       ) : (
         <Markdown text={item.text} live={live} />

@@ -1,10 +1,20 @@
-import { useState } from 'react'
-import { ChevronDown, ChevronUp, FolderOpen, GitPullRequest, History, Undo2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import {
+  ChevronDown,
+  ChevronUp,
+  FolderOpen,
+  GitPullRequest,
+  History,
+  Undo2,
+  Wrench,
+} from 'lucide-react'
 import { useUiStore } from '../../stores/ui.ts'
 import type { TranscriptItem } from '@beddcode/client-runtime'
 import type { GitDiff, TurnChangedFile } from '@beddcode/contracts'
 import { INLINE_PATCH_LINES, PatchView } from '../../ui/PatchView.tsx'
-import { hostRequest } from '../../stores/host.ts'
+import { hostRequest, prompt } from '../../stores/host.ts'
+import { ciPrompt } from '../git/ciPrompt.ts'
+import { refreshSessionPr, useSessionPr } from '../../stores/sessionPr.ts'
 import { FileIcon } from '../files/FileIcon.tsx'
 
 type Changes = Extract<TranscriptItem, { kind: 'changes' }>
@@ -24,6 +34,7 @@ export function TurnChangesCard({
   item,
   hostKey,
   sessionId,
+  cwd,
   canUndo,
   offerPr,
   onOpenFile,
@@ -31,6 +42,8 @@ export function TurnChangesCard({
   item: Changes
   hostKey: string
   sessionId: string
+  /** The session's folder, where its branch's pull request is looked up. */
+  cwd: string
   /** The newest changes of an idle session; older turns cannot be undone safely. */
   canUndo: boolean
   /** In a worktree: offer to commit these and open a pull request from its branch. */
@@ -41,9 +54,31 @@ export function TurnChangesCard({
   const [confirming, setConfirming] = useState(false)
   const [undoing, setUndoing] = useState(false)
   const [error, setError] = useState<string>()
+  const [fixing, setFixing] = useState(false)
   const added = item.files.reduce((n, f) => n + f.added, 0)
   const removed = item.files.reduce((n, f) => n + f.removed, 0)
   const count = item.files.length
+  const pr = useSessionPr(hostKey, cwd)
+  const openPr = pr && pr.state === 'OPEN' ? pr : null
+  // A turn just finished: ask GitHub now, so the pull request is already known (and the host has
+  // it cached for the Git pane) by the time it is wanted.
+  useEffect(() => {
+    if (offerPr) void refreshSessionPr(hostKey, cwd)
+  }, [offerPr, hostKey, cwd, item.id])
+
+  // Gathers what CI said (the branch's Actions runs and the failed logs) and hands it to this agent.
+  const fixCi = async () => {
+    setFixing(true)
+    setError(undefined)
+    try {
+      const report = await hostRequest(hostKey, 'git.ci.report', { cwd })
+      await prompt(sessionId, ciPrompt(report))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setFixing(false)
+    }
+  }
 
   const undo = async () => {
     setUndoing(true)
@@ -79,7 +114,46 @@ export function TurnChangesCard({
           </span>
           {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </button>
-        {offerPr && !item.reverted && !confirming && (
+        {offerPr && !item.reverted && !confirming && openPr && (
+          <>
+            <button
+              className="turn-undo"
+              onClick={() => useUiStore.getState().showChanges()}
+              title="Commit these in the Git pane; the pull request picks them up when pushed"
+            >
+              Commit
+            </button>
+            {openPr.checks === 'failure' && (
+              <button
+                className="turn-undo"
+                disabled={fixing}
+                onClick={() => void fixCi()}
+                title="Send this agent the failing checks' logs from GitHub Actions to fix"
+              >
+                <Wrench size={14} /> {fixing ? 'Reading CI…' : 'Fix CI'}
+              </button>
+            )}
+            <button
+              className="turn-undo"
+              onClick={() => useUiStore.getState().showPr()}
+              title={`#${openPr.number} ${openPr.title}${
+                openPr.checks === 'failure'
+                  ? ` · ${openPr.checksFailed} checks failing`
+                  : openPr.checks === 'pending'
+                    ? ` · ${openPr.checksPending} checks running`
+                    : openPr.checks === 'success'
+                      ? ' · checks passed'
+                      : ''
+              }`}
+            >
+              <GitPullRequest size={14} /> PR #{openPr.number}
+              {openPr.checks && openPr.checks !== 'skipped' && (
+                <span className={`pr-checks ${openPr.checks}`} aria-hidden="true" />
+              )}
+            </button>
+          </>
+        )}
+        {offerPr && !item.reverted && !confirming && !openPr && (
           <button
             className="turn-undo"
             onClick={() => useUiStore.getState().showChanges()}
