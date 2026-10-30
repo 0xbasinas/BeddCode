@@ -284,11 +284,11 @@ describe('GrokSession', () => {
       },
     )
     const events = collect(session)
-    for (const text of ['one', 'two']) {
+    for (const [index, text] of ['one', 'two'].entries()) {
       const turn = session.prompt({ text })
-      await tick()
-      runs.at(-1)!.say(END())
-      runs.at(-1)!.finish(0)
+      const process = await run(runs, index)
+      process.say(END())
+      process.finish(0)
       await turn
       await tick()
     }
