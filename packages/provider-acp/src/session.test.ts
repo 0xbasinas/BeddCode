@@ -936,9 +936,9 @@ describe('AcpSession: a turn that never answers', () => {
     BEDDCODE_ACP_CHECK_MS: '15',
     BEDDCODE_ACP_CANCEL_GRACE_MS: '40',
   }
-  const withTiming = async (fn: () => Promise<void>) => {
+  const withTiming = async (fn: () => Promise<void>, overrides: Partial<typeof timing> = {}) => {
     const before = { ...process.env }
-    Object.assign(process.env, timing)
+    Object.assign(process.env, timing, overrides)
     try {
       await fn()
     } finally {
@@ -973,22 +973,32 @@ describe('AcpSession: a turn that never answers', () => {
   })
 
   it('is left alone while the agent keeps showing signs of work', async () => {
-    await withTiming(async () => {
-      const agent = fakeAgent()
-      const session = start(agent)
-      const events = collect(session)
-      const turn = session.prompt({ text: 'go' })
-      const promptId = (await agent.waitFor((m) => m.method === 'session/prompt')).id as number
-      for (let i = 0; i < 12; i++) {
-        agent.update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '.' } })
-        await sleep(30)
-      }
-      expect(events.some((e) => e.type === 'error')).toBe(false)
-      agent.reply(promptId, { stopReason: 'end_turn' })
-      await turn
-      expect(events.filter((e) => e.type === 'turn.completed')).toMatchObject([{ reason: 'done' }])
-      await session.close()
-    })
+    await withTiming(
+      async () => {
+        const agent = fakeAgent()
+        const session = start(agent)
+        const events = collect(session)
+        const turn = session.prompt({ text: 'go' })
+        const promptId = (await agent.waitFor((m) => m.method === 'session/prompt')).id as number
+        for (let i = 0; i < 12; i++) {
+          agent.update({
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: '.' },
+          })
+          await sleep(30)
+        }
+        expect(events.some((e) => e.type === 'error')).toBe(false)
+        agent.reply(promptId, { stopReason: 'end_turn' })
+        await turn
+        expect(events.filter((e) => e.type === 'turn.completed')).toMatchObject([
+          { reason: 'done' },
+        ])
+        await session.close()
+        // A generous idle window: a slow runner can stall a 30 ms timer well past 120 ms, which
+        // would look like silence. The heartbeat is still far shorter than the window.
+      },
+      { BEDDCODE_ACP_IDLE_MS: '1500' },
+    )
   })
 
   it('does not count the time it waits for the user', async () => {
