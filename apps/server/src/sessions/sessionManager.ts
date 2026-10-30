@@ -256,7 +256,11 @@ export class SessionManager {
         )
       return { ...parseGitText(params.kind, text), truncated: context.truncated }
     } finally {
-      await rm(cwd, { recursive: true, force: true })
+      // The agent can still hold its folder for a moment (Windows says EBUSY); a leftover temp
+      // folder is not worth failing a draft that was made.
+      await rm(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(
+        () => {},
+      )
     }
   }
 
