@@ -1,4 +1,5 @@
 import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { AttachmentImage, isImageName } from '../composer/AttachmentImage.tsx'
 import {
   ChevronDown,
   ChevronUp,
@@ -233,6 +234,7 @@ export const Transcript = memo(function Transcript({
             <ItemView
               item={block.item}
               cwd={cwd}
+              hostKey={hostKey ?? changes?.hostKey}
               onApprove={onApprove}
               onAnswer={onAnswer}
               live={live && block.item === items.at(-1)}
@@ -294,12 +296,14 @@ function UserText({ text }: { text: string }) {
 function ItemView({
   item,
   cwd,
+  hostKey,
   onApprove,
   onAnswer,
   live,
 }: {
   item: Item
   cwd: string
+  hostKey?: string
   onApprove(requestId: string, optionId: string): void | Promise<void>
   onAnswer?(requestId: string, answers?: Record<string, string[]>): void | Promise<void>
   live?: boolean
@@ -310,11 +314,15 @@ function ItemView({
         <div className="msg user" data-msg-id={item.id}>
           {item.attachments && item.attachments.length > 0 && (
             <div className="chips">
-              {item.attachments.map((a) => (
-                <span key={a.path} className="chip static">
-                  <Paperclip size={12} /> {a.name}
-                </span>
-              ))}
+              {item.attachments.map((a) =>
+                hostKey && isImageName(a.name) ? (
+                  <AttachmentImage key={a.path} hostKey={hostKey} name={a.name} path={a.path} />
+                ) : (
+                  <span key={a.path} className="chip static">
+                    <Paperclip size={12} /> {a.name}
+                  </span>
+                ),
+              )}
             </div>
           )}
           {item.text && <UserText text={item.text} />}

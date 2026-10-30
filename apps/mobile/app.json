@@ -42,6 +42,12 @@
       ],
       "expo-font",
       "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "BeddCode uses the camera so you can attach a photo to a message."
+        }
+      ],
       "expo-build-properties",
       [
         "expo-build-properties",

@@ -10,6 +10,7 @@ import { ArrowUp, ChevronRight, Paperclip, Plus, Square, X } from 'lucide-react'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import { formatBytes } from '../../ui/format.ts'
 import type { SlashCommand } from '@beddcode/contracts'
+import { AttachmentImage, isImageName } from './AttachmentImage.tsx'
 import {
   attachUpload,
   attachmentDraftKey,
@@ -227,23 +228,33 @@ export function Composer(props: ComposerProps) {
       >
         {files.length > 0 && (
           <div className="chips">
-            {files.map((f) => (
-              <span
-                key={f.key}
-                className={`chip ${f.status}`}
-                title={f.error ?? formatBytes(f.size)}
-              >
-                <Paperclip size={12} /> {f.name}
-                {f.status === 'uploading' && <span className="muted">uploading…</span>}
-                {f.status === 'error' && <span className="muted">{f.error}</span>}
-                <button
-                  aria-label={`Remove ${f.name}`}
-                  onClick={() => useAttachments.getState().remove(draft, [f.key])}
+            {files.map((f) =>
+              f.status !== 'error' && f.id && isImageName(f.name) ? (
+                <AttachmentImage
+                  key={f.key}
+                  hostKey={props.hostKey}
+                  name={f.name}
+                  id={f.id}
+                  onRemove={() => useAttachments.getState().remove(draft, [f.key])}
+                />
+              ) : (
+                <span
+                  key={f.key}
+                  className={`chip ${f.status}`}
+                  title={f.error ?? formatBytes(f.size)}
                 >
-                  <X size={12} />
-                </button>
-              </span>
-            ))}
+                  <Paperclip size={12} /> {f.name}
+                  {f.status === 'uploading' && <span className="muted">uploading…</span>}
+                  {f.status === 'error' && <span className="muted">{f.error}</span>}
+                  <button
+                    aria-label={`Remove ${f.name}`}
+                    onClick={() => useAttachments.getState().remove(draft, [f.key])}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ),
+            )}
           </div>
         )}
         {slashOpen && (
@@ -364,6 +375,18 @@ export function Composer(props: ComposerProps) {
             if (e.key === 'Enter' && !e.shiftKey && !composing) {
               e.preventDefault()
               trySend()
+              return
+            }
+            // Backspace in an empty box takes back the newest attachment.
+            if (
+              e.key === 'Backspace' &&
+              files.length > 0 &&
+              !composing &&
+              e.currentTarget.selectionStart === 0 &&
+              e.currentTarget.selectionEnd === 0
+            ) {
+              e.preventDefault()
+              useAttachments.getState().remove(draft, [files[files.length - 1]!.key])
               return
             }
             if (e.key === 'Escape' && waitingToSend) {

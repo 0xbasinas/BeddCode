@@ -1,4 +1,5 @@
 import { existsSync, statSync } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   RpcMethods,
@@ -24,6 +25,7 @@ import type { ProjectStore } from '../workspace/projects.ts'
 import { browseFolders } from '../workspace/folders.ts'
 import { detectEditors, launchEditor, type DetectedEditor } from '../workspace/editors.ts'
 import type { FileService } from '../files/files.ts'
+import { mediaType } from '../files/media.ts'
 import type { TerminalManager } from '../terminals/manager.ts'
 import type { AlertService } from '../automation/alerts.ts'
 import type { ComputerPane } from '../automation/index.ts'
@@ -293,6 +295,20 @@ export function createRpcRouter(
     'attachments.fromFile': async (p) => {
       const saved = await attachments.save(p.path, await files.readAttachment(p.cwd, p.path))
       return { id: saved.id, name: saved.name, size: saved.size }
+    },
+    'attachments.media': async (p) => {
+      const file = attachments.locate(p)
+      const type = file ? mediaType(file) : undefined
+      if (!file || !type) return null
+      const info = await stat(file).catch(() => null)
+      if (!info?.isFile()) return null
+      return {
+        url: `/media/${files.media.issue(file, type.mime)}`,
+        kind: type.kind,
+        mime: type.mime,
+        size: info.size,
+        mtime: info.mtimeMs,
+      }
     },
     'sessions.prompt': (p) =>
       sessions.prompt(p.sessionId, p.text, p.attachments, p.mode, p.clientMessageId),

@@ -43,4 +43,16 @@ describe('AttachmentStore', () => {
       'larger',
     )
   })
+
+  it('locates stored files by id or path, and nothing outside the store', async () => {
+    const root = tmp()
+    const store = new AttachmentStore(root)
+    const saved = await store.save('shot.png', Buffer.from('x'))
+    expect(store.locate({ id: saved.id })).toBe(saved.path)
+    expect(store.locate({ path: saved.path })).toBe(saved.path)
+    expect(store.locate({ path: path.join(root, '..', 'other.png') })).toBeUndefined()
+    expect(store.locate({ path: root })).toBeUndefined()
+    expect(store.locate({ id: 'missing' })).toBeUndefined()
+    expect(store.locate({})).toBeUndefined()
+  })
 })

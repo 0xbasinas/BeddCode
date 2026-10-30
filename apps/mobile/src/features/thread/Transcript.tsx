@@ -32,6 +32,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Animated, FlatList, Pressable, StyleSheet, View } from 'react-native'
 
 import { colors, radius } from '@/theme/tokens'
+import { AttachmentImage, isImageName } from '@/features/composer/AttachmentImage'
 import { Message } from './Message'
 import { Diffstat } from '@/ui/Diffstat'
 import { FadeIn } from '@/ui/FadeIn'
@@ -350,11 +351,25 @@ const Row = memo(
               <Text size={14} color={colors.textSecondary} style={{ lineHeight: 21 }} selectable>
                 {item.text}
               </Text>
-              {item.attachments?.map((a) => (
-                <Faint key={a.path} size={11.5}>
-                  📎 {a.name}
-                </Faint>
-              ))}
+              {item.attachments && item.attachments.length > 0 ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {item.attachments.map((a) =>
+                    hostKey && isImageName(a.name) ? (
+                      <AttachmentImage
+                        key={a.path}
+                        hostKey={hostKey}
+                        name={a.name}
+                        path={a.path}
+                        size={72}
+                      />
+                    ) : (
+                      <Faint key={a.path} size={11.5}>
+                        📎 {a.name}
+                      </Faint>
+                    ),
+                  )}
+                </View>
+              ) : null}
             </View>
           ) : (
             <Message text={item.text} live={live} />

@@ -46,6 +46,18 @@ export class AttachmentStore {
     return attachment
   }
 
+  /**
+   * The stored file an id or a path names, only if it lives under the store root. Paths are what a
+   * sent message remembers, and they outlive the in-memory ids.
+   */
+  locate(ref: { id?: string; path?: string }): string | undefined {
+    if (ref.id) return this.byId.get(ref.id)?.path
+    if (!ref.path) return undefined
+    const file = path.resolve(ref.path)
+    const rel = path.relative(path.resolve(this.root), file)
+    return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? file : undefined
+  }
+
   /** Resolves an id from `save`. Ids do not survive a server restart; re-attach after one. */
   get(id: string): StoredAttachment | undefined {
     return this.byId.get(id)
