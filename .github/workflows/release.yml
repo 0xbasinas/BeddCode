@@ -12,6 +12,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: desktop-release-${{ github.event_name == 'workflow_dispatch' && 'desktop-dev' || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   installers:
     name: Installers (${{ matrix.os }})

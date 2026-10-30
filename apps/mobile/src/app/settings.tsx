@@ -13,7 +13,16 @@ import {
   X,
 } from 'phosphor-react-native'
 import { useState, type ReactNode } from 'react'
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native'
+import {
+  Alert,
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  View,
+} from 'react-native'
 import type { AlertEvents } from '@beddcode/contracts'
 
 import {
@@ -279,6 +288,47 @@ function HostAlerts({ hostKey, online }: { hostKey: string; online: boolean }) {
 /** The phone's settings: the hosts it is paired with (their folders and agents), and the app. */
 export default function SettingsScreen() {
   const entries = useHostStore((s) => s.entries)
+  const [checking, setChecking] = useState(false)
+
+  const checkForUpdate = async () => {
+    setChecking(true)
+    try {
+      const response = await fetch(
+        'https://api.github.com/repos/0xbasinas/BeddCode/releases/latest',
+      )
+      if (!response.ok) throw new Error(`GitHub returned ${response.status}`)
+      const release: { html_url?: string; assets?: { name: string }[] } = await response.json()
+      const apk = release.assets?.find((asset) =>
+        /^BeddCode-.*-android-build\d+\.apk$/.test(asset.name),
+      )
+      if (!apk) throw new Error('The latest release does not have an Android APK yet.')
+      const build = Number(apk.name.match(/-build(\d+)\.apk$/)?.[1])
+      const installed = Constants.expoConfig?.android?.versionCode
+      if (installed != null && build <= installed) {
+        Alert.alert('Up to date', 'You already have the latest Android release.')
+      } else {
+        Alert.alert(
+          'Update available',
+          'Open the release page to download and install the latest APK.',
+          [
+            { text: 'Later', style: 'cancel' },
+            {
+              text: 'Open release',
+              onPress: () =>
+                void Linking.openURL('https://github.com/0xbasinas/BeddCode/releases/latest'),
+            },
+          ],
+        )
+      }
+    } catch (error) {
+      Alert.alert(
+        'Could not check for updates',
+        error instanceof Error ? error.message : String(error),
+      )
+    } finally {
+      setChecking(false)
+    }
+  }
 
   return (
     <Screen>
@@ -310,12 +360,26 @@ export default function SettingsScreen() {
               </Text>
               <Muted size={12.5}>{Constants.expoConfig?.version ?? '0.0.0'}</Muted>
             </Row>
-            <Row last>
+            <Row>
               <Text size={13.5} style={{ flex: 1 }}>
                 Protocol
               </Text>
               <Muted size={12.5}>{PROTOCOL_VERSION}</Muted>
             </Row>
+            {Platform.OS === 'android' ? (
+              <Pressable
+                disabled={checking}
+                onPress={() => void checkForUpdate()}
+                accessibilityRole="button"
+              >
+                <Row last>
+                  <Text size={13.5} style={{ flex: 1 }}>
+                    {checking ? 'Checking for updates…' : 'Check for updates'}
+                  </Text>
+                  <Muted size={12.5}>GitHub releases</Muted>
+                </Row>
+              </Pressable>
+            ) : null}
           </View>
         </Section>
       </ScrollView>

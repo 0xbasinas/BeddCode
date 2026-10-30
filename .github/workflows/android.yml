@@ -119,7 +119,7 @@ jobs:
           variant="${{ matrix.variant }}"
           suffix=""
           [ "$variant" = debug ] && suffix="-dev"
-          name="BeddCode-${version}-android${suffix}.apk"
+          name="BeddCode-${version}-android${suffix}-build${GITHUB_RUN_NUMBER}.apk"
           cp "apps/mobile/android/app/build/outputs/apk/$variant/app-$variant.apk" "$name"
           echo "name=$name" >> "$GITHUB_OUTPUT"
           ls -lh "$name"

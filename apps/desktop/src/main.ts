@@ -467,6 +467,24 @@ function startApp() {
     if (
       shouldAutoUpdate({ packaged: app.isPackaged, platform: process.platform, env: process.env })
     ) {
+      autoUpdater.on('update-downloaded', (info) => {
+        void dialog
+          .showMessageBox({
+            type: 'info',
+            title: 'Update ready',
+            message: `BeddCode ${info.version} is ready to install`,
+            detail: 'Restart BeddCode to finish installing the update.',
+            buttons: ['Restart and install', 'Later'],
+            defaultId: 0,
+            cancelId: 1,
+          })
+          .then(({ response }) => {
+            if (response === 0) {
+              quitting = true
+              autoUpdater.quitAndInstall()
+            }
+          })
+      })
       startAutoUpdate(autoUpdater, (message) => console.warn(message))
     }
     app.on('activate', () => {
