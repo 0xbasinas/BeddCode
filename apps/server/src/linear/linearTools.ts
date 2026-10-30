@@ -115,10 +115,14 @@ const text = (args: Args, key: string): string | undefined => {
   const v = args[key]
   return typeof v === 'string' && v.trim() ? v.trim() : undefined
 }
-const limit = (args: Args) => Math.min(Math.max(Math.floor(Number(args.limit) || 25), 1), MAX_ISSUES)
+const limit = (args: Args) =>
+  Math.min(Math.max(Math.floor(Number(args.limit) || 25), 1), MAX_ISSUES)
 
 const idProp = { type: 'string' }
-const limitProp = { type: 'number', description: `At most this many; default 25, max ${MAX_ISSUES}.` }
+const limitProp = {
+  type: 'number',
+  description: `At most this many; default 25, max ${MAX_ISSUES}.`,
+}
 
 export const LINEAR_TOOL_DEFINITIONS = [
   {
@@ -181,7 +185,8 @@ export class LinearTools {
 
   private async query<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
     const key = this.keys.get()
-    if (!key) throw new Error('Linear is not connected. Ask the user to connect it on the Linear page.')
+    if (!key)
+      throw new Error('Linear is not connected. Ask the user to connect it on the Linear page.')
     const res = await this.fetchImpl(ENDPOINT, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: key },
@@ -214,9 +219,9 @@ export class LinearTools {
         return { ...d.viewer, workspace: d.organization.name }
       }
       case 'linear_teams': {
-        const d = await this.query<{ teams: { nodes: { id: string; key: string; name: string }[] } }>(
-          '{ teams { nodes { id key name } } }',
-        )
+        const d = await this.query<{
+          teams: { nodes: { id: string; key: string; name: string }[] }
+        }>('{ teams { nodes { id key name } } }')
         return d.teams.nodes
       }
       case 'linear_my_issues': {
@@ -234,7 +239,8 @@ export class LinearTools {
         if (q) filter.title = { containsIgnoreCase: q }
         if (team) filter.team = { key: { eqIgnoreCase: team } }
         if (status) filter.state = { name: { eqIgnoreCase: status } }
-        else if (args.include_closed !== true) filter.state = { type: { nin: ['completed', 'canceled'] } }
+        else if (args.include_closed !== true)
+          filter.state = { type: { nin: ['completed', 'canceled'] } }
         const d = await this.query<{ issues: { nodes: RawIssue[] } }>(
           `query($first: Int!, $filter: IssueFilter) { issues(first: $first, orderBy: updatedAt, filter: $filter) { nodes { ${ISSUE_FIELDS} } } }`,
           { first: limit(args), filter },

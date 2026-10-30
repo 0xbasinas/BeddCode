@@ -2,7 +2,12 @@ import { mkdtempSync, readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { LinearKeyStore, LinearTools, LINEAR_TOOL_DEFINITIONS, isLinearToolName } from './linearTools.ts'
+import {
+  LinearKeyStore,
+  LinearTools,
+  LINEAR_TOOL_DEFINITIONS,
+  isLinearToolName,
+} from './linearTools.ts'
 
 const setup = (data: unknown, key: string | null = 'lin_api_test') => {
   const file = path.join(mkdtempSync(path.join(os.tmpdir(), 'linear-')), 'linear.json')
@@ -60,7 +65,12 @@ describe('LinearTools', () => {
       },
     })
     const r = parse(await tools.call('linear_my_issues', { limit: 999 }))
-    expect(r[0]).toMatchObject({ identifier: 'ENG-1', status: 'Todo', labels: ['bug'], estimate: 2 })
+    expect(r[0]).toMatchObject({
+      identifier: 'ENG-1',
+      status: 'Todo',
+      labels: ['bug'],
+      estimate: 2,
+    })
     expect(calls[0]!.headers.authorization).toBe('lin_api_test')
     expect(calls[0]!.body.variables.first).toBe(50)
   })
