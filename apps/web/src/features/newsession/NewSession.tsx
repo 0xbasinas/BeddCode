@@ -154,6 +154,18 @@ export function NewSession({
     (value: string) => useComposerDrafts.getState().setDraft(memoryKey, value),
     [memoryKey],
   )
+  // Drafts are kept per host and folder, so picking another one would show an empty box; what is
+  // already written goes along instead.
+  const carryText = (nextHostKey: string, nextFolder: string) => {
+    const current = useComposerDrafts.getState().drafts[memoryKey]
+    if (!current) return
+    const next = composerDraftKey(nextHostKey, projectDraftId(nextFolder))
+    if (next !== memoryKey) useComposerDrafts.getState().setDraft(next, current)
+  }
+  const pickFolder = (next: string) => {
+    carryText(hostKey, next)
+    setChosenFolder(next)
+  }
   const activeDraft = useRef<string | undefined>(memoryKey)
   useLayoutEffect(() => {
     activeDraft.current = memoryKey
@@ -420,15 +432,16 @@ export function NewSession({
               <FolderChip
                 value={folder}
                 recent={recentFolders}
-                onChange={setChosenFolder}
+                onChange={pickFolder}
                 onAdd={async () => {
                   const added = await chooseFolder(hostKey)
-                  if (added) setChosenFolder(added.path)
+                  if (added) pickFolder(added.path)
                 }}
               />
               <HostChip
                 hostKey={hostKey}
                 onPick={(key) => {
+                  carryText(key, '')
                   setHostKey(key)
                   setChosenFolder('')
                   setInstanceId(undefined)
