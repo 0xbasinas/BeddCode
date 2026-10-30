@@ -121,6 +121,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  full: { width: '100%', height: '100%' },
+  full: { width: '86%', height: '60%', borderRadius: radius.control },
   close: { position: 'absolute', top: 54, right: 20 },
 })
