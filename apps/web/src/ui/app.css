@@ -3952,6 +3952,14 @@ button.tcall-row:hover .tcall-chevron,
 .session-pr.merged {
   color: #a371f7;
 }
+.session-pr.merged {
+  padding: 0 calc(5px * var(--ui-scale));
+  border-radius: 999px;
+  background: color-mix(in srgb, #a371f7 16%, transparent);
+}
+.session-pr-state {
+  margin-left: calc(2px * var(--ui-scale));
+}
 .session-pr.closed {
   color: var(--danger);
 }

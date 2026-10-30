@@ -67,6 +67,25 @@ describe('GithubService.pullRequest', () => {
     expect(await gh.pullRequest('/repo')).toBeNull()
   })
 
+  it('finds a merged pull request by branch name once the folder and branch are gone', async () => {
+    const raw = (number: number, state: string) => ({
+      number,
+      title: `PR ${number}`,
+      url: `https://github.com/o/r/pull/${number}`,
+      state,
+      isDraft: false,
+      headRefName: 'beddcode/gone',
+      baseRefName: 'main',
+    })
+    const { gh, calls } = service(() => ok(JSON.stringify([raw(4, 'CLOSED'), raw(9, 'MERGED')])))
+    const pr = await gh.pullRequest('/no/such/worktree', {
+      branch: 'beddcode/gone',
+      repo: process.cwd(),
+    })
+    expect(calls[0]?.slice(0, 4)).toEqual(['pr', 'list', '--head', 'beddcode/gone'])
+    expect(pr).toMatchObject({ number: 9, state: 'MERGED' })
+  })
+
   it('explains sign-in, missing remote and missing CLI problems', async () => {
     const auth = service(() => fail('To get started with GitHub CLI, please run:  gh auth login'))
     await expect(auth.gh.pullRequest('/r')).rejects.toThrow('gh auth login')

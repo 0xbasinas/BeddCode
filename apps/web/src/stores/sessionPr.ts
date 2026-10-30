@@ -18,6 +18,8 @@ export interface SessionPrInfo {
 const KEY = 'beddcode.session-prs'
 /** Rows ask GitHub for a folder at most this often; the server also shares its answers. */
 const STALE_MS = 5 * 60_000
+/** An open pull request can be merged anywhere, so it is looked at again sooner. */
+const OPEN_STALE_MS = 60_000
 
 interface Entry {
   /** The last answer; null once GitHub said there is no pull request. */
@@ -42,6 +44,12 @@ const load = (): Record<string, Entry> => {
 export const useSessionPrs = create<SessionPrState>(() => ({ entries: load() }))
 
 const keyOf = (hostKey: string, cwd: string) => `${hostKey}\n${cwd}`
+
+/** What a session knows about where its pull request lives when its folder is gone. */
+export interface PrSource {
+  branch?: string
+  repo?: string
+}
 
 function summarize(pr: PullRequest): SessionPrInfo {
   const failed = pr.checks.filter((c) => c.state === 'failure').length
@@ -70,16 +78,20 @@ function summarize(pr: PullRequest): SessionPrInfo {
 const inflight = new Map<string, Promise<void>>()
 
 /** Asks for one folder's pull request; rows of the same folder share one request. */
-function refresh(hostKey: string, cwd: string): Promise<void> {
+function refresh(hostKey: string, cwd: string, source?: PrSource): Promise<void> {
   const key = keyOf(hostKey, cwd)
   const running = inflight.get(key)
   if (running) return running
-  const request = hostRequest(hostKey, 'git.pr.get', { cwd })
+  const request = hostRequest(hostKey, 'git.pr.get', { cwd, ...source })
     .then(
       (pr) => {
+        const known = useSessionPrs.getState().entries[key]?.pr
+        // Once merged, the pull request stays on the row even after its branch and worktree are
+        // deleted, when GitHub can no longer be asked for it by the folder's branch.
+        const next = pr ? summarize(pr) : known?.state === 'MERGED' ? known : null
         const entries = {
           ...useSessionPrs.getState().entries,
-          [key]: { pr: pr && summarize(pr), at: Date.now() },
+          [key]: { pr: next, at: Date.now() },
         }
         useSessionPrs.setState({ entries })
         try {
@@ -104,19 +116,27 @@ export const refreshSessionPr = refresh
  * The pull request of a folder's current branch for a session row. Shows the last known answer
  * straight away, then refreshes it when it is stale and every few minutes while the row is shown.
  */
-export function useSessionPr(hostKey: string, cwd: string): SessionPrInfo | null {
+export function useSessionPr(
+  hostKey: string,
+  cwd: string,
+  source?: PrSource,
+): SessionPrInfo | null {
   const key = keyOf(hostKey, cwd)
+  const { branch, repo } = source ?? {}
   const entry = useSessionPrs((s) => s.entries[key])
   useEffect(() => {
     const due = () => {
-      const at = useSessionPrs.getState().entries[key]?.at ?? 0
-      if (document.visibilityState === 'visible' && Date.now() - at >= STALE_MS) {
-        void refresh(hostKey, cwd)
+      const entry = useSessionPrs.getState().entries[key]
+      // A merged pull request does not change again.
+      if (entry?.pr?.state === 'MERGED') return
+      const limit = entry?.pr?.state === 'OPEN' ? OPEN_STALE_MS : STALE_MS
+      if (document.visibilityState === 'visible' && Date.now() - (entry?.at ?? 0) >= limit) {
+        void refresh(hostKey, cwd, { branch, repo })
       }
     }
     due()
     const timer = setInterval(due, 30_000)
     return () => clearInterval(timer)
-  }, [hostKey, cwd, key])
+  }, [hostKey, cwd, key, branch, repo])
   return entry?.pr ?? null
 }

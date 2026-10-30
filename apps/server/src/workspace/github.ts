@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type {
@@ -29,6 +29,12 @@ const defaultRunner: Runner = (file, args, { cwd, timeoutMs }) =>
       GIT_TERMINAL_PROMPT: '0',
     },
   })
+
+/** How to find a session's pull request when its folder cannot say: the branch it was on, in this repository. */
+export interface PrLookup {
+  branch?: string
+  repo?: string
+}
 
 const PR_FIELDS = [
   'number',
@@ -377,20 +383,21 @@ export class GithubService {
   }
 
   /** The pull request for the current branch, or null when there is none. */
-  async pullRequest(cwd: string): Promise<PullRequest | null> {
-    const cached = this.prCache.get(cwd)
+  async pullRequest(cwd: string, find?: PrLookup): Promise<PullRequest | null> {
+    const cacheKey = find?.branch ? `${cwd}::${find.branch}` : cwd
+    const cached = this.prCache.get(cacheKey)
     if (cached?.pending) return cached.pending
     if (cached && cached.value !== undefined && Date.now() - cached.at < PR_CACHE_MS) {
       return cached.value
     }
-    const pending = this.readPullRequest(cwd)
-    this.prCache.set(cwd, { at: Date.now(), pending })
+    const pending = this.readPullRequest(cwd, find)
+    this.prCache.set(cacheKey, { at: Date.now(), pending })
     try {
       const value = await pending
-      this.prCache.set(cwd, { at: Date.now(), value })
+      this.prCache.set(cacheKey, { at: Date.now(), value })
       return value
     } catch (err) {
-      this.prCache.delete(cwd)
+      this.prCache.delete(cacheKey)
       throw err
     }
   }
@@ -463,13 +470,43 @@ export class GithubService {
     }
   }
 
-  private async readPullRequest(cwd: string): Promise<PullRequest | null> {
-    const res = await this.gh(cwd, ['pr', 'view', '--json', PR_FIELDS])
-    if (res.code !== 0) {
-      if (/no pull requests found/i.test(res.stderr)) return null
-      this.fail(res.stderr)
+  private async readPullRequest(cwd: string, find?: PrLookup): Promise<PullRequest | null> {
+    // A folder that is gone (a removed worktree) cannot be asked what its branch is; the branch
+    // name the session kept, looked up from the repository, still finds the pull request.
+    const folder = existsSync(cwd) ? cwd : find?.repo && existsSync(find.repo) ? find.repo : cwd
+    if (folder === cwd) {
+      const res = await this.gh(cwd, ['pr', 'view', '--json', PR_FIELDS])
+      if (res.code === 0) return this.mapPr(JSON.parse(res.stdout) as RawPr)
+      // With no branch to fall back on, or any other trouble, say so.
+      if (
+        !find?.branch ||
+        !/no pull requests found|could not determine current branch/i.test(res.stderr)
+      ) {
+        if (/no pull requests found/i.test(res.stderr)) return null
+        this.fail(res.stderr)
+      }
     }
-    return this.mapPr(JSON.parse(res.stdout) as RawPr)
+    if (!find?.branch) return null
+    // The branch may be deleted by now (merged, then cleaned up): list by name, any state.
+    const listed = JSON.parse(
+      await this.ok(folder, [
+        'pr',
+        'list',
+        '--head',
+        find.branch,
+        '--state',
+        'all',
+        '--limit',
+        '10',
+        '--json',
+        PR_FIELDS,
+      ]),
+    ) as RawPr[]
+    // Prefer one still open, then the newest.
+    const best = listed.sort(
+      (a, b) => Number(b.state === 'OPEN') - Number(a.state === 'OPEN') || b.number - a.number,
+    )[0]
+    return best ? this.mapPr(best) : null
   }
 
   /** One pull request in full, with its reviews and comments in order. */

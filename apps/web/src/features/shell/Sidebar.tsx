@@ -22,6 +22,7 @@ import {
   Folder,
   FolderGit2,
   GitBranch,
+  GitMerge,
   GitPullRequest,
   Monitor,
   PenSquare,
@@ -383,7 +384,12 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               {agentLabel(s)}
             </span>
             {s.branch && !isFiledAway(s) && (
-              <SessionPr hostKey={hostOf.get(s.id) ?? LOCAL_HOST_KEY} cwd={s.cwd} />
+              <SessionPr
+                hostKey={hostOf.get(s.id) ?? LOCAL_HOST_KEY}
+                cwd={s.cwd}
+                branch={s.branch}
+                repo={s.projectPath}
+              />
             )}
             {s.pinned && !showPinned && (
               <Pin className="session-pin" size={11} aria-label="Pinned" />
@@ -787,8 +793,18 @@ ${s.projectless ? 'no-project' : s.projectPath}`
 }
 
 /** The pull request of a session's branch: its number by state, a dot for its checks, opens on GitHub. */
-function SessionPr({ hostKey, cwd }: { hostKey: string; cwd: string }) {
-  const pr = useSessionPr(hostKey, cwd)
+function SessionPr({
+  hostKey,
+  cwd,
+  branch,
+  repo,
+}: {
+  hostKey: string
+  cwd: string
+  branch?: string
+  repo?: string
+}) {
+  const pr = useSessionPr(hostKey, cwd, { branch, repo })
   if (!pr) return null
   const kind = prStateKind(pr)
   const checks =
@@ -816,7 +832,8 @@ function SessionPr({ hostKey, cwd }: { hostKey: string; cwd: string }) {
         if (event.key === 'Enter') open(event)
       }}
     >
-      <GitPullRequest size={11} />#{pr.number}
+      {kind === 'merged' ? <GitMerge size={11} /> : <GitPullRequest size={11} />}#{pr.number}
+      {kind === 'merged' && <span className="session-pr-state">merged</span>}
       {kind === 'open' && pr.checks && pr.checks !== 'skipped' && (
         <span className={`pr-checks ${pr.checks}`} aria-hidden="true" />
       )}

@@ -52,6 +52,7 @@ import {
 import { Markdown } from '../../ui/Markdown.tsx'
 import { agoLabel } from '../../ui/format.ts'
 import { hostRequest, prompt } from '../../stores/host.ts'
+import { refreshSessionPr } from '../../stores/sessionPr.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
 import { useUiStore } from '../../stores/ui.ts'
 import { usePolled } from './usePolled.ts'
@@ -527,6 +528,8 @@ function PrDetailView({
       if (res.message) setNotice({ text: res.message, path: res.path })
       setBump((b) => b + 1)
       onChanged()
+      // The session's row in the sidebar shows this pull request's state.
+      void refreshSessionPr(hostKey, cwd)
       return true
     } catch (err) {
       setError(errorText(err))

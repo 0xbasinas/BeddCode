@@ -221,7 +221,7 @@ export function createRpcRouter(
       await git.push(p.cwd)
       return {}
     },
-    'git.pr.get': (p) => github.pullRequest(p.cwd),
+    'git.pr.get': (p) => github.pullRequest(p.cwd, { branch: p.branch, repo: p.repo }),
     'git.ci.report': (p) => github.ciReport(p.cwd),
     'git.pr.cleanup': (p) =>
       cleanupAfterMerge(

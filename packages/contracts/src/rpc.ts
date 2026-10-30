@@ -243,7 +243,15 @@ export const RpcMethods = {
   },
   'git.push': { params: z.object({ cwd: z.string() }), result: z.object({}) },
   /** The pull request for the current branch, or null when there is none. */
-  'git.pr.get': { params: z.object({ cwd: z.string() }), result: PullRequest.nullable() },
+  'git.pr.get': {
+    params: z.object({
+      cwd: z.string(),
+      /** The branch a session was on and the repository it belongs to, for when `cwd` is gone. */
+      branch: z.string().optional(),
+      repo: z.string().optional(),
+    }),
+    result: PullRequest.nullable(),
+  },
   /**
    * Tidies up after a pull request was merged: brings the base branch up to date in the main
    * checkout, removes the worktree the branch was in, and deletes the branch. Each step is checked
