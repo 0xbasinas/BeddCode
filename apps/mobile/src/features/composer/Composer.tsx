@@ -15,6 +15,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View }
 
 import { EMPTY_ATTACHMENTS, type DraftAttachment } from '@/host/attachments'
 import { colors, fonts, radius } from '@/theme/tokens'
+import { AttachmentImage, isImageName } from './AttachmentImage'
 import { send as sendHaptic } from '@/ui/haptics'
 import { Icon } from '@/ui/Icon'
 import { Faint, Muted, Text } from '@/ui/Text'
@@ -42,6 +43,7 @@ export function Composer({
   context,
   attachments = EMPTY_ATTACHMENTS,
   onRemoveAttachment,
+  hostKey,
   commands,
 }: {
   placeholder: string
@@ -58,6 +60,8 @@ export function Composer({
   /** Files and snippets waiting to go out with this message. */
   attachments?: DraftAttachment[]
   onRemoveAttachment?: (key: number) => void
+  /** The host the attachments live on, so images can be previewed. */
+  hostKey?: string
   /** The agent's slash commands, offered while the message is a half-typed `/command`. */
   commands?: SlashCommand[]
 }) {
@@ -132,43 +136,56 @@ export function Composer({
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ gap: 6 }}
           >
-            {attachments.map((a) => (
-              <View
-                key={a.key}
-                style={[styles.attachment, a.status === 'error' && { borderColor: colors.danger }]}
-              >
-                {a.status === 'uploading' ? (
-                  <ActivityIndicator
-                    size="small"
-                    color={colors.muted}
-                    style={{ transform: [{ scale: 0.7 }] }}
-                  />
-                ) : (
-                  <Icon
-                    icon={Paperclip}
-                    size={13}
-                    color={a.status === 'error' ? colors.danger : colors.muted}
-                  />
-                )}
-                <Text
-                  size={12}
-                  color={colors.textSecondary}
-                  numberOfLines={1}
-                  style={{ maxWidth: 160 }}
+            {attachments.map((a) =>
+              hostKey && a.id && a.status === 'done' && isImageName(a.name) ? (
+                <AttachmentImage
+                  key={a.key}
+                  hostKey={hostKey}
+                  name={a.name}
+                  id={a.id}
+                  onRemove={onRemoveAttachment ? () => onRemoveAttachment(a.key) : undefined}
+                />
+              ) : (
+                <View
+                  key={a.key}
+                  style={[
+                    styles.attachment,
+                    a.status === 'error' && { borderColor: colors.danger },
+                  ]}
                 >
-                  {a.status === 'error' ? (a.error ?? 'Could not attach') : a.name}
-                </Text>
-                {onRemoveAttachment ? (
-                  <Pressable
-                    hitSlop={8}
-                    onPress={() => onRemoveAttachment(a.key)}
-                    accessibilityLabel="Remove attachment"
+                  {a.status === 'uploading' ? (
+                    <ActivityIndicator
+                      size="small"
+                      color={colors.muted}
+                      style={{ transform: [{ scale: 0.7 }] }}
+                    />
+                  ) : (
+                    <Icon
+                      icon={Paperclip}
+                      size={13}
+                      color={a.status === 'error' ? colors.danger : colors.muted}
+                    />
+                  )}
+                  <Text
+                    size={12}
+                    color={colors.textSecondary}
+                    numberOfLines={1}
+                    style={{ maxWidth: 160 }}
                   >
-                    <Icon icon={X} size={12} />
-                  </Pressable>
-                ) : null}
-              </View>
-            ))}
+                    {a.status === 'error' ? (a.error ?? 'Could not attach') : a.name}
+                  </Text>
+                  {onRemoveAttachment ? (
+                    <Pressable
+                      hitSlop={8}
+                      onPress={() => onRemoveAttachment(a.key)}
+                      accessibilityLabel="Remove attachment"
+                    >
+                      <Icon icon={X} size={12} />
+                    </Pressable>
+                  ) : null}
+                </View>
+              ),
+            )}
           </ScrollView>
         )}
         <TextInput
@@ -178,6 +195,12 @@ export function Composer({
           placeholderTextColor={colors.faint}
           multiline
           autoFocus={autoFocus}
+          onKeyPress={(e) => {
+            // Backspace in an empty field takes back the newest attachment.
+            if (e.nativeEvent.key === 'Backspace' && !text && attachments.length > 0) {
+              onRemoveAttachment?.(attachments[attachments.length - 1].key)
+            }
+          }}
           style={styles.input}
         />
         <View style={styles.row}>

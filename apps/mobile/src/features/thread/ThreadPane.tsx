@@ -28,7 +28,7 @@ import { Faint, Muted, Text } from '@/ui/Text'
 import { attachBase64, EMPTY_ATTACHMENTS, useAttachments } from '@/host/attachments'
 import type { Pane } from '@/features/panes/PaneBar'
 import * as ImagePicker from 'expo-image-picker'
-import { Image as ImageIcon, FolderSimple, TerminalWindow } from 'phosphor-react-native'
+import { Camera, Image as ImageIcon, FolderSimple, TerminalWindow } from 'phosphor-react-native'
 import { Transcript } from './Transcript'
 import { StartedByBanner } from './AgentToolCard'
 
@@ -85,12 +85,20 @@ export function ThreadPane({
       ? Math.min(100, Math.round((session.context.used / session.context.size) * 100))
       : undefined
 
-  const pickPhoto = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
+  const pickPhoto = async (source: 'library' | 'camera') => {
+    if (source === 'camera') {
+      const allowed = await ImagePicker.requestCameraPermissionsAsync()
+      if (!allowed.granted) return
+    }
+    const options: ImagePicker.ImagePickerOptions = {
       mediaTypes: ['images'],
       base64: true,
       quality: 0.8,
-    })
+    }
+    const result =
+      source === 'camera'
+        ? await ImagePicker.launchCameraAsync(options)
+        : await ImagePicker.launchImageLibraryAsync({ ...options, allowsMultipleSelection: true })
     if (result.canceled || !hostKey) return
     for (const asset of result.assets) {
       if (!asset.base64) continue
@@ -212,6 +220,7 @@ export function ThreadPane({
               )
             }}
             attachments={draft}
+            hostKey={hostKey}
             commands={session.commands}
             onRemoveAttachment={(key) => useAttachments.getState().remove(session.id, [key])}
             onAttach={() => setAttachMenu(true)}
@@ -258,7 +267,13 @@ export function ThreadPane({
             id: 'photo',
             label: 'Photo from your library',
             icon: ImageIcon,
-            onSelect: () => void pickPhoto(),
+            onSelect: () => void pickPhoto('library'),
+          },
+          {
+            id: 'camera',
+            label: 'Take a photo',
+            icon: Camera,
+            onSelect: () => void pickPhoto('camera'),
           },
           {
             id: 'files',

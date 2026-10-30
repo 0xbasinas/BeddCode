@@ -474,6 +474,14 @@ export const RpcMethods = {
     result: z.object({ id: z.string(), name: z.string(), size: z.number().int() }),
   },
   /**
+   * An address for showing an attached image. Name it by `id` (before sending) or by the stored
+   * `path` a sent message carries; null when it is not a viewable media file.
+   */
+  'attachments.media': {
+    params: z.object({ id: z.string().optional(), path: z.string().optional() }),
+    result: FileMedia.nullable(),
+  },
+  /**
    * Sends a message. While the agent is busy it is steered into the running turn when the agent
    * supports that, otherwise queued for the next turn (mode 'queue' always queues).
    */
