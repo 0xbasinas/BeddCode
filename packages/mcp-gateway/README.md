@@ -100,6 +100,15 @@ has connected. Start calls return a session ID; poll `get_session` for status. A
 connection may leave a session running, so check BeddCode before retrying a start. Do not assume
 that a timed-out request was cancelled.
 
+If the host is briefly disconnected, the Worker waits up to 12 seconds for it to reconnect before
+returning an offline error. Calls already sent when the host drops are never replayed. `GET /status`
+(same authorization as `/mcp`) reports whether the host is connected and when it last connected or
+disconnected.
+
+Mutating tools accept an optional `request_key`: retrying with the same key within 10 minutes returns
+the first result instead of repeating the action. Read-only tools are retried once automatically if the
+host drops mid-call.
+
 The host checks the connection with WebSocket heartbeats and reconnects after interruptions. If a
 second BeddCode host connects to the same Worker, it takes over and the first host stops retrying;
 select Connect in its settings to switch back. Interrupted operations are not retried automatically.

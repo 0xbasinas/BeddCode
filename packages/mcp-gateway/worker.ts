@@ -61,13 +61,14 @@ export default {
       path === '/oauth/revoke'
     )
       return oauth.fetch(request, env, ctx)
-    if (path !== '/mcp' && path !== '/host') return new Response('Not found', { status: 404 })
+    if (path !== '/mcp' && path !== '/host' && path !== '/status')
+      return new Response('Not found', { status: 404 })
     const auth = request.headers.get('authorization') ?? ''
     const expected = path === '/host' ? env.HOST_SECRET : env.MCP_PASSWORD
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
     const direct = !!token && (await sameSecret(token, expected))
     const authorized =
-      direct || (path === '/mcp' && !!token && !!(await oauth.validateToken(resource, token, env)))
+      direct || (path !== '/host' && !!token && !!(await oauth.validateToken(resource, token, env)))
     if (!authorized) {
       if (token) await gateway.reject(ip)
       return new Response('Unauthorized', {
@@ -78,6 +79,8 @@ export default {
         },
       })
     }
+    if (path === '/status')
+      return Response.json(await gateway.status(), { headers: { 'cache-control': 'no-store' } })
     if (path === '/host' && request.headers.get('Upgrade') !== 'websocket')
       return new Response('WebSocket required', { status: 426 })
     if (path === '/mcp' && request.method !== 'POST')
@@ -114,6 +117,12 @@ const definitions = [
     inputSchema: {
       type: 'object',
       properties: {
+        request_key: {
+          type: 'string',
+          maxLength: 100,
+          description:
+            'Optional. Retrying with the same key returns the first result instead of repeating the action.',
+        },
         session_id: { type: 'string' },
         model: { type: 'string' },
         effort: { type: 'string' },
@@ -128,6 +137,12 @@ const definitions = [
     inputSchema: {
       type: 'object',
       properties: {
+        request_key: {
+          type: 'string',
+          maxLength: 100,
+          description:
+            'Optional. Retrying with the same key returns the first result instead of repeating the action.',
+        },
         session_id: { type: 'string' },
         option_id: { type: 'string' },
         value: { anyOf: [{ type: 'string' }, { type: 'boolean' }] },
@@ -140,7 +155,16 @@ const definitions = [
     description: 'Change a session to a supported asking or read-only mode.',
     inputSchema: {
       type: 'object',
-      properties: { session_id: { type: 'string' }, mode: { type: 'string' } },
+      properties: {
+        request_key: {
+          type: 'string',
+          maxLength: 100,
+          description:
+            'Optional. Retrying with the same key returns the first result instead of repeating the action.',
+        },
+        session_id: { type: 'string' },
+        mode: { type: 'string' },
+      },
       required: ['session_id', 'mode'],
     },
   },
@@ -150,6 +174,12 @@ const definitions = [
     inputSchema: {
       type: 'object',
       properties: {
+        request_key: {
+          type: 'string',
+          maxLength: 100,
+          description:
+            'Optional. Retrying with the same key returns the first result instead of repeating the action.',
+        },
         session_id: { type: 'string' },
         title: { type: 'string', minLength: 1, maxLength: 120 },
       },
@@ -161,7 +191,16 @@ const definitions = [
     description: 'Move a session into or out of the Done section without stopping it.',
     inputSchema: {
       type: 'object',
-      properties: { session_id: { type: 'string' }, done: { type: 'boolean' } },
+      properties: {
+        request_key: {
+          type: 'string',
+          maxLength: 100,
+          description:
+            'Optional. Retrying with the same key returns the first result instead of repeating the action.',
+        },
+        session_id: { type: 'string' },
+        done: { type: 'boolean' },
+      },
       required: ['session_id', 'done'],
     },
   },
@@ -206,6 +245,12 @@ const definitions = [
     inputSchema: {
       type: 'object',
       properties: {
+        request_key: {
+          type: 'string',
+          maxLength: 100,
+          description:
+            'Optional. Retrying with the same key returns the first result instead of repeating the action.',
+        },
         session_id: { type: 'string' },
         request_id: { type: 'string' },
         answers: {
@@ -223,6 +268,12 @@ const definitions = [
     inputSchema: {
       type: 'object',
       properties: {
+        request_key: {
+          type: 'string',
+          maxLength: 100,
+          description:
+            'Optional. Retrying with the same key returns the first result instead of repeating the action.',
+        },
         session_id: { type: 'string' },
         request_id: { type: 'string' },
         option_id: { type: 'string' },
@@ -270,6 +321,12 @@ const definitions = [
     inputSchema: {
       type: 'object',
       properties: {
+        request_key: {
+          type: 'string',
+          maxLength: 100,
+          description:
+            'Optional. Retrying with the same key returns the first result instead of repeating the action.',
+        },
         agent: { type: 'string' },
         prompt: { type: 'string' },
         project: { type: 'string', description: 'Project path returned by list_projects.' },
@@ -309,7 +366,16 @@ const definitions = [
     description: 'Send a follow-up to a BeddCode session.',
     inputSchema: {
       type: 'object',
-      properties: { session_id: { type: 'string' }, text: { type: 'string' } },
+      properties: {
+        request_key: {
+          type: 'string',
+          maxLength: 100,
+          description:
+            'Optional. Retrying with the same key returns the first result instead of repeating the action.',
+        },
+        session_id: { type: 'string' },
+        text: { type: 'string' },
+      },
       required: ['session_id', 'text'],
     },
   },
@@ -318,14 +384,41 @@ const definitions = [
     description: 'Stop a BeddCode session.',
     inputSchema: {
       type: 'object',
-      properties: { session_id: { type: 'string' } },
+      properties: {
+        request_key: {
+          type: 'string',
+          maxLength: 100,
+          description:
+            'Optional. Retrying with the same key returns the first result instead of repeating the action.',
+        },
+        session_id: { type: 'string' },
+      },
       required: ['session_id'],
     },
   },
 ] as const
 
+const HOST_GRACE_MS = 12000
+const MUTATING = new Set([
+  'start_session',
+  'send_message',
+  'stop_session',
+  'answer_question',
+  'resolve_approval',
+  'set_session_model',
+  'set_session_config',
+  'set_session_mode',
+  'rename_session',
+  'set_session_done',
+])
+
 export class Gateway extends DurableObject<Env> {
   private pending = new PendingCalls()
+  private hostWaiters: Array<() => void> = []
+  private recent = new Map<
+    string,
+    { at: number; answer: Promise<{ result?: unknown; error?: string }> }
+  >()
 
   async admit(ip: string): Promise<number> {
     const key = `rate:${ip}`
@@ -372,6 +465,8 @@ export class Gateway extends DurableObject<Env> {
       }
       const pair = new WebSocketPair()
       this.ctx.acceptWebSocket(pair[1], ['host'])
+      await this.ctx.storage.put('host:connectedAt', Date.now())
+      for (const wake of [...this.hostWaiters]) wake()
       return new Response(null, { status: 101, webSocket: pair[0] })
     }
     if (Number(request.headers.get('content-length') ?? 0) > 65536)
@@ -417,7 +512,7 @@ export class Gateway extends DurableObject<Env> {
       if (!definitions.some((tool) => tool.name === name))
         result = { isError: true, content: [{ type: 'text', text: 'Unknown tool' }] }
       else {
-        const answer = await this.callHost(name!, msg.params?.arguments)
+        const answer = await this.dispatch(name!, msg.params?.arguments)
         result = {
           ...(answer.error ? { isError: true } : {}),
           content: [{ type: 'text', text: answer.error ?? JSON.stringify(answer.result) }],
@@ -435,12 +530,87 @@ export class Gateway extends DurableObject<Env> {
     )
   }
 
+  /** Reads are retried once after a dropped host; mutating calls with a request_key are deduplicated. */
+  private async dispatch(
+    name: string,
+    raw: unknown,
+  ): Promise<{ result?: unknown; error?: string }> {
+    const args =
+      raw && typeof raw === 'object' && !Array.isArray(raw)
+        ? { ...(raw as Record<string, unknown>) }
+        : raw
+    const key =
+      MUTATING.has(name) && args && typeof args === 'object' && 'request_key' in args
+        ? String((args as Record<string, unknown>).request_key).slice(0, 100)
+        : undefined
+    if (args && typeof args === 'object') delete (args as Record<string, unknown>).request_key
+    if (key) {
+      const now = Date.now()
+      for (const [k, v] of this.recent) if (now - v.at > 600_000) this.recent.delete(k)
+      const id = `${name}:${key}`
+      const seen = this.recent.get(id)
+      if (seen) return seen.answer
+      const answer = this.callHost(name, args)
+      this.recent.set(id, { at: now, answer })
+      const result = await answer
+      // A failure before the host saw the call is safe to retry; keep anything uncertain.
+      if (result.error && /offline|Too many pending/.test(result.error)) this.recent.delete(id)
+      return result
+    }
+    const first = await this.callHost(name, args)
+    if (!MUTATING.has(name) && first.error?.startsWith('Host disconnected'))
+      return this.callHost(name, args)
+    return first
+  }
+
+  private openHost(): WebSocket | undefined {
+    return this.ctx.getWebSockets('host').find((socket) => socket.readyState === 1)
+  }
+
+  /** Waits briefly for the host to reconnect, so a short network blip does not fail the call. */
+  private async awaitHost(graceMs: number): Promise<WebSocket | undefined> {
+    const now = this.openHost()
+    if (now) return now
+    await new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer)
+        this.hostWaiters = this.hostWaiters.filter((waiter) => waiter !== done)
+        resolve()
+      }
+      const timer = setTimeout(done, graceMs)
+      this.hostWaiters.push(done)
+    })
+    return this.openHost()
+  }
+
+  async status(): Promise<{
+    hostConnected: boolean
+    connectedAt?: number
+    disconnectedAt?: number
+  }> {
+    const [connectedAt, disconnectedAt] = await Promise.all([
+      this.ctx.storage.get<number>('host:connectedAt'),
+      this.ctx.storage.get<number>('host:disconnectedAt'),
+    ])
+    return { hostConnected: !!this.openHost(), connectedAt, disconnectedAt }
+  }
+
+  private async noteDisconnected(socket: WebSocket): Promise<void> {
+    this.pending.disconnected(socket)
+    // A replaced socket is not an outage: another host is already connected.
+    if (!this.openHost()) await this.ctx.storage.put('host:disconnectedAt', Date.now())
+  }
+
   private async callHost(
     name: string,
     args: unknown,
   ): Promise<{ result?: unknown; error?: string }> {
-    const host = this.ctx.getWebSockets('host').find((socket) => socket.readyState === 1)
-    if (!host) return { error: 'BeddCode host is offline.' }
+    const host = await this.awaitHost(HOST_GRACE_MS)
+    if (!host)
+      return {
+        error:
+          'BeddCode host is offline. It reconnects automatically; retry shortly or check Settings → Remote MCP.',
+      }
     if (this.pending.size >= 20) return { error: 'Too many pending requests.' }
     const id = crypto.randomUUID()
     // An ACP preview may need to launch an agent and establish its capabilities.
@@ -474,7 +644,7 @@ export class Gateway extends DurableObject<Env> {
   }
 
   override async webSocketClose(socket: WebSocket, code: number, reason: string): Promise<void> {
-    this.pending.disconnected(socket)
+    await this.noteDisconnected(socket)
     try {
       socket.close(code, reason)
     } catch {
@@ -483,7 +653,7 @@ export class Gateway extends DurableObject<Env> {
   }
 
   override async webSocketError(socket: WebSocket): Promise<void> {
-    this.pending.disconnected(socket)
+    await this.noteDisconnected(socket)
     try {
       socket.close(1011, 'connection error')
     } catch {
