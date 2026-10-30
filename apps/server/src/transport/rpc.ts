@@ -41,6 +41,7 @@ export interface AutomationServices {
   alerts: AlertService
   designs: DesignStore
   computer: ComputerPane
+  linear: { setKey(key: string | null): boolean }
 }
 
 /** Everything that works on a session's folder: git, projects, shells and files. */
@@ -368,6 +369,7 @@ export function createRpcRouter(
     'computer.control': async (p) => ({
       paused: automation.computer.control(p.sessionId, p.paused),
     }),
+    'linear.setKey': async (p) => ({ connected: automation.linear.setKey(p.key) }),
     'schedules.list': async () => schedules.list(),
     'schedules.save': async (p) => schedules.saveSchedule(p),
     'schedules.remove': async (p) => ({ removed: schedules.remove(p.id) }),

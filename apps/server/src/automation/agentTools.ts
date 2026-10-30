@@ -22,6 +22,12 @@ import {
   isComputerToolName,
   type ComputerTools,
 } from '../computer/computerTools.ts'
+import {
+  LINEAR_INSTRUCTIONS,
+  LINEAR_TOOL_DEFINITIONS,
+  isLinearToolName,
+  type LinearTools,
+} from '../linear/linearTools.ts'
 import { digest, transcript, type SessionDigest } from './digest.ts'
 
 /** How deep sessions may nest: a child (1) may start children of its own (2), and those none. */
@@ -294,6 +300,7 @@ export class AgentTools {
     private readonly browser?: BrowserTools,
     private readonly design?: DesignTools,
     private readonly computer?: ComputerTools,
+    private readonly linear?: LinearTools,
   ) {}
 
   /** Which tool sets a session was given when it was created. */
@@ -302,20 +309,23 @@ export class AgentTools {
     browser: boolean
     design: boolean
     computer: boolean
+    linear: boolean
   } {
     const created = this.host.readSession(sessionId).find((e) => e.event.type === 'session.created')
     const event = created?.event.type === 'session.created' ? created.event : undefined
     return {
-      // The server is only given to sessions with one of the four; without the other flags it
+      // The server is only given to sessions with one of the five; without the other flags it
       // was for the agent tools.
       agents:
         event?.agentTools === true ||
         (event?.browserTools !== true &&
           event?.designTools !== true &&
-          event?.computerTools !== true),
+          event?.computerTools !== true &&
+          event?.linearTools !== true),
       browser: event?.browserTools === true && this.browser !== undefined,
       design: event?.designTools === true && this.design !== undefined,
       computer: event?.computerTools === true && this.computer !== undefined,
+      linear: event?.linearTools === true && this.linear !== undefined,
     }
   }
 
@@ -358,6 +368,7 @@ export class AgentTools {
         has.browser && BROWSER_INSTRUCTIONS,
         has.design && DESIGN_INSTRUCTIONS,
         has.computer && COMPUTER_INSTRUCTIONS,
+        has.linear && LINEAR_INSTRUCTIONS,
       ]
         .filter(Boolean)
         .join('\n\n')
@@ -372,6 +383,7 @@ export class AgentTools {
           ...(has.browser ? BROWSER_TOOL_DEFINITIONS : []),
           ...(has.design ? DESIGN_TOOL_DEFINITIONS : []),
           ...(has.computer ? COMPUTER_TOOL_DEFINITIONS : []),
+          ...(has.linear ? LINEAR_TOOL_DEFINITIONS : []),
         ],
       }
     }
@@ -401,6 +413,14 @@ export class AgentTools {
           isError: true,
         }
       return this.computer.call(sessionId, name, p.arguments ?? {})
+    }
+    if (isLinearToolName(name)) {
+      if (!has.linear || !this.linear)
+        return {
+          content: [{ type: 'text', text: 'This session may not use Linear.' }],
+          isError: true,
+        }
+      return this.linear.call(name, p.arguments ?? {})
     }
     if (!has.agents)
       return {

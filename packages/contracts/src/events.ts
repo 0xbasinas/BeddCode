@@ -117,6 +117,8 @@ export const SessionEvent = z.discriminatedUnion('type', [
     designTools: z.boolean().optional(),
     /** The agent may operate the host's desktop through BeddCode's computer tools. */
     computerTools: z.boolean().optional(),
+    /** The agent may read the user's Linear issues through BeddCode's Linear tools. */
+    linearTools: z.boolean().optional(),
     /** Set when a schedule started this session. */
     schedule: z.object({ id: z.string(), name: z.string() }).optional(),
     mcpGateway: z.boolean().optional(),

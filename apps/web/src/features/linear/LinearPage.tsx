@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import { setHandoff } from '../../stores/handoff.ts'
+import { hostRequest } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import '../settings/settings.css'
 import './linear.css'
@@ -145,6 +146,14 @@ export function LinearPage() {
   const account = store.accounts.find((a) => a.id === store.active) ?? store.accounts[0]
   const apiKey = account?.key
   const client = useMemo(() => (apiKey ? new LinearClient({ apiKey }) : undefined), [apiKey])
+  // Agents with Linear tools run on the host, so it keeps a copy of the active key.
+  useEffect(() => {
+    try {
+      hostRequest(LOCAL_HOST_KEY, 'linear.setKey', { key: apiKey ?? null }).catch(() => {})
+    } catch {
+      // No connection to the host yet; the next change sends it.
+    }
+  }, [apiKey])
   const update = (next: Store) => {
     writeStore(next)
     setStore(next)

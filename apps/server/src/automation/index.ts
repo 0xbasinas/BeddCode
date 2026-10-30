@@ -14,6 +14,7 @@ import { BrowserBroker, BrowserTools, type BrowserToolsHost } from './browserUse
 import { auditFile } from '../computer/audit.ts'
 import { ComputerTools, type ComputerToolsHost } from '../computer/computerTools.ts'
 import { CuaDesktopDriver } from '../computer/cuaDriver.ts'
+import { LinearKeyStore, LinearTools } from '../linear/linearTools.ts'
 import { ScheduleService } from './schedules.ts'
 
 /** The Desktop pane's view of a session's computer use. */
@@ -98,6 +99,7 @@ export function createAutomation(deps: AutomationDeps) {
   )
   const designs = new DesignStore(path.join(home, 'designs'))
   const designLink = new DesignLink()
+  const linearKey = new LinearKeyStore(path.join(home, 'linear.json'))
   const agentTools = new AgentTools(
     {
       create,
@@ -123,6 +125,7 @@ export function createAutomation(deps: AutomationDeps) {
     browser,
     new DesignTools(designs, designLink),
     computer,
+    new LinearTools(linearKey),
   )
   const stopAlerts = store.subscribe((stored) => {
     alerts.onEvent(stored)
@@ -152,6 +155,12 @@ export function createAutomation(deps: AutomationDeps) {
     browser: broker,
     designs,
     designLink,
+    linear: {
+      setKey(key: string | null) {
+        linearKey.set(key)
+        return linearKey.get() !== undefined
+      },
+    },
     stop() {
       schedules.stop()
       stopAlerts()

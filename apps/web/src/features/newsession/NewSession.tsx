@@ -13,6 +13,7 @@ import {
   PenTool,
   MessageSquare,
   Monitor,
+  ListChecks,
   MousePointer2,
   Server,
 } from 'lucide-react'
@@ -112,6 +113,7 @@ export function NewSession({
   const [browserTools, setBrowserTools] = useState(false)
   const [designTools, setDesignTools] = useState(false)
   const [computerTools, setComputerTools] = useState(false)
+  const [linearTools, setLinearTools] = useState(false)
   const [repo, setRepo] = useState<RepoState | null | 'loading'>('loading')
   const [commands, setCommands] = useState<SlashCommand[]>([])
   const [preview, setPreview] = useState<{ key: string; data?: AgentPreview; error?: string }>()
@@ -299,6 +301,7 @@ export function NewSession({
         browserTools: browserTools || undefined,
         designTools: designTools || undefined,
         computerTools: computerTools || undefined,
+        linearTools: linearTools || undefined,
       })
       await prompt(sessionId, value, attachments)
       if (activeDraft.current === memoryKey)
@@ -453,6 +456,15 @@ export function NewSession({
                   onClick={() => setComputerTools((v) => !v)}
                 >
                   <MousePointer2 size={15} aria-hidden="true" />
+                </button>
+                <button
+                  className="capability-toggle"
+                  aria-label="Linear issues"
+                  aria-pressed={linearTools}
+                  title={`Linear issues: ${linearTools ? 'on' : 'off'}. Let the agent read your Linear issues (read-only). Connect Linear first.`}
+                  onClick={() => setLinearTools((v) => !v)}
+                >
+                  <ListChecks size={15} aria-hidden="true" />
                 </button>
               </div>
               {repo && repo !== 'loading' && (

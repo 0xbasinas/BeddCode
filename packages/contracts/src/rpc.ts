@@ -450,6 +450,8 @@ export const RpcMethods = {
       designTools: z.boolean().optional(),
       /** Let the agent operate the host's desktop (BeddCode's computer tools). */
       computerTools: z.boolean().optional(),
+      /** Let the agent read the user's Linear issues (BeddCode's Linear tools). */
+      linearTools: z.boolean().optional(),
     }),
     result: z.object({ sessionId: z.string() }),
   },
@@ -731,6 +733,11 @@ export const RpcMethods = {
   'design.delete': {
     params: z.object({ id: z.string() }),
     result: z.object({ removed: z.boolean() }),
+  },
+  /** Gives the host the Linear API key connected in the app, so agents with Linear tools can use it. Null disconnects. */
+  'linear.setKey': {
+    params: z.object({ key: z.string().max(500).nullable() }),
+    result: z.object({ connected: z.boolean() }),
   },
 } as const
 

@@ -354,7 +354,11 @@ export class SessionManager {
         config: params.config,
         mcpServers: this.toolServersFor(
           sessionId,
-          params.agentTools || params.browserTools || params.designTools || params.computerTools,
+          params.agentTools ||
+            params.browserTools ||
+            params.designTools ||
+            params.computerTools ||
+            params.linearTools,
         ),
       })
     } catch (err) {
@@ -389,6 +393,7 @@ export class SessionManager {
       designTools: (params.designTools && this.deps.agentToolServers !== undefined) || undefined,
       computerTools:
         (params.computerTools && this.deps.agentToolServers !== undefined) || undefined,
+      linearTools: (params.linearTools && this.deps.agentToolServers !== undefined) || undefined,
     })
     this.announceModes(sessionId, adapter, instance.id, params.permissionMode)
     void this.pump(sessionId, session)
@@ -1109,7 +1114,8 @@ export class SessionManager {
         created.event.agentTools ||
           created.event.browserTools ||
           created.event.designTools ||
-          created.event.computerTools,
+          created.event.computerTools ||
+          created.event.linearTools,
       ),
     }
     let session: ProviderSession

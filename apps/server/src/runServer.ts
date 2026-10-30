@@ -223,7 +223,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
       mcpGateway,
       telemetry,
       telemetryRecorder: (name, value, tags) => telemetry.record(name, value, tags),
-      automation: { schedules, alerts, designs, computer: automation.computerPane },
+      automation: { schedules, alerts, designs, computer: automation.computerPane, linear: automation.linear },
       agentTools,
       browser: automation.browser,
       designLink: automation.designLink,
