@@ -327,11 +327,21 @@ export class SessionManager {
     let cwd = folder
     let branch = info?.isRepo ? info.branch : undefined
     let worktree: { baseBranch: string; copiedFiles?: number } | undefined
+    if (params.workspace?.mode === 'local' && params.workspace.newBranch?.trim()) {
+      if (!info?.isRepo) throw new Error('Branches need a git repository')
+      await this.deps.git.createBranch(
+        folder,
+        params.workspace.newBranch,
+        params.workspace.baseBranch,
+      )
+      branch = params.workspace.newBranch.trim()
+    }
     if (params.workspace?.mode === 'worktree') {
       if (!info?.isRepo) throw new Error('Worktrees need a git repository')
       const made = await this.deps.git.createWorktree(folder, {
         branch: params.workspace.branch,
         baseBranch: params.workspace.baseBranch,
+        name: params.workspace.name,
       })
       cwd = made.path
       branch = made.branch

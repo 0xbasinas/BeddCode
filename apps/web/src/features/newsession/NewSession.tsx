@@ -59,6 +59,10 @@ interface Workspace {
   baseBranch?: string
   /** An existing branch to check out in the new worktree, instead of a new branch. */
   branch?: string
+  /** Name for the new worktree's folder; generated when empty. */
+  name?: string
+  /** With mode local: a new branch to create from baseBranch in the main checkout. */
+  newBranch?: string
   /** A worktree that already has the branch: the session works there, in its folder. */
   existing?: { path: string; branch: string }
 }
@@ -295,8 +299,19 @@ export function NewSession({
         effort: choice.effort,
         config: Object.keys(configValues).length > 0 ? configValues : undefined,
         workspace: useWorktree
-          ? { mode: 'worktree', baseBranch: workspace.baseBranch, branch: workspace.branch }
-          : undefined,
+          ? {
+              mode: 'worktree',
+              baseBranch: workspace.baseBranch,
+              branch: workspace.branch,
+              name: workspace.name?.trim() || undefined,
+            }
+          : folder && repo && repo !== 'loading' && workspace.newBranch?.trim()
+            ? {
+                mode: 'local',
+                baseBranch: workspace.baseBranch,
+                newBranch: workspace.newBranch.trim(),
+              }
+            : undefined,
         agentTools: agentTools || undefined,
         browserTools: browserTools || undefined,
         designTools: designTools || undefined,
@@ -697,8 +712,14 @@ function WorkspaceChip({
     : workspace.mode === 'worktree'
       ? workspace.branch
         ? `Branch ${workspace.branch}`
-        : `New worktree from ${base}`
-      : `Work in the main checkout${repo.info.branch ? ` (${repo.info.branch})` : ''}`
+        : workspace.name?.trim()
+          ? `Worktree ${workspace.name.trim()}`
+          : `New worktree from ${base}`
+      : workspace.newBranch !== undefined
+        ? workspace.newBranch.trim()
+          ? `New branch ${workspace.newBranch.trim()}`
+          : `New branch from ${base}`
+        : `Work in the main checkout${repo.info.branch ? ` (${repo.info.branch})` : ''}`
   // Working on a branch: where it already is, or in a worktree of its own.
   const workOn = (b: Branch): Workspace =>
     b.worktree
@@ -709,7 +730,10 @@ function WorkspaceChip({
   const onBranch = (b: Branch) =>
     workspace.existing?.branch === b.name ||
     workspace.branch === b.name ||
-    (workspace.mode === 'local' && !workspace.existing && b.current)
+    (workspace.mode === 'local' &&
+      !workspace.existing &&
+      workspace.newBranch === undefined &&
+      b.current)
 
   return (
     <Dropdown
@@ -727,10 +751,7 @@ function WorkspaceChip({
           <button
             className="menu-row"
             aria-checked={workspace.mode === 'worktree' && !workspace.branch}
-            onClick={() => {
-              onChange({ mode: 'worktree', baseBranch: base })
-              close()
-            }}
+            onClick={() => onChange({ mode: 'worktree', baseBranch: base, name: workspace.name })}
           >
             <span className="menu-text">
               <span className="menu-title">New worktree from {base}</span>
@@ -738,9 +759,41 @@ function WorkspaceChip({
             </span>
             {workspace.mode === 'worktree' && !workspace.branch && <Check size={16} />}
           </button>
+          {workspace.mode === 'worktree' && !workspace.branch && (
+            <input
+              className="settings-input menu-input"
+              aria-label="Worktree name"
+              placeholder="Worktree name (optional)"
+              value={workspace.name ?? ''}
+              onChange={(e) => onChange({ ...workspace, name: e.target.value })}
+            />
+          )}
           <button
             className="menu-row"
-            aria-checked={workspace.mode === 'local' && !workspace.existing}
+            aria-checked={workspace.mode === 'local' && workspace.newBranch !== undefined}
+            onClick={() => onChange({ mode: 'local', baseBranch: base, newBranch: '' })}
+          >
+            <span className="menu-text">
+              <span className="menu-title">New branch from {base}</span>
+              <span className="menu-desc">Creates and checks it out in the main checkout</span>
+            </span>
+            {workspace.mode === 'local' && workspace.newBranch !== undefined && <Check size={16} />}
+          </button>
+          {workspace.mode === 'local' && workspace.newBranch !== undefined && (
+            <input
+              className="settings-input menu-input"
+              aria-label="New branch name"
+              placeholder="Branch name"
+              autoFocus
+              value={workspace.newBranch}
+              onChange={(e) => onChange({ ...workspace, newBranch: e.target.value })}
+            />
+          )}
+          <button
+            className="menu-row"
+            aria-checked={
+              workspace.mode === 'local' && !workspace.existing && workspace.newBranch === undefined
+            }
             onClick={() => {
               onChange({ mode: 'local' })
               close()
@@ -750,7 +803,9 @@ function WorkspaceChip({
               <span className="menu-title">Work in the main checkout</span>
               <span className="menu-desc">Edits {repo.info.root} directly</span>
             </span>
-            {workspace.mode === 'local' && !workspace.existing && <Check size={16} />}
+            {workspace.mode === 'local' &&
+              !workspace.existing &&
+              workspace.newBranch === undefined && <Check size={16} />}
           </button>
           {repo.branches.length > 0 && <div className="menu-sep" />}
           {repo.branches.length > 0 && <div className="menu-heading">Work on a branch</div>}

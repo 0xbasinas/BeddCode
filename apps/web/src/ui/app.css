@@ -1011,6 +1011,11 @@ button.chip-lite:hover {
   justify-content: space-between;
   gap: calc(12px * var(--ui-scale));
 }
+.menu-input {
+  display: block;
+  width: calc(100% - calc(16px * var(--ui-scale)));
+  margin: 0 calc(8px * var(--ui-scale)) calc(6px * var(--ui-scale));
+}
 .menu-sep {
   height: 1px;
   margin: calc(6px * var(--ui-scale)) calc(4px * var(--ui-scale));

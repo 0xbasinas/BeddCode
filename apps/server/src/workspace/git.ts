@@ -700,13 +700,30 @@ export class GitService {
       })
   }
 
+  /** Creates `name` (from `base` when given) and checks it out in the checkout at `cwd`. */
+  async createBranch(cwd: string, name: string, base?: string): Promise<void> {
+    const root = await this.root(cwd)
+    const branch = name.trim()
+    if ((await this.gitRaw(root, ['check-ref-format', '--branch', branch])).code !== 0)
+      throw new GitError(`"${branch}" is not a valid branch name`)
+    const exists = await this.gitRaw(root, [
+      'show-ref',
+      '--verify',
+      '--quiet',
+      `refs/heads/${branch}`,
+    ])
+    if (exists.code === 0) throw new GitError(`The branch ${branch} already exists`)
+    await this.git(root, ['checkout', '-b', branch, ...(base ? [base] : [])])
+  }
+
   /**
    * Creates a worktree for a session under `<repo>/.wt/`, on a new branch cut from `baseBranch`
-   * (or on `branch` itself when it already exists and is free).
+   * (or on `branch` itself when it already exists and is free). `name` sets the folder's name;
+   * it follows the branch name when omitted.
    */
   async createWorktree(
     cwd: string,
-    options: { branch?: string; baseBranch?: string } = {},
+    options: { branch?: string; baseBranch?: string; name?: string } = {},
   ): Promise<{ path: string; branch: string; baseBranch: string; copiedFiles?: number }> {
     const info = await this.info(cwd)
     if (!info.isRepo || !info.mainRoot) throw new GitError('Worktrees need a git repository')
@@ -715,8 +732,9 @@ export class GitService {
 
     const branch = options.branch?.trim() || `beddcode/${randomBytes(3).toString('hex')}`
     const wtRoot = path.join(info.mainRoot, '.wt')
-    let dir = path.join(wtRoot, slug(branch))
-    for (let n = 2; existsSync(dir); n++) dir = path.join(wtRoot, `${slug(branch)}-${n}`)
+    const folderName = slug(options.name?.trim() || branch)
+    let dir = path.join(wtRoot, folderName)
+    for (let n = 2; existsSync(dir); n++) dir = path.join(wtRoot, `${folderName}-${n}`)
 
     // A branch name that resolves to nothing: say why, rather than git's "invalid reference".
     const startsFrom = await this.gitRaw(info.mainRoot, [

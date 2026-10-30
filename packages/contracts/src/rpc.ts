@@ -440,6 +440,10 @@ export const RpcMethods = {
           baseBranch: z.string().optional(),
           /** Name for the new worktree's branch; generated when omitted. */
           branch: z.string().optional(),
+          /** Name for the worktree's folder under .wt; follows the branch name when omitted. */
+          name: z.string().max(80).optional(),
+          /** With mode "local": a new branch to create from baseBranch and check out in the folder. */
+          newBranch: z.string().max(200).optional(),
         })
         .optional(),
       /** Let the agent start and manage sessions of its own (BeddCode's agent tools). */

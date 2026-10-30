@@ -324,6 +324,23 @@ describe('GitService.commit, push and log', () => {
 })
 
 describe('GitService worktrees and branches', () => {
+  it('creates and checks out a new branch in the checkout', async () => {
+    const dir = repo()
+    await git.createBranch(dir, 'feat/new-thing', 'main')
+    expect((await git.info(dir)).branch).toBe('feat/new-thing')
+    await expect(git.createBranch(dir, 'feat/new-thing')).rejects.toThrow(/already exists/)
+    await expect(git.createBranch(dir, 'bad name')).rejects.toThrow(/not a valid/)
+  })
+
+  it('names the worktree folder apart from its branch', async () => {
+    const dir = repo()
+    const wt = await git.createWorktree(dir, { branch: 'feat/login', name: 'My Login Work' })
+    expect(wt.branch).toBe('feat/login')
+    expect(path.basename(wt.path)).toBe('my-login-work')
+    const again = await git.createWorktree(dir, { branch: 'feat/other', name: 'My Login Work' })
+    expect(path.basename(again.path)).toBe('my-login-work-2')
+  })
+
   it('creates a worktree under .wt on a new branch and keeps it out of status', async () => {
     const dir = repo()
     const wt = await git.createWorktree(dir, { branch: 'fix/rate-limiter' })
