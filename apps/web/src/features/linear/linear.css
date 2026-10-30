@@ -1,0 +1,125 @@
+.linear-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: calc(32px * var(--ui-scale));
+  height: calc(32px * var(--ui-scale));
+  border-radius: calc(8px * var(--ui-scale));
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.linear-group {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  margin: calc(20px * var(--ui-scale)) 0 calc(8px * var(--ui-scale));
+  font-size: calc(12px * var(--ui-scale));
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.linear-group span {
+  font-weight: 400;
+  opacity: 0.7;
+}
+.linear-issue + .linear-issue {
+  border-top: 1px solid var(--border-subtle);
+}
+.linear-issue > button.setting-row {
+  width: 100%;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.linear-issue > button.setting-row:hover {
+  background: rgb(127 127 127 / 0.08);
+}
+.linear-chevron {
+  flex: none;
+  transition: transform 0.12s;
+}
+.linear-chevron.open {
+  transform: rotate(90deg);
+}
+.linear-title {
+  display: flex;
+  align-items: baseline;
+  gap: calc(8px * var(--ui-scale));
+  min-width: 0;
+}
+.linear-id {
+  flex: none;
+  font-family: ui-monospace, monospace;
+  font-size: calc(11px * var(--ui-scale));
+  color: var(--text-muted);
+}
+.linear-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(6px * var(--ui-scale));
+}
+.linear-chip {
+  padding: 1px calc(7px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: calc(11px * var(--ui-scale));
+  color: var(--text-muted);
+}
+.linear-chip.faint {
+  border-color: transparent;
+  padding-left: 0;
+}
+.linear-chip.label {
+  background: var(--bg-card);
+}
+.linear-chip.priority-1 {
+  color: var(--danger);
+  border-color: currentColor;
+}
+.linear-chip.priority-2 {
+  color: #e8a33d;
+  border-color: currentColor;
+}
+.linear-chip.overdue {
+  color: var(--danger);
+  border-color: currentColor;
+}
+
+/* The header and toolbar stay put; only the issue list scrolls. */
+.linear-page {
+  overflow: hidden;
+}
+.linear-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding-top: calc(40px * var(--ui-scale));
+  padding-bottom: 0;
+}
+.linear-content .settings-heading {
+  flex: none;
+  margin-bottom: calc(16px * var(--ui-scale));
+}
+.linear-workspace {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.linear-workspace > .settings-card {
+  flex: none;
+}
+.linear-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: calc(40px * var(--ui-scale));
+}
+.linear-content > .settings-card {
+  flex: none;
+}

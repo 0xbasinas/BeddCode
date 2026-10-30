@@ -8,6 +8,7 @@ import {
 import { AppShell } from './features/shell/AppShell.tsx'
 import { NewSession } from './features/newsession/NewSession.tsx'
 import { ThreadView } from './features/thread/ThreadView.tsx'
+import { LinearPage } from './features/linear/LinearPage.tsx'
 import { SchedulesPage } from './features/schedules/SchedulesPage.tsx'
 import {
   SettingsPage,
@@ -84,12 +85,19 @@ const designRoute = createRoute({
   ),
 })
 
+const linearRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/linear',
+  component: LinearPage,
+})
+
 // Hash history so the Electron build works when loaded from file://.
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     indexRoute,
     sessionRoute,
     designRoute,
+    linearRoute,
     schedulesRoute,
     settingsRoute,
   ]),

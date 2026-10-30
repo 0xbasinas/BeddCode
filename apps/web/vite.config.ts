@@ -42,5 +42,10 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), contentSecurityPolicy()],
   // Relative base so the Electron build can load dist/index.html from disk.
   base: './',
+  // @linear/sdk reads its user agent from process.env, which browsers don't have.
+  define: {
+    'process.env.npm_package_name': JSON.stringify('@linear/sdk'),
+    'process.env.npm_package_version': JSON.stringify('unknown'),
+  },
   server: { port: 5173, strictPort: true },
 })
