@@ -77,7 +77,10 @@ function refresh(hostKey: string, cwd: string): Promise<void> {
   const request = hostRequest(hostKey, 'git.pr.get', { cwd })
     .then(
       (pr) => {
-        const entries = { ...useSessionPrs.getState().entries, [key]: { pr: pr && summarize(pr), at: Date.now() } }
+        const entries = {
+          ...useSessionPrs.getState().entries,
+          [key]: { pr: pr && summarize(pr), at: Date.now() },
+        }
         useSessionPrs.setState({ entries })
         try {
           localStorage.setItem(KEY, JSON.stringify(entries))
