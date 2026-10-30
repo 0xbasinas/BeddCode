@@ -105,6 +105,16 @@ export const PushRegistration = z.object({
 })
 export type PushRegistration = z.infer<typeof PushRegistration>
 
+/** Whether the Telegram bot is running and how many chats may use it. */
+export const TelegramStatus = z.object({
+  connected: z.boolean(),
+  botName: z.string().optional(),
+  chats: z.number(),
+  /** A one-time code to send the bot as `/pair <code>`, while one is open. */
+  pairCode: z.string().optional(),
+})
+export type TelegramStatus = z.infer<typeof TelegramStatus>
+
 /** Host-wide alert delivery settings. */
 export const AlertSettings = z.object({
   /**

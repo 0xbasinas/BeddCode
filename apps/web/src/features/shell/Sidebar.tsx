@@ -369,6 +369,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               title={[s.branch, agentLabel(s)].filter(Boolean).join(' · ')}
             >
               {s.mcpGateway && <span title="Started through remote MCP">MCP · </span>}
+              {s.telegram && <span title="Started from Telegram">Telegram · </span>}
               {s.branch && (
                 <>
                   <GitBranch size={11} /> <code>{s.branch}</code> ·{' '}

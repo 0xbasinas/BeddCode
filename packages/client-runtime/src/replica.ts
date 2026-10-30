@@ -145,6 +145,7 @@ export interface SessionView {
   /** Started by a schedule. */
   schedule?: { id: string; name: string }
   mcpGateway?: boolean
+  telegram?: boolean
   /** Can start and manage other sessions. */
   agentTools?: boolean
   /** The agent may use the desktop app's browser pane. */
@@ -262,6 +263,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       parent: e.parent,
       schedule: e.schedule,
       mcpGateway: e.mcpGateway,
+      telegram: e.telegram,
       agentTools: e.agentTools,
       browserTools: e.browserTools,
       designTools: e.designTools,

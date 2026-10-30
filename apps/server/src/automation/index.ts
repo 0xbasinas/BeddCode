@@ -1,3 +1,4 @@
+import os from 'node:os'
 import path from 'node:path'
 import type { RpcParams } from '@beddcode/contracts'
 import { createLogger } from '@beddcode/shared'
@@ -16,6 +17,7 @@ import { ComputerTools, type ComputerToolsHost } from '../computer/computerTools
 import { CuaDesktopDriver } from '../computer/cuaDriver.ts'
 import { LinearKeyStore, LinearTools } from '../linear/linearTools.ts'
 import { ScheduleService } from './schedules.ts'
+import { TelegramBridge } from '../telegram/bridge.ts'
 
 /** The Desktop pane's view of a session's computer use. */
 export interface ComputerPane {
@@ -127,6 +129,24 @@ export function createAutomation(deps: AutomationDeps) {
     computer,
     new LinearTools(linearKey),
   )
+  const telegram = new TelegramBridge({
+    file: path.join(home, 'telegram.json'),
+    log: createLogger('telegram'),
+    envToken: process.env.BEDDCODE_TELEGRAM_TOKEN,
+    host: {
+      create: (params) => create(params, { telegram: true }),
+      prompt,
+      interrupt: (id) => sessions.interrupt(id),
+      approve: (id, requestId, optionId) => sessions.approve(id, requestId, optionId),
+      answer: (id, requestId, answers) => sessions.answerQuestion(id, requestId, answers),
+      readSession,
+      recentSessionIds: (limit) => store.listSessionIds(undefined, limit).map((s) => s.id),
+      projectPaths: async () => (await workspace.projects.list()).map((p) => p.path),
+      providers: () => sessions.listProviders(),
+      hostLabel: os.hostname(),
+      subscribe,
+    },
+  })
   const stopAlerts = store.subscribe((stored) => {
     alerts.onEvent(stored)
     if (stored.event.type === 'session.deleted') agentTools.forget(stored.event.sessionId)
@@ -155,6 +175,7 @@ export function createAutomation(deps: AutomationDeps) {
     browser: broker,
     designs,
     designLink,
+    telegram,
     linear: {
       setKey(key: string | null) {
         linearKey.set(key)
@@ -163,6 +184,7 @@ export function createAutomation(deps: AutomationDeps) {
     },
     stop() {
       schedules.stop()
+      telegram.stop()
       stopAlerts()
       void computer.dispose()
     },

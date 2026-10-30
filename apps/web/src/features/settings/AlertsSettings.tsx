@@ -4,6 +4,7 @@ import { DEFAULT_ALERT_EVENTS, type AlertEvents, type RpcResult } from '@beddcod
 import { hostRequest, useRuntime } from '../../stores/host.ts'
 import { timeAgo } from '../../ui/format.ts'
 import { Toggle } from './PreferencesSettings.tsx'
+import { TelegramSettings } from './TelegramSettings.tsx'
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
@@ -181,6 +182,8 @@ export function AlertsSettings({ hostKey }: { hostKey: string }) {
           </div>
         ))}
       </div>
+
+      <TelegramSettings hostKey={hostKey} />
     </>
   )
 }

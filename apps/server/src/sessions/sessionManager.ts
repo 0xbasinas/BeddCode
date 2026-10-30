@@ -71,6 +71,7 @@ export interface SessionOrigin {
   parent?: { sessionId: string; depth: number; requestId?: string }
   schedule?: { id: string; name: string }
   mcpGateway?: boolean
+  telegram?: boolean
 }
 
 interface LiveSession {
@@ -402,6 +403,7 @@ export class SessionManager {
       parent: origin.parent,
       schedule: origin.schedule,
       mcpGateway: origin.mcpGateway,
+      telegram: origin.telegram,
       agentTools: (params.agentTools && this.deps.agentToolServers !== undefined) || undefined,
       browserTools: (params.browserTools && this.deps.agentToolServers !== undefined) || undefined,
       designTools: (params.designTools && this.deps.agentToolServers !== undefined) || undefined,

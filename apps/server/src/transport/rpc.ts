@@ -29,6 +29,7 @@ import type { FileService } from '../files/files.ts'
 import { mediaType } from '../files/media.ts'
 import type { TerminalManager } from '../terminals/manager.ts'
 import type { AlertService } from '../automation/alerts.ts'
+import type { TelegramBridge } from '../telegram/bridge.ts'
 import type { ComputerPane } from '../automation/index.ts'
 import { previewTrigger } from '../automation/cron.ts'
 import type { DesignStore } from '../design/designStore.ts'
@@ -45,6 +46,7 @@ export interface AutomationServices {
   designs: DesignStore
   computer: ComputerPane
   linear: { setKey(key: string | null): boolean }
+  telegram: TelegramBridge
 }
 
 /** Everything that works on a session's folder: git, projects, shells and files. */
@@ -393,6 +395,14 @@ export function createRpcRouter(
       paused: automation.computer.control(p.sessionId, p.paused),
     }),
     'linear.setKey': async (p) => ({ connected: automation.linear.setKey(p.key) }),
+    'telegram.status': async () => automation.telegram.status(),
+    'telegram.configure': async (p) => {
+      const { telegram } = automation
+      if (p.unpair) telegram.unpairAll()
+      if (p.token !== undefined) await telegram.setToken(p.token)
+      if (p.newPairCode) telegram.newPairCode()
+      return telegram.status()
+    },
     'schedules.list': async () => schedules.list(),
     'schedules.save': async (p) => schedules.saveSchedule(p),
     'schedules.remove': async (p) => ({ removed: schedules.remove(p.id) }),

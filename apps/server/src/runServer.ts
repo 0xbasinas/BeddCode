@@ -229,6 +229,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
         designs,
         computer: automation.computerPane,
         linear: automation.linear,
+        telegram: automation.telegram,
       },
       agentTools,
       browser: automation.browser,
@@ -250,6 +251,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
   if (relayUrl) startRelay(relayUrl)
   schedules.start()
   log.info(`listening on ${config.host}:${server.port} (data: ${home})`)
+  automation.telegram.start()
   if (!isLoopbackHost(config.host)) {
     log.info(
       `reachable from other machines: ${config.guard.allowLan ? 'tailnet and local network' : 'tailnet only'}, ` +

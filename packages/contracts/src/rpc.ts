@@ -33,6 +33,7 @@ import { UsageLimits, UsageSummary } from './usage.ts'
 import {
   AlertEvents,
   AlertSettings,
+  TelegramStatus,
   PushRegistration,
   Schedule,
   ScheduleInput,
@@ -772,6 +773,19 @@ export const RpcMethods = {
   'linear.setKey': {
     params: z.object({ key: z.string().max(500).nullable() }),
     result: z.object({ connected: z.boolean() }),
+  },
+  /** The Telegram bot that lets the user message agents from a chat. */
+  'telegram.status': { params: z.object({}), result: TelegramStatus },
+  'telegram.configure': {
+    params: z.object({
+      /** A BotFather token; null removes it. */
+      token: z.string().max(200).nullable().optional(),
+      /** Opens a fresh one-time code to send the bot as `/pair <code>`. */
+      newPairCode: z.boolean().optional(),
+      /** Forgets every paired chat. */
+      unpair: z.boolean().optional(),
+    }),
+    result: TelegramStatus,
   },
 } as const
 
