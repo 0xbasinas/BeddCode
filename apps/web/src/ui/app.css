@@ -1180,6 +1180,31 @@ button.chip-lite:hover {
   margin: 0 0 calc(6px * var(--ui-scale));
   text-align: center;
 }
+.new-body h2 .project-name-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(5px * var(--ui-scale));
+  max-width: min(36vw, calc(260px * var(--ui-scale)));
+  padding: 0 calc(3px * var(--ui-scale));
+  line-height: 1.15;
+  vertical-align: baseline;
+  transform: translateY(calc(-1px * var(--ui-scale)));
+  color: var(--text-muted);
+  font-size: 0.72em;
+  font-weight: 400;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+.new-body h2 .project-name-trigger:hover {
+  color: var(--text);
+}
+.new-body h2 .project-name-trigger .chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .new-body > p {
   margin: 0 0 calc(22px * var(--ui-scale));
   color: var(--text-muted);

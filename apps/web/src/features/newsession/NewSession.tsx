@@ -358,7 +358,20 @@ export function NewSession({
         <div className="thread-meta">The agent starts when you send</div>
       </header>
       <div className="new-body">
-        <h2>{agent ? `What should ${agent.label} work on?` : 'What should we work on?'}</h2>
+        <h2>
+          {agent ? `What should ${agent.label} work on` : 'What should we work on'}{' '}
+          <FolderChip
+            value={folder}
+            recent={recentFolders}
+            onChange={pickFolder}
+            onAdd={async () => {
+              const added = await chooseFolder(hostKey)
+              if (added) pickFolder(added.path)
+            }}
+            inline
+          />
+          ?
+        </h2>
         <p>
           {connection !== 'connected'
             ? 'Connecting to your host…'
@@ -634,10 +647,12 @@ function FolderChip({
   recent,
   onChange,
   onAdd,
+  inline = false,
 }: {
   value: string
   recent: string[]
   onChange(path: string): void
+  inline?: boolean
   /** Opens the Add folder flow (system picker or folder browser); nothing is typed. */
   onAdd(): Promise<void>
 }) {
@@ -645,14 +660,18 @@ function FolderChip({
     <Dropdown
       trigger={({ toggle }) => (
         <button
-          className="chip-lite"
+          className={`chip-lite${inline ? ' project-name-trigger' : ''}`}
           onClick={toggle}
           aria-label="Folder"
           title={value || 'Start without a project folder'}
         >
-          {value ? <Folder size={14} /> : <MessageSquare size={14} />}{' '}
-          <span className="chip-text">{value ? folderName(value) : 'No project'}</span>{' '}
-          <ChevronDown size={13} />
+          {value ? <Folder size={inline ? 13 : 14} /> : <MessageSquare size={14} />}
+          {!inline && ' '}
+          <span className="chip-text">
+            {value ? folderName(value) : inline ? 'choose a project' : 'No project'}
+          </span>
+          {!inline && ' '}
+          <ChevronDown size={inline ? 12 : 13} />
         </button>
       )}
       panelClassName="wide"
