@@ -36,6 +36,7 @@ const session = (over: Partial<SessionView>): SessionView => ({
   createdAt: 1_500,
   updatedAt: 9_000,
   status: 'idle',
+  statusSince: 9_000,
   items: [],
   added: 0,
   removed: 0,

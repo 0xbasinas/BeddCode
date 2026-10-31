@@ -1,3 +1,4 @@
+import { StatusTimer } from '../../ui/StatusTimer.tsx'
 import { AgentIcon } from '../../ui/AgentMark.tsx'
 import {
   Fragment,
@@ -360,6 +361,9 @@ ${s.projectless ? 'no-project' : s.projectPath}`
             <span className="session-time">{timeAgo(s.updatedAt)}</span>
           </span>
           <span className="session-meta">
+            {(s.status === 'running' || s.status === 'needs-you') && (
+              <StatusTimer session={s} className="session-timer" />
+            )}
             {note && !(s.status === 'running' && note === 'Working…') && (
               <span className={`session-note ${s.status}`} title={note}>
                 {note}

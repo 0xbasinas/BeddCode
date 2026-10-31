@@ -11,6 +11,8 @@ export interface AppPreferences {
   editorLineNumbers: boolean
   defaultHostKey: string
   defaultWorkspace: 'worktree' | 'local'
+  /** Minutes a turn may run before its timer turns amber; 0 is off. */
+  slowTurnMinutes: number
 }
 
 export const DEFAULT_APP_PREFERENCES: AppPreferences = {
@@ -24,6 +26,7 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   editorLineNumbers: true,
   defaultHostKey: 'local',
   defaultWorkspace: 'worktree',
+  slowTurnMinutes: 0,
 }
 const KEY = 'beddcode.app-preferences.v1'
 
@@ -53,6 +56,13 @@ export function parseAppPreferences(raw: string | null): AppPreferences {
           ? value.defaultHostKey
           : 'local',
       defaultWorkspace: value.defaultWorkspace === 'local' ? 'local' : 'worktree',
+      slowTurnMinutes:
+        typeof value.slowTurnMinutes === 'number' &&
+        Number.isInteger(value.slowTurnMinutes) &&
+        value.slowTurnMinutes > 0 &&
+        value.slowTurnMinutes <= 240
+          ? value.slowTurnMinutes
+          : 0,
     }
   } catch {
     return DEFAULT_APP_PREFERENCES

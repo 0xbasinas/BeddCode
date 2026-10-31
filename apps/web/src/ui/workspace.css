@@ -961,3 +961,23 @@ a {
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
 }
+
+.session-timer {
+  flex: none;
+  margin-right: 6px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim, inherit);
+  opacity: 0.8;
+}
+.thread-timer {
+  font-variant-numeric: tabular-nums;
+}
+.timer-slow {
+  color: var(--amber, #d9a441);
+}
+.turn-duration {
+  margin-top: 4px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.55;
+}

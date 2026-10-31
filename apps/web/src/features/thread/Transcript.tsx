@@ -1,3 +1,4 @@
+import { elapsedLabel } from '@beddcode/client-runtime'
 import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AttachmentImage, isImageName } from '../composer/AttachmentImage.tsx'
 import {
@@ -40,6 +41,7 @@ export const Transcript = memo(function Transcript({
   onOpenFile,
   onFork,
   completedTurns = 0,
+  turnDurations,
   stoppedTurn,
   changes,
   sessionId,
@@ -62,6 +64,8 @@ export const Transcript = memo(function Transcript({
   onFork?(turnNo: number): void | Promise<void>
   /** Turns that have finished; a fork can only end after one of them. */
   completedTurns?: number
+  /** How long each finished turn ran, in ms, by turn number. */
+  turnDurations?: Record<number, number>
   /** Draws this message if it is among the earlier, undrawn ones (a new `n` asks again). */
   jumpTo?: { id: string; n: number }
   readingKey?: string
@@ -240,6 +244,11 @@ export const Transcript = memo(function Transcript({
               live={live && block.item === items.at(-1)}
             />
             {canFork && forkButton(turnNo!)}
+            {turnNo !== undefined &&
+              forkAnchor.get(turnNo) === index &&
+              turnDurations?.[turnNo] !== undefined && (
+                <div className="turn-duration">{elapsedLabel(turnDurations[turnNo]!)}</div>
+              )}
           </div>
         )
       })}

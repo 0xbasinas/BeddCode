@@ -120,6 +120,14 @@ export interface SessionView {
   /** Pinned to the top of the sidebar by the user. */
   pinned?: boolean
   status: SessionStatus
+  /** When `status` last changed; the running / waiting timers count from here. */
+  statusSince: number
+  /** How long the last finished turn ran, in ms. */
+  lastTurnMs?: number
+  /** How long each finished turn ran, in ms, by turn number. */
+  turnDurations?: Record<number, number>
+  /** When the running turn began. */
+  turnStartedAt?: number
   lastTurnReason?: 'done' | 'cancelled' | 'error'
   /** Why the last turn ended, when it was not the agent finishing (stopped, crashed, host restart). */
   lastTurnMessage?: string
@@ -250,6 +258,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       createdAt: e.at,
       updatedAt: e.at,
       status: 'idle',
+      statusSince: e.at,
       items: [],
       added: 0,
       removed: 0,
@@ -389,6 +398,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.done = undefined
       next.turns = current.turns + 1
       next.status = 'running'
+      next.turnStartedAt = e.at
       next.lastTurnReason = undefined
       next.lastTurnMessage = undefined
       next.declined = undefined
@@ -566,6 +576,11 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     }
     case 'turn.completed':
       next.completedTurns = current.completedTurns + 1
+      if (current.turnStartedAt !== undefined) {
+        next.lastTurnMs = e.at - current.turnStartedAt
+        next.turnDurations = { ...current.turnDurations, [current.turns]: next.lastTurnMs }
+      }
+      next.turnStartedAt = undefined
       next.status = e.reason === 'error' ? 'failed' : 'idle'
       next.lastTurnReason = e.reason
       next.lastTurnMessage = e.message
@@ -591,6 +606,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       break
   }
 
+  if (next.status !== current.status) next.statusSince = e.at
   next = { ...next }
   return { ...state, lastSeq: stored.seq, sessions: { ...state.sessions, [e.sessionId]: next } }
 }

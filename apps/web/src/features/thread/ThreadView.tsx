@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react'
 import type { SessionView } from '@beddcode/client-runtime'
+import { StatusTimer } from '../../ui/StatusTimer.tsx'
 import { Composer } from '../composer/Composer.tsx'
 import { ModelBadge, ModelMenu } from '../composer/Menus.tsx'
 import { ConfigMenu } from '../composer/ConfigMenu.tsx'
@@ -224,6 +225,12 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             {hostKey === LOCAL_HOST_KEY ? 'This PC' : (host?.name ?? hostKey)} ·{' '}
             {session.projectless ? 'No project' : folderName(session.projectPath)}
             {session.branch ? ` · ${session.branch}` : ''}
+            {session.status !== 'failed' && (
+              <>
+                {' · '}
+                <StatusTimer session={session} className="thread-timer" />
+              </>
+            )}
             {session.context && session.context.size > 0 && (
               <span
                 title={`${session.context.used.toLocaleString()} of ${session.context.size.toLocaleString()} tokens of the agent's context window`}
@@ -386,6 +393,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
               onFork={canFork ? fork : undefined}
               jumpTo={jump}
               completedTurns={session.completedTurns}
+              turnDurations={session.turnDurations}
               stoppedTurn={
                 session.lastTurnReason === 'cancelled' ? session.completedTurns : undefined
               }

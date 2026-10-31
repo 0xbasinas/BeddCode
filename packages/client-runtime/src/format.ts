@@ -36,3 +36,13 @@ export function agoLabel(at: number, now = Date.now()): string {
   const short = timeAgo(at, now)
   return short === 'now' ? 'just now' : `${short} ago`
 }
+
+/** "42s", "3m 10s", "1h 5m": how long something has been going, ticking by the second. */
+export function elapsedLabel(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return s % 60 ? `${m}m ${s % 60}s` : `${m}m`
+  const h = Math.floor(m / 60)
+  return m % 60 ? `${h}h ${m % 60}m` : `${h}h`
+}

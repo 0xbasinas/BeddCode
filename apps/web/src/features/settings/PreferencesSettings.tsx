@@ -81,6 +81,27 @@ export function PreferencesSettings({
               </Select>
             </div>
           </div>
+          <div className="settings-section-head">
+            <h3>Sessions</h3>
+          </div>
+          <div className="settings-card">
+            <div className="setting-row">
+              <label className="setting-label" htmlFor="slow-turn">
+                <span>Warn when a turn runs long</span>
+              </label>
+              <Select
+                id="slow-turn"
+                aria-label="Warn when a turn runs long"
+                value={String(values.slowTurnMinutes)}
+                onChange={(e) => update({ slowTurnMinutes: Number(e.target.value) })}
+              >
+                <option value="0">Off</option>
+                <option value="5">After 5 minutes</option>
+                <option value="10">After 10 minutes</option>
+                <option value="30">After 30 minutes</option>
+              </Select>
+            </div>
+          </div>
         </>
       )}
       {section === 'appearance' && (
