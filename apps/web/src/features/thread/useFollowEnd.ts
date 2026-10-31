@@ -27,9 +27,19 @@ export function useFollowEnd(
       rememberReadingPosition(memoryKey, { top: el.scrollTop, following: pinned.current })
     }
     el.addEventListener('scroll', onScroll, { passive: true })
+    // Content keeps growing after first paint (markdown, images, highlighted code); stay at the end
+    // while pinned so a session opens at its latest message without a visible jump.
+    const content = el.firstElementChild
+    const observer = content
+      ? new ResizeObserver(() => {
+          if (pinned.current) el.scrollTop = el.scrollHeight
+        })
+      : undefined
+    if (content) observer?.observe(content)
     return () => {
       rememberReadingPosition(memoryKey, { top: el.scrollTop, following: pinned.current })
       el.removeEventListener('scroll', onScroll)
+      observer?.disconnect()
     }
   }, [ref, memoryKey, ready])
 

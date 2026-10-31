@@ -5967,6 +5967,52 @@ button.tcall-row:hover .tcall-chevron,
 .thread {
   position: relative;
 }
+.jump-latest-anchor {
+  position: relative;
+  height: 0;
+  flex: none;
+}
+.jump-latest {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  margin-left: -17px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    transform 0.12s;
+}
+.jump-latest:hover {
+  background: var(--bg-hover);
+  transform: translateY(-1px);
+}
+.jump-latest-count {
+  position: absolute;
+  top: -7px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
 .message-nav {
   position: absolute;
   right: calc(8px * var(--ui-scale));

@@ -52,6 +52,7 @@ import { ChildAgentsBar, StartedByBanner } from './AgentToolCard.tsx'
 import { endedByDecline, handoffPrompt } from '@beddcode/client-runtime'
 import { setHandoff } from '../../stores/handoff.ts'
 import { useFollowEnd } from './useFollowEnd.ts'
+import { JumpToLatest } from './JumpToLatest.tsx'
 import { MessageNav } from './MessageNav.tsx'
 import { folderId, useFiles } from '../files/filesStore.ts'
 import { useUiStore } from '../../stores/ui.ts'
@@ -394,6 +395,14 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
         </div>
       </div>
       <MessageNav items={session.items} scroller={scroller} onJump={jumpToMessage} />
+      <div className="jump-latest-anchor">
+        <JumpToLatest
+          key={sessionId}
+          scroller={scroller}
+          itemCount={session.items.length}
+          onJump={followEnd}
+        />
+      </div>
       {actionError && (
         <p className="thread-action-error" role="alert">
           {actionError}
