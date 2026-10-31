@@ -236,6 +236,10 @@ export function Composer(props: ComposerProps) {
                   name={f.name}
                   id={f.id}
                   onRemove={() => useAttachments.getState().remove(draft, [f.key])}
+                  onAnnotated={(png) => {
+                    void attachUpload(props.hostKey, draftId, png)
+                    useAttachments.getState().remove(draft, [f.key])
+                  }}
                 />
               ) : (
                 <span

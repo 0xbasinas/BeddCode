@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Paperclip, X } from 'lucide-react'
+import { Paperclip, PenLine, X } from 'lucide-react'
 import { activeRoute, hostRequest } from '../../stores/host.ts'
 import { httpBase, mediaKindOf } from '../files/mediaKind.ts'
+import { ImageAnnotator } from './ImageAnnotator.tsx'
 
 /** Images the browser can show; the preview is only attempted for these names. */
 export const isImageName = (name: string) => mediaKindOf(name) === 'image'
@@ -30,7 +31,18 @@ function useAttachmentSrc(hostKey: string, ref: { id?: string; path?: string }) 
 }
 
 /** A full-size view of an image over the app. Click outside or press Escape to close. */
-function Lightbox({ src, name, onClose }: { src: string; name: string; onClose(): void }) {
+function Lightbox({
+  src,
+  name,
+  onClose,
+  onAnnotated,
+}: {
+  src: string
+  name: string
+  onClose(): void
+  onAnnotated?(png: File): void
+}) {
+  const [annotating, setAnnotating] = useState(false)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -41,7 +53,31 @@ function Lightbox({ src, name, onClose }: { src: string; name: string; onClose()
       <button className="lightbox-close" aria-label="Close preview" onClick={onClose}>
         <X size={18} />
       </button>
-      <img src={src} alt={name} onClick={(e) => e.stopPropagation()} />
+      {annotating ? (
+        <ImageAnnotator
+          src={src}
+          onDone={(png) => {
+            const base = name.replace(/\.[^.]+$/, '')
+            onAnnotated?.(new File([png], `${base}-annotated.png`, { type: 'image/png' }))
+            onClose()
+          }}
+        />
+      ) : (
+        <>
+          <img src={src} alt={name} onClick={(e) => e.stopPropagation()} />
+          {onAnnotated && (
+            <button
+              className="lightbox-annotate"
+              onClick={(e) => {
+                e.stopPropagation()
+                setAnnotating(true)
+              }}
+            >
+              <PenLine size={15} /> Annotate
+            </button>
+          )}
+        </>
+      )}
     </div>,
     document.body,
   )
@@ -58,6 +94,7 @@ export function AttachmentImage({
   path,
   uploading,
   onRemove,
+  onAnnotated,
 }: {
   hostKey: string
   name: string
@@ -65,6 +102,8 @@ export function AttachmentImage({
   path?: string
   uploading?: boolean
   onRemove?(): void
+  /** Composer only: the picture marked up by the user, to attach in place of this one. */
+  onAnnotated?(png: File): void
 }) {
   const { src, retry } = useAttachmentSrc(hostKey, { id, path })
   const [open, setOpen] = useState(false)
@@ -91,7 +130,9 @@ export function AttachmentImage({
           <X size={12} />
         </button>
       )}
-      {open && src && <Lightbox src={src} name={name} onClose={() => setOpen(false)} />}
+      {open && src && (
+        <Lightbox src={src} name={name} onClose={() => setOpen(false)} onAnnotated={onAnnotated} />
+      )}
     </span>
   )
 }
