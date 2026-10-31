@@ -107,6 +107,29 @@ function hostState(connection: string | undefined): { label: string; tone: strin
   }
 }
 
+type Sort = 'recent' | 'created' | 'status' | 'name'
+
+const SORTS: { value: Sort; label: string }[] = [
+  { value: 'recent', label: 'Recent activity' },
+  { value: 'created', label: 'Created' },
+  { value: 'status', label: 'Status' },
+  { value: 'name', label: 'Name' },
+]
+
+const SORT_KEY = 'beddcode.session-sort'
+
+function readSorts(): Record<string, Sort> {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(SORT_KEY) ?? '{}')
+    if (!saved || typeof saved !== 'object') return {}
+    return Object.fromEntries(
+      Object.entries(saved).filter(([, v]) => SORTS.some((o) => o.value === v)),
+    ) as Record<string, Sort>
+  } catch {
+    return {}
+  }
+}
+
 const OPEN_DONE_KEY = 'beddcode.done-open'
 const COLLAPSED_PROJECTS_KEY = 'beddcode.collapsed-projects'
 
@@ -148,7 +171,7 @@ export function Sidebar() {
   const [hostsOpen, setHostsOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [hostFilter, setHostFilter] = useState<string>('all')
-  const [sort, setSort] = useState<'attention' | 'recent'>('attention')
+  const [sorts, setSorts] = useState<Record<string, Sort>>(readSorts)
   const searchOpen = useUiStore((s) => s.searchOpen)
   const setSearchOpen = useUiStore((s) => s.setSearchOpen)
   const [query, setQuery] = useState('')
@@ -218,6 +241,18 @@ export function Sidebar() {
   const all = hosted
     .filter((h) => selectedHost === 'all' || h.hostKey === selectedHost)
     .map((h) => h.session)
+  // The sort is remembered for each host (and for "all hosts").
+  const sort: Sort = sorts[selectedHost] ?? 'recent'
+  const setSort = (value: Sort) =>
+    setSorts((current) => {
+      const next = { ...current, [selectedHost]: value }
+      try {
+        localStorage.setItem(SORT_KEY, JSON.stringify(next))
+      } catch {
+        // Still works for this window.
+      }
+      return next
+    })
   const hostOf = new Map(hosted.map((h) => [h.session.id, h.hostKey]))
   const online = entries.filter((e) => runtimes[e.key]?.connection === 'connected').length
   const local = runtimes[LOCAL_HOST_KEY]
@@ -256,7 +291,9 @@ export function Sidebar() {
     )
     .sort(
       (a, b) =>
-        (sort === 'attention' ? PRIORITY[a.status] - PRIORITY[b.status] : 0) ||
+        (sort === 'status' ? PRIORITY[a.status] - PRIORITY[b.status] : 0) ||
+        (sort === 'name' ? a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }) : 0) ||
+        (sort === 'created' ? b.createdAt - a.createdAt : 0) ||
         b.updatedAt - a.updatedAt,
     )
 
@@ -675,14 +712,14 @@ ${s.projectless ? 'no-project' : s.projectPath}`
                 onClick={toggle}
               >
                 <ArrowDownWideNarrow size={12} />
-                <span>{sort === 'attention' ? 'Attention first' : 'Recent first'}</span>
+                <span>{SORTS.find((o) => o.value === sort)?.label}</span>
                 <ChevronDown size={10} />
               </button>
             )}
           >
             {(close) => (
               <>
-                {(['attention', 'recent'] as const).map((value) => (
+                {SORTS.map(({ value, label }) => (
                   <button
                     key={value}
                     className="menu-row"
@@ -693,9 +730,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
                       close()
                     }}
                   >
-                    <span className="menu-text">
-                      {value === 'attention' ? 'Attention first' : 'Recent first'}
-                    </span>
+                    <span className="menu-text">{label}</span>
                     {sort === value && <Check size={14} />}
                   </button>
                 ))}

@@ -33,7 +33,7 @@ import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useSta
 import { Alert, FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native'
 
 import { deleteSession, setSessionDone, useAllSessions, useHostStore } from '@/host/store'
-import { usePrefs } from '@/host/prefs'
+import { SESSION_SORTS, usePrefs, type SessionSort } from '@/host/prefs'
 import { colors, fonts, radius } from '@/theme/tokens'
 import { Diffstat } from '@/ui/Diffstat'
 import { FadeIn } from '@/ui/FadeIn'
@@ -81,10 +81,9 @@ export default function SessionsScreen() {
   const runtimes = useDeferredValue(useWhileFocused(useHostStore((s) => s.runtimes)))
   const ready = useHostStore((s) => s.ready)
   const hosted = useDeferredValue(useWhileFocused(useAllSessions()))
-  const { openDone, collapsed, toggleDone, toggleCollapsed } = usePrefs()
+  const { openDone, collapsed, toggleDone, toggleCollapsed, sorts, setSort: saveSort } = usePrefs()
 
   const [filter, setFilter] = useState<Filter>('all')
-  const [sort, setSort] = useState<'attention' | 'recent'>('attention')
   const [hostFilter, setHostFilter] = useState('all')
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState('')
@@ -100,6 +99,7 @@ export default function SessionsScreen() {
   const openMenu = useCallback((session: SessionView) => setMenu({ session }), [])
 
   const selectedHost = entries.some((e) => e.key === hostFilter) ? hostFilter : 'all'
+  const sort: SessionSort = sorts[selectedHost] ?? 'recent'
   const hostName = (key: string) =>
     runtimes[key]?.host?.name ?? entries.find((e) => e.key === key)?.name ?? 'Host'
   const online = entries.filter((e) => runtimes[e.key]?.connection === 'connected').length
@@ -129,7 +129,11 @@ export default function SessionsScreen() {
       )
       .sort(
         (a, b) =>
-          (sort === 'attention' ? PRIORITY[a.status] - PRIORITY[b.status] : 0) ||
+          (sort === 'status' ? PRIORITY[a.status] - PRIORITY[b.status] : 0) ||
+          (sort === 'name'
+            ? a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })
+            : 0) ||
+          (sort === 'created' ? b.createdAt - a.createdAt : 0) ||
           b.updatedAt - a.updatedAt,
       )
 
@@ -312,7 +316,7 @@ export default function SessionsScreen() {
         <View style={{ flex: 1 }} />
         <Pressable style={styles.sort} onPress={() => setSortMenu(true)}>
           <Icon icon={SortDescending} size={15} />
-          <Muted size={12.5}>{sort === 'attention' ? 'Attention first' : 'Recent first'}</Muted>
+          <Muted size={12.5}>{SESSION_SORTS.find((o) => o.value === sort)?.label}</Muted>
         </Pressable>
       </View>
     </View>
@@ -480,20 +484,12 @@ export default function SessionsScreen() {
         visible={sortMenu}
         title="Sort by"
         onClose={() => setSortMenu(false)}
-        items={[
-          {
-            id: 'attention',
-            label: 'Attention first',
-            selected: sort === 'attention',
-            onSelect: () => setSort('attention'),
-          },
-          {
-            id: 'recent',
-            label: 'Recent first',
-            selected: sort === 'recent',
-            onSelect: () => setSort('recent'),
-          },
-        ]}
+        items={SESSION_SORTS.map((o) => ({
+          id: o.value,
+          label: o.label,
+          selected: sort === o.value,
+          onSelect: () => saveSort(selectedHost, o.value),
+        }))}
       />
     </Screen>
   )
