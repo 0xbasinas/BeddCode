@@ -57,6 +57,24 @@
 .linear-issue > button.setting-row:hover {
   background: rgb(127 127 127 / 0.08);
 }
+.linear-markdown {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.linear-markdown > :first-child {
+  margin-top: 0;
+}
+.linear-markdown > :last-child {
+  margin-bottom: 0;
+}
+.linear-markdown ul,
+.linear-markdown ol {
+  padding-left: calc(22px * var(--ui-scale));
+}
+.linear-markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
 .linear-chevron {
   flex: none;
   transition: transform 0.12s;

@@ -26,6 +26,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { setHandoff } from '../../stores/handoff.ts'
 import { hostRequest } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
+import { Markdown } from '../../ui/Markdown.tsx'
 import '../settings/settings.css'
 import './linear.css'
 
@@ -775,7 +776,9 @@ function IssueItem({
           {detail && (
             <>
               {detail.description ? (
-                <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{detail.description}</p>
+                <div className="linear-markdown">
+                  <Markdown text={detail.description} />
+                </div>
               ) : (
                 <span className="settings-value">No description.</span>
               )}
@@ -819,7 +822,9 @@ function IssueItem({
                   <span className="settings-value">
                     {c.author} · {c.createdAt.toLocaleString()}
                   </span>
-                  <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{c.body}</p>
+                  <div className="linear-markdown">
+                    <Markdown text={c.body} />
+                  </div>
                 </div>
               ))}
               <form
