@@ -12,6 +12,7 @@ import {
   type WorkflowState,
 } from '@linear/sdk'
 import {
+  CircleCheck,
   ChevronRight,
   ExternalLink,
   KeyRound,
@@ -277,15 +278,19 @@ export function LinearPage() {
           </div>
         ) : (
           <>
-            <div className="settings-card">
-              <div className="setting-row">
+            <div className="settings-card linear-account-card">
+              <div className="setting-row linear-account-row">
                 <span className="linear-avatar" aria-hidden="true">
                   {(data?.org ?? account?.label ?? 'L').charAt(0).toUpperCase()}
                 </span>
                 <span className="setting-label">
-                  <strong>{data ? `Signed in as ${data.name}` : 'Linear'}</strong>
+                  <strong>{data ? data.org : 'Linear workspace'}</strong>
                   <span className="settings-value">
-                    {data ? `${data.org} · ${data.email}` : error ? 'Not connected' : 'Connecting…'}
+                    {data
+                      ? `Connected as ${data.name} · ${data.email}`
+                      : error
+                        ? 'Not connected'
+                        : 'Connecting…'}
                   </span>
                 </span>
                 {store.accounts.length > 1 && (
@@ -418,7 +423,7 @@ function Workspace({ client, teams }: { client: LinearClient; teams: Team[] }) {
 
   return (
     <div className="linear-workspace">
-      <div className="settings-card">
+      <div className="settings-card linear-toolbar-card">
         <div className="setting-row linear-bar">
           <Tabs className="gap-0" value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
             <TabsList
@@ -496,6 +501,7 @@ function Workspace({ client, teams }: { client: LinearClient; teams: Team[] }) {
           client={client}
           teams={teams}
           defaultTeam={teamId}
+          onCancel={() => setCreating(false)}
           onDone={() => {
             setCreating(false)
             void refresh()
@@ -505,10 +511,23 @@ function Workspace({ client, teams }: { client: LinearClient; teams: Team[] }) {
       {error && <ErrorCard title="Could not load issues" text={error} />}
       <div className="linear-scroll">
         {!loading && !error && rows.length === 0 && !note && (
-          <div className="settings-card">
-            <div className="setting-row">
-              <span className="settings-value">No open issues here.</span>
-            </div>
+          <div className="settings-card linear-empty-state">
+            <span className="linear-empty-icon">
+              <CircleCheck size={19} />
+            </span>
+            <strong>{tab === 'mine' ? 'You’re all caught up' : 'No open issues found'}</strong>
+            <span className="settings-value">
+              {tab === 'mine'
+                ? 'Issues assigned to you will show up here.'
+                : 'Try another view or create an issue for your team.'}
+            </span>
+            <Button
+              variant="app"
+              className="settings-button primary"
+              onClick={() => setCreating(true)}
+            >
+              <Plus size={14} /> Create an issue
+            </Button>
           </div>
         )}
         {rows.length > 0 && (
@@ -543,11 +562,13 @@ function NewIssue({
   client,
   teams,
   defaultTeam,
+  onCancel,
   onDone,
 }: {
   client: LinearClient
   teams: Team[]
   defaultTeam: string
+  onCancel(): void
   onDone(): void
 }) {
   const [teamId, setTeamId] = useState(defaultTeam)
@@ -575,6 +596,12 @@ function NewIssue({
   return (
     <form
       className="settings-card"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && !busy) {
+          e.preventDefault()
+          onCancel()
+        }
+      }}
       onSubmit={(e) => {
         e.preventDefault()
         void submit()
@@ -616,6 +643,15 @@ function NewIssue({
       <div className="setting-row">
         {error && <span className="settings-value">{error}</span>}
         <span style={{ flex: 1 }} />
+        <Button
+          variant="app"
+          className="settings-button"
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+        >
+          Cancel
+        </Button>
         <Button
           variant="app"
           className="settings-button primary"

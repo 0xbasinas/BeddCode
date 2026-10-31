@@ -10,6 +10,24 @@
   color: var(--text-muted);
   font-weight: 600;
 }
+.linear-account-card,
+.linear-toolbar-card {
+  border-color: color-mix(in srgb, var(--border) 75%, transparent);
+  background: color-mix(in srgb, var(--bg-card) 94%, var(--text));
+}
+.linear-account-row {
+  min-height: calc(62px * var(--ui-scale));
+  gap: calc(12px * var(--ui-scale));
+}
+.linear-account-row .setting-label {
+  gap: calc(4px * var(--ui-scale));
+}
+.linear-account-row .setting-label strong {
+  font-size: calc(13px * var(--ui-scale));
+}
+.linear-toolbar-card {
+  margin-bottom: calc(14px * var(--ui-scale));
+}
 .linear-group {
   display: flex;
   align-items: center;
@@ -120,6 +138,40 @@
   overflow-y: auto;
   padding-bottom: calc(40px * var(--ui-scale));
 }
+.linear-empty-state {
+  display: flex;
+  min-height: calc(190px * var(--ui-scale));
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(9px * var(--ui-scale));
+  margin-top: calc(4px * var(--ui-scale));
+  padding: calc(28px * var(--ui-scale));
+  text-align: center;
+  border-color: transparent;
+  background: transparent;
+}
+.linear-empty-state > strong {
+  font-size: calc(14px * var(--ui-scale));
+  font-weight: 600;
+}
+.linear-empty-state .settings-value {
+  max-width: 34em;
+}
+.linear-empty-state .settings-button {
+  margin-top: calc(5px * var(--ui-scale));
+}
+.linear-empty-icon {
+  display: grid;
+  width: calc(38px * var(--ui-scale));
+  height: calc(38px * var(--ui-scale));
+  place-items: center;
+  margin-bottom: calc(3px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text-muted);
+  background: var(--bg-panel);
+}
 .linear-content > .settings-card {
   flex: none;
 }
@@ -128,4 +180,28 @@
 .linear-bar {
   flex-wrap: wrap;
   row-gap: calc(8px * var(--ui-scale));
+}
+
+@media (max-width: 640px) {
+  .linear-account-row {
+    align-items: center;
+  }
+  .linear-account-row .setting-label {
+    min-width: 0;
+  }
+  .linear-account-row > .settings-button {
+    flex: 1 1 calc(40% - 8px);
+  }
+  .linear-account-row > .settings-input {
+    flex: 1 1 100%;
+    order: 3;
+  }
+  .linear-bar > [data-slot='tabs'] {
+    flex: 1 1 100%;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .linear-bar > span[style] {
+    display: none;
+  }
 }

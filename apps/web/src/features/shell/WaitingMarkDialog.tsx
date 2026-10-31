@@ -97,7 +97,7 @@ function WaitingForm({ sessionId, onClose }: { sessionId: string; onClose: () =>
               {error}
             </p>
           )}
-          <DialogFooter>
+          <DialogFooter className="border-t-0 bg-transparent">
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
