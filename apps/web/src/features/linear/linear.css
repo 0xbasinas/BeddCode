@@ -123,3 +123,9 @@
 .linear-content > .settings-card {
   flex: none;
 }
+
+/* The view tabs, team picker and buttons wrap onto a second line instead of running off the card. */
+.linear-bar {
+  flex-wrap: wrap;
+  row-gap: calc(8px * var(--ui-scale));
+}

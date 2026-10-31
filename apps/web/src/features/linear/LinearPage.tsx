@@ -1,4 +1,5 @@
 import { Select } from '../../ui/Select.tsx'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -418,26 +419,29 @@ function Workspace({ client, teams }: { client: LinearClient; teams: Team[] }) {
   return (
     <div className="linear-workspace">
       <div className="settings-card">
-        <div className="setting-row">
-          <div className="tabs" role="tablist" aria-label="Linear views">
-            {(
-              [
-                ['mine', 'Assigned to me'],
-                ['team', 'Team issues'],
-                ['cycle', 'Current cycle'],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                className="tab"
-                role="tab"
-                aria-selected={tab === id}
-                onClick={() => setTab(id)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+        <div className="setting-row linear-bar">
+          <Tabs className="gap-0" value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+            <TabsList
+              className="tabs h-auto w-auto justify-start rounded-none bg-transparent p-0"
+              aria-label="Linear views"
+            >
+              {(
+                [
+                  ['mine', 'Assigned to me'],
+                  ['team', 'Team issues'],
+                  ['cycle', 'Current cycle'],
+                ] as const
+              ).map(([id, label]) => (
+                <TabsTrigger
+                  key={id}
+                  value={id}
+                  className="tab h-auto flex-none border-0 shadow-none focus-visible:ring-0"
+                >
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
           <span style={{ flex: 1 }} />
           {tab !== 'mine' && (
             <Select
