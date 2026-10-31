@@ -107,6 +107,27 @@ export type BrowserCommand =
   /** Runs one browser tool on the tab's page; resolves to a BrowserUseResult. */
   | { op: 'agent'; tabId: number; action: BrowserAgentAction }
 
+/** A named, app-managed browser profile scoped to a project. */
+export interface BrowserProfile {
+  id: string
+  name: string
+  /** Agent browser tools can use this profile only when explicitly enabled. */
+  agentsAllowed: boolean
+}
+
+export interface InstalledBrowser {
+  id: string
+  name: string
+}
+
+export interface BrowserExtension {
+  key: string
+  name: string
+  enabled?: boolean
+  hasAction?: boolean
+  hasOptions?: boolean
+}
+
 /** One browser tool call for a tab, as the app page hands it to the main process. */
 export interface BrowserAgentAction {
   tool: string

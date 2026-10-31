@@ -17,6 +17,7 @@ import { useFocusedSession } from '../split/SplitView.tsx'
 import { useUiStore, type PaneId } from '../../stores/ui.ts'
 import { isMac } from '../../ui/desktop.ts'
 import { paneProject } from './paneProject.ts'
+import { PaneErrorBoundary } from './PaneErrorBoundary.tsx'
 import { MissingFolder, useFolderMissing } from './MissingFolder.tsx'
 import { EMPTY_FOLDER, folderId, useFiles } from '../files/filesStore.ts'
 
@@ -130,38 +131,47 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
           className={`panel side-pane ${activePane === 'files' && editorOpen ? 'wide' : ''}`}
           aria-label={activePane}
         >
-          <HostScopeProvider hostKey={hostKey}>
-            <Suspense
-              fallback={
-                <div className="git-empty muted" role="status">
-                  Loading pane…
-                </div>
-              }
-            >
-              {activePane === 'git' &&
-                needFolder((s) => <GitPane key={workspaceKey} workspace={s} />)}
-              {activePane === 'terminal' &&
-                needFolder((s) => <TerminalPane key={workspaceKey} workspace={s} />)}
-              {activePane === 'files' &&
-                needFolder((s) => <FilesPane key={workspaceKey} workspace={s} />)}
-              {activePane === 'browser' && (
-                <BrowserPane
-                  draftId={workspace?.draftId}
-                  project={workspace ? paneProject(workspace) : undefined}
-                />
-              )}
-              {activePane === 'desktop' &&
-                (session ? (
-                  <DesktopPane
-                    key={`${hostKey}:${session.id}`}
-                    sessionId={session.id}
-                    working={session.status !== 'idle'}
+          <PaneErrorBoundary
+            key={`${activePane}:${workspaceKey}:${session?.id ?? ''}`}
+            pane={panes.find((pane) => pane.id === activePane)?.label ?? 'Side'}
+          >
+            <HostScopeProvider hostKey={hostKey}>
+              <Suspense
+                fallback={
+                  <div className="git-empty muted" role="status">
+                    Loading pane…
+                  </div>
+                }
+              >
+                {activePane === 'git' &&
+                  needFolder((s) => <GitPane key={workspaceKey} workspace={s} />)}
+                {activePane === 'terminal' &&
+                  needFolder((s) => <TerminalPane key={workspaceKey} workspace={s} />)}
+                {activePane === 'files' &&
+                  needFolder((s) => <FilesPane key={workspaceKey} workspace={s} />)}
+                {activePane === 'browser' && (
+                  <BrowserPane
+                    draftId={workspace?.draftId}
+                    project={
+                      workspace
+                        ? { ...paneProject(workspace), key: workspace.projectPath ?? workspace.cwd }
+                        : undefined
+                    }
                   />
-                ) : (
-                  <div className="git-empty muted">Open a session to see its desktop.</div>
-                ))}
-            </Suspense>
-          </HostScopeProvider>
+                )}
+                {activePane === 'desktop' &&
+                  (session ? (
+                    <DesktopPane
+                      key={`${hostKey}:${session.id}`}
+                      sessionId={session.id}
+                      working={session.status !== 'idle'}
+                    />
+                  ) : (
+                    <div className="git-empty muted">Open a session to see its desktop.</div>
+                  ))}
+              </Suspense>
+            </HostScopeProvider>
+          </PaneErrorBoundary>
         </section>
       )}
       <nav className="rail" aria-label="Panes">

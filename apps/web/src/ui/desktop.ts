@@ -1,4 +1,10 @@
-import type { BrowserCommand, BrowserEvent } from '@beddcode/contracts'
+import type {
+  BrowserCommand,
+  BrowserExtension,
+  BrowserEvent,
+  BrowserProfile,
+  InstalledBrowser,
+} from '@beddcode/contracts'
 
 /** Window actions over IPC; each resolves to whether the window is now maximized. */
 export interface DesktopWindow {
@@ -37,6 +43,54 @@ export interface DesktopBrowser {
   onEvent(callback: (event: BrowserEvent) => void): () => void
   /** Pages asking for a new window; returns an unsubscribe. */
   onOpen(callback: (url: string) => void): () => void
+  profiles(projectPath: string): Promise<{
+    profiles: BrowserProfile[]
+    activeId: string
+    browserId?: string
+    extensions: BrowserExtension[]
+  }>
+  createProfile(
+    projectPath: string,
+    name: string,
+    agentsAllowed: boolean,
+  ): Promise<BrowserProfile[]>
+  selectProfile(projectPath: string, profileId: string): Promise<boolean>
+  setProfileAgentAccess(
+    projectPath: string,
+    profileId: string,
+    agentsAllowed: boolean,
+  ): Promise<BrowserProfile[] | boolean>
+  setDefaultBrowser(projectPath: string, browserId: string): Promise<boolean>
+  importExtensions(
+    projectPath: string,
+    profileId: string,
+    browserId: string,
+  ): Promise<{
+    extensions: BrowserExtension[]
+    imported: number
+    skipped: number
+    extensionsWithSavedData?: number
+  } | null>
+  removeExtension(
+    projectPath: string,
+    profileId: string,
+    key: string,
+  ): Promise<BrowserExtension[] | null>
+  setExtensionEnabled(
+    projectPath: string,
+    profileId: string,
+    key: string,
+    enabled: boolean,
+  ): Promise<BrowserExtension[] | null>
+  openExtension(
+    projectPath: string,
+    profileId: string,
+    key: string,
+    kind: 'action' | 'settings',
+    currentUrl?: string,
+  ): Promise<boolean>
+  installedBrowsers(): Promise<InstalledBrowser[]>
+  openInBrowser(browserId: string, url: string): Promise<boolean>
 }
 
 declare global {

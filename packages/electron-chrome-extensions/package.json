@@ -1,0 +1,25 @@
+{
+  "name": "electron-chrome-extensions",
+  "version": "4.10.0-beddcode.1",
+  "description": "Vendored Chrome extension API support for Electron, adapted for BeddCode",
+  "license": "MIT",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "import": "./src/index.ts",
+      "require": "./src/index.ts"
+    },
+    "./browser-action": {
+      "types": "./types/browser-action.d.ts",
+      "import": "./src/browser-action.ts",
+      "require": "./src/browser-action.ts"
+    },
+    "./preload": "./src/preload.ts"
+  },
+  "dependencies": {
+    "debug": "^4.3.1"
+  }
+}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { createElement, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   ArrowLeft,
@@ -22,8 +22,10 @@ import {
   MoreHorizontal,
   MousePointer2,
   Plus,
+  Puzzle,
   RotateCw,
   Search,
+  Settings,
   Terminal,
   Trash2,
   TriangleAlert,
@@ -31,7 +33,13 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react'
-import type { BrowserConsoleEntry, BrowserPageState } from '@beddcode/contracts'
+import type {
+  BrowserConsoleEntry,
+  BrowserExtension,
+  BrowserPageState,
+  BrowserProfile,
+  InstalledBrowser,
+} from '@beddcode/contracts'
 import {
   agentKey,
   browserCommand,
@@ -59,6 +67,8 @@ import {
 
 type Page = Partial<BrowserPageState>
 const IDLE: Page = {}
+const browserPartition = (profileId: string) =>
+  profileId === 'default' ? 'persist:beddcode-browser' : `persist:beddcode-browser-${profileId}`
 
 const PERMISSION_TEXT: Record<string, string> = {
   media: 'use your camera or microphone',
@@ -85,7 +95,7 @@ export function BrowserPane({
 }: {
   draftId?: string
   /** The session's project, which screenshots and picked elements are attached to. */
-  project?: { label: string; title: string }
+  project?: { label: string; title: string; key: string }
 }) {
   const hostKey = useHostKey()
   const { tabs, active, open, close, activate, pages, prompts, requests } = useBrowser()
@@ -96,6 +106,7 @@ export function BrowserPane({
   const [address, setAddress] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
   const [goError, setGoError] = useState<string>()
+  const [profileNotice, setProfileNotice] = useState<string>()
   const frame = useRef<HTMLIFrameElement>(null)
   const addressInput = useRef<HTMLInputElement>(null)
   const [picking, setPicking] = useState(false)
@@ -103,6 +114,124 @@ export function BrowserPane({
   const picker = useRef<{ cancel(): void } | null>(null)
   const [finding, setFinding] = useState(false)
   const [consoleOpen, setConsoleOpen] = useState(false)
+  const [profiles, setProfiles] = useState<BrowserProfile[]>([])
+  const [extensions, setExtensions] = useState<BrowserExtension[]>([])
+  const [activeProfileId, setActiveProfileId] = useState('default')
+  const [installed, setInstalled] = useState<InstalledBrowser[]>([])
+  const [defaultBrowserId, setDefaultBrowserId] = useState<string>('system')
+  const loadedProject = useRef<{ path: string; profileId: string } | null>(null)
+  const projectPath = project?.key ?? project?.title ?? ''
+
+  useEffect(() => {
+    const native = nativeBrowser()
+    if (!native) return
+    let alive = true
+    void native.profiles(projectPath).then(async (data) => {
+      if (!alive) return
+      if (loadedProject.current && loadedProject.current.path !== projectPath) {
+        useBrowser.getState().tabs.forEach((tab) => useBrowser.getState().close(tab.id))
+      }
+      await native.selectProfile(projectPath, data.activeId)
+      if (!alive) return
+      loadedProject.current = { path: projectPath, profileId: data.activeId }
+      setProfiles(data.profiles)
+      setActiveProfileId(data.activeId)
+      setDefaultBrowserId(data.browserId ?? 'system')
+      setExtensions(data.extensions)
+    })
+    void native.installedBrowsers().then((browsers) => alive && setInstalled(browsers))
+    return () => {
+      alive = false
+    }
+  }, [projectPath])
+
+  const selectProfile = async (profileId: string) => {
+    const native = nativeBrowser()
+    if (!native || !(await native.selectProfile(projectPath, profileId))) return
+    useBrowser.getState().tabs.forEach((tab) => useBrowser.getState().close(tab.id))
+    loadedProject.current = { path: projectPath, profileId }
+    setActiveProfileId(profileId)
+    const data = await native.profiles(projectPath)
+    setExtensions(data.extensions)
+  }
+
+  const createProfile = async () => {
+    const name = window.prompt('Name this browser profile')?.trim()
+    if (!name) return
+    const native = nativeBrowser()
+    if (!native) return
+    const next = await native.createProfile(projectPath, name, false)
+    if (!Array.isArray(next)) return
+    setProfiles(next)
+    await selectProfile(next.at(-1)!.id)
+  }
+
+  const setAgentsAllowed = async (allowed: boolean) => {
+    const native = nativeBrowser()
+    const active = profiles.find((profile) => profile.id === activeProfileId)
+    if (!native || !active) return
+    const next = await native.setProfileAgentAccess(projectPath, active.id, allowed)
+    if (Array.isArray(next)) setProfiles(next)
+  }
+
+  const setDefaultBrowser = async (browserId: string) => {
+    const native = nativeBrowser()
+    if (native && (await native.setDefaultBrowser(projectPath, browserId)))
+      setDefaultBrowserId(browserId)
+  }
+
+  const importExtensions = async (browserId: string) => {
+    const native = nativeBrowser()
+    if (!native) return
+    try {
+      const next = await native.importExtensions(projectPath, activeProfileId, browserId)
+      if (next) {
+        setExtensions(next.extensions)
+        const summary = `Imported ${next.imported} extension${next.imported === 1 ? '' : 's'}`
+        const saved = next.extensionsWithSavedData
+          ? `; copied saved data for ${next.extensionsWithSavedData}`
+          : ''
+        const skipped = next.skipped
+          ? `; skipped ${next.skipped} unavailable, duplicate, or unsupported extension${next.skipped === 1 ? '' : 's'}`
+          : ''
+        setProfileNotice(`${summary}${saved}${skipped}.`)
+      }
+    } catch (error) {
+      setGoError(error instanceof Error ? error.message : 'Could not load that extension.')
+    }
+  }
+
+  const removeExtension = async (key: string) => {
+    const native = nativeBrowser()
+    if (!native) return
+    const next = await native.removeExtension(projectPath, activeProfileId, key)
+    if (next) setExtensions(next)
+  }
+
+  const setExtensionEnabled = async (key: string, enabled: boolean) => {
+    const native = nativeBrowser()
+    if (!native) return
+    try {
+      const next = await native.setExtensionEnabled(projectPath, activeProfileId, key, enabled)
+      if (next) {
+        setExtensions(next)
+        setProfileNotice(enabled ? 'Extension enabled.' : 'Extension disabled.')
+        if (current && !blank) void native.command({ op: 'reload', tabId: current.id })
+      }
+    } catch (error) {
+      setGoError(error instanceof Error ? error.message : 'Could not change this extension.')
+    }
+  }
+
+  const openExtension = async (key: string, kind: 'action' | 'settings') => {
+    const native = nativeBrowser()
+    if (!native) return
+    try {
+      await native.openExtension(projectPath, activeProfileId, key, kind, current?.url)
+    } catch (error) {
+      setGoError(error instanceof Error ? error.message : 'Could not open this extension.')
+    }
+  }
 
   useEffect(() => {
     setPicking(false)
@@ -275,6 +404,33 @@ export function BrowserPane({
           </span>
         )}
         <span className="spacer" />
+        {desktop && (
+          <div className="browser-header-actions">
+            <BrowserProfileMenu
+              profiles={profiles}
+              activeId={activeProfileId}
+              onSelect={(id) => void selectProfile(id)}
+              onCreate={() => void createProfile()}
+              onAgentAccess={(allowed) => void setAgentsAllowed(allowed)}
+              installedBrowsers={installed}
+              defaultBrowserId={defaultBrowserId}
+              onDefaultBrowser={setDefaultBrowser}
+              extensions={extensions}
+              onImportExtensions={(browserId) => void importExtensions(browserId)}
+              onRemoveExtension={(key) => void removeExtension(key)}
+              onExtensionEnabled={(key, enabled) => void setExtensionEnabled(key, enabled)}
+              onOpenExtension={(key, kind) => void openExtension(key, kind)}
+            />
+            {current && extensions.some((extension) => extension.hasAction) && (
+              <div className="browser-extension-actions" aria-label="Browser extensions">
+                {createElement('browser-action-list', {
+                  partition: browserPartition(activeProfileId),
+                  alignment: 'bottom left',
+                })}
+              </div>
+            )}
+          </div>
+        )}
         <Button
           variant="app"
           className="icon-btn"
@@ -410,6 +566,8 @@ export function BrowserPane({
             canAttach={Boolean(draftId)}
             onFind={() => setFinding(true)}
             onScreenshot={screenshot}
+            installedBrowsers={installed}
+            defaultBrowserId={defaultBrowserId}
           />
         )}
       </form>
@@ -433,6 +591,11 @@ export function BrowserPane({
       {(pickError || goError) && (
         <div className="banner error" role="alert">
           {pickError ?? goError}
+        </div>
+      )}
+      {profileNotice && (
+        <div className="banner" role="status">
+          {profileNotice}
         </div>
       )}
       {page.unresponsive && current && (
@@ -610,6 +773,225 @@ function NativePage({ tab, page, onRetry }: { tab?: BrowserTab; page: Page; onRe
   )
 }
 
+function BrowserProfileMenu({
+  profiles,
+  activeId,
+  onSelect,
+  onCreate,
+  onAgentAccess,
+  installedBrowsers,
+  defaultBrowserId,
+  onDefaultBrowser,
+  extensions,
+  onImportExtensions,
+  onRemoveExtension,
+  onExtensionEnabled,
+  onOpenExtension,
+}: {
+  profiles: BrowserProfile[]
+  activeId: string
+  onSelect(id: string): void
+  onCreate(): void
+  onAgentAccess(allowed: boolean): void
+  installedBrowsers: InstalledBrowser[]
+  defaultBrowserId: string
+  onDefaultBrowser(browserId: string): void
+  extensions: BrowserExtension[]
+  onImportExtensions(browserId: string): void
+  onRemoveExtension(key: string): void
+  onExtensionEnabled(key: string, enabled: boolean): void
+  onOpenExtension(key: string, kind: 'action' | 'settings'): void
+}) {
+  const active = profiles.find((profile) => profile.id === activeId)
+  return (
+    <Dropdown
+      placement="bottom"
+      align="end"
+      trigger={({ toggle, open }) => (
+        <button
+          type="button"
+          className={`profile-trigger icon-btn ${open ? 'active' : ''}`}
+          aria-label="Browser settings: profiles, extensions, and browsers"
+          title="Browser settings: profiles, extensions, and browsers"
+          onClick={toggle}
+        >
+          <Settings size={15} />
+          <span>Settings</span>
+          <ChevronDown size={13} />
+        </button>
+      )}
+    >
+      {(close) => (
+        <>
+          <div className="menu-title profile-menu-title">Project browser profile</div>
+          {profiles.map((profile) => (
+            <button
+              className="menu-row"
+              key={profile.id}
+              role="menuitemradio"
+              aria-checked={profile.id === activeId}
+              onClick={() => {
+                close()
+                if (profile.id !== activeId) onSelect(profile.id)
+              }}
+            >
+              <Globe size={15} />
+              <span className="menu-text">
+                <span className="menu-title">{profile.name}</span>
+              </span>
+              {profile.id === activeId && <Check size={15} />}
+            </button>
+          ))}
+          <MenuRow
+            icon={<Plus size={15} />}
+            title="New profile…"
+            onClick={() => {
+              close()
+              onCreate()
+            }}
+          />
+          <div className="menu-sep" />
+          <div className="menu-title profile-menu-title">External browser for this project</div>
+          <button
+            className="menu-row"
+            role="menuitemradio"
+            aria-checked={defaultBrowserId === 'system'}
+            onClick={() => {
+              close()
+              onDefaultBrowser('system')
+            }}
+          >
+            <ExternalLink size={15} />
+            <span className="menu-text">
+              <span className="menu-title">System default</span>
+            </span>
+            {defaultBrowserId === 'system' && <Check size={15} />}
+          </button>
+          {installedBrowsers.map((browser) => (
+            <button
+              className="menu-row"
+              key={browser.id}
+              role="menuitemradio"
+              aria-checked={defaultBrowserId === browser.id}
+              onClick={() => {
+                close()
+                onDefaultBrowser(browser.id)
+              }}
+            >
+              <ExternalLink size={15} />
+              <span className="menu-text">
+                <span className="menu-title">{browser.name}</span>
+              </span>
+              {defaultBrowserId === browser.id && <Check size={15} />}
+            </button>
+          ))}
+          <div className="menu-sep" />
+          <div className="menu-title profile-menu-title">Extensions in this profile</div>
+          {installedBrowsers.map((browser) => (
+            <MenuRow
+              key={browser.id}
+              icon={<Puzzle size={15} />}
+              title={`Import ${browser.id === 'firefox' ? 'active add-ons' : 'enabled extensions'} from ${browser.name}…`}
+              onClick={() => {
+                close()
+                onImportExtensions(browser.id)
+              }}
+            />
+          ))}
+          <MenuRow
+            icon={<Puzzle size={15} />}
+            title="Load unpacked extension folder…"
+            onClick={() => {
+              close()
+              onImportExtensions('manual')
+            }}
+          />
+          <p className="extension-import-note">
+            BeddCode finds your browser profiles automatically. If there are several, choose one by
+            its profile name.
+          </p>
+          {extensions.map((extension) => (
+            <div className="profile-extension-row" key={extension.key}>
+              <input
+                type="checkbox"
+                className="extension-enabled-toggle"
+                checked={extension.enabled !== false}
+                aria-label={`${extension.enabled === false ? 'Enable' : 'Disable'} ${extension.name}`}
+                title={
+                  extension.enabled === false
+                    ? `Enable ${extension.name}`
+                    : `Disable ${extension.name}`
+                }
+                onChange={(event) => onExtensionEnabled(extension.key, event.currentTarget.checked)}
+              />
+              <span
+                className={extension.enabled === false ? 'extension-disabled' : ''}
+                title={extension.name}
+              >
+                {extension.name}
+              </span>
+              {extension.hasAction && (
+                <button
+                  type="button"
+                  className="extension-action-btn"
+                  disabled={extension.enabled === false}
+                  title={`Use ${extension.name}`}
+                  onClick={() => {
+                    close()
+                    onOpenExtension(extension.key, 'action')
+                  }}
+                >
+                  <ExternalLink size={12} /> Use
+                </button>
+              )}
+              {extension.hasOptions && (
+                <button
+                  type="button"
+                  className="extension-action-btn"
+                  disabled={extension.enabled === false}
+                  aria-label={`${extension.name} settings`}
+                  title={`${extension.name} settings`}
+                  onClick={() => {
+                    close()
+                    onOpenExtension(extension.key, 'settings')
+                  }}
+                >
+                  <Settings size={13} />
+                </button>
+              )}
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label={`Remove ${extension.name}`}
+                title={`Remove ${extension.name}`}
+                onClick={() => onRemoveExtension(extension.key)}
+              >
+                <X size={13} />
+              </button>
+            </div>
+          ))}
+          <p className="extension-import-note">
+            Electron supports a subset of Chrome extension APIs; some extensions may not work.
+          </p>
+          <div className="menu-sep" />
+          <label className="profile-agent-access">
+            <input
+              type="checkbox"
+              checked={Boolean(active?.agentsAllowed)}
+              disabled={!active}
+              onChange={(event) => onAgentAccess(event.currentTarget.checked)}
+            />
+            <span>
+              <strong>Allow agents to use this profile</strong>
+              <small>Agents can access this profile’s signed-in sessions.</small>
+            </span>
+          </label>
+        </>
+      )}
+    </Dropdown>
+  )
+}
+
 function PageMenu({
   tab,
   page,
@@ -617,6 +999,8 @@ function PageMenu({
   canAttach,
   onFind,
   onScreenshot,
+  installedBrowsers,
+  defaultBrowserId,
 }: {
   tab: BrowserTab
   page: Page
@@ -624,6 +1008,8 @@ function PageMenu({
   canAttach: boolean
   onFind(): void
   onScreenshot(): void
+  installedBrowsers: InstalledBrowser[]
+  defaultBrowserId: string
 }) {
   const run = (close: () => void, fn: () => unknown) => () => {
     close()
@@ -709,10 +1095,24 @@ function PageMenu({
           />
           <MenuRow
             icon={<ExternalLink size={16} />}
-            title="Open in your browser"
+            title={`Open in ${installedBrowsers.find((b) => b.id === defaultBrowserId)?.name ?? 'your browser'}`}
             disabled={blank || Boolean(tab.via)}
-            onClick={run(close, () => browserCommand({ op: 'open-external', url: tab.url }))}
+            onClick={run(close, () =>
+              defaultBrowserId !== 'system' &&
+              installedBrowsers.some((b) => b.id === defaultBrowserId)
+                ? nativeBrowser()?.openInBrowser(defaultBrowserId, tab.url)
+                : browserCommand({ op: 'open-external', url: tab.url }),
+            )}
           />
+          {installedBrowsers.map((browser) => (
+            <MenuRow
+              key={browser.id}
+              icon={<ExternalLink size={16} />}
+              title={`Open in ${browser.name}`}
+              disabled={blank || Boolean(tab.via)}
+              onClick={run(close, () => nativeBrowser()?.openInBrowser(browser.id, tab.url))}
+            />
+          ))}
           <div className="menu-sep" />
           <MenuRow
             icon={<Trash2 size={16} />}

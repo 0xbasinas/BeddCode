@@ -1,5 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { injectBrowserAction } from 'electron-chrome-extensions/browser-action'
 import type { BrowserCommand, BrowserEvent } from '@beddcode/contracts'
+
+injectBrowserAction()
 
 // The renderer learns it is inside the desktop shell, may open the system folder picker and drives
 // its own window buttons; all other data goes over the host WebSocket.
@@ -42,6 +45,75 @@ contextBridge.exposeInMainWorld('beddcodeDesktop', {
       ipcRenderer.on('beddcode:browser-event', listener)
       return () => ipcRenderer.removeListener('beddcode:browser-event', listener)
     },
+    profiles: (projectPath: string) =>
+      ipcRenderer.invoke('beddcode:browser-profiles', { action: 'list', projectPath }),
+    createProfile: (projectPath: string, name: string, agentsAllowed: boolean) =>
+      ipcRenderer.invoke('beddcode:browser-profiles', {
+        action: 'create',
+        projectPath,
+        name,
+        agentsAllowed,
+      }),
+    selectProfile: (projectPath: string, profileId: string) =>
+      ipcRenderer.invoke('beddcode:browser-profiles', { action: 'select', projectPath, profileId }),
+    setProfileAgentAccess: (projectPath: string, profileId: string, agentsAllowed: boolean) =>
+      ipcRenderer.invoke('beddcode:browser-profiles', {
+        action: 'agent-access',
+        projectPath,
+        profileId,
+        agentsAllowed,
+      }),
+    setDefaultBrowser: (projectPath: string, browserId: string) =>
+      ipcRenderer.invoke('beddcode:browser-profiles', {
+        action: 'default-browser',
+        projectPath,
+        browserId,
+      }),
+    importExtensions: (projectPath: string, profileId: string, browserId: string) =>
+      ipcRenderer.invoke('beddcode:browser-profiles', {
+        action: 'import-extensions',
+        projectPath,
+        profileId,
+        browserId,
+      }),
+    removeExtension: (projectPath: string, profileId: string, extensionKey: string) =>
+      ipcRenderer.invoke('beddcode:browser-profiles', {
+        action: 'remove-extension',
+        projectPath,
+        profileId,
+        extensionKey,
+      }),
+    setExtensionEnabled: (
+      projectPath: string,
+      profileId: string,
+      extensionKey: string,
+      enabled: boolean,
+    ) =>
+      ipcRenderer.invoke('beddcode:browser-profiles', {
+        action: 'set-extension-enabled',
+        projectPath,
+        profileId,
+        extensionKey,
+        enabled,
+      }),
+    openExtension: (
+      projectPath: string,
+      profileId: string,
+      extensionKey: string,
+      kind: 'action' | 'settings',
+      currentUrl?: string,
+    ) =>
+      ipcRenderer.invoke('beddcode:browser-profiles', {
+        action: 'open-extension',
+        projectPath,
+        profileId,
+        extensionKey,
+        kind,
+        currentUrl,
+      }),
+    installedBrowsers: () => ipcRenderer.invoke('beddcode:installed-browsers'),
+    openInBrowser: (browserId: string, url: string) =>
+      ipcRenderer.invoke('beddcode:open-in-browser', browserId, url),
   },
   /** The app's own window buttons (Linux and Windows; macOS keeps its traffic lights). */
   window: {

@@ -4,10 +4,12 @@ import path from 'node:path'
 import {
   app,
   BrowserWindow,
+  dialog,
   session as electronSession,
   shell,
   WebContentsView,
   type Session,
+  type Extension,
   type WebContents,
 } from 'electron'
 import type {
@@ -16,8 +18,9 @@ import type {
   BrowserPageState,
   BrowserRect,
 } from '@beddcode/contracts'
+import { ElectronChromeExtensions } from 'electron-chrome-extensions'
 import {
-  BROWSER_PARTITION,
+  browserPartition,
   ConsoleLog,
   isLoopbackUrl,
   isWebUrl,
@@ -33,6 +36,7 @@ import {
 } from './browserGuard.ts'
 import { BrowserAgent } from './browserAgent.ts'
 import { PortForwards } from './portForward.ts'
+import { prepareExtensionIdentityCompatibility } from './browserExtensions.ts'
 
 /** Sent to the app page for everything the pane's pages do (see preload.ts). */
 export const BROWSER_EVENT = 'beddcode:browser-event'
@@ -76,7 +80,7 @@ export class BrowserViews {
 
   constructor(
     private readonly win: BrowserWindow,
-    private readonly shared: BrowserShared,
+    private shared: BrowserShared,
   ) {
     shared.windows.add(this)
     this.sweep = setInterval(() => this.discardIdle(), 60_000)
@@ -97,6 +101,25 @@ export class BrowserViews {
 
   isWindow(win: BrowserWindow | null | undefined): boolean {
     return win === this.win
+  }
+
+  getWindow(): BrowserWindow {
+    return this.win
+  }
+
+  /** Switches this window to a profile resolved by the main process from saved settings. */
+  selectProfile(profileId: string, agentsAllowed: boolean, extensionPaths: string[] = []): void {
+    if (profileId === this.shared.profileId) {
+      this.shared.agentsAllowed = agentsAllowed
+      this.shared.configureExtensions(extensionPaths)
+      return
+    }
+    this.closeAll()
+    this.shared.windows.delete(this)
+    this.shared = browserSharedFor(profileId)
+    this.shared.agentsAllowed = agentsAllowed
+    this.shared.configureExtensions(extensionPaths)
+    this.shared.windows.add(this)
   }
 
   owns(contents: WebContents): boolean {
@@ -123,12 +146,15 @@ export class BrowserViews {
       case 'ensure': {
         const page = this.pages.get(command.tabId)
         if (page?.view) return true
-        this.create(command.tabId, page?.url && page.url !== 'about:blank' ? page.url : command.url)
+        await this.create(
+          command.tabId,
+          page?.url && page.url !== 'about:blank' ? page.url : command.url,
+        )
         return true
       }
       case 'navigate': {
         const page = this.pages.get(command.tabId)
-        if (!page?.view) return void this.create(command.tabId, command.url)
+        if (!page?.view) return void (await this.create(command.tabId, command.url))
         this.load(page, command.url)
         return true
       }
@@ -157,6 +183,7 @@ export class BrowserViews {
         this.shared.permissions.clear()
         return true
       case 'agent-control': {
+        if (command.agent && !this.shared.agentsAllowed) return false
         const page = this.pages.get(command.tabId)
         if (!page) return false
         page.agent = command.agent
@@ -170,6 +197,8 @@ export class BrowserViews {
         return true
       }
       case 'agent': {
+        if (!this.shared.agentsAllowed)
+          return { ok: false, error: 'Browser agents are disabled for this profile.' }
         const page = this.pages.get(command.tabId)
         const contents = page?.view?.webContents
         if (!page || !contents || contents.isDestroyed())
@@ -274,11 +303,12 @@ export class BrowserViews {
     return null
   }
 
-  private create(tabId: number, url: string) {
+  private async create(tabId: number, url: string) {
+    await this.shared.loadExtensions()
     const existing = this.pages.get(tabId)
     const view = new WebContentsView({
       webPreferences: {
-        partition: BROWSER_PARTITION,
+        partition: browserPartition(this.shared.profileId),
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
@@ -304,6 +334,7 @@ export class BrowserViews {
     page.view = view
     page.visible = false
     this.pages.set(tabId, page)
+    this.shared.chromeExtensions.addTab(view.webContents, this.win)
     this.wire(page, view.webContents)
     if (page.zoom !== 1) view.webContents.setZoomFactor(page.zoom)
     this.state(tabId, {
@@ -507,7 +538,7 @@ export class BrowserViews {
           autoHideMenuBar: true,
           backgroundColor: '#ffffff',
           webPreferences: {
-            partition: BROWSER_PARTITION,
+            partition: browserPartition(this.shared.profileId),
             sandbox: true,
             contextIsolation: true,
             nodeIntegration: false,
@@ -536,6 +567,7 @@ export class BrowserViews {
       if (show) {
         page.view.setBounds(bounds!)
         page.view.setBorderRadius(Math.round(this.radius * this.win.webContents.getZoomFactor()))
+        this.shared.chromeExtensions.selectTab(page.view.webContents)
       }
       if (page.visible !== show) {
         page.visible = show
@@ -551,7 +583,12 @@ export class BrowserViews {
     }
     // The shown tab's page may have been discarded: bring it back.
     const page = tabId === null ? undefined : this.pages.get(tabId)
-    if (bounds && page && !page.view) this.create(page.tabId, page.url)
+    if (bounds && page && !page.view)
+      void this.create(page.tabId, page.url).catch((error) => {
+        this.state(page.tabId, {
+          error: { code: -1, description: String(error), url: page.url },
+        })
+      })
   }
 
   /**
@@ -614,6 +651,7 @@ export class BrowserViews {
     page.visible = false
     if (!view) return
     this.shared.dropPrompts(view.webContents)
+    this.shared.chromeExtensions.removeTab(view.webContents)
     if (!this.win.isDestroyed() && this.win.contentView.children.includes(view))
       this.win.contentView.removeChildView(view)
     if (!view.webContents.isDestroyed()) view.webContents.close()
@@ -661,9 +699,114 @@ export class BrowserShared {
   private downloads = new Map<string, string>()
   private nextId = 1
   readonly session: Session
+  readonly chromeExtensions: ElectronChromeExtensions
 
-  constructor() {
-    this.session = electronSession.fromPartition(BROWSER_PARTITION)
+  agentsAllowed = false
+  private extensionPaths: string[] = []
+  private loadedExtensions = new Map<string, Promise<Extension>>()
+
+  constructor(readonly profileId = 'default') {
+    this.session = electronSession.fromPartition(browserPartition(profileId))
+    this.chromeExtensions = new ElectronChromeExtensions({
+      session: this.session,
+      createTab: async (details) => {
+        const requestedUrl = details.url || 'about:blank'
+        const parsedUrl = new URL(requestedUrl)
+        if (
+          parsedUrl.protocol !== 'https:' &&
+          parsedUrl.protocol !== 'http:' &&
+          parsedUrl.protocol !== 'chrome-extension:' &&
+          requestedUrl !== 'about:blank'
+        )
+          throw new Error('This extension tab URL is not allowed.')
+        const parent = [...this.windows][0]?.getWindow()
+        const extensionWindow = new BrowserWindow({
+          ...(parent && { parent }),
+          width: 960,
+          height: 720,
+          show: details.active !== false,
+          autoHideMenuBar: true,
+          webPreferences: {
+            session: this.session,
+            sandbox: true,
+            contextIsolation: true,
+            nodeIntegration: false,
+            webSecurity: true,
+          },
+        })
+        this.configureExtensionWindow(extensionWindow)
+        // The extensions library registers the returned WebContents as a tab after this
+        // callback resolves, so start navigation on the next turn to avoid missing its first
+        // navigation event (which Proton Pass uses to complete sign-in).
+        setImmediate(() => {
+          if (extensionWindow.isDestroyed()) return
+          void extensionWindow.loadURL(requestedUrl).catch((error) => {
+            console.warn('Could not open a browser extension tab:', error)
+            if (!extensionWindow.isDestroyed()) extensionWindow.close()
+          })
+        })
+        return [extensionWindow.webContents, extensionWindow]
+      },
+      createWindow: async (details) => {
+        const requestedUrl = Array.isArray(details.url) ? details.url[0] : details.url
+        if (typeof requestedUrl !== 'string')
+          throw new Error('Extensions must provide a URL when opening a browser window.')
+        const parsedUrl = new URL(requestedUrl)
+        if (
+          parsedUrl.protocol !== 'https:' &&
+          parsedUrl.protocol !== 'http:' &&
+          parsedUrl.protocol !== 'chrome-extension:'
+        )
+          throw new Error('This extension window URL is not allowed.')
+        const bound = (value: unknown, fallback: number, min: number, max: number) =>
+          typeof value === 'number' && Number.isFinite(value)
+            ? Math.max(min, Math.min(max, Math.round(value)))
+            : fallback
+        const parent = [...this.windows][0]?.getWindow()
+        const extensionWindow = new BrowserWindow({
+          ...(parent && { parent }),
+          width: bound(details.width, 520, 360, 960),
+          height: bound(details.height, 700, 360, 1000),
+          show: details.focused !== false,
+          autoHideMenuBar: true,
+          webPreferences: {
+            session: this.session,
+            sandbox: true,
+            contextIsolation: true,
+            nodeIntegration: false,
+            webSecurity: true,
+          },
+        })
+        this.chromeExtensions.addTab(extensionWindow.webContents, extensionWindow)
+        this.configureExtensionWindow(extensionWindow)
+        void extensionWindow.loadURL(requestedUrl).catch((error) => {
+          console.warn('Could not open a browser extension window:', error)
+          if (!extensionWindow.isDestroyed()) extensionWindow.close()
+        })
+        return extensionWindow
+      },
+      requestPermissions: async (extension, permissions) => {
+        const parent = [...this.windows][0]?.getWindow()
+        const details = [...(permissions.permissions ?? []), ...(permissions.origins ?? [])].filter(
+          Boolean,
+        )
+        const options = {
+          type: 'warning' as const,
+          title: `Allow ${extension.name} to access more data?`,
+          message: `${extension.name} is requesting additional browser permissions.`,
+          detail: details.length
+            ? `Requested access:\n${details.join('\n')}`
+            : 'The extension did not provide a permission summary.',
+          buttons: ['Allow', 'Deny'],
+          defaultId: 1,
+          cancelId: 1,
+        }
+        const choice = parent
+          ? await dialog.showMessageBox(parent, options)
+          : await dialog.showMessageBox(options)
+        return choice.response === 0
+      },
+    })
     this.guardSession()
     app.on('certificate-error', (event, contents, url, _error, _certificate, callback) => {
       // A dev server on this machine with a self-signed certificate is the usual case; anything
@@ -692,6 +835,72 @@ export class BrowserShared {
       })
       if (!owner) this.answerLogin(id)
     })
+  }
+
+  private configureExtensionWindow(extensionWindow: BrowserWindow) {
+    extensionWindow.webContents.setWindowOpenHandler(({ url }) =>
+      /^https:\/\//i.test(url) ? { action: 'allow' } : { action: 'deny' },
+    )
+    const interceptIdentityRedirect = (event: { preventDefault(): void }, url: string) => {
+      let parsed: URL
+      try {
+        parsed = new URL(url)
+      } catch {
+        return false
+      }
+      const match = /^([a-p]{32})\.chromiumapp\.org$/i.exec(parsed.hostname)
+      if (!match) return false
+      const extension = this.session.extensions.getExtension(match[1]!.toLowerCase())
+      if (!extension) return false
+      event.preventDefault()
+      const relayUrl = `chrome-extension://${extension.id}/beddcode-auth-complete.html?url=${encodeURIComponent(url)}`
+      void extensionWindow.loadURL(relayUrl).catch((error) => {
+        console.warn('Could not deliver the browser extension sign-in result:', error)
+      })
+      return true
+    }
+    extensionWindow.webContents.on('will-redirect', interceptIdentityRedirect)
+    extensionWindow.webContents.on('will-navigate', (event, url) => {
+      if (interceptIdentityRedirect(event, url)) return
+      if (!/^https:\/\//i.test(url) && !/^chrome-extension:\/\//i.test(url))
+        event.preventDefault()
+    })
+  }
+
+  configureExtensions(paths: string[]) {
+    this.extensionPaths = [...new Set(paths)]
+  }
+
+  loadExtensions(): Promise<void> {
+    return Promise.all(
+      this.extensionPaths.map(async (extensionPath) => {
+        try {
+          await this.loadExtension(extensionPath)
+        } catch (error) {
+          console.warn(`Could not load browser extension from ${extensionPath}:`, error)
+        }
+      }),
+    ).then(() => undefined)
+  }
+
+  async loadExtension(extensionPath: string): Promise<Extension> {
+    let loading = this.loadedExtensions.get(extensionPath)
+    if (!loading) {
+      loading = prepareExtensionIdentityCompatibility(extensionPath).then(() =>
+        this.session.extensions.loadExtension(extensionPath),
+      )
+      this.loadedExtensions.set(extensionPath, loading)
+      loading.catch(() => this.loadedExtensions.delete(extensionPath))
+    }
+    return loading
+  }
+
+  async removeExtension(extensionId: string) {
+    this.session.extensions.removeExtension(extensionId)
+    for (const [extensionPath, loading] of this.loadedExtensions) {
+      if ((await loading.catch(() => null))?.id === extensionId)
+        this.loadedExtensions.delete(extensionPath)
+    }
   }
 
   private ownerOf(contents: WebContents): { views: BrowserViews; tabId?: number } | undefined {
@@ -837,6 +1046,23 @@ export class BrowserShared {
   dropPrompts(contents: WebContents) {
     for (const [id, p] of this.prompts) if (p.contents === contents) this.settle(id, undefined)
   }
+}
+
+// The main process shares one permission/download/session coordinator per profile.
+const profileShared = new Map<string, BrowserShared>()
+export function browserSharedFor(profileId: string): BrowserShared {
+  let shared = profileShared.get(profileId)
+  if (!shared) {
+    shared = new BrowserShared(profileId)
+    profileShared.set(profileId, shared)
+  }
+  return shared
+}
+
+export function closeBrowserForwards(): Promise<void> {
+  return Promise.all([...profileShared.values()].map((shared) => shared.forwards.closeAll())).then(
+    () => undefined,
+  )
 }
 
 function originOf(url: string): string {

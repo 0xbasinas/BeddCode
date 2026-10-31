@@ -4,6 +4,11 @@
 /** The session the browser pane's pages run in: its own cookies and storage, kept across runs. */
 export const BROWSER_PARTITION = 'persist:beddcode-browser'
 
+/** A partition per profile keeps cookies and storage separate inside Electron. */
+export function browserPartition(profileId: string): string {
+  return profileId === 'default' ? BROWSER_PARTITION : `persist:beddcode-browser-${profileId}`
+}
+
 /** Addresses a page may be shown at or navigate to: web pages only (no file:, javascript:, …). */
 export function isWebUrl(url: string): boolean {
   return /^https?:\/\//i.test(url)

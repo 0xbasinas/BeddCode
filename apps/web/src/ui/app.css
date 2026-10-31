@@ -1661,6 +1661,36 @@ button.chip-lite:hover {
 .side-pane.wide {
   width: calc(100% - calc(40px * var(--ui-scale)));
 }
+.pane-isolated-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.pane-error {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(10px * var(--ui-scale));
+  padding: calc(24px * var(--ui-scale));
+  text-align: center;
+}
+.pane-error > svg {
+  color: var(--danger);
+}
+.pane-error .icon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: calc(7px * var(--ui-scale));
+}
 .pane-body {
   display: flex;
   flex-direction: column;
@@ -2794,6 +2824,125 @@ svg.lucide {
 
 .pane-head .icon-btn {
   padding: calc(3px * var(--ui-scale));
+}
+
+.pane-head .profile-trigger {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: calc(5px * var(--ui-scale));
+  min-width: calc(74px * var(--ui-scale));
+  max-width: calc(180px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(7px * var(--ui-scale));
+  color: var(--text-muted);
+  font-size: calc(12px * var(--ui-scale));
+}
+.browser-header-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  gap: calc(7px * var(--ui-scale));
+}
+.browser-extension-actions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: min(40%, calc(132px * var(--ui-scale)));
+  overflow-x: auto;
+  border-left: 1px solid var(--border-subtle);
+  padding-left: calc(6px * var(--ui-scale));
+}
+.browser-extension-actions browser-action-list {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.profile-trigger span {
+  display: inline-block !important;
+  min-width: calc(40px * var(--ui-scale));
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-menu-title {
+  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  color: var(--text-muted);
+  font-size: calc(12px * var(--ui-scale));
+}
+.profile-agent-access {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(9px * var(--ui-scale));
+  padding: calc(9px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  cursor: pointer;
+  font-size: calc(12px * var(--ui-scale));
+}
+.profile-agent-access input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+.profile-agent-access span {
+  display: grid;
+  gap: calc(3px * var(--ui-scale));
+}
+.profile-agent-access small {
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+.extension-import-note {
+  margin: calc(2px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(7px * var(--ui-scale));
+  color: var(--text-muted);
+  font-size: calc(11px * var(--ui-scale));
+  line-height: 1.4;
+}
+.profile-extension-row {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  min-width: 0;
+  padding: calc(4px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  color: var(--text-muted);
+  font-size: calc(12px * var(--ui-scale));
+}
+.profile-extension-row > span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-extension-row .icon-btn {
+  flex: none;
+  padding: calc(3px * var(--ui-scale));
+}
+.profile-extension-row .extension-enabled-toggle {
+  flex: none;
+  accent-color: var(--accent);
+}
+.profile-extension-row .extension-disabled {
+  opacity: 0.55;
+}
+.extension-action-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: calc(3px * var(--ui-scale));
+  border: 1px solid var(--border-subtle);
+  border-radius: calc(5px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(5px * var(--ui-scale));
+  color: var(--text-secondary);
+  background: transparent;
+  font-size: calc(10px * var(--ui-scale));
+  cursor: pointer;
+}
+.extension-action-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.extension-action-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .pane-head > .muted {
