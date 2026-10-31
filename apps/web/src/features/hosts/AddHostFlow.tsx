@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { AlertCircle, Check, CheckCircle2, ChevronRight, RefreshCw, Server } from 'lucide-react'
 import type { TailnetStatus, TailnetPeer } from '@beddcode/contracts'
 import { addRemoteHost, hostRequest, useHostStore } from '../../stores/host.ts'
@@ -185,19 +186,21 @@ export function AddHostFlow({
           />
         </div>
         <footer className="hosts-dialog-footer">
-          <button type="button" className="hosts-button" onClick={onClose}>
+          <Button variant="app" type="button" className="hosts-button" onClick={onClose}>
             Close
-          </button>
+          </Button>
           {connected ? (
-            <button
+            <Button
+              variant="app"
               type="button"
               className="hosts-button primary"
               onClick={() => onStart(paired.key)}
             >
               Start a session
-            </button>
+            </Button>
           ) : refused ? (
-            <button
+            <Button
+              variant="app"
               type="button"
               className="hosts-button primary"
               onClick={() => {
@@ -206,9 +209,10 @@ export function AddHostFlow({
               }}
             >
               Pair again
-            </button>
+            </Button>
           ) : timedOut ? (
-            <button
+            <Button
+              variant="app"
               type="button"
               className="hosts-button primary"
               onClick={() => {
@@ -217,12 +221,12 @@ export function AddHostFlow({
               }}
             >
               Retry
-            </button>
+            </Button>
           ) : (
-            <button type="button" className="hosts-button primary" disabled>
+            <Button variant="app" type="button" className="hosts-button primary" disabled>
               <HostSpinner />
               Connecting…
-            </button>
+            </Button>
           )}
         </footer>
       </>
@@ -363,13 +367,18 @@ export function AddHostFlow({
         )}
       </div>
       <footer className="hosts-dialog-footer">
-        <button type="button" className="hosts-button" onClick={onClose}>
+        <Button variant="app" type="button" className="hosts-button" onClick={onClose}>
           Cancel
-        </button>
-        <button type="submit" className="hosts-button primary" disabled={busy || !ready}>
+        </Button>
+        <Button
+          variant="app"
+          type="submit"
+          className="hosts-button primary"
+          disabled={busy || !ready}
+        >
           {busy && <HostSpinner />}
           {busy ? 'Pairing…' : 'Pair and connect'}
-        </button>
+        </Button>
       </footer>
     </form>
   )

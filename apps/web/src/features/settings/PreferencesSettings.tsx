@@ -1,4 +1,5 @@
 import { useAppPreferences } from '../../stores/appPreferences.ts'
+import { Switch } from '@/components/ui/switch'
 import { useHostStore } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { Select } from '../../ui/Select.tsx'
@@ -17,15 +18,7 @@ export function Toggle({
       <div className="setting-label">
         <span>{label}</span>
       </div>
-      <button
-        className="settings-toggle"
-        role="switch"
-        aria-label={label}
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-      >
-        <span />
-      </button>
+      <Switch aria-label={label} checked={checked} onCheckedChange={onChange} />
     </div>
   )
 }

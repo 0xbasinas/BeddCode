@@ -685,6 +685,16 @@ export const RpcMethods = {
     params: z.object({ sessionId: z.string(), pinned: z.boolean() }),
     result: z.object({}),
   },
+  /** Marks a session as waiting on the user (with an optional note and reminder time), or clears it. */
+  'sessions.setWaiting': {
+    params: z.object({
+      sessionId: z.string(),
+      waiting: z.boolean(),
+      note: z.string().trim().max(280).optional(),
+      remindAt: z.number().optional(),
+    }),
+    result: z.object({}),
+  },
   /** One file's diff for a finished turn (see the `turn.changes` event), by that turn's `after`. */
   'sessions.turnDiff': {
     params: z.object({ sessionId: z.string(), after: z.string(), path: z.string() }),

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import {
   ChevronDown,
   ChevronUp,
@@ -190,12 +191,22 @@ export function TurnChangesCard({
               : `Put these ${count} files back the way they were before the turn?`}{' '}
             Staged changes and commits stay as they are.
           </span>
-          <button className="primary-btn" disabled={undoing} onClick={() => void undo()}>
+          <Button
+            variant="app"
+            className="primary-btn"
+            disabled={undoing}
+            onClick={() => void undo()}
+          >
             {undoing ? 'Undoing…' : 'Undo changes'}
-          </button>
-          <button className="secondary-btn" disabled={undoing} onClick={() => setConfirming(false)}>
+          </Button>
+          <Button
+            variant="app"
+            className="secondary-btn"
+            disabled={undoing}
+            onClick={() => setConfirming(false)}
+          >
             Keep
-          </button>
+          </Button>
         </div>
       )}
       {error && <div className="composer-error turn-undo-error">{error}</div>}

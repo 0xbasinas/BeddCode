@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { BellRing, Smartphone } from 'lucide-react'
 import { DEFAULT_ALERT_EVENTS, type AlertEvents, type RpcResult } from '@beddcode/contracts'
 import { hostRequest, useRuntime } from '../../stores/host.ts'
@@ -122,7 +124,7 @@ export function AlertsSettings({ hostKey }: { hostKey: string }) {
               knows a public topic can read it, so pick a long random name or your own server.
             </small>
           </label>
-          <input
+          <Input
             id="ntfy-url"
             className="settings-input"
             placeholder="https://ntfy.sh/beddcode-…"
@@ -130,9 +132,13 @@ export function AlertsSettings({ hostKey }: { hostKey: string }) {
             disabled={!online}
             onChange={(e) => setNtfy(e.target.value)}
           />
-          <button className="settings-button" disabled={!online || busy || ntfy.trim() === saved}>
+          <Button
+            variant="app"
+            className="settings-button"
+            disabled={!online || busy || ntfy.trim() === saved}
+          >
             Save
-          </button>
+          </Button>
         </form>
         {saved &&
           ALERT_EVENT_LABELS.map((e) => (
@@ -154,13 +160,14 @@ export function AlertsSettings({ hostKey }: { hostKey: string }) {
       <div className="settings-section-head">
         <h3>Recent alerts</h3>
         <div className="settings-actions">
-          <button
+          <Button
+            variant="app"
             className="settings-button"
             disabled={!online || busy}
             onClick={() => void run(() => hostRequest(hostKey, 'alerts.test', {}))}
           >
             <BellRing size={14} /> Send a test
-          </button>
+          </Button>
         </div>
       </div>
       <div className="settings-card">

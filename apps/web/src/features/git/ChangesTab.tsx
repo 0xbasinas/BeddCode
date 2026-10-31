@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { Check, ChevronDown, ChevronRight, Folder, Minus } from 'lucide-react'
 import type { GitFile, GitStatus } from '@beddcode/contracts'
 import { PatchView, type PatchReview } from '../../ui/PatchView.tsx'
@@ -92,12 +93,12 @@ export function ChangesTab({
         <Check size={22} />
         <div>Nothing to commit</div>
         <div className="muted">Your working tree is clean.</div>
-        <button className="secondary" onClick={onOpenCommits}>
+        <Button variant="app" className="secondary" onClick={onOpenCommits}>
           View commits & push
-        </button>
-        <button className="secondary" onClick={onOpenPr}>
+        </Button>
+        <Button variant="app" className="secondary" onClick={onOpenPr}>
           Open pull request
-        </button>
+        </Button>
       </div>
     )
   }
@@ -121,7 +122,8 @@ export function ChangesTab({
             {selected.length} of {status.files.length} selected
           </span>
           <span className="spacer" />
-          <button
+          <Button
+            variant="app"
             className="link-btn"
             onClick={() =>
               setCollapsed(
@@ -132,7 +134,7 @@ export function ChangesTab({
             }
           >
             {groups.every((g) => collapsed[g.dir]) ? 'Expand all' : 'Collapse all'}
-          </button>
+          </Button>
         </div>
 
         {groups.map((group) => (
@@ -228,12 +230,22 @@ export function ChangesTab({
           <span className="count">{message.length}</span>
         </div>
         <div className="git-actions">
-          <button className="secondary" disabled={!canCommit} onClick={() => void commit(false)}>
+          <Button
+            variant="app"
+            className="secondary"
+            disabled={!canCommit}
+            onClick={() => void commit(false)}
+          >
             {busy === 'commit' ? 'Committing…' : commitLabel(selected.length)}
-          </button>
-          <button className="primary" disabled={!canCommit} onClick={() => void commit(true)}>
+          </Button>
+          <Button
+            variant="app"
+            className="primary"
+            disabled={!canCommit}
+            onClick={() => void commit(true)}
+          >
             {busy === 'push' ? 'Pushing…' : 'Commit & push'}
-          </button>
+          </Button>
         </div>
       </div>
     </>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Button } from '@/components/ui/button'
 import {
   ArrowLeft,
   ArrowRight,
@@ -274,13 +275,14 @@ export function BrowserPane({
           </span>
         )}
         <span className="spacer" />
-        <button
+        <Button
+          variant="app"
           className="icon-btn"
           aria-label="New tab"
           onClick={() => open('about:blank', { newTab: true })}
         >
           <Plus size={18} />
-        </button>
+        </Button>
       </div>
 
       {tabs.length > 0 && (
@@ -323,7 +325,8 @@ export function BrowserPane({
         >
           <MousePointer2 size={17} />
         </button>
-        <button
+        <Button
+          variant="app"
           type="button"
           className="icon-btn"
           aria-label="Back"
@@ -331,8 +334,9 @@ export function BrowserPane({
           onClick={() => current && void browserCommand({ op: 'back', tabId: current.id })}
         >
           <ArrowLeft size={17} />
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="app"
           type="button"
           className="icon-btn"
           aria-label="Forward"
@@ -340,8 +344,9 @@ export function BrowserPane({
           onClick={() => current && void browserCommand({ op: 'forward', tabId: current.id })}
         >
           <ArrowRight size={17} />
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="app"
           type="button"
           className="icon-btn"
           aria-label={page.loading ? 'Stop loading' : 'Reload'}
@@ -349,7 +354,7 @@ export function BrowserPane({
           onClick={reload}
         >
           {page.loading ? <X size={16} /> : <RotateCw size={16} />}
-        </button>
+        </Button>
         <div className="url-field">
           <Globe size={15} />
           <input
@@ -459,12 +464,13 @@ export function BrowserPane({
             <Globe size={26} />
           </span>
           <h3>Nothing to preview</h3>
-          <button
+          <Button
+            variant="app"
             className="primary-btn"
             onClick={() => void go(address || 'localhost:3000', tabs.length === 0)}
           >
             Open {address ? 'this URL' : 'localhost:3000'}
-          </button>
+          </Button>
           {!desktop && (
             <p className="muted small">
               Some sites refuse to be shown inside another page. The desktop app opens them in an
@@ -576,9 +582,9 @@ function NativePage({ tab, page, onRetry }: { tab?: BrowserTab; page: Page; onRe
           <Bug size={24} />
           <h3>This page crashed</h3>
           <p className="muted small">Reason: {page.crashed}</p>
-          <button className="primary-btn" onClick={onRetry}>
+          <Button variant="app" className="primary-btn" onClick={onRetry}>
             Reload
-          </button>
+          </Button>
         </div>
       )}
       {!page.crashed && page.error && (
@@ -595,9 +601,9 @@ function NativePage({ tab, page, onRetry }: { tab?: BrowserTab; page: Page; onRe
               Is something listening on port {tab.via.port} on {tab.via.host}?
             </p>
           )}
-          <button className="primary-btn" onClick={onRetry}>
+          <Button variant="app" className="primary-btn" onClick={onRetry}>
             Try again
-          </button>
+          </Button>
         </div>
       )}
     </div>
@@ -644,14 +650,15 @@ function PageMenu({
           <div className="menu-zoom">
             <span className="menu-title">Zoom</span>
             <span className="spacer" />
-            <button
+            <Button
+              variant="app"
               className="icon-btn"
               aria-label="Zoom out"
               disabled={blank}
               onClick={() => void browserCommand({ op: 'zoom', tabId: tab.id, direction: -1 })}
             >
               <ZoomOut size={15} />
-            </button>
+            </Button>
             <button
               className="zoom-value"
               disabled={blank}
@@ -659,14 +666,15 @@ function PageMenu({
             >
               {zoom}%
             </button>
-            <button
+            <Button
+              variant="app"
               className="icon-btn"
               aria-label="Zoom in"
               disabled={blank}
               onClick={() => void browserCommand({ op: 'zoom', tabId: tab.id, direction: 1 })}
             >
               <ZoomIn size={15} />
-            </button>
+            </Button>
           </div>
           <div className="menu-sep" />
           <MenuRow
@@ -784,7 +792,8 @@ function FindBar({
       <span className="muted small find-count">
         {text && found ? `${found.matches ? found.active : 0}/${found.matches}` : ''}
       </span>
-      <button
+      <Button
+        variant="app"
         type="button"
         className="icon-btn"
         aria-label="Previous match"
@@ -792,8 +801,9 @@ function FindBar({
         onClick={() => find(false, true)}
       >
         <ChevronUp size={15} />
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="app"
         type="button"
         className="icon-btn"
         aria-label="Next match"
@@ -801,10 +811,16 @@ function FindBar({
         onClick={() => find(true, true)}
       >
         <ChevronDown size={15} />
-      </button>
-      <button type="button" className="icon-btn" aria-label="Close find" onClick={onClose}>
+      </Button>
+      <Button
+        variant="app"
+        type="button"
+        className="icon-btn"
+        aria-label="Close find"
+        onClick={onClose}
+      >
         <X size={15} />
-      </button>
+      </Button>
     </form>
   )
 }
@@ -822,12 +838,12 @@ function PromptBanner({ prompt }: { prompt: BrowserPrompt }) {
           {permissionText(prompt)}
         </span>
         <span className="spacer" />
-        <button className="ghost-btn" onClick={() => answer(false)}>
+        <Button variant="app" className="ghost-btn" onClick={() => answer(false)}>
           Block
-        </button>
-        <button className="primary-btn" onClick={() => answer(true)}>
+        </Button>
+        <Button variant="app" className="primary-btn" onClick={() => answer(true)}>
           Allow
-        </button>
+        </Button>
       </div>
     )
   }
@@ -859,16 +875,17 @@ function PromptBanner({ prompt }: { prompt: BrowserPrompt }) {
         value={password}
         onChange={(e) => setPassword(e.target.value)}
       />
-      <button
+      <Button
+        variant="app"
         type="button"
         className="ghost-btn"
         onClick={() => void browserCommand({ op: 'login', id: prompt.id })}
       >
         Cancel
-      </button>
-      <button type="submit" className="primary-btn">
+      </Button>
+      <Button variant="app" type="submit" className="primary-btn">
         Sign in
-      </button>
+      </Button>
     </form>
   )
 }
@@ -960,15 +977,17 @@ function ConsoleDrawer({
         </div>
         <span className="spacer" />
         {onAttach && (
-          <button
+          <Button
+            variant="app"
             className="ghost-btn small"
             disabled={!shown.length}
             onClick={() => onAttach(asText())}
           >
             Attach to message
-          </button>
+          </Button>
         )}
-        <button
+        <Button
+          variant="app"
           className="icon-btn"
           aria-label="Copy"
           title="Copy"
@@ -976,8 +995,9 @@ function ConsoleDrawer({
           onClick={copy}
         >
           {copied ? <Check size={14} /> : <Copy size={14} />}
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="app"
           className="icon-btn"
           aria-label="Clear console"
           title="Clear"
@@ -987,10 +1007,16 @@ function ConsoleDrawer({
           }}
         >
           <Trash2 size={14} />
-        </button>
-        <button className="icon-btn" aria-label="Close console" title="Close" onClick={onClose}>
+        </Button>
+        <Button
+          variant="app"
+          className="icon-btn"
+          aria-label="Close console"
+          title="Close"
+          onClick={onClose}
+        >
           <X size={14} />
-        </button>
+        </Button>
       </div>
       <div className="console-list" ref={list}>
         {shown.length === 0 && (
@@ -1050,20 +1076,22 @@ function Downloads() {
                   : 'Failed'}
           </span>
           {d.state === 'completed' && (
-            <button
+            <Button
+              variant="app"
               className="ghost-btn small"
               onClick={() => void browserCommand({ op: 'reveal-download', id: d.id })}
             >
               Show in folder
-            </button>
+            </Button>
           )}
-          <button
+          <Button
+            variant="app"
             className="icon-btn"
             aria-label={`Dismiss ${d.filename}`}
             onClick={() => dismissDownload(d.id)}
           >
             <X size={13} />
-          </button>
+          </Button>
         </div>
       ))}
     </div>

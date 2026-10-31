@@ -803,6 +803,19 @@ export class SessionManager {
     this.deps.store.append({ type: 'session.pinned', sessionId, at: Date.now(), pinned })
   }
 
+  /** Marks a session as waiting on the user (or clears the mark). */
+  setWaiting(sessionId: string, waiting: boolean, note?: string, remindAt?: number): void {
+    if (!this.createdEvent(sessionId)) throw new Error(`Unknown session: ${sessionId}`)
+    this.deps.store.append({
+      type: 'session.waiting',
+      sessionId,
+      at: Date.now(),
+      waiting,
+      ...(waiting && note ? { note } : {}),
+      ...(waiting && remindAt ? { remindAt } : {}),
+    })
+  }
+
   /** A turn ended: send the next waiting message when it is clearly what the user wants. */
   private onTurnEnded(sessionId: string, reason: 'done' | 'cancelled' | 'error') {
     const turn = this.turnState(sessionId)

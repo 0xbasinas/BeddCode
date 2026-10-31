@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { useNotificationPrefs, type NotificationSound } from '../../stores/notificationPrefs.ts'
 import { Select } from '../../ui/Select.tsx'
 import { notificationPermission, playSound, showNotification } from '../notifications/notifier.ts'
@@ -36,9 +38,9 @@ export function NotificationsSettings() {
               ? 'Desktop notifications are blocked for this page. Allow them in the browser’s site settings.'
               : 'Desktop notifications need your permission first.'}{' '}
           {permission === 'default' && (
-            <button className="settings-button" onClick={() => void ask()}>
+            <Button variant="app" className="settings-button" onClick={() => void ask()}>
               Allow notifications
-            </button>
+            </Button>
           )}
         </p>
       )}
@@ -113,22 +115,19 @@ export function NotificationsSettings() {
               disabled={!values.quietHours.enabled}
               onChange={(e) => e.target.value && setQuiet({ end: e.target.value })}
             />
-            <button
-              className="settings-toggle"
-              role="switch"
+            <Switch
               aria-label="Quiet hours"
-              aria-checked={values.quietHours.enabled}
-              onClick={() => setQuiet({ enabled: !values.quietHours.enabled })}
-            >
-              <span />
-            </button>
+              checked={values.quietHours.enabled}
+              onCheckedChange={(enabled) => setQuiet({ enabled })}
+            />
           </div>
         </div>
         <div className="setting-row">
           <div className="setting-label">
             <span>Try it</span>
           </div>
-          <button
+          <Button
+            variant="app"
             className="settings-button"
             onClick={() => {
               showNotification({
@@ -140,7 +139,7 @@ export function NotificationsSettings() {
             }}
           >
             Send a test
-          </button>
+          </Button>
         </div>
       </div>
     </>

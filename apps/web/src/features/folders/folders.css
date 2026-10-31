@@ -228,8 +228,8 @@
 
 /* In-app folder browser */
 .folder-browser {
-  width: min(calc(620px * var(--ui-scale)), calc(100vw - calc(32px * var(--ui-scale))));
-  max-height: calc(100vh - calc(64px * var(--ui-scale)));
+  width: min(calc(500px * var(--ui-scale)), calc(100vw - calc(32px * var(--ui-scale))));
+  max-height: min(calc(480px * var(--ui-scale)), calc(100vh - calc(64px * var(--ui-scale))));
   display: flex;
   flex-direction: column;
   overflow: hidden;

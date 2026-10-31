@@ -1,4 +1,5 @@
 import { Check, Code2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import { EditorIcon } from './EditorIcon.tsx'
 import { openInEditor, useEditors, useOpenError } from './editors.ts'
@@ -22,7 +23,8 @@ export function OpenInEditor({ hostKey, cwd }: { hostKey: string; cwd: string })
       placement="bottom"
       align="end"
       trigger={({ toggle, open: expanded }) => (
-        <button
+        <Button
+          variant="app"
           className="icon-btn"
           aria-label="Open in editor"
           title={error ?? 'Open the folder in an editor'}
@@ -34,7 +36,7 @@ export function OpenInEditor({ hostKey, cwd }: { hostKey: string; cwd: string })
           ) : (
             <Code2 size={17} />
           )}
-        </button>
+        </Button>
       )}
     >
       {(close) => (
@@ -86,7 +88,8 @@ export function OpenFileInEditor({
     editors.find((e) => e.id !== 'file-manager')
   if (!canOpen || !editor) return null
   return (
-    <button
+    <Button
+      variant="app"
       className="icon-btn"
       aria-label={`Open ${path} in ${editor.label}`}
       title={error ?? `Open in ${editor.label}${line ? ` at line ${line}` : ''}`}
@@ -97,6 +100,6 @@ export function OpenFileInEditor({
       }
     >
       <EditorIcon id={editor.id} size={15} />
-    </button>
+    </Button>
   )
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { confirmDialog } from '../../ui/confirm.tsx'
 import { Check, Copy, Info, LoaderCircle, Monitor, Server, Trash2 } from 'lucide-react'
 import { activeRoute, removeRemoteHost, useHostStore } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
@@ -161,8 +162,13 @@ export function HostList({ onAdd }: { onAdd(): void }) {
                 className="hosts-icon-button"
                 aria-label={`Remove ${name}`}
                 title="Remove this host"
-                onClick={() => {
-                  if (window.confirm(`Remove ${name}? You can pair with it again later.`))
+                onClick={async () => {
+                  if (
+                    await confirmDialog(
+                      `Remove ${name}? You can pair with it again later.`,
+                      'Remove',
+                    )
+                  )
                     removeRemoteHost(entry.key)
                 }}
               >

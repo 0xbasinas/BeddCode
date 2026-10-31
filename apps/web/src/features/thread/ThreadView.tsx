@@ -1,4 +1,6 @@
 import { OpenInEditor } from '../editors/OpenInEditor.tsx'
+import { Button } from '@/components/ui/button'
+import { confirmDialog } from '../../ui/confirm.tsx'
 import { LinkScope } from '../links/links.tsx'
 import {} from '../../ui/AgentMark.tsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -19,7 +21,9 @@ import {
   GitPullRequest,
   Maximize2,
   X,
+  BellRing,
 } from 'lucide-react'
+import { openWaitingDialog } from '../shell/WaitingMarkDialog.tsx'
 import type { SessionView } from '@beddcode/client-runtime'
 import { StatusTimer } from '../../ui/StatusTimer.tsx'
 import { Composer } from '../composer/Composer.tsx'
@@ -35,6 +39,7 @@ import {
   forkSession,
   setSessionModel,
   setSessionPinned,
+  setSessionWaiting,
   hostRequest,
   interrupt,
   setConfigOption,
@@ -262,14 +267,15 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             placement="bottom"
             align="end"
             trigger={({ toggle, open }) => (
-              <button
+              <Button
+                variant="app"
                 className="icon-btn"
                 aria-label="Session menu"
                 aria-expanded={open}
                 onClick={toggle}
               >
                 <MoreHorizontal size={18} />
-              </button>
+              </Button>
             )}
           >
             {(close) => (
@@ -299,6 +305,17 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                   {session.projectless
                     ? 'New session without a project'
                     : 'New session in this folder'}
+                </button>
+                <button
+                  className="menu-row"
+                  onClick={() => {
+                    close()
+                    if (session.waitingMark) void setSessionWaiting(sessionId, false)
+                    else openWaitingDialog(sessionId)
+                  }}
+                >
+                  <BellRing size={15} />
+                  {session.waitingMark ? 'Clear waiting on you' : 'Mark as waiting on you'}
                 </button>
                 <button
                   className="menu-row"
@@ -520,22 +537,24 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
 function PaneButtons({ pane }: { pane: PaneInfo }) {
   return (
     <>
-      <button
+      <Button
+        variant="app"
         className="icon-btn"
         aria-label="Show alone"
         title="Show this session alone"
         onClick={pane.solo}
       >
         <Maximize2 size={15} />
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="app"
         className="icon-btn"
         aria-label="Close pane"
         title="Close this pane (the session keeps running)"
         onClick={pane.close}
       >
         <X size={17} />
-      </button>
+      </Button>
     </>
   )
 }
@@ -593,7 +612,10 @@ function WorktreeChip({ session, hostKey }: { session: SessionView; hostKey: str
   const [copied, setCopied] = useState(false)
 
   const remove = async (close: () => void) => {
-    if (!window.confirm('Delete this worktree? The branch and its commits are kept.')) return
+    if (
+      !(await confirmDialog('Delete this worktree? The branch and its commits are kept.', 'Delete'))
+    )
+      return
     try {
       await hostRequest(hostKey, 'worktrees.remove', { sessionId: session.id })
       close()

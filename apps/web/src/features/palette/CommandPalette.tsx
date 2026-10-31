@@ -23,11 +23,14 @@ import {
   SquareTerminal,
   CircleStop,
   Files,
+  BellRing,
 } from 'lucide-react'
+import { openWaitingDialog } from '../shell/WaitingMarkDialog.tsx'
 import { rankCommands } from '@beddcode/client-runtime'
 import {
   interrupt,
   setSessionPinned,
+  setSessionWaiting,
   useAllSessions,
   useHostStore,
   useSession,
@@ -204,6 +207,17 @@ function PaletteDialog() {
           icon: <Copy size={15} />,
           keywords: ['cwd', 'directory', 'clipboard'],
           run: () => void navigator.clipboard?.writeText(session.cwd),
+        },
+        {
+          id: 'waiting',
+          label: session.waitingMark ? 'Clear waiting on you' : 'Mark session as waiting on you',
+          group: 'This session',
+          icon: <BellRing size={15} />,
+          keywords: ['remind', 'later'],
+          run: () =>
+            session.waitingMark
+              ? void setSessionWaiting(sessionId, false)
+              : openWaitingDialog(sessionId),
         },
         {
           id: 'pin',

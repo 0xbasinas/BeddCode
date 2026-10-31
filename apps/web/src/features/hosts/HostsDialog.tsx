@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { createPortal } from 'react-dom'
 import { useNavigate } from '@tanstack/react-router'
 import { X } from 'lucide-react'
@@ -88,9 +89,9 @@ export function HostsDialog({
             </div>
             <footer className="hosts-dialog-footer">
               <span className="hosts-escape">Esc to close</span>
-              <button className="hosts-button" onClick={onClose}>
+              <Button variant="app" className="hosts-button" onClick={onClose}>
                 Done
-              </button>
+              </Button>
             </footer>
           </>
         )}

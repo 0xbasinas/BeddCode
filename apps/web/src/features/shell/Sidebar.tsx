@@ -1,4 +1,7 @@
 import { StatusTimer } from '../../ui/StatusTimer.tsx'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { confirmDialog } from '../../ui/confirm.tsx'
 import { AgentIcon } from '../../ui/AgentMark.tsx'
 import {
   Fragment,
@@ -43,8 +46,11 @@ import {
   X,
   LoaderCircle,
   Columns2,
+  BellRing,
 } from 'lucide-react'
 import {
+  isWaitingOnYou,
+  reminderDue,
   activityLine,
   doneMenuAction,
   doneOpen,
@@ -67,10 +73,12 @@ import {
   setSessionDone,
   deleteSession,
   setSessionPinned,
+  setSessionWaiting,
   useAllSessions,
   useHostStore,
 } from '../../stores/host.ts'
 import { useSessionPr } from '../../stores/sessionPr.ts'
+import { openWaitingDialog } from './WaitingMarkDialog.tsx'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { HostsDialog } from '../hosts/HostsDialog.tsx'
 import { HistoryDialog } from '../history/HistoryDialog.tsx'
@@ -278,7 +286,7 @@ export function Sidebar() {
   const online = entries.filter((e) => runtimes[e.key]?.connection === 'connected').length
   const local = runtimes[LOCAL_HOST_KEY]
 
-  const needsYou = all.filter((s) => s.status === 'needs-you').length
+  const needsYou = all.filter(isWaitingOnYou).length
   const searching = searchOpen && query.trim() !== ''
   // Searching looks at what was said in each session too, and shows the matching words.
   const messageHits = useMemo(
@@ -309,7 +317,7 @@ export function Sidebar() {
     )
     .filter((s) => matchesFilters(s, projectKeyOf(s), filters))
     .filter((s) =>
-      filter === 'all' ? true : filter === 'needs-you' ? s.status === 'needs-you' : isFiledAway(s),
+      filter === 'all' ? true : filter === 'needs-you' ? isWaitingOnYou(s) : isFiledAway(s),
     )
     .sort(
       (a, b) =>
@@ -456,6 +464,15 @@ ${s.projectless ? 'no-project' : s.projectPath}`
                 repo={s.projectPath}
               />
             )}
+            {s.waitingMark && (
+              <span
+                className="session-note needs-you"
+                title={s.waitingMark.note ?? 'Marked as waiting on you'}
+              >
+                {reminderDue(s) ? 'Reminder · ' : ''}
+                {s.waitingMark.note ?? 'Waiting on you'}
+              </span>
+            )}
             {s.pinned && !showPinned && (
               <Pin className="session-pin" size={11} aria-label="Pinned" />
             )}
@@ -538,6 +555,15 @@ ${s.projectless ? 'no-project' : s.projectPath}`
         onSelect: () => void setSessionDone(session.id, action.kind === 'file'),
       },
       {
+        id: 'waiting',
+        label: session.waitingMark ? 'Clear waiting on you' : 'Mark as waiting on you',
+        icon: <BellRing size={15} />,
+        onSelect: () =>
+          session.waitingMark
+            ? void setSessionWaiting(session.id, false)
+            : openWaitingDialog(session.id),
+      },
+      {
         id: 'pin',
         label: session.pinned ? 'Unpin' : 'Pin to top',
         icon: session.pinned ? <PinOff size={15} /> : <Pin size={15} />,
@@ -548,8 +574,9 @@ ${s.projectless ? 'no-project' : s.projectPath}`
         label: 'Delete',
         hint: 'Removes the conversation. Your folder and files stay.',
         icon: <Trash2 size={15} />,
-        onSelect: () => {
-          if (!window.confirm(`Delete "${session.title}"? This cannot be undone.`)) return
+        onSelect: async () => {
+          if (!(await confirmDialog(`Delete "${session.title}"? This cannot be undone.`, 'Delete')))
+            return
           void deleteSession(session.id).then(
             () => {
               if (openId === session.id) void navigate({ to: '/' })
@@ -562,10 +589,13 @@ ${s.projectless ? 'no-project' : s.projectPath}`
   }
 
   const tab = (id: Filter, label: string, count?: number) => (
-    <button className="tab" role="tab" aria-selected={filter === id} onClick={() => setFilter(id)}>
+    <TabsTrigger
+      value={id}
+      className="tab h-auto flex-none border-0 shadow-none focus-visible:ring-0"
+    >
       {label}
       {count ? <span className="badge">{count}</span> : null}
-    </button>
+    </TabsTrigger>
   )
   const agentLabel = (s: SessionView) =>
     runtimes[hostOf.get(s.id) ?? '']?.providers.find((p) => p.id === s.instanceId)?.label ??
@@ -671,7 +701,8 @@ ${s.projectless ? 'no-project' : s.projectPath}`
         >
           <PenSquare size={18} /> New session
         </button>
-        <button
+        <Button
+          variant="app"
           className="icon-btn"
           aria-label="Search"
           aria-expanded={searchOpen}
@@ -679,19 +710,20 @@ ${s.projectless ? 'no-project' : s.projectPath}`
           title="Search sessions (Ctrl+K)"
         >
           <Search size={18} />
-        </button>
+        </Button>
       </div>
       <div className="folders-head">
         Folders
         <span className="folders-actions">
-          <button
+          <Button
+            variant="app"
             className="icon-btn"
             aria-label="Resume an earlier conversation"
             title="Resume a conversation from the agent's own CLI"
             onClick={() => setHistoryOpen(true)}
           >
             <History size={16} />
-          </button>
+          </Button>
           <AddFolderMenu />
         </span>
       </div>
@@ -706,7 +738,8 @@ ${s.projectless ? 'no-project' : s.projectPath}`
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={onSearchKey}
           />
-          <button
+          <Button
+            variant="app"
             className="icon-btn"
             aria-label="Close search"
             onClick={() => {
@@ -715,16 +748,21 @@ ${s.projectless ? 'no-project' : s.projectPath}`
             }}
           >
             <X size={14} />
-          </button>
+          </Button>
         </div>
       )}
       {all.length > 0 && (
         <div className="sidebar-filters">
-          <div className="tabs" role="tablist" aria-label="Session status">
-            {tab('all', `All ${all.filter((s) => !isFiledAway(s)).length}`)}
-            {tab('needs-you', 'Needs you', needsYou)}
-            {tab('done', 'Done')}
-          </div>
+          <Tabs className="gap-0" value={filter} onValueChange={(v) => setFilter(v as Filter)}>
+            <TabsList
+              className="tabs h-auto w-auto justify-start rounded-none bg-transparent p-0"
+              aria-label="Session status"
+            >
+              {tab('all', `All ${all.filter((s) => !isFiledAway(s)).length}`)}
+              {tab('needs-you', 'Needs you', needsYou)}
+              {tab('done', 'Done')}
+            </TabsList>
+          </Tabs>
           <div className="filter-actions">
             <Dropdown
               placement="bottom"
@@ -1151,13 +1189,14 @@ function FolderGroup({
             <span className="folder-host-name">{hostName}</span>
           </span>
         )}
-        <button
+        <Button
+          variant="app"
           className="icon-btn small"
           aria-label={projectless ? 'New session without a project' : `New session in ${name}`}
           onClick={startHere}
         >
           <Plus size={15} />
-        </button>
+        </Button>
       </div>
       <div id={contentId} hidden={collapsed}>
         {children ?? (

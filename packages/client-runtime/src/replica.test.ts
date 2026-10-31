@@ -162,6 +162,32 @@ describe('replica', () => {
     expect(again.sessions.s1).toMatchObject({ done: undefined, status: 'running' })
   })
 
+  it('marks a session as waiting on the user, and a new turn clears the mark', () => {
+    const idle = fold([
+      { ...created },
+      { type: 'turn.started', turnId: 't1' },
+      { type: 'turn.completed', reason: 'done', turnId: 't1' },
+    ])
+    const marked = applyEvent(idle, {
+      seq: 99,
+      event: {
+        sessionId: 's1',
+        at: 500,
+        type: 'session.waiting',
+        waiting: true,
+        note: 'review',
+        remindAt: 900,
+      },
+    })
+    expect(marked.sessions.s1!.waitingMark).toEqual({ note: 'review', remindAt: 900, since: 500 })
+    expect(marked.sessions.s1!.updatedAt).toBe(idle.sessions.s1!.updatedAt)
+    const sent = applyEvent(marked, {
+      seq: 100,
+      event: { sessionId: 's1', at: 600, type: 'turn.started', turnId: 't2' },
+    })
+    expect(sent.sessions.s1!.waitingMark).toBeUndefined()
+  })
+
   it('drops a deleted session, and ignores late events for it', () => {
     const state = fold([{ ...created }, { type: 'turn.started', turnId: 't1' }])
     expect(state.sessions.s1).toBeDefined()

@@ -359,6 +359,10 @@ export function createRpcRouter(
       sessions.setPinned(p.sessionId, p.pinned)
       return {}
     },
+    'sessions.setWaiting': async (p) => {
+      sessions.setWaiting(p.sessionId, p.waiting, p.note, p.remindAt)
+      return {}
+    },
     'sessions.turnDiff': (p) => sessions.turnDiff(p.sessionId, p.after, p.path),
     'sessions.undoTurn': (p) => sessions.undoTurn(p.sessionId, p.after),
     'sessions.setDone': async (p) => {

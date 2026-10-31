@@ -1,4 +1,5 @@
 import { Check, CircleAlert, LoaderCircle, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { dismissGitOperation, pushBranch, type GitOperation } from './operations.ts'
 
 export function GitOperationStatus({
@@ -32,22 +33,24 @@ export function GitOperationStatus({
           {operation.pending ? pendingText : (operation.error ?? completeText)}
         </div>
         {!operation.pending && operation.error && (operation.hash || operation.kind === 'push') && (
-          <button
+          <Button
+            variant="app"
             className="link-btn"
             onClick={() => void pushBranch(hostKey, cwd).catch(() => {})}
           >
             Retry push
-          </button>
+          </Button>
         )}
       </div>
       {!operation.pending && (
-        <button
+        <Button
+          variant="app"
           className="icon-btn"
           aria-label="Dismiss Git result"
           onClick={() => dismissGitOperation(hostKey, cwd)}
         >
           <X size={13} />
-        </button>
+        </Button>
       )}
     </div>
   )

@@ -1,4 +1,5 @@
 import { useHostStore } from '../../stores/host.ts'
+import { Button } from '@/components/ui/button'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { useAppPreferences } from '../../stores/appPreferences.ts'
 import { Select } from '../../ui/Select.tsx'
@@ -24,18 +25,18 @@ export function HostsOverview({
         <div>
           <h2>Hosts</h2>
         </div>
-        <button className="hosts-button primary" onClick={onAdd}>
+        <Button variant="app" className="hosts-button primary" onClick={onAdd}>
           Add host
-        </button>
+        </Button>
       </header>
       <HostList onAdd={onAdd} />
       <div className="hosts-share-row">
         <div>
           <h3>Let another computer connect</h3>
         </div>
-        <button className="hosts-button" onClick={onShare}>
+        <Button variant="app" className="hosts-button" onClick={onShare}>
           Share this PC
-        </button>
+        </Button>
       </div>
       {showPreferences && entries.length > 1 && (
         <div className="hosts-preference-row">

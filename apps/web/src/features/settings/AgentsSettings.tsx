@@ -1,4 +1,5 @@
 import { AgentIcon, agentKind } from '../../ui/AgentMark.tsx'
+import { Button } from '@/components/ui/button'
 import { useEffect, useState } from 'react'
 import { Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import type { AcpAgentSummary, AgentPreview, ProviderInstance } from '@beddcode/contracts'
@@ -138,21 +139,23 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
       <div className="settings-section-head">
         <h3>Installed agents</h3>
         <div className="settings-actions">
-          <button
+          <Button
+            variant="app"
             className="settings-button"
             disabled={!online || busy}
             onClick={() => void refresh()}
           >
             <RefreshCw size={13} />
             {busy ? 'Refreshing…' : 'Refresh'}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="app"
             className="settings-button"
             disabled={!online || busy}
             onClick={() => setAdding(true)}
           >
             <Plus size={14} /> Add agent
-          </button>
+          </Button>
         </div>
       </div>
       <div className="settings-card agent-list">
@@ -206,24 +209,26 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                 </span>
               </button>
               {configured && (
-                <button
+                <Button
+                  variant="app"
                   className="icon-btn"
                   aria-label={`Edit ${provider.label}`}
                   disabled={!online || busy}
                   onClick={() => setEditId(configured.id)}
                 >
                   <Pencil size={15} />
-                </button>
+                </Button>
               )}
               {configured && (
-                <button
+                <Button
+                  variant="app"
                   className="icon-btn"
                   aria-label={`Remove ${provider.label}`}
                   disabled={!online || busy}
                   onClick={() => setRemoveId(configured.id)}
                 >
                   <Trash2 size={15} />
-                </button>
+                </Button>
               )}
             </div>
           )
@@ -236,20 +241,22 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
             Its CLI and existing session history stay on the host.
           </p>
           <div className="settings-actions">
-            <button
+            <Button
+              variant="app"
               className="settings-button"
               disabled={busy}
               onClick={() => setRemoveId(undefined)}
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="app"
               className="settings-button danger"
               disabled={!online || busy}
               onClick={() => void remove()}
             >
               Remove agent
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -313,14 +320,15 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                   <span>Could not read agent settings</span>
                   <small>{agentOffer.error}</small>
                 </div>
-                <button
+                <Button
+                  variant="app"
                   type="button"
                   className="settings-button"
                   disabled={!online}
                   onClick={() => setPreviewAttempt((n) => n + 1)}
                 >
                   Try again
-                </button>
+                </Button>
               </div>
             )}
             {current.capabilities.models?.length ? (

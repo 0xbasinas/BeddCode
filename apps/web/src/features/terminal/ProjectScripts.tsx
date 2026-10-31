@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Play, Plus, Settings2, Trash2 } from 'lucide-react'
 import type { Project, ProjectScript } from '@beddcode/contracts'
 import { hostRequest, refreshProjects } from '../../stores/host.ts'
@@ -69,27 +71,28 @@ export function ProjectScripts({
               onChange={(e) => update(s.id, { command: e.target.value })}
             />
             <label className="script-auto" title="Run by itself when a worktree is made">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={Boolean(s.runOnWorktreeCreate)}
-                onChange={(e) =>
-                  update(s.id, { runOnWorktreeCreate: e.target.checked || undefined })
+                onCheckedChange={(checked) =>
+                  update(s.id, { runOnWorktreeCreate: checked === true || undefined })
                 }
               />
               On new worktree
             </label>
-            <button
+            <Button
+              variant="app"
               className="icon-btn"
               aria-label={`Remove ${s.name || 'script'}`}
               onClick={() => setEditing((list) => list && list.filter((x) => x.id !== s.id))}
             >
               <Trash2 size={15} />
-            </button>
+            </Button>
           </div>
         ))}
         {error && <div className="composer-error">{error}</div>}
         <div className="scripts-editor-actions">
-          <button
+          <Button
+            variant="app"
             className="link-btn"
             disabled={editing.length >= 20}
             onClick={() =>
@@ -97,14 +100,24 @@ export function ProjectScripts({
             }
           >
             <Plus size={14} /> Add script
-          </button>
+          </Button>
           <span className="spacer" />
-          <button className="secondary-btn" disabled={saving} onClick={() => setEditing(null)}>
+          <Button
+            variant="app"
+            className="secondary-btn"
+            disabled={saving}
+            onClick={() => setEditing(null)}
+          >
             Cancel
-          </button>
-          <button className="primary-btn" disabled={saving} onClick={() => void save()}>
+          </Button>
+          <Button
+            variant="app"
+            className="primary-btn"
+            disabled={saving}
+            onClick={() => void save()}
+          >
             {saving ? 'Saving…' : 'Save'}
-          </button>
+          </Button>
         </div>
       </div>
     )

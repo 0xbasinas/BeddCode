@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
+import { confirmDialog } from '../../ui/confirm.tsx'
 import { Clock, Eye, Monitor, RefreshCw, Trash2 } from 'lucide-react'
 import type { Device, PairingCode, RelaySettings } from '@beddcode/contracts'
 import { hostRequest, useHostStore } from '../../stores/host.ts'
@@ -119,17 +123,18 @@ export function ShareThisComputer({ onClose }: { onClose(): void }) {
         <PairedDevices />
       </div>
       <footer className="hosts-dialog-footer">
-        <button
+        <Button
+          variant="app"
           className="hosts-button"
           disabled={!connected || busy}
           onClick={() => void generate()}
         >
           {busy && <HostSpinner />}
           New code
-        </button>
-        <button className="hosts-button primary" onClick={onClose}>
+        </Button>
+        <Button variant="app" className="hosts-button primary" onClick={onClose}>
           Done
-        </button>
+        </Button>
       </footer>
     </>
   )
@@ -211,7 +216,7 @@ function RelaySetting({ onChange }: { onChange(): void }) {
           if (value.trim()) void save(value.trim(), password ? password : undefined)
         }}
       >
-        <input
+        <Input
           className="hosts-input"
           value={value}
           placeholder="relay.example.com"
@@ -220,12 +225,17 @@ function RelaySetting({ onChange }: { onChange(): void }) {
           spellCheck={false}
           aria-label="Relay address"
         />
-        <button className="hosts-button" type="submit" disabled={busy || !value.trim()}>
+        <Button
+          variant="app"
+          className="hosts-button"
+          type="submit"
+          disabled={busy || !value.trim()}
+        >
           {busy && <HostSpinner />}
           Save
-        </button>
+        </Button>
         <span className="hosts-peek">
-          <input
+          <Input
             className="hosts-input"
             type={peeking ? 'text' : 'password'}
             value={password}
@@ -256,25 +266,27 @@ function RelaySetting({ onChange }: { onChange(): void }) {
           )}
         </span>
         {settings.url && (
-          <button
+          <Button
+            variant="app"
             className="hosts-button destructive"
             type="button"
             disabled={busy}
             onClick={() => void save(null)}
           >
             Turn off
-          </button>
+          </Button>
         )}
       </form>
       {(() => {
         const ready = Boolean(settings.url && settings.passwordSet)
         return (
           <label className="hosts-check">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={ready && settings.telemetry}
               disabled={busy || !ready}
-              onChange={(e) => void save(settings.url ?? null, undefined, e.target.checked)}
+              onCheckedChange={(checked) =>
+                void save(settings.url ?? null, undefined, checked === true)
+              }
             />
             <span>
               Keep anonymous speed measurements on my relay. Only timings and counts, never your
@@ -338,9 +350,10 @@ function PairedDevices() {
   const revoke = async (device: Device) => {
     if (
       revokeBusy.current ||
-      !window.confirm(
+      !(await confirmDialog(
         `Revoke ${device.name}? Its active connections will close and it will need a new pairing code.`,
-      )
+        'Revoke',
+      ))
     )
       return
     revokeBusy.current = true
@@ -390,14 +403,15 @@ function PairedDevices() {
                     : `Paired ${new Date(device.createdAt).toLocaleString()}`}
                 </span>
               </span>
-              <button
+              <Button
+                variant="app"
                 className="hosts-button destructive"
                 disabled={!!revoking || busy}
                 onClick={() => void revoke(device)}
                 aria-label={`Revoke ${device.name}`}
               >
                 {revoking === device.id ? <HostSpinner /> : <Trash2 size={14} />}Revoke
-              </button>
+              </Button>
             </div>
           ))}
         </div>

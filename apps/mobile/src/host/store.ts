@@ -465,6 +465,14 @@ export async function setSessionDone(sessionId: string, done: boolean) {
   await sessionRequest(sessionId, 'sessions.setDone', { sessionId, done })
 }
 
+export async function setSessionWaiting(
+  sessionId: string,
+  waiting: boolean,
+  opts: { note?: string; remindAt?: number } = {},
+) {
+  await sessionRequest(sessionId, 'sessions.setWaiting', { sessionId, waiting, ...opts })
+}
+
 export async function setMode(sessionId: string, modeId: string) {
   await sessionRequest(sessionId, 'sessions.setMode', { sessionId, modeId })
 }

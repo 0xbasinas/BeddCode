@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { MessageSquareText } from 'lucide-react'
 import { formatReview, type ReviewComment } from '@beddcode/client-runtime'
 import { prompt, upload, useSession } from '../../stores/host.ts'
@@ -58,25 +59,28 @@ export function ReviewBar({
         {count} {count === 1 ? 'comment' : 'comments'}
       </span>
       <span className="spacer" />
-      <button
+      <Button
+        variant="app"
         className="secondary"
         disabled={busy !== null}
         onClick={() => clearSent(storeKey, comments)}
       >
         Clear
-      </button>
+      </Button>
       {draftId && (
-        <button
+        <Button
+          variant="app"
           className="secondary"
           disabled={busy !== null}
           title="Attach the comments to the message you are writing"
           onClick={() => void run('attach')}
         >
           {busy === 'attach' ? 'Attaching…' : 'Attach'}
-        </button>
+        </Button>
       )}
       {sessionId && session && (
-        <button
+        <Button
+          variant="app"
           className="primary"
           disabled={busy !== null}
           title={
@@ -87,7 +91,7 @@ export function ReviewBar({
           onClick={() => void run('send')}
         >
           {busy === 'send' ? 'Sending…' : 'Send to agent'}
-        </button>
+        </Button>
       )}
       {error && <div className="composer-error review-error">{error}</div>}
     </div>

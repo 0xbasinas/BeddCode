@@ -119,6 +119,8 @@ export interface SessionView {
   done?: boolean
   /** Pinned to the top of the sidebar by the user. */
   pinned?: boolean
+  /** Marked by the user as waiting on them; a message from the user clears it. */
+  waitingMark?: { note?: string; remindAt?: number; since: number }
   status: SessionStatus
   /** When `status` last changed; the running / waiting timers count from here. */
   statusSince: number
@@ -322,6 +324,13 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.pinned = e.pinned || undefined
       next.updatedAt = current.updatedAt
       break
+    case 'session.waiting':
+      next.waitingMark = e.waiting
+        ? { note: e.note || undefined, remindAt: e.remindAt, since: e.at }
+        : undefined
+      if (e.waiting) next.done = undefined
+      next.updatedAt = current.updatedAt
+      break
     case 'turn.changes':
       next.items = [
         ...current.items,
@@ -394,6 +403,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.currentModeId = e.currentModeId
       break
     case 'turn.started':
+      next.waitingMark = undefined
       next.result = undefined
       next.done = undefined
       next.turns = current.turns + 1
@@ -404,6 +414,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.declined = undefined
       break
     case 'message.delta': {
+      if (e.role === 'user') next.waitingMark = undefined
       if (
         e.role === 'user' &&
         current.title ===

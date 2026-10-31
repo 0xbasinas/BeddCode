@@ -9,6 +9,9 @@ import {
   splitDone,
   timeAgo,
   type SessionView,
+  isWaitingOnYou,
+  reminderDue,
+  tomorrowMorning,
 } from '@beddcode/client-runtime'
 import { router } from 'expo-router'
 import {
@@ -23,6 +26,7 @@ import {
   MagnifyingGlass,
   Monitor,
   NotePencil,
+  Bell,
   Plus,
   SortDescending,
   Trash,
@@ -32,7 +36,13 @@ import {
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native'
 
-import { deleteSession, setSessionDone, useAllSessions, useHostStore } from '@/host/store'
+import {
+  deleteSession,
+  setSessionDone,
+  setSessionWaiting,
+  useAllSessions,
+  useHostStore,
+} from '@/host/store'
 import { SESSION_SORTS, usePrefs, type SessionSort } from '@/host/prefs'
 import { colors, fonts, radius } from '@/theme/tokens'
 import { Diffstat } from '@/ui/Diffstat'
@@ -106,7 +116,7 @@ export default function SessionsScreen() {
 
   const all = hosted.filter((h) => selectedHost === 'all' || h.hostKey === selectedHost)
   const hostOf = useMemo(() => new Map(hosted.map((h) => [h.session.id, h.hostKey])), [hosted])
-  const needsYou = all.filter((h) => h.session.status === 'needs-you').length
+  const needsYou = all.filter((h) => isWaitingOnYou(h.session)).length
 
   const rows = useMemo<Row[]>(() => {
     const q = query.trim().toLowerCase()
@@ -121,11 +131,7 @@ export default function SessionsScreen() {
             .includes(q),
       )
       .filter((s) =>
-        filter === 'all'
-          ? true
-          : filter === 'needs-you'
-            ? s.status === 'needs-you'
-            : isFiledAway(s),
+        filter === 'all' ? true : filter === 'needs-you' ? isWaitingOnYou(s) : isFiledAway(s),
       )
       .sort(
         (a, b) =>
@@ -216,6 +222,27 @@ export default function SessionsScreen() {
         icon: action.kind === 'restore' ? ArrowUUpLeft : Checks,
         disabled: action.kind === 'busy',
         onSelect: () => void setSessionDone(session.id, action.kind === 'file'),
+      },
+      {
+        id: 'waiting',
+        label: session.waitingMark ? 'Clear waiting on you' : 'Mark as waiting on you',
+        icon: Bell,
+        onSelect: () => {
+          const fail = (err: unknown) =>
+            Alert.alert('Could not update', err instanceof Error ? err.message : String(err))
+          if (session.waitingMark) return void setSessionWaiting(session.id, false).catch(fail)
+          Alert.alert('Mark as waiting on you', 'Come back to this session later.', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Mark', onPress: () => void setSessionWaiting(session.id, true).catch(fail) },
+            {
+              text: 'Remind me tomorrow at 10',
+              onPress: () =>
+                void setSessionWaiting(session.id, true, { remindAt: tomorrowMorning() }).catch(
+                  fail,
+                ),
+            },
+          ])
+        },
       },
       {
         id: 'delete',
@@ -538,13 +565,15 @@ const SessionRow = memo(function SessionRow({
           </Text>
           <Muted size={12}>{timeAgo(session.updatedAt)}</Muted>
         </View>
-        {note ? (
+        {note || session.waitingMark ? (
           <Text
             size={13}
-            color={session.status === 'needs-you' ? colors.accent : colors.muted}
+            color={isWaitingOnYou(session) ? colors.accent : colors.muted}
             numberOfLines={1}
           >
-            {note}
+            {session.waitingMark
+              ? `${reminderDue(session) ? 'Reminder · ' : ''}${session.waitingMark.note ?? 'Waiting on you'}`
+              : note}
           </Text>
         ) : null}
         <View style={styles.line}>

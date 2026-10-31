@@ -370,8 +370,8 @@
   outline-offset: 2px;
 }
 .agent-dialog {
-  width: min(calc(560px * var(--ui-scale)), calc(100vw - calc(32px * var(--ui-scale))));
-  max-height: calc(100vh - calc(40px * var(--ui-scale)));
+  width: min(calc(460px * var(--ui-scale)), calc(100vw - calc(32px * var(--ui-scale))));
+  max-height: min(calc(560px * var(--ui-scale)), calc(100vh - calc(40px * var(--ui-scale))));
   padding: 0;
   border: 1px solid var(--border-strong);
   border-radius: calc(16px * var(--ui-scale));
@@ -385,19 +385,19 @@
 .agent-dialog form {
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 44px);
+  max-height: inherit;
 }
 .agent-dialog-head {
   display: flex;
   align-items: flex-start;
   gap: calc(9px * var(--ui-scale));
-  padding: calc(20px * var(--ui-scale)) calc(22px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  padding: calc(14px * var(--ui-scale)) calc(16px * var(--ui-scale)) calc(10px * var(--ui-scale));
 }
 .agent-dialog-head > div {
   flex: 1;
 }
 .agent-dialog-head h2 {
-  font-size: calc(18px * var(--ui-scale));
+  font-size: calc(15px * var(--ui-scale));
   font-weight: 600;
   margin: 0;
 }
@@ -409,10 +409,10 @@
 .agent-dialog-body {
   min-height: 0;
   overflow: auto;
-  padding: 0 calc(22px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  padding: 0 calc(16px * var(--ui-scale)) calc(12px * var(--ui-scale));
 }
 .agent-dialog-foot {
-  padding: calc(16px * var(--ui-scale)) calc(22px * var(--ui-scale));
+  padding: calc(12px * var(--ui-scale)) calc(16px * var(--ui-scale));
   border-top: 1px solid var(--border-subtle);
   display: flex;
   justify-content: flex-end;

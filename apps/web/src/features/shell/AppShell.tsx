@@ -16,6 +16,8 @@ import { CommandPalette, usePalette } from '../palette/CommandPalette.tsx'
 import { SplitView } from '../split/SplitView.tsx'
 import { useUiStore } from '../../stores/ui.ts'
 import { appWindowControls } from '../../ui/desktop.ts'
+import { ConfirmHost } from '../../ui/confirm.tsx'
+import { WaitingMarkDialog } from './WaitingMarkDialog.tsx'
 import { FolderBrowserLayer } from '../folders/FolderBrowserDialog.tsx'
 import { FolderPickerHint, FolderToast } from '../folders/FolderToast.tsx'
 import { chooseFolder, useFolderFlow } from '../folders/folderFlow.ts'
@@ -152,6 +154,8 @@ export function AppShell() {
   const layers = (
     <>
       <CommandPalette />
+      <WaitingMarkDialog />
+      <ConfirmHost />
       <FolderBrowserLayer />
       <FolderPickerHint />
       <WindowBar />

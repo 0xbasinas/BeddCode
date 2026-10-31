@@ -1,4 +1,6 @@
 import { AgentIcon, agentKind } from '../../ui/AgentMark.tsx'
+import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { useState } from 'react'
 import { ArrowLeft, Check, FolderOpen, Loader2, Monitor, RefreshCw, Server } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
@@ -98,9 +100,9 @@ export function Welcome({ hostKey, onSkip }: { hostKey: string; onSkip(): void }
               Supervise coding agents like Claude Code, Codex and Grok across all your machines. A
               few quick steps and you are running.
             </p>
-            <button className="wizard-primary" onClick={next}>
+            <Button variant="app" className="wizard-primary" onClick={next}>
               Get started
-            </button>
+            </Button>
             <button className="wizard-skip" onClick={onSkip}>
               Skip setup
             </button>
@@ -188,9 +190,9 @@ export function Welcome({ hostKey, onSkip }: { hostKey: string; onSkip(): void }
                 then scan again — or continue and set it up in Settings.
               </p>
             )}
-            <button className="wizard-primary" disabled={!connected} onClick={next}>
+            <Button variant="app" className="wizard-primary" disabled={!connected} onClick={next}>
               Continue
-            </button>
+            </Button>
           </>
         )}
 
@@ -235,9 +237,9 @@ export function Welcome({ hostKey, onSkip }: { hostKey: string; onSkip(): void }
                 </div>
               </>
             )}
-            <button className="wizard-primary" onClick={next}>
+            <Button variant="app" className="wizard-primary" onClick={next}>
               {projects.length > 0 ? 'Continue' : 'Skip for now'}
-            </button>
+            </Button>
           </>
         )}
 
@@ -298,9 +300,9 @@ export function Welcome({ hostKey, onSkip }: { hostKey: string; onSkip(): void }
                 </div>
               </div>
             )}
-            <button className="wizard-primary" onClick={next}>
+            <Button variant="app" className="wizard-primary" onClick={next}>
               Continue
-            </button>
+            </Button>
           </>
         )}
 
@@ -335,20 +337,16 @@ export function Welcome({ hostKey, onSkip }: { hostKey: string; onSkip(): void }
                   <strong>Notify me when an agent needs me</strong>
                   <small>Desktop notifications for permission requests and questions</small>
                 </div>
-                <button
-                  className="settings-toggle"
-                  role="switch"
+                <Switch
                   aria-label="Notify me when an agent needs me"
-                  aria-checked={notify.values.needsYou}
-                  onClick={() => void setNotify(!notify.values.needsYou)}
-                >
-                  <span />
-                </button>
+                  checked={notify.values.needsYou}
+                  onCheckedChange={(on) => void setNotify(on)}
+                />
               </div>
             </div>
-            <button className="wizard-primary" onClick={finish}>
+            <Button variant="app" className="wizard-primary" onClick={finish}>
               Start your first session
-            </button>
+            </Button>
           </>
         )}
       </div>

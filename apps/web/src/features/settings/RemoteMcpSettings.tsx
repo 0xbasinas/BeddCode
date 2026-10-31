@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import type { RpcResult } from '@beddcode/contracts'
 import { hostRequest, useRuntime } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
@@ -116,7 +119,7 @@ export function RemoteMcpSettings() {
               <span>Worker address</span>
               <small>Your deployed Cloudflare Worker URL</small>
             </label>
-            <input
+            <Input
               id="remote-mcp-url"
               className="settings-input"
               placeholder="https://your-worker.workers.dev"
@@ -134,7 +137,7 @@ export function RemoteMcpSettings() {
                   : 'The HOST_SECRET set on your Worker'}
               </small>
             </label>
-            <input
+            <Input
               id="remote-mcp-secret"
               className="settings-input"
               type="password"
@@ -151,7 +154,8 @@ export function RemoteMcpSettings() {
                 working folder, not a sandbox. Provider permissions still apply.
               </small>
             </div>
-            <button
+            <Button
+              variant="app"
               className="settings-button"
               disabled={
                 busy ||
@@ -161,16 +165,17 @@ export function RemoteMcpSettings() {
               }
             >
               Connect
-            </button>
+            </Button>
             {settings?.url && (
-              <button
+              <Button
+                variant="app"
                 type="button"
                 className="settings-button"
                 disabled={busy}
                 onClick={() => void save(true)}
               >
                 Disconnect
-              </button>
+              </Button>
             )}
           </div>
         </form>
@@ -188,11 +193,12 @@ export function RemoteMcpSettings() {
                   Clients can read files and Git changes in any project added to this host.
                 </small>
               </span>
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={settings.allowProjectRead}
                 disabled={busy || connection !== 'connected'}
-                onChange={(e) => void updateAccess({ allowProjectRead: e.target.checked })}
+                onCheckedChange={(checked) =>
+                  void updateAccess({ allowProjectRead: checked === true })
+                }
               />
             </label>
             <label className="setting-row">
@@ -203,11 +209,12 @@ export function RemoteMcpSettings() {
                   client connected to the gateway.
                 </small>
               </span>
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={settings.allowApprovals}
                 disabled={busy || connection !== 'connected'}
-                onChange={(e) => void updateAccess({ allowApprovals: e.target.checked })}
+                onCheckedChange={(checked) =>
+                  void updateAccess({ allowApprovals: checked === true })
+                }
               />
             </label>
             <p className="settings-notice">
@@ -228,7 +235,8 @@ export function RemoteMcpSettings() {
                 <span>MCP URL</span>
                 <small>{endpoint}</small>
               </div>
-              <button
+              <Button
+                variant="app"
                 className="settings-button"
                 onClick={() => {
                   void navigator.clipboard.writeText(endpoint).then(
@@ -238,7 +246,7 @@ export function RemoteMcpSettings() {
                 }}
               >
                 {copied ? 'Copied' : 'Copy URL'}
-              </button>
+              </Button>
             </div>
             <p className="settings-notice">
               Connect using OAuth and sign in with your MCP_PASSWORD. Clients that support bearer

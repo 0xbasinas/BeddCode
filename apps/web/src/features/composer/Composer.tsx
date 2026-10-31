@@ -6,6 +6,7 @@ import {
   type DragEvent,
   type ReactNode,
 } from 'react'
+import { Button } from '@/components/ui/button'
 import { ArrowUp, ChevronRight, Paperclip, Plus, Square, X } from 'lucide-react'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import { formatBytes } from '../../ui/format.ts'
@@ -402,9 +403,9 @@ export function Composer(props: ComposerProps) {
         <div className="toolbar">
           <Dropdown
             trigger={({ toggle }) => (
-              <button className="icon-btn" onClick={toggle} aria-label="Add">
+              <Button variant="app" className="icon-btn" onClick={toggle} aria-label="Add">
                 <Plus size={18} />
-              </button>
+              </Button>
             )}
           >
             {(close) => (
@@ -459,9 +460,9 @@ export function Composer(props: ComposerProps) {
           <span className="spinner-dot" aria-hidden />
           Sends as soon as{' '}
           {props.disabledReason ?? (pending ? 'your files are uploaded' : 'it can')}
-          <button className="link-btn" onClick={() => setArmed(undefined)}>
+          <Button variant="app" className="link-btn" onClick={() => setArmed(undefined)}>
             Cancel
-          </button>
+          </Button>
         </div>
       )}
       {error && <div className="composer-error">{error}</div>}

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Send } from 'lucide-react'
 import type { RpcParams, RpcResult } from '@beddcode/contracts'
 import { hostRequest, useRuntime } from '../../stores/host.ts'
@@ -77,7 +79,7 @@ export function TelegramSettings({ hostKey }: { hostKey: string }) {
               {status?.botName && ` Running as @${status.botName}.`}
             </small>
           </label>
-          <input
+          <Input
             id="telegram-token"
             className="settings-input"
             type="password"
@@ -87,18 +89,23 @@ export function TelegramSettings({ hostKey }: { hostKey: string }) {
             disabled={!online}
             onChange={(e) => setToken(e.target.value)}
           />
-          <button className="settings-button" disabled={!online || busy || token.trim() === ''}>
+          <Button
+            variant="app"
+            className="settings-button"
+            disabled={!online || busy || token.trim() === ''}
+          >
             Save
-          </button>
+          </Button>
           {(status?.connected || status?.botName) && (
-            <button
+            <Button
+              variant="app"
               type="button"
               className="settings-button"
               disabled={!online || busy}
               onClick={() => void configure({ token: null })}
             >
               Remove
-            </button>
+            </Button>
           )}
         </form>
         <div className="setting-row">
@@ -115,21 +122,23 @@ export function TelegramSettings({ hostKey }: { hostKey: string }) {
                 : 'Create a code, then send it to your bot as /pair <code>.'}
             </small>
           </div>
-          <button
+          <Button
+            variant="app"
             className="settings-button"
             disabled={!online || busy || !status?.connected}
             onClick={() => void configure({ newPairCode: true })}
           >
             New code
-          </button>
+          </Button>
           {!!status?.chats && (
-            <button
+            <Button
+              variant="app"
               className="settings-button"
               disabled={!online || busy}
               onClick={() => void configure({ unpair: true })}
             >
               Unpair all
-            </button>
+            </Button>
           )}
         </div>
       </div>

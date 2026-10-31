@@ -140,6 +140,17 @@ export const SessionEvent = z.discriminatedUnion('type', [
   Base.extend({ type: z.literal('session.deleted') }),
   /** The user pinned the session to the top of the sidebar, or unpinned it. */
   Base.extend({ type: z.literal('session.pinned'), pinned: z.boolean() }),
+  /**
+   * The user marked the session as waiting on them (to come back to it later), or cleared the mark.
+   * Sending a message clears it too.
+   */
+  Base.extend({
+    type: z.literal('session.waiting'),
+    waiting: z.boolean(),
+    note: z.string().trim().max(280).optional(),
+    /** When to remind the user, in ms since the epoch. */
+    remindAt: z.number().optional(),
+  }),
   /** The model and reasoning effort in use changed (set by the user during the session). */
   Base.extend({
     type: z.literal('session.model'),

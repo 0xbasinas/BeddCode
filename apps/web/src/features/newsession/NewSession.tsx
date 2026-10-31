@@ -1,4 +1,5 @@
 import { AgentMark } from '../../ui/AgentMark.tsx'
+import { Input } from '@/components/ui/input'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import {
@@ -773,7 +774,7 @@ function WorkspaceChip({
             {workspace.mode === 'worktree' && !workspace.branch && <Check size={16} />}
           </button>
           {workspace.mode === 'worktree' && !workspace.branch && (
-            <input
+            <Input
               className="settings-input menu-input"
               aria-label="Worktree name"
               placeholder="Worktree name (optional)"
@@ -793,7 +794,7 @@ function WorkspaceChip({
             {workspace.mode === 'local' && workspace.newBranch !== undefined && <Check size={16} />}
           </button>
           {workspace.mode === 'local' && workspace.newBranch !== undefined && (
-            <input
+            <Input
               className="settings-input menu-input"
               aria-label="New branch name"
               placeholder="Branch name"

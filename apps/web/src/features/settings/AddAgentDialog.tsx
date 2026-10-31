@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { ArrowLeft, ChevronRight, Plus, Search, Trash2, X } from 'lucide-react'
 import type { AcpAgentSummary, RegistryEntry } from '@beddcode/contracts'
 import { hostRequest } from '../../stores/host.ts'
@@ -136,7 +138,8 @@ export function AddAgentDialog({
       >
         <header className="agent-dialog-head">
           {mode === 'custom' && !editing && (
-            <button
+            <Button
+              variant="app"
               type="button"
               className="icon-btn"
               aria-label="Back to agent registry"
@@ -147,7 +150,7 @@ export function AddAgentDialog({
               }}
             >
               <ArrowLeft size={17} />
-            </button>
+            </Button>
           )}
           <div>
             <h2 id="add-agent-heading">
@@ -155,7 +158,8 @@ export function AddAgentDialog({
             </h2>
             {mode === 'registry' && <p>Pick a coding agent to run on this host.</p>}
           </div>
-          <button
+          <Button
+            variant="app"
             type="button"
             className="icon-btn"
             aria-label="Close add agent"
@@ -163,7 +167,7 @@ export function AddAgentDialog({
             onClick={onClose}
           >
             <X size={18} />
-          </button>
+          </Button>
         </header>
         <div className="agent-dialog-body">
           {mode === 'registry' ? (
@@ -188,13 +192,14 @@ export function AddAgentDialog({
                 {registryError && (
                   <div className="settings-error" role="alert">
                     <p>Could not load the agent registry. {registryError}</p>
-                    <button
+                    <Button
+                      variant="app"
                       type="button"
                       className="settings-button"
                       onClick={() => setRetry((n) => n + 1)}
                     >
                       Try again
-                    </button>
+                    </Button>
                   </div>
                 )}
                 {!loading && !registryError && visible.length === 0 && (
@@ -242,11 +247,10 @@ export function AddAgentDialog({
                       : 'The registry publishes no checksum for it, so the download cannot be verified.'}
                   </p>
                   <label className="download-agree">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={agreed}
                       disabled={busy}
-                      onChange={(e) => setAgreed(e.target.checked)}
+                      onCheckedChange={(checked) => setAgreed(checked === true)}
                     />
                     Download and install it
                   </label>
@@ -307,13 +311,14 @@ export function AddAgentDialog({
               </label>
               <div className="settings-section-head">
                 <h3>Environment</h3>
-                <button
+                <Button
+                  variant="app"
                   type="button"
                   className="settings-button"
                   onClick={() => setVariables((current) => [...current, { name: '', value: '' }])}
                 >
                   <Plus size={13} /> Add variable
-                </button>
+                </Button>
               </div>
               {variables.map((variable, i) => (
                 <div className="environment-row" key={i}>
@@ -331,7 +336,8 @@ export function AddAgentDialog({
                     value={variable.value}
                     onChange={(e) => setVariable(i, { value: e.target.value })}
                   />
-                  <button
+                  <Button
+                    variant="app"
                     type="button"
                     className="icon-btn"
                     aria-label={`Remove variable ${i + 1}`}
@@ -340,7 +346,7 @@ export function AddAgentDialog({
                     }
                   >
                     <Trash2 size={14} />
-                  </button>
+                  </Button>
                 </div>
               ))}
             </fieldset>
@@ -352,10 +358,21 @@ export function AddAgentDialog({
           )}
         </div>
         <footer className="agent-dialog-foot">
-          <button type="button" className="settings-button" disabled={busy} onClick={onClose}>
+          <Button
+            variant="app"
+            type="button"
+            className="settings-button"
+            disabled={busy}
+            onClick={onClose}
+          >
             Cancel
-          </button>
-          <button className="settings-button primary" type="submit" disabled={busy || !canAdd}>
+          </Button>
+          <Button
+            variant="app"
+            className="settings-button primary"
+            type="submit"
+            disabled={busy || !canAdd}
+          >
             {editing
               ? busy
                 ? 'Saving…'
@@ -365,7 +382,7 @@ export function AddAgentDialog({
                   ? 'Downloading…'
                   : 'Adding…'
                 : 'Add agent'}
-          </button>
+          </Button>
         </footer>
       </form>
     </dialog>

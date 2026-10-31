@@ -1,4 +1,5 @@
 import { Copy, Minus, Square, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { useEffect, useMemo, useState } from 'react'
 import { appWindowControls } from '../../ui/desktop.ts'
 
@@ -26,22 +27,24 @@ export function WindowBar() {
   return (
     <div className="window-island">
       <div className="winbar" role="group" aria-label="Window">
-        <button
+        <Button
+          variant="app"
           className="icon-btn"
           aria-label="Minimize"
           title="Minimize"
           onClick={() => void controls.minimize()}
         >
           <Minus size={16} />
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="app"
           className="icon-btn"
           aria-label={maximized ? 'Restore' : 'Maximize'}
           title={maximized ? 'Restore' : 'Maximize'}
           onClick={() => void controls.toggleMaximize().then(setMaximized)}
         >
           {maximized ? <Copy size={14} className="winbar-restore" /> : <Square size={14} />}
-        </button>
+        </Button>
         <button
           className="icon-btn winbar-close"
           aria-label="Close"

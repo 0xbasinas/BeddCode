@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Link } from '@tanstack/react-router'
 import { CalendarClock, Pause, Pencil, Play, Plus, Trash2, Zap } from 'lucide-react'
 import type { Schedule, ScheduleRun } from '@beddcode/contracts'
@@ -68,13 +70,14 @@ export function SchedulesSettings({ hostKey }: { hostKey: string }) {
       <div className="settings-section-head">
         <h3>Schedules</h3>
         <div className="settings-actions">
-          <button
+          <Button
+            variant="app"
             className="settings-button primary"
             disabled={!online || busy || editing !== undefined}
             onClick={() => setEditing(emptyScheduleForm())}
           >
             <Plus size={14} /> New schedule
-          </button>
+          </Button>
         </div>
       </div>
       {!online && (
@@ -172,7 +175,8 @@ function ScheduleRow({
             {s.nextRunAt && !s.paused ? ` · next ${when(s.nextRunAt)}` : ''}
           </small>
         </div>
-        <button
+        <Button
+          variant="app"
           className="icon-btn"
           aria-label={`Run ${s.name} now`}
           title="Run now"
@@ -180,8 +184,9 @@ function ScheduleRow({
           onClick={onRunNow}
         >
           <Zap size={15} />
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="app"
           className="icon-btn"
           aria-label={s.paused ? `Resume ${s.name}` : `Pause ${s.name}`}
           title={s.paused ? 'Resume' : 'Pause'}
@@ -189,8 +194,9 @@ function ScheduleRow({
           onClick={onPause}
         >
           {s.paused ? <Play size={15} /> : <Pause size={15} />}
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="app"
           className="icon-btn"
           aria-label={`Edit ${s.name}`}
           title="Edit"
@@ -198,8 +204,9 @@ function ScheduleRow({
           onClick={onEdit}
         >
           <Pencil size={15} />
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="app"
           className="icon-btn"
           aria-label={`Delete ${s.name}`}
           title="Delete"
@@ -207,18 +214,18 @@ function ScheduleRow({
           onClick={() => setConfirm(true)}
         >
           <Trash2 size={15} />
-        </button>
+        </Button>
       </div>
       {confirm && (
         <div className="settings-notice" role="alert">
           <p>Delete {s.name}? Sessions it started stay.</p>
           <div className="settings-actions">
-            <button className="settings-button" onClick={() => setConfirm(false)}>
+            <Button variant="app" className="settings-button" onClick={() => setConfirm(false)}>
               Cancel
-            </button>
-            <button className="settings-button danger" onClick={onRemove}>
+            </Button>
+            <Button variant="app" className="settings-button danger" onClick={onRemove}>
               Delete
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -445,10 +452,9 @@ function ScheduleEditor({
             </label>
             {projects.some((p) => p.path === form.cwd && p.isRepo) && (
               <label className="schedule-check">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={form.worktree}
-                  onChange={(e) => set({ worktree: e.target.checked })}
+                  onCheckedChange={(checked) => set({ worktree: checked === true })}
                 />
                 A new worktree for each run
               </label>
@@ -462,12 +468,18 @@ function ScheduleEditor({
         </p>
       )}
       <div className="settings-actions">
-        <button type="button" className="settings-button" disabled={busy} onClick={onCancel}>
+        <Button
+          variant="app"
+          type="button"
+          className="settings-button"
+          disabled={busy}
+          onClick={onCancel}
+        >
           Cancel
-        </button>
-        <button className="settings-button primary" disabled={busy}>
+        </Button>
+        <Button variant="app" className="settings-button primary" disabled={busy}>
           {busy ? 'Saving…' : form.id ? 'Save changes' : 'Create schedule'}
-        </button>
+        </Button>
       </div>
     </form>
   )

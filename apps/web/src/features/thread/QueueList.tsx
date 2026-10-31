@@ -1,4 +1,5 @@
 import { Clock, CornerDownRight, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import type { SessionView } from '@beddcode/client-runtime'
 
 type Queue = SessionView['queue']
@@ -44,13 +45,14 @@ export function QueueList({
               {busy ? (canSteer ? 'Steer now' : 'Stop and send') : 'Send now'}
             </button>
           )}
-          <button
+          <Button
+            variant="app"
             className="icon-btn small"
             aria-label="Remove queued message"
             onClick={() => onCancel(q.queueId)}
           >
             <X size={14} />
-          </button>
+          </Button>
         </li>
       ))}
     </ul>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { gitOperationKey, pushBranch, useGitOperations } from './operations.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
 import type { GitCommit, GitLog } from '@beddcode/contracts'
@@ -104,25 +105,25 @@ export function CommitsTab({
         )}
         <div className="git-actions">
           {busy ? (
-            <button className="primary" disabled>
+            <Button variant="app" className="primary" disabled>
               {operation?.pending
                 ? operation.kind === 'commit'
                   ? 'Committing…'
                   : 'Pushing…'
                 : 'Refreshing…'}
-            </button>
+            </Button>
           ) : n > 0 ? (
-            <button className="primary" onClick={() => void push()}>
+            <Button variant="app" className="primary" onClick={() => void push()}>
               {!hasUpstream ? 'Publish branch' : n === 1 ? 'Push 1 commit' : `Push ${n} commits`}
-            </button>
+            </Button>
           ) : (
-            <button className="primary" disabled>
+            <Button variant="app" className="primary" disabled>
               Everything is pushed
-            </button>
+            </Button>
           )}
-          <button className="secondary" disabled={busy} onClick={onOpenPr}>
+          <Button variant="app" className="secondary" disabled={busy} onClick={onOpenPr}>
             Open PR
-          </button>
+          </Button>
         </div>
       </div>
     </>

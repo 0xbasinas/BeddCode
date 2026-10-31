@@ -1,3 +1,7 @@
+import { Select } from '../../ui/Select.tsx'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   LinearClient,
@@ -220,7 +224,7 @@ export function LinearPage() {
       }}
     >
       <KeyRound size={16} />
-      <input
+      <Input
         className="settings-input"
         type="password"
         autoComplete="off"
@@ -230,13 +234,23 @@ export function LinearPage() {
         onChange={(e) => setDraft(e.target.value)}
         style={{ flex: 1 }}
       />
-      <button className="settings-button primary" type="submit" disabled={!draft.trim()}>
+      <Button
+        variant="app"
+        className="settings-button primary"
+        type="submit"
+        disabled={!draft.trim()}
+      >
         Connect
-      </button>
+      </Button>
       {account && (
-        <button className="settings-button" type="button" onClick={() => setAdding(false)}>
+        <Button
+          variant="app"
+          className="settings-button"
+          type="button"
+          onClick={() => setAdding(false)}
+        >
           Cancel
-        </button>
+        </Button>
       )}
     </form>
   )
@@ -274,7 +288,7 @@ export function LinearPage() {
                   </span>
                 </span>
                 {store.accounts.length > 1 && (
-                  <select
+                  <Select
                     className="settings-input"
                     aria-label="Linear account"
                     value={account?.id}
@@ -285,14 +299,18 @@ export function LinearPage() {
                         {a.label}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 )}
-                <button className="settings-button" onClick={() => setAdding((v) => !v)}>
+                <Button
+                  variant="app"
+                  className="settings-button"
+                  onClick={() => setAdding((v) => !v)}
+                >
                   <Plus size={14} /> Add account
-                </button>
-                <button className="settings-button danger" onClick={removeAccount}>
+                </Button>
+                <Button variant="app" className="settings-button danger" onClick={removeAccount}>
                   <LogOut size={14} /> Remove
-                </button>
+                </Button>
               </div>
               {adding && keyForm}
             </div>
@@ -422,7 +440,7 @@ function Workspace({ client, teams }: { client: LinearClient; teams: Team[] }) {
           </div>
           <span style={{ flex: 1 }} />
           {tab !== 'mine' && (
-            <select
+            <Select
               className="settings-input"
               aria-label="Team"
               value={teamId}
@@ -433,18 +451,27 @@ function Workspace({ client, teams }: { client: LinearClient; teams: Team[] }) {
                   {t.name}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
-          <button className="settings-button" onClick={() => void refresh()} disabled={loading}>
+          <Button
+            variant="app"
+            className="settings-button"
+            onClick={() => void refresh()}
+            disabled={loading}
+          >
             {loading ? <LoaderCircle size={14} /> : <RefreshCw size={14} />} Refresh
-          </button>
-          <button className="settings-button primary" onClick={() => setCreating((c) => !c)}>
+          </Button>
+          <Button
+            variant="app"
+            className="settings-button primary"
+            onClick={() => setCreating((c) => !c)}
+          >
             <Plus size={14} /> New issue
-          </button>
+          </Button>
         </div>
         {tab === 'team' && (
           <div className="setting-row">
-            <input
+            <Input
               className="settings-input"
               aria-label="Search issue titles"
               placeholder="Search titles in this team…"
@@ -550,7 +577,7 @@ function NewIssue({
       }}
     >
       <div className="setting-row">
-        <select
+        <Select
           className="settings-input"
           aria-label="Team for the new issue"
           value={teamId}
@@ -561,8 +588,8 @@ function NewIssue({
               {t.name}
             </option>
           ))}
-        </select>
-        <input
+        </Select>
+        <Input
           className="settings-input"
           aria-label="Issue title"
           placeholder="Title"
@@ -572,7 +599,7 @@ function NewIssue({
         />
       </div>
       <div className="setting-row">
-        <textarea
+        <Textarea
           className="settings-input"
           aria-label="Issue description"
           placeholder="Description (markdown)"
@@ -585,9 +612,14 @@ function NewIssue({
       <div className="setting-row">
         {error && <span className="settings-value">{error}</span>}
         <span style={{ flex: 1 }} />
-        <button className="settings-button primary" type="submit" disabled={busy || !title.trim()}>
+        <Button
+          variant="app"
+          className="settings-button primary"
+          type="submit"
+          disabled={busy || !title.trim()}
+        >
           Create issue
-        </button>
+        </Button>
       </div>
     </form>
   )
@@ -708,7 +740,7 @@ function IssueItem({
                 <span className="settings-value">No description.</span>
               )}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <select
+                <Select
                   className="settings-input"
                   aria-label="Status"
                   value={row.stateId}
@@ -728,10 +760,10 @@ function IssueItem({
                         {s.name}
                       </option>
                     ))}
-                </select>
-                <button className="settings-button primary" onClick={startSession}>
+                </Select>
+                <Button variant="app" className="settings-button primary" onClick={startSession}>
                   <Play size={14} /> Start session
-                </button>
+                </Button>
                 <a
                   className="settings-button"
                   href={row.url}
@@ -765,7 +797,7 @@ function IssueItem({
                   )
                 }}
               >
-                <input
+                <Input
                   className="settings-input"
                   aria-label="Add a comment"
                   placeholder="Add a comment…"
@@ -773,13 +805,14 @@ function IssueItem({
                   onChange={(e) => setComment(e.target.value)}
                   style={{ flex: 1 }}
                 />
-                <button
+                <Button
+                  variant="app"
                   className="settings-button"
                   type="submit"
                   disabled={busy || !comment.trim()}
                 >
                   Comment
-                </button>
+                </Button>
               </form>
             </>
           )}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { useNavigate } from '@tanstack/react-router'
 import { AlertCircle, Check, FolderGit2, FolderOpen, Info, X } from 'lucide-react'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
@@ -92,11 +93,12 @@ function ToastBody({ toast, onDismiss }: { toast: Toast; onDismiss(): void }) {
         </p>
         {project && (
           <div className="folder-toast-actions">
-            <button className="setup-button primary" onClick={startHere}>
+            <Button variant="app" className="setup-button primary" onClick={startHere}>
               Start a session here
-            </button>
+            </Button>
             {toast.kind === 'not-git' ? (
-              <button
+              <Button
+                variant="app"
                 className="setup-button"
                 disabled={busy}
                 onClick={() => {
@@ -105,11 +107,11 @@ function ToastBody({ toast, onDismiss }: { toast: Toast; onDismiss(): void }) {
                 }}
               >
                 {busy ? 'Initializing…' : 'Initialize git'}
-              </button>
+              </Button>
             ) : (
-              <button className="setup-button ghost" onClick={onDismiss}>
+              <Button variant="app" className="setup-button ghost" onClick={onDismiss}>
                 Dismiss
-              </button>
+              </Button>
             )}
           </div>
         )}

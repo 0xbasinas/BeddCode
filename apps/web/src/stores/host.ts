@@ -611,6 +611,15 @@ export async function setSessionPinned(sessionId: string, pinned: boolean) {
   await sessionRequest(sessionId, 'sessions.setPinned', { sessionId, pinned })
 }
 
+/** Marks a session as waiting on the user, with an optional note and reminder time, or clears it. */
+export async function setSessionWaiting(
+  sessionId: string,
+  waiting: boolean,
+  opts: { note?: string; remindAt?: number } = {},
+) {
+  await sessionRequest(sessionId, 'sessions.setWaiting', { sessionId, waiting, ...opts })
+}
+
 export async function setMode(sessionId: string, modeId: string) {
   await sessionRequest(sessionId, 'sessions.setMode', { sessionId, modeId })
 }

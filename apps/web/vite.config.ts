@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { fileURLToPath } from 'node:url'
 
 // Hosts can be on any machine, and the browser pane and attached media come from anywhere, so
 // connections, images and frames stay open to the network; what is locked down is code: scripts
@@ -42,6 +43,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), contentSecurityPolicy()],
   // Relative base so the Electron build can load dist/index.html from disk.
   base: './',
+  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   // @linear/sdk reads its user agent from process.env, which browsers don't have.
   define: {
     'process.env.npm_package_name': JSON.stringify('@linear/sdk'),

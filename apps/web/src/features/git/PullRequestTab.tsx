@@ -1,4 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
+import { confirmDialog } from '../../ui/confirm.tsx'
 import { useNavigate } from '@tanstack/react-router'
 import {
   ArrowLeft,
@@ -217,7 +222,8 @@ function GithubProblem({
       {problem.command && (
         <div className="gh-command">
           <code>{problem.command}</code>
-          <button
+          <Button
+            variant="app"
             className="icon-btn small"
             aria-label="Copy command"
             title="Copy"
@@ -227,7 +233,7 @@ function GithubProblem({
             }}
           >
             {copied ? <Check size={13} /> : <Copy size={13} />}
-          </button>
+          </Button>
         </div>
       )}
       <div className="gh-problem-actions">
@@ -236,9 +242,9 @@ function GithubProblem({
             <BrandIcon brand="github" size={13} /> Get the GitHub CLI <ExternalLink size={12} />
           </a>
         )}
-        <button className="secondary" onClick={onRetry}>
+        <Button variant="app" className="secondary" onClick={onRetry}>
           Check again
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -289,14 +295,15 @@ function PrList({
           ))}
         </div>
         <span className="spacer" />
-        <button
+        <Button
+          variant="app"
           className="icon-btn small"
           aria-label="Refresh pull requests"
           title="Refresh"
           onClick={() => setBump((b) => b + 1)}
         >
           <RotateCw size={13} />
-        </button>
+        </Button>
         <button
           className="pr-new"
           onClick={onCreate}
@@ -330,9 +337,9 @@ function PrList({
               <span>
                 No pull request for <code>{branch}</code> yet
               </span>
-              <button className="secondary" onClick={onCreate}>
+              <Button variant="app" className="secondary" onClick={onCreate}>
                 Create pull request
-              </button>
+              </Button>
             </div>
           )
         )}
@@ -459,14 +466,14 @@ function Readiness({
           )}
           <span>{item.text}</span>
           {item.fix === 'agent' && onAgent && (
-            <button className="link-btn" disabled={busy} onClick={onAgent}>
+            <Button variant="app" className="link-btn" disabled={busy} onClick={onAgent}>
               Fix with agent
-            </button>
+            </Button>
           )}
           {item.fix === 'push' && (
-            <button className="link-btn" disabled={busy} onClick={onPush}>
+            <Button variant="app" className="link-btn" disabled={busy} onClick={onPush}>
               Push
-            </button>
+            </Button>
           )}
         </li>
       ))}
@@ -543,19 +550,25 @@ function PrDetailView({
 
   const header = (
     <div className="pr-detail-bar">
-      <button className="icon-btn small" aria-label="Back to pull requests" onClick={onBack}>
+      <Button
+        variant="app"
+        className="icon-btn small"
+        aria-label="Back to pull requests"
+        onClick={onBack}
+      >
         <ArrowLeft size={14} />
-      </button>
+      </Button>
       <span className="muted">Pull requests</span>
       <span className="spacer" />
-      <button
+      <Button
+        variant="app"
         className="icon-btn small"
         aria-label="Refresh pull request"
         title="Refresh"
         onClick={() => setBump((b) => b + 1)}
       >
         <RotateCw size={13} />
-      </button>
+      </Button>
       {pr.data && (
         <a
           className="icon-btn small"
@@ -700,7 +713,7 @@ function PrDetailView({
             </div>
           ))}
           <div className="pr-comment">
-            <textarea
+            <Textarea
               className="field"
               rows={2}
               placeholder="Add a comment"
@@ -709,7 +722,8 @@ function PrDetailView({
               disabled={Boolean(busy)}
               onChange={(e) => setComment(e.target.value)}
             />
-            <button
+            <Button
+              variant="app"
               className="secondary"
               disabled={!comment.trim() || Boolean(busy)}
               onClick={() =>
@@ -719,7 +733,7 @@ function PrDetailView({
               }
             >
               {busy === 'comment' ? 'Sending…' : 'Comment'}
-            </button>
+            </Button>
           </div>
         </section>
 
@@ -756,7 +770,8 @@ function PrDetailView({
           <div className="pr-notice" role="status">
             <Check size={13} /> {notice.text}
             {notice.path && (
-              <button
+              <Button
+                variant="app"
                 className="link-btn"
                 onClick={() =>
                   void navigate({
@@ -766,7 +781,7 @@ function PrDetailView({
                 }
               >
                 Start a session there
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -779,28 +794,27 @@ function PrDetailView({
           <div className="pr-merge">
             <div className="pr-merge-title">Clean up after the merge</div>
             <label className="check-line">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={tidy.updateBase}
-                onChange={(e) => setTidy({ ...tidy, updateBase: e.target.checked })}
+                onCheckedChange={(checked) => setTidy({ ...tidy, updateBase: checked === true })}
               />
               Bring <code>{d.baseBranch}</code> up to date in the main checkout
             </label>
             {isWorktree && (
               <label className="check-line">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={tidy.removeWorktree}
-                  onChange={(e) => setTidy({ ...tidy, removeWorktree: e.target.checked })}
+                  onCheckedChange={(checked) =>
+                    setTidy({ ...tidy, removeWorktree: checked === true })
+                  }
                 />
                 Remove this worktree (its agent stops)
               </label>
             )}
             <label className="check-line">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={tidy.deleteBranch}
-                onChange={(e) => setTidy({ ...tidy, deleteBranch: e.target.checked })}
+                onCheckedChange={(checked) => setTidy({ ...tidy, deleteBranch: checked === true })}
               />
               Delete the local branch <code>{d.headBranch}</code>
             </label>
@@ -809,7 +823,8 @@ function PrDetailView({
               files) is kept.
             </div>
             <div className="git-actions">
-              <button
+              <Button
+                variant="app"
                 className="primary"
                 disabled={
                   Boolean(busy) || !(tidy.updateBase || tidy.removeWorktree || tidy.deleteBranch)
@@ -822,7 +837,7 @@ function PrDetailView({
                 }
               >
                 {busy === 'cleanup' ? 'Cleaning up…' : 'Clean up'}
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -847,10 +862,9 @@ function PrDetailView({
             )}
             {!d.fromFork && (
               <label className="check-line">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={deleteBranch}
-                  onChange={(e) => setDeleteBranch(e.target.checked)}
+                  onCheckedChange={(checked) => setDeleteBranch(checked === true)}
                 />
                 Delete <code>{d.headBranch}</code> on GitHub afterwards
               </label>
@@ -863,10 +877,9 @@ function PrDetailView({
             />
             {onBranch && (
               <label className="check-line">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={cleanupAfter}
-                  onChange={(e) => setCleanupAfter(e.target.checked)}
+                  onCheckedChange={(checked) => setCleanupAfter(checked === true)}
                 />
                 {isWorktree
                   ? `Then remove this worktree and update ${d.baseBranch}`
@@ -874,13 +887,14 @@ function PrDetailView({
               </label>
             )}
             <div className="git-actions">
-              <button
+              <Button
+                variant="app"
                 className="secondary"
                 disabled={Boolean(busy)}
                 onClick={() => setMerging(false)}
               >
                 Cancel
-              </button>
+              </Button>
               <button
                 className="primary danger-ok"
                 disabled={Boolean(busy)}
@@ -921,13 +935,14 @@ function PrDetailView({
             )}
             <div className="git-actions pr-actions">
               {d.state === 'OPEN' && canWrite && (
-                <button
+                <Button
+                  variant="app"
                   className="primary"
                   disabled={Boolean(busy) || Boolean(blocker) || gh.mergeMethods.length === 0}
                   onClick={() => setMerging(true)}
                 >
                   <GitMerge size={13} /> Merge…
-                </button>
+                </Button>
               )}
               {d.state !== 'OPEN' && (
                 <a className="primary as-button" href={d.url} target="_blank" rel="noreferrer">
@@ -935,24 +950,26 @@ function PrDetailView({
                 </a>
               )}
               <div className="pr-checkout">
-                <button
+                <Button
+                  variant="app"
                   className="secondary"
                   aria-expanded={checkoutOpen}
                   disabled={Boolean(busy) || d.state === 'MERGED'}
                   onClick={() => setCheckoutOpen((o) => !o)}
                 >
                   {busy === 'checkout' ? 'Checking out…' : 'Check out'}
-                </button>
+                </Button>
                 {checkoutOpen && (
                   <div className="pr-menu" role="menu">
                     <button
                       role="menuitem"
-                      onClick={() => {
+                      onClick={async () => {
                         setCheckoutOpen(false)
                         if (
-                          !window.confirm(
+                          !(await confirmDialog(
                             `Switch this folder to ${d.headBranch}? Uncommitted changes stay in the folder; git refuses if they clash.`,
-                          )
+                            'Switch',
+                          ))
                         )
                           return
                         void run('checkout', async () => {
@@ -983,44 +1000,49 @@ function PrDetailView({
                 )}
               </div>
               {d.state === 'OPEN' && canManage && d.isDraft && (
-                <button
+                <Button
+                  variant="app"
                   className="secondary"
                   disabled={Boolean(busy)}
                   onClick={() => void act('ready', { action: 'ready' })}
                 >
                   Ready for review
-                </button>
+                </Button>
               )}
               {d.state === 'OPEN' && canManage && !d.isDraft && (
-                <button
+                <Button
+                  variant="app"
                   className="secondary"
                   disabled={Boolean(busy)}
                   title="Convert to draft"
                   onClick={() => void act('draft', { action: 'draft' })}
                 >
                   To draft
-                </button>
+                </Button>
               )}
               {d.state === 'OPEN' && canManage && (
-                <button
+                <Button
+                  variant="app"
                   className="secondary danger-text"
                   disabled={Boolean(busy)}
-                  onClick={() => {
-                    if (!window.confirm(`Close #${d.number} without merging?`)) return
+                  onClick={async () => {
+                    if (!(await confirmDialog(`Close #${d.number} without merging?`, 'Close')))
+                      return
                     void act('close', { action: 'close' })
                   }}
                 >
                   Close
-                </button>
+                </Button>
               )}
               {d.state === 'CLOSED' && canManage && (
-                <button
+                <Button
+                  variant="app"
                   className="secondary"
                   disabled={Boolean(busy)}
                   onClick={() => void act('reopen', { action: 'reopen' })}
                 >
                   Reopen
-                </button>
+                </Button>
               )}
             </div>
           </>
@@ -1092,9 +1114,14 @@ function CreatePr({
   return (
     <div className="pr-pane">
       <div className="pr-detail-bar">
-        <button className="icon-btn small" aria-label="Back to pull requests" onClick={onCancel}>
+        <Button
+          variant="app"
+          className="icon-btn small"
+          aria-label="Back to pull requests"
+          onClick={onCancel}
+        >
           <ArrowLeft size={14} />
-        </button>
+        </Button>
         <span className="muted">New pull request</span>
       </div>
       <div className="git-scroll pr">
@@ -1107,7 +1134,7 @@ function CreatePr({
           <>
             <label className="git-field-label">
               Base branch
-              <input
+              <Input
                 className="field"
                 aria-label="Base branch"
                 list="pr-base-branches"
@@ -1138,7 +1165,7 @@ function CreatePr({
               Filled in from {commits.length === 1 ? 'the commit' : `${commits.length} commits`}; an
               agent can write it from the changes instead.
             </p>
-            <input
+            <Input
               className="field"
               placeholder="Title"
               aria-label="Pull request title"
@@ -1146,7 +1173,7 @@ function CreatePr({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
-            <textarea
+            <Textarea
               className="field"
               placeholder="Describe the change (Markdown)"
               aria-label="Pull request description"
@@ -1156,7 +1183,7 @@ function CreatePr({
               onChange={(e) => setBody(e.target.value)}
             />
             <label className="check-line">
-              <input type="checkbox" checked={draft} onChange={(e) => setDraft(e.target.checked)} />
+              <Checkbox checked={draft} onCheckedChange={(checked) => setDraft(checked === true)} />
               Open as draft
             </label>
             <div className="muted small">
@@ -1170,10 +1197,11 @@ function CreatePr({
       </div>
       <div className="git-footer">
         <div className="git-actions">
-          <button className="secondary" onClick={onCancel} disabled={busy}>
+          <Button variant="app" className="secondary" onClick={onCancel} disabled={busy}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="app"
             className="primary"
             disabled={
               nothing ||
@@ -1188,7 +1216,7 @@ function CreatePr({
             {busy
               ? 'Creating…'
               : `${needsPush ? 'Push & create' : 'Create'} ${draft ? 'draft ' : ''}pull request`}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

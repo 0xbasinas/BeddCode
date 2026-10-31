@@ -1,4 +1,5 @@
 import { paneProject } from '../shell/paneProject.ts'
+import { Button } from '@/components/ui/button'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { applyTerminalChange, placeTerminal, shouldFollow, tabLabel } from './terminalTabs.ts'
 import { Eye, Keyboard, Paperclip, Plus, SquareTerminal, Trash2, X } from 'lucide-react'
@@ -152,7 +153,8 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
           {workspace.branch ? ` · ${workspace.branch}` : ''}
         </span>
         <span className="spacer" />
-        <button
+        <Button
+          variant="app"
           className="icon-btn"
           aria-label="Attach terminal selection"
           title={
@@ -165,18 +167,24 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
           onClick={attachSelection}
         >
           <Paperclip size={17} />
-        </button>
-        <button className="icon-btn" aria-label="New terminal" onClick={() => void create()}>
+        </Button>
+        <Button
+          variant="app"
+          className="icon-btn"
+          aria-label="New terminal"
+          onClick={() => void create()}
+        >
           <Plus size={18} />
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="app"
           className="icon-btn"
           aria-label="Close terminal"
           disabled={!current}
           onClick={() => current && void close(current.id)}
         >
           <Trash2 size={17} />
-        </button>
+        </Button>
       </div>
 
       {project && (
@@ -196,9 +204,9 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
           </span>
           <h3>No terminal yet</h3>
           <p>Start a shell in {shown.label} to run commands.</p>
-          <button className="primary-btn" onClick={() => void create()}>
+          <Button variant="app" className="primary-btn" onClick={() => void create()}>
             New terminal
-          </button>
+          </Button>
         </div>
       )}
 
@@ -293,13 +301,14 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
                       <Eye size={14} /> Watching
                     </span>
                   ) : current.readOnly && current.exited === undefined ? (
-                    <button
+                    <Button
+                      variant="app"
                       className="secondary-btn term-take-over"
                       title="Type into the command the agent is running (for a prompt it waits on)"
                       onClick={() => void takeOver(current.id)}
                     >
                       <Keyboard size={14} /> Take over
-                    </button>
+                    </Button>
                   ) : current.exited === undefined ? (
                     <span className="muted term-agent-typing">
                       <Keyboard size={14} />{' '}

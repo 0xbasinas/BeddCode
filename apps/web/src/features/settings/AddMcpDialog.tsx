@@ -1,3 +1,5 @@
+import { Select } from '../../ui/Select.tsx'
+import { Button } from '@/components/ui/button'
 import { useEffect, useRef } from 'react'
 import { Globe, Terminal, X } from 'lucide-react'
 import type { McpForm } from './mcpForm.ts'
@@ -57,7 +59,8 @@ export function AddMcpDialog({
             <h2 id="add-mcp-heading">Add MCP server</h2>
             <p>Connect a tool server to {agent} on this host.</p>
           </div>
-          <button
+          <Button
+            variant="app"
             type="button"
             className="icon-btn"
             aria-label="Close add server"
@@ -65,7 +68,7 @@ export function AddMcpDialog({
             onClick={onClose}
           >
             <X size={17} />
-          </button>
+          </Button>
         </header>
         <div className="agent-dialog-body mcp-dialog-body">
           {error && (
@@ -133,7 +136,7 @@ export function AddMcpDialog({
                 {kind === 'claude' && (
                   <>
                     <label htmlFor="mcp-transport">Transport</label>
-                    <select
+                    <Select
                       id="mcp-transport"
                       value={form.kind}
                       disabled={busy}
@@ -141,7 +144,7 @@ export function AddMcpDialog({
                     >
                       <option value="http">HTTP (recommended)</option>
                       <option value="sse">SSE (legacy)</option>
-                    </select>
+                    </Select>
                   </>
                 )}
                 <div className="mcp-auth-note">
@@ -207,7 +210,7 @@ export function AddMcpDialog({
                 <label htmlFor="mcp-scope">
                   Available in <small>Choose where Claude Code saves this server.</small>
                 </label>
-                <select
+                <Select
                   id="mcp-scope"
                   value={form.scope ?? 'user'}
                   disabled={busy}
@@ -216,18 +219,24 @@ export function AddMcpDialog({
                   <option value="user">All my projects</option>
                   <option value="project">This project (shared via .mcp.json)</option>
                   <option value="local">This project, only for me</option>
-                </select>
+                </Select>
               </>
             )}
           </div>
         </div>
         <footer className="agent-dialog-foot">
-          <button type="button" className="settings-button" disabled={busy} onClick={onClose}>
+          <Button
+            variant="app"
+            type="button"
+            className="settings-button"
+            disabled={busy}
+            onClick={onClose}
+          >
             Cancel
-          </button>
-          <button className="settings-button primary" disabled={busy}>
+          </Button>
+          <Button variant="app" className="settings-button primary" disabled={busy}>
             {busy ? 'Adding…' : 'Add server'}
-          </button>
+          </Button>
         </footer>
       </form>
     </dialog>

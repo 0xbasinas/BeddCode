@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { MessageSquarePlus, Trash2 } from 'lucide-react'
 import {
   commentAnchor,
@@ -130,14 +131,15 @@ function ReviewablePatch({ patch, review }: { patch: string; review: PatchReview
             {here.map((c) => (
               <div key={c.id} className="patch-comment">
                 <span className="patch-comment-body">{c.body}</span>
-                <button
+                <Button
+                  variant="app"
                   className="icon-btn"
                   aria-label="Delete comment"
                   title="Delete comment"
                   onClick={() => review.onRemove(c.id)}
                 >
                   <Trash2 size={12} />
-                </button>
+                </Button>
               </div>
             ))}
             {editing === i && (
@@ -158,12 +160,17 @@ function ReviewablePatch({ patch, review }: { patch: string; review: PatchReview
                   }}
                 />
                 <div className="patch-comment-actions">
-                  <button className="secondary" onClick={() => setEditing(null)}>
+                  <Button variant="app" className="secondary" onClick={() => setEditing(null)}>
                     Cancel
-                  </button>
-                  <button className="primary" disabled={!draft.trim()} onClick={() => save(i)}>
+                  </Button>
+                  <Button
+                    variant="app"
+                    className="primary"
+                    disabled={!draft.trim()}
+                    onClick={() => save(i)}
+                  >
                     Add comment
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}

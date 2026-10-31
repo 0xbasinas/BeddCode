@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { RefreshCw } from 'lucide-react'
 import type { UsageLimits, UsageSummary } from '@beddcode/contracts'
 import { hostRequest, useRuntime } from '../../stores/host.ts'
@@ -69,9 +70,14 @@ export function UsageSettings({ hostKey }: { hostKey: string }) {
   return (
     <>
       <div className="settings-toolbar">
-        <button className="settings-button" onClick={() => load()} disabled={!online || loading}>
+        <Button
+          variant="app"
+          className="settings-button"
+          onClick={() => load()}
+          disabled={!online || loading}
+        >
           <RefreshCw size={14} /> Refresh
-        </button>
+        </Button>
       </div>
       {error && (
         <p className="settings-error" role="alert">

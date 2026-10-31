@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useUiStore } from '../../stores/ui.ts'
 import { Folder, GitBranch, RotateCw } from 'lucide-react'
 import { BrandIcon } from '../../ui/BrandIcon.tsx'
@@ -72,17 +74,28 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
 
   return (
     <div className="git-pane">
-      <div className="git-tabs" role="tablist">
-        <button role="tab" aria-selected={tab === 'changes'} onClick={() => setTab('changes')}>
-          Changes {files.length > 0 && <span className="badge-lite">{files.length}</span>}
-        </button>
-        <button role="tab" aria-selected={tab === 'commits'} onClick={() => setTab('commits')}>
-          Commits
-        </button>
-        <button role="tab" aria-selected={tab === 'pr'} onClick={() => setTab('pr')}>
-          <BrandIcon brand="github" size={12} /> PR
-        </button>
-      </div>
+      <Tabs className="gap-0" value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+        <TabsList className="git-tabs h-auto justify-start rounded-none">
+          <TabsTrigger
+            value="changes"
+            className="h-auto flex-none border-0 shadow-none focus-visible:ring-0"
+          >
+            Changes {files.length > 0 && <span className="badge-lite">{files.length}</span>}
+          </TabsTrigger>
+          <TabsTrigger
+            value="commits"
+            className="h-auto flex-none border-0 shadow-none focus-visible:ring-0"
+          >
+            Commits
+          </TabsTrigger>
+          <TabsTrigger
+            value="pr"
+            className="h-auto flex-none border-0 shadow-none focus-visible:ring-0"
+          >
+            <BrandIcon brand="github" size={12} /> PR
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       <div className="git-branch">
         <span className="git-project pane-project" title={project.title}>
@@ -93,9 +106,15 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
         {(info.data.ahead ?? 0) > 0 && <span className="add">↑{info.data.ahead}</span>}
         {(info.data.behind ?? 0) > 0 && <span className="del">↓{info.data.behind}</span>}
         <span className="spacer" />
-        <button className="icon-btn" aria-label="Refresh Git" title="Refresh Git" onClick={changed}>
+        <Button
+          variant="app"
+          className="icon-btn"
+          aria-label="Refresh Git"
+          title="Refresh Git"
+          onClick={changed}
+        >
           <RotateCw size={14} />
-        </button>
+        </Button>
         {tab === 'commits' && log.data?.base ? (
           <span className="muted">vs {log.data.base}</span>
         ) : (

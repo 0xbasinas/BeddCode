@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { X } from 'lucide-react'
 import type { SessionView } from '@beddcode/client-runtime'
 import { hostRequest } from '../../stores/host.ts'
@@ -54,7 +55,8 @@ export function RenameSessionDialog({
       >
         <header>
           <h2 id="rename-session-heading">Rename session</h2>
-          <button
+          <Button
+            variant="app"
             type="button"
             className="icon-btn"
             aria-label="Close"
@@ -62,7 +64,7 @@ export function RenameSessionDialog({
             onClick={onClose}
           >
             <X size={17} />
-          </button>
+          </Button>
         </header>
         <label htmlFor="session-title">Session name</label>
         <input
@@ -81,12 +83,18 @@ export function RenameSessionDialog({
           </p>
         )}
         <footer>
-          <button type="button" className="secondary-btn" disabled={busy} onClick={onClose}>
+          <Button
+            variant="app"
+            type="button"
+            className="secondary-btn"
+            disabled={busy}
+            onClick={onClose}
+          >
             Cancel
-          </button>
-          <button className="primary-btn" disabled={busy || !title.trim()}>
+          </Button>
+          <Button variant="app" className="primary-btn" disabled={busy || !title.trim()}>
             {busy ? 'Saving…' : 'Save name'}
-          </button>
+          </Button>
         </footer>
       </form>
     </dialog>

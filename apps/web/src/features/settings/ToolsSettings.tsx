@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { Plus, RefreshCw, Trash2 } from 'lucide-react'
 import type { McpServer } from '@beddcode/contracts'
 import { Select } from '../../ui/Select.tsx'
@@ -117,14 +118,16 @@ export function ToolsSettings({ hostKey }: { hostKey: string }) {
           <div className="settings-section-head">
             <h3>MCP servers</h3>
             <div className="settings-actions">
-              <button
+              <Button
+                variant="app"
                 className="settings-button"
                 disabled={!online || busy}
                 onClick={() => void load()}
               >
                 <RefreshCw size={13} /> Refresh
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="app"
                 className="settings-button"
                 disabled={!online || busy}
                 onClick={() => {
@@ -133,7 +136,7 @@ export function ToolsSettings({ hostKey }: { hostKey: string }) {
                 }}
               >
                 <Plus size={14} /> Add server
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -181,14 +184,15 @@ export function ToolsSettings({ hostKey }: { hostKey: string }) {
                   />
                   {STATUS[server.status]}
                 </span>
-                <button
+                <Button
+                  variant="app"
                   className="icon-btn"
                   aria-label={`Remove ${server.name}`}
                   disabled={!online || busy}
                   onClick={() => setRemoving(server)}
                 >
                   <Trash2 size={15} />
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -199,14 +203,16 @@ export function ToolsSettings({ hostKey }: { hostKey: string }) {
                 Remove {removing.name} from {current?.label}? Its other settings stay as they are.
               </p>
               <div className="settings-actions">
-                <button
+                <Button
+                  variant="app"
                   className="settings-button"
                   disabled={busy}
                   onClick={() => setRemoving(undefined)}
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="app"
                   className="settings-button danger"
                   disabled={busy}
                   onClick={() =>
@@ -220,7 +226,7 @@ export function ToolsSettings({ hostKey }: { hostKey: string }) {
                   }
                 >
                   Remove server
-                </button>
+                </Button>
               </div>
             </div>
           )}

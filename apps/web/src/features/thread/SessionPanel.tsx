@@ -1,4 +1,5 @@
 import { AgentMark } from '../../ui/AgentMark.tsx'
+import { Button } from '@/components/ui/button'
 import { useEffect, useId, useRef, useState } from 'react'
 import {
   Check,
@@ -140,7 +141,8 @@ export function EnvironmentButton({
               <Layers size={14} /> Environment
             </span>
             <span className="env-actions">
-              <button
+              <Button
+                variant="app"
                 className="icon-btn small"
                 aria-label="Agent settings"
                 onClick={() => {
@@ -148,10 +150,15 @@ export function EnvironmentButton({
                 }}
               >
                 <Settings size={13} />
-              </button>
-              <button className="icon-btn small" aria-label="Minimize" onClick={() => close(true)}>
+              </Button>
+              <Button
+                variant="app"
+                className="icon-btn small"
+                aria-label="Minimize"
+                onClick={() => close(true)}
+              >
                 <Minus size={13} />
-              </button>
+              </Button>
             </span>
           </div>
           <div className="env-body">

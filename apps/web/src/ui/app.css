@@ -16,20 +16,23 @@ body {
   font-size: calc(14px * var(--ui-scale));
   -webkit-font-smoothing: antialiased;
 }
-button {
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: 0;
-  cursor: pointer;
-}
-input,
-textarea,
-select {
-  font: inherit;
-}
-button:disabled {
-  cursor: default;
+/* In the base layer so shadcn components (Tailwind utilities) can restyle their own buttons. */
+@layer base {
+  button {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+  button:disabled {
+    cursor: default;
+  }
 }
 code,
 pre,
@@ -2439,8 +2442,8 @@ button.chip-lite:hover {
   background: rgba(0, 0, 0, 0.55);
 }
 .modal {
-  width: min(calc(560px * var(--ui-scale)), calc(100vw - calc(32px * var(--ui-scale))));
-  max-height: calc(100vh - calc(64px * var(--ui-scale)));
+  width: min(calc(440px * var(--ui-scale)), calc(100vw - calc(32px * var(--ui-scale))));
+  max-height: min(calc(520px * var(--ui-scale)), calc(100vh - calc(64px * var(--ui-scale))));
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
@@ -2560,10 +2563,12 @@ svg.lucide {
   stroke-width: 1.5;
 }
 
-button:focus-visible,
-a:focus-visible {
-  outline: 1px solid var(--text-muted);
-  outline-offset: 3px;
+@layer base {
+  button:focus-visible,
+  a:focus-visible {
+    outline: 1px solid var(--text-muted);
+    outline-offset: 3px;
+  }
 }
 
 .sidebar-top {
@@ -2947,6 +2952,9 @@ select option:disabled {
   font-size: calc(12px * var(--ui-scale));
   text-align: left;
 }
+.select-trigger.w-full {
+  max-width: none;
+}
 .select-trigger:hover:not(:disabled) {
   background: var(--bg-hover);
 }
@@ -2968,6 +2976,8 @@ select option:disabled {
   overflow-y: auto;
 }
 .popover.select-menu {
+  /* Above .modal-backdrop (50), so a select inside a dialog opens in front of it. */
+  z-index: 60;
   width: max-content;
   min-width: calc(160px * var(--ui-scale));
   max-width: calc(280px * var(--ui-scale));
@@ -3226,8 +3236,8 @@ select option:disabled {
 }
 .history-filters {
   display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: calc(8px * var(--ui-scale));
+  margin-bottom: calc(6px * var(--ui-scale));
 }
 .history-list {
   list-style: none;
@@ -3235,15 +3245,16 @@ select option:disabled {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: calc(2px * var(--ui-scale));
 }
 .history-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: calc(8px * var(--ui-scale));
   width: 100%;
-  padding: 8px 10px;
-  border-radius: 10px;
+  padding: calc(5px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-radius: calc(8px * var(--ui-scale));
+  font-size: calc(12.5px * var(--ui-scale));
   text-align: left;
 }
 .history-row:hover:not(:disabled) {
@@ -3254,6 +3265,9 @@ select option:disabled {
   flex-direction: column;
   flex: 1;
   min-width: 0;
+}
+.history-main .muted {
+  font-size: calc(11px * var(--ui-scale));
 }
 .history-title {
   overflow: hidden;
@@ -6270,8 +6284,8 @@ button.patch-comment-btn:hover {
   background: rgba(0, 0, 0, 0.45);
 }
 .palette {
-  width: min(calc(620px * var(--ui-scale)), calc(100vw - calc(32px * var(--ui-scale))));
-  max-height: 70vh;
+  width: min(calc(520px * var(--ui-scale)), calc(100vw - calc(32px * var(--ui-scale))));
+  max-height: min(60vh, calc(420px * var(--ui-scale)));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -6677,4 +6691,8 @@ button.patch-comment-btn:hover {
   display: flex;
   align-items: center;
   gap: calc(2px * var(--ui-scale));
+}
+
+.session-mark {
+  color: var(--accent, currentColor);
 }

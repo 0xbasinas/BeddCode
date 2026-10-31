@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { useNavigate } from '@tanstack/react-router'
 import { History, X } from 'lucide-react'
 import type { HistoryEntry } from '@beddcode/contracts'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Select } from '../../ui/Select.tsx'
 import { folderName, timeAgo } from '../../ui/format.ts'
 import { hostRequest, importSession, useRuntime } from '../../stores/host.ts'
@@ -82,16 +84,24 @@ export function HistoryDialog({
   }
 
   return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(e) => e.target === e.currentTarget && !opening && onClose()}
-    >
-      <div className="modal" role="dialog" aria-label="Resume an earlier conversation">
+    <Dialog open onOpenChange={(o) => !o && !opening && onClose()}>
+      <DialogContent
+        showCloseButton={false}
+        aria-describedby={undefined}
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        className="modal max-w-none gap-0 p-0 sm:max-w-none"
+      >
         <header className="modal-head">
-          <h2>Resume an earlier conversation</h2>
-          <button className="icon-btn" aria-label="Close" onClick={onClose} disabled={!!opening}>
+          <DialogTitle>Resume an earlier conversation</DialogTitle>
+          <Button
+            variant="app"
+            className="icon-btn"
+            aria-label="Close"
+            onClick={onClose}
+            disabled={!!opening}
+          >
             <X size={18} />
-          </button>
+          </Button>
         </header>
         <div className="modal-body">
           {agents.length === 0 ? (
@@ -160,7 +170,7 @@ export function HistoryDialog({
             </>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import {
   Check,
   ChevronRight,
@@ -17,6 +18,7 @@ import { hostRequest, useRuntime } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { closeBrowser, rememberHome, useFolderFlow } from './folderFlow.ts'
 import { folderBaseName, modifiedLabel, samePath, shortPath, visibleCrumbs } from './folderLogic.ts'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import './folders.css'
 
 /** Shown while the in-app folder browser is open (other hosts, or the web app without Electron). */
@@ -77,31 +79,32 @@ function FolderBrowserDialog({ hostKey }: { hostKey: string }) {
   const isAdded = (p: string) => projects.some((x) => samePath(x.path, p))
 
   return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(e) => e.target === e.currentTarget && closeBrowser(null)}
-    >
-      <div
-        className="folder-browser"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="folder-browser-title"
+    <Dialog open onOpenChange={(o) => !o && closeBrowser(null)}>
+      <DialogContent
+        showCloseButton={false}
+        aria-describedby={undefined}
+        className="folder-browser max-w-none gap-0 p-0 sm:max-w-none"
       >
         <header className="fb-head">
           <span className="fb-host-icon">
             {local ? <Monitor size={14} /> : <Server size={14} />}
           </span>
           <div>
-            <h2 id="folder-browser-title">Choose a folder on {hostName}</h2>
+            <DialogTitle>Choose a folder on {hostName}</DialogTitle>
             <p>
               {local
                 ? 'Click your way to the folder your agent should work in.'
                 : `Your system picker can't see other machines, so browse ${hostName} here.`}
             </p>
           </div>
-          <button className="icon-btn small" aria-label="Close" onClick={() => closeBrowser(null)}>
+          <Button
+            variant="app"
+            className="icon-btn small"
+            aria-label="Close"
+            onClick={() => closeBrowser(null)}
+          >
             <X size={15} />
-          </button>
+          </Button>
         </header>
         <nav className="fb-crumbs" aria-label="Folder path">
           {crumbs.map((c, i) => (
@@ -200,18 +203,23 @@ function FolderBrowserDialog({ hostKey }: { hostKey: string }) {
           <span className="fb-chosen" title={chosen}>
             {chosen ? shortPath(chosen, listing?.home) : ''}
           </span>
-          <button className="setup-button fb-cancel" onClick={() => closeBrowser(null)}>
+          <Button
+            variant="app"
+            className="setup-button fb-cancel"
+            onClick={() => closeBrowser(null)}
+          >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="app"
             className="setup-button primary"
             disabled={!chosen || loading}
             onClick={() => chosen && closeBrowser(chosen)}
           >
             Select this folder
-          </button>
+          </Button>
         </footer>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -1,4 +1,6 @@
 import { paneProject } from '../shell/paneProject.ts'
+import { Button } from '@/components/ui/button'
+import { confirmDialog } from '../../ui/confirm.tsx'
 import { useEffect, useRef, useState } from 'react'
 import {
   File,
@@ -88,15 +90,30 @@ export function FilesPane({ workspace }: { workspace: PaneWorkspace }) {
             {project.label}
           </span>
           <span className="spacer" />
-          <button className="icon-btn" aria-label="New file" onClick={() => setCreating('file')}>
+          <Button
+            variant="app"
+            className="icon-btn"
+            aria-label="New file"
+            onClick={() => setCreating('file')}
+          >
             <FilePlus size={18} />
-          </button>
-          <button className="icon-btn" aria-label="New folder" onClick={() => setCreating('dir')}>
+          </Button>
+          <Button
+            variant="app"
+            className="icon-btn"
+            aria-label="New folder"
+            onClick={() => setCreating('dir')}
+          >
             <FolderPlus size={18} />
-          </button>
-          <button className="icon-btn" aria-label="Collapse all" onClick={() => collapseAll(cwd)}>
+          </Button>
+          <Button
+            variant="app"
+            className="icon-btn"
+            aria-label="Collapse all"
+            onClick={() => collapseAll(cwd)}
+          >
             <ChevronsDownUp size={18} />
-          </button>
+          </Button>
         </div>
         <div className="search-box">
           <Search size={15} />
@@ -241,10 +258,10 @@ function EditorColumn({
 
   if (!doc) return null
   const crumbs = doc.path.split('/')
-  const closeTab = (path: string) => {
+  const closeTab = async (path: string) => {
     if (
       folder.docs[path]?.dirty &&
-      !window.confirm(`${baseName(path)} has unsaved changes. Close it anyway?`)
+      !(await confirmDialog(`${baseName(path)} has unsaved changes. Close it anyway?`, 'Close'))
     )
       return
     close(cwd, path)
@@ -307,14 +324,15 @@ function EditorColumn({
           line={doc.media || doc.binary ? undefined : position.line}
           column={doc.media || doc.binary ? undefined : position.col}
         />
-        <button
+        <Button
+          variant="app"
           className="icon-btn"
           aria-label={`Attach ${doc.path}`}
           title="Attach saved file to message"
           onClick={() => onAttach(doc.path)}
         >
           <Paperclip size={15} />
-        </button>
+        </Button>
         {!doc.binary && !doc.tooLarge && !doc.error && !doc.media && (
           <button
             className="save-btn"
