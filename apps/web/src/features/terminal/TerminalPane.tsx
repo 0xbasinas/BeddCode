@@ -1,6 +1,6 @@
 import { paneProject } from '../shell/paneProject.ts'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { applyTerminalChange, placeTerminal, shouldFollow } from './terminalTabs.ts'
+import { applyTerminalChange, placeTerminal, shouldFollow, tabLabel } from './terminalTabs.ts'
 import { Eye, Keyboard, Paperclip, Plus, SquareTerminal, Trash2, X } from 'lucide-react'
 import type { PaneWorkspace } from '../../stores/composerWorkspace.ts'
 import type { ProjectScript, TerminalInfo } from '@beddcode/contracts'
@@ -26,6 +26,23 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
   const [size, setSize] = useState<{ cols: number; rows: number }>()
   const [error, setError] = useState<string>()
   const [selection, setSelection] = useState({ terminalId: '', text: '' })
+  const [renaming, setRenaming] = useState<string>()
+
+  const rename = async (id: string, name: string) => {
+    setRenaming(undefined)
+    const before = terminals?.find((t) => t.id === id)
+    if (!before || name.trim() === tabLabel(before)) return
+    try {
+      const info = await hostRequest(hostKey, 'terminals.rename', {
+        id,
+        // Back to the default name also when the user typed exactly that.
+        name: name.trim() === (before.title ?? before.shell) ? '' : name,
+      })
+      setTerminals((list) => applyTerminalChange(list ?? [], id, info))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -194,28 +211,55 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
                 className={`term-tab${t.agent ? ' agent' : ''}`}
                 aria-selected={t.id === active}
                 role="tab"
+                onDoubleClick={() => setRenaming(t.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  setRenaming(t.id)
+                }}
               >
-                <button
-                  onClick={() => setActive(t.id)}
-                  title={t.agent?.running ? `Running: ${t.agent.running}` : (t.title ?? t.shell)}
-                >
-                  {t.agent ? (
-                    <span className="term-tab-agent">
-                      <AgentIcon agent={t.agent.instanceId} label={t.agent.label} size={13} />
-                      {!agentKind(t.agent.instanceId, t.agent.label) && (
-                        <SquareTerminal size={14} />
-                      )}
-                    </span>
-                  ) : (
-                    <SquareTerminal size={14} />
-                  )}{' '}
-                  {t.title ?? t.shell}
-                  {t.agent?.running && (
-                    <span className="term-running" aria-label={`Running: ${t.agent.running}`} />
-                  )}
-                  {t.exited !== undefined && <span className="muted"> (exited)</span>}
-                </button>
-                <button aria-label={`Close ${t.title ?? t.shell}`} onClick={() => void close(t.id)}>
+                {renaming === t.id ? (
+                  <input
+                    className="term-tab-name"
+                    aria-label="Terminal name"
+                    autoFocus
+                    maxLength={40}
+                    defaultValue={tabLabel(t)}
+                    placeholder={t.title ?? t.shell}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void rename(t.id, e.currentTarget.value)
+                      else if (e.key === 'Escape') setRenaming(undefined)
+                    }}
+                    onBlur={(e) => void rename(t.id, e.currentTarget.value)}
+                  />
+                ) : (
+                  <button
+                    onClick={() => setActive(t.id)}
+                    onKeyDown={(e) => e.key === 'F2' && setRenaming(t.id)}
+                    title={
+                      t.agent?.running
+                        ? `Running: ${t.agent.running}`
+                        : `${tabLabel(t)} (double-click to rename)`
+                    }
+                  >
+                    {t.agent ? (
+                      <span className="term-tab-agent">
+                        <AgentIcon agent={t.agent.instanceId} label={t.agent.label} size={13} />
+                        {!agentKind(t.agent.instanceId, t.agent.label) && (
+                          <SquareTerminal size={14} />
+                        )}
+                      </span>
+                    ) : (
+                      <SquareTerminal size={14} />
+                    )}{' '}
+                    {tabLabel(t)}
+                    {t.agent?.running && (
+                      <span className="term-running" aria-label={`Running: ${t.agent.running}`} />
+                    )}
+                    {t.exited !== undefined && <span className="muted"> (exited)</span>}
+                  </button>
+                )}
+                <button aria-label={`Close ${tabLabel(t)}`} onClick={() => void close(t.id)}>
                   <X size={13} />
                 </button>
               </div>

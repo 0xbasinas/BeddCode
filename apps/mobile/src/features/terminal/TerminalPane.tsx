@@ -1,7 +1,7 @@
 import type { TerminalInfo } from '@beddcode/contracts'
 import { Paperclip, Plus, TerminalWindow, Trash } from 'phosphor-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 
 import { attachText } from '@/host/attachments'
 import { hostRequest, useRuntime } from '@/host/store'
@@ -46,6 +46,11 @@ const KEYS: { label: string; data?: string; ctrl?: boolean }[] = [
   { label: '-', data: '-' },
 ]
 
+/** What a tab is called: the user's name for it, else what it was opened for, else its shell. */
+function tabLabel(t: Pick<TerminalInfo, 'name' | 'title' | 'shell'>): string {
+  return t.name || t.title || t.shell
+}
+
 /** Shells running in the session's folder on its host, one tab each. */
 export function TerminalPane({
   sessionId,
@@ -62,6 +67,8 @@ export function TerminalPane({
   const [current, setCurrent] = useState<string>()
   const [error, setError] = useState<string>()
   const [selection, setSelection] = useState('')
+  const [renaming, setRenaming] = useState<string>()
+  const draft = useRef('')
   const [ctrl, setCtrl] = useState(false)
   const ctrlRef = useRef(false)
   ctrlRef.current = ctrl
@@ -94,6 +101,23 @@ export function TerminalPane({
       setError(err instanceof Error ? err.message : String(err))
     }
   }, [hostKey, cwd])
+
+  const rename = async (id: string, name: string) => {
+    setRenaming(undefined)
+    if (!hostKey) return
+    const before = terminals?.find((t) => t.id === id)
+    if (!before || name.trim() === tabLabel(before)) return
+    try {
+      const info = await hostRequest(hostKey, 'terminals.rename', {
+        id,
+        // Back to the default name also when the user typed exactly that.
+        name: name.trim() === (before.title ?? before.shell) ? '' : name,
+      })
+      setTerminals((list) => (list ?? []).map((t) => (t.id === id ? info : t)))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
 
   const takeCtrl = useCallback(() => {
     const armed = ctrlRef.current
@@ -195,16 +219,38 @@ export function TerminalPane({
                 key={t.id}
                 style={[styles.tab, t.id === current && { backgroundColor: colors.active }]}
                 onPress={() => setCurrent(t.id)}
+                onLongPress={() => {
+                  draft.current = tabLabel(t)
+                  setRenaming(t.id)
+                }}
+                accessibilityHint="Long press to rename"
               >
                 <Icon
                   icon={TerminalWindow}
                   size={14}
                   color={t.id === current ? colors.text : colors.muted}
                 />
-                <Text size={13} color={t.id === current ? colors.text : colors.muted}>
-                  {t.shell}
-                  {t.exited !== undefined ? ' (exited)' : ''}
-                </Text>
+                {renaming === t.id ? (
+                  <TextInput
+                    autoFocus
+                    selectTextOnFocus
+                    maxLength={40}
+                    defaultValue={tabLabel(t)}
+                    placeholder={t.title ?? t.shell}
+                    placeholderTextColor={colors.muted}
+                    returnKeyType="done"
+                    accessibilityLabel="Terminal name"
+                    style={styles.nameInput}
+                    onSubmitEditing={() => void rename(t.id, draft.current)}
+                    onChangeText={(v) => (draft.current = v)}
+                    onBlur={() => void rename(t.id, draft.current)}
+                  />
+                ) : (
+                  <Text size={13} color={t.id === current ? colors.text : colors.muted}>
+                    {tabLabel(t)}
+                    {t.exited !== undefined ? ' (exited)' : ''}
+                  </Text>
+                )}
               </Pressable>
             ))}
           </ScrollView>
@@ -286,6 +332,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 8,
   },
+  nameInput: { minWidth: 70, padding: 0, fontSize: 13, color: colors.text },
   tabs: { gap: 6, paddingHorizontal: 12, paddingBottom: 8 },
   tab: {
     flexDirection: 'row',

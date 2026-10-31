@@ -60,6 +60,8 @@ const FLUSH_CHARS = 32_768
 const HIGH_WATER = 1_000_000
 const LOW_WATER = 256_000
 const POLL_MS = 50
+/** Longest tab name the user can give. */
+const MAX_NAME = 40
 /** Ended terminals kept for their output; past this the oldest ones are forgotten. */
 const MAX_EXITED = 10
 
@@ -77,6 +79,17 @@ export function defaultShell(
   }
   const file = env.SHELL && env.SHELL.length > 0 ? env.SHELL : (find('bash') ?? '/bin/sh')
   return { file, args: [], name: path.basename(file) }
+}
+
+/** Looking for the shell scans PATH (~15 ms on Windows) and its answer rarely changes. */
+const SHELL_TTL_MS = 60_000
+let shellCache: { at: number; spec: ShellSpec } | undefined
+function cachedDefaultShell(): ShellSpec {
+  const now = Date.now()
+  if (!shellCache || now - shellCache.at > SHELL_TTL_MS) {
+    shellCache = { at: now, spec: defaultShell() }
+  }
+  return shellCache.spec
 }
 
 interface Terminal {
@@ -187,7 +200,7 @@ export class TerminalManager {
           this.close(t.info.id)
       }
     }
-    const shell = params.shell ?? (this.options.shell ?? defaultShell)()
+    const shell = params.shell ?? (this.options.shell ?? cachedDefaultShell)()
     const cols = params.cols ?? 80
     const rows = params.rows ?? 24
     const env = {
@@ -344,6 +357,16 @@ export class TerminalManager {
   focusAgentChild(id: string, child: PtyProcess) {
     const channel = this.terminals.get(id)?.pty
     if (channel instanceof AgentChannel && channel.children.has(child)) channel.focus = child
+  }
+
+  /** Gives the tab the user's name; an empty one goes back to the default. */
+  rename(id: string, name: string): TerminalInfo {
+    const term = this.require(id)
+    const next = name.trim().slice(0, MAX_NAME)
+    if (next) term.info.name = next
+    else delete term.info.name
+    this.changed(term)
+    return snapshot(term)
   }
 
   /** The user types into an agent terminal from now on (into the command it is running). */

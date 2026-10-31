@@ -41,3 +41,8 @@ export function shouldFollow(
   if (!started) return false
   return !shown || Boolean(shown.agent) || shown.exited !== undefined || !before
 }
+
+/** What a tab is called: the user's name for it, else what it was opened for, else its shell. */
+export function tabLabel(t: Pick<TerminalInfo, 'name' | 'title' | 'shell'>): string {
+  return t.name || t.title || t.shell
+}

@@ -408,6 +408,11 @@ export const RpcMethods = {
   },
   /** Ends the shell (if running) and forgets the terminal. */
   'terminals.close': { params: z.object({ id: z.string() }), result: z.object({}) },
+  /** Names the tab; an empty name goes back to the default. Every connected client sees it. */
+  'terminals.rename': {
+    params: z.object({ id: z.string(), name: z.string().max(200) }),
+    result: TerminalInfo,
+  },
   /** Lets the user type into an agent terminal (it starts read-only). */
   'terminals.takeOver': { params: z.object({ id: z.string() }), result: TerminalInfo },
   /** Folder contents; `dir` is relative to `cwd` (empty for the root). Folders first. */

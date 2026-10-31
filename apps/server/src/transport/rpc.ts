@@ -273,6 +273,7 @@ export function createRpcRouter(
       return terminals.create(p)
     },
     'terminals.list': async (p) => terminals.list(p.cwd),
+    'terminals.rename': async (p) => terminals.rename(p.id, p.name),
     'terminals.takeOver': async (p) => terminals.takeOver(p.id),
     'terminals.close': async (p) => {
       terminals.close(p.id)

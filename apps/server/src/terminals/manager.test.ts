@@ -371,4 +371,19 @@ describe('TerminalManager (script runs and ended terminals)', () => {
     p.made[3]!.exit(0)
     expect(m.list().map((t) => t.id)).toEqual([ids[1], ids[2], ids[3], ids[4]])
   })
+
+  it('renames a tab, announces it, and an empty name goes back to the default', () => {
+    const p = ptys()
+    const m = track(new TerminalManager({ pty: p.factory }))
+    const changes: (string | undefined)[] = []
+    m.onChange((c) => changes.push(c.terminal?.name))
+    const t = m.create({ cwd: '/x', shell: node(''), title: 'dev' })
+    expect(m.rename(t.id, '  api server  ').name).toBe('api server')
+    expect(m.list()[0]!.name).toBe('api server')
+    expect(m.list()[0]!.title).toBe('dev')
+    expect(m.rename(t.id, 'x'.repeat(100)).name).toHaveLength(40)
+    expect(m.rename(t.id, '   ').name).toBeUndefined()
+    expect(changes).toEqual([undefined, 'api server', 'x'.repeat(40), undefined])
+    expect(() => m.rename('nope', 'a')).toThrow()
+  })
 })

@@ -266,6 +266,16 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.term-tab-name {
+  min-width: calc(60px * var(--ui-scale));
+  width: calc(110px * var(--ui-scale));
+  padding: 0 calc(4px * var(--ui-scale));
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: calc(4px * var(--ui-scale));
+}
 .term-tab > button:last-child {
   opacity: 0;
   width: 0;
