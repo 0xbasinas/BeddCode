@@ -6603,3 +6603,78 @@ button.patch-comment-btn:hover {
   width: calc(20px * var(--ui-scale));
   justify-content: center;
 }
+.filter-trigger {
+  gap: calc(3px * var(--ui-scale));
+}
+.filter-count {
+  min-width: calc(14px * var(--ui-scale));
+  padding: 0 calc(4px * var(--ui-scale));
+  border-radius: 999px;
+  background: var(--accent, #3b82f6);
+  color: #fff;
+  font-size: calc(10px * var(--ui-scale));
+  line-height: calc(14px * var(--ui-scale));
+  text-align: center;
+}
+.filter-menu {
+  display: flex;
+  flex-direction: column;
+  gap: calc(6px * var(--ui-scale));
+  width: calc(260px * var(--ui-scale));
+  padding: calc(10px * var(--ui-scale));
+}
+.filter-head {
+  color: var(--text-muted);
+  font-size: calc(11px * var(--ui-scale));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.filter-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(5px * var(--ui-scale));
+}
+.filter-projects {
+  max-height: calc(120px * var(--ui-scale));
+  overflow-y: auto;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(9px * var(--ui-scale));
+  border: 1px solid var(--border, #444);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: calc(12px * var(--ui-scale));
+}
+.filter-chip:hover {
+  color: var(--text);
+}
+.filter-chip[aria-pressed='true'],
+.filter-chip.active {
+  border-color: var(--accent, #3b82f6);
+  background: color-mix(in srgb, var(--accent, #3b82f6) 18%, transparent);
+  color: var(--text);
+}
+.active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(5px * var(--ui-scale));
+  padding: 0 calc(12px * var(--ui-scale)) calc(8px * var(--ui-scale));
+}
+.filter-clear {
+  align-self: flex-start;
+  color: var(--text-muted);
+  font-size: calc(12px * var(--ui-scale));
+  text-decoration: underline;
+}
+.filter-clear:hover {
+  color: var(--text);
+}
+.filter-actions {
+  display: flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+}

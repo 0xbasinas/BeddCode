@@ -16,6 +16,7 @@ import {
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   ArrowDownWideNarrow,
+  ListFilter,
   Check,
   CheckCheck,
   ChevronDown,
@@ -74,6 +75,16 @@ import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { HostsDialog } from '../hosts/HostsDialog.tsx'
 import { HistoryDialog } from '../history/HistoryDialog.tsx'
 import { folderName, timeAgo } from '../../ui/format.ts'
+import {
+  NO_FILTERS,
+  STATUS_LABELS,
+  WINDOW_LABELS,
+  activeFilterCount,
+  matchesFilters,
+  toggled,
+  type ActivityWindow,
+  type SessionFilters,
+} from './sessionFilters.ts'
 import { useUiStore } from '../../stores/ui.ts'
 import { AddFolderMenu } from '../folders/AddFolderMenu.tsx'
 import { Logo } from '../../ui/Logo.tsx'
@@ -170,6 +181,7 @@ export function Sidebar() {
   const [filter, setFilter] = useState<Filter>('all')
   const [hostsOpen, setHostsOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [filters, setFilters] = useState<SessionFilters>(NO_FILTERS)
   const [hostFilter, setHostFilter] = useState<string>('all')
   const [sorts, setSorts] = useState<Record<string, Sort>>(readSorts)
   const searchOpen = useUiStore((s) => s.searchOpen)
@@ -254,6 +266,15 @@ export function Sidebar() {
       return next
     })
   const hostOf = new Map(hosted.map((h) => [h.session.id, h.hostKey]))
+  const projectKeyOf = (s: SessionView) =>
+    `${hostOf.get(s.id)}\n${s.projectless ? 'no-project' : s.projectPath}`
+  // Every folder with a session, for the Folder filter.
+  const projectOptions = [
+    ...new Map(
+      all.map((s) => [projectKeyOf(s), s.projectless ? 'No project' : folderName(s.projectPath)]),
+    ),
+  ].sort((a, b) => a[1].localeCompare(b[1], undefined, { sensitivity: 'base' }))
+  const filterCount = activeFilterCount(filters)
   const online = entries.filter((e) => runtimes[e.key]?.connection === 'connected').length
   const local = runtimes[LOCAL_HOST_KEY]
 
@@ -286,13 +307,16 @@ export function Sidebar() {
           .toLowerCase()
           .includes(query.trim().toLowerCase()),
     )
+    .filter((s) => matchesFilters(s, projectKeyOf(s), filters))
     .filter((s) =>
       filter === 'all' ? true : filter === 'needs-you' ? s.status === 'needs-you' : isFiledAway(s),
     )
     .sort(
       (a, b) =>
         (sort === 'status' ? PRIORITY[a.status] - PRIORITY[b.status] : 0) ||
-        (sort === 'name' ? a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }) : 0) ||
+        (sort === 'name'
+          ? a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })
+          : 0) ||
         (sort === 'created' ? b.createdAt - a.createdAt : 0) ||
         b.updatedAt - a.updatedAt,
     )
@@ -323,7 +347,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
   }))
   const projectsOf = (hostKey: string): Project[] => runtimes[hostKey]?.projects ?? []
   const emptyFolders =
-    filter === 'all' && !(searchOpen && query)
+    filter === 'all' && !(searchOpen && query) && filterCount === 0
       ? foldersWithoutSessions(
           entries
             .filter((e) => selectedHost === 'all' || e.key === selectedHost)
@@ -701,42 +725,186 @@ ${s.projectless ? 'no-project' : s.projectPath}`
             {tab('needs-you', 'Needs you', needsYou)}
             {tab('done', 'Done')}
           </div>
-          <Dropdown
-            placement="bottom"
-            align="end"
-            trigger={({ open, toggle }) => (
-              <button
-                className="sort-trigger"
-                aria-label="Sort sessions"
-                aria-expanded={open}
-                onClick={toggle}
-              >
-                <ArrowDownWideNarrow size={12} />
-                <span>{SORTS.find((o) => o.value === sort)?.label}</span>
-                <ChevronDown size={10} />
-              </button>
-            )}
-          >
-            {(close) => (
-              <>
-                {SORTS.map(({ value, label }) => (
-                  <button
-                    key={value}
-                    className="menu-row"
-                    role="menuitemradio"
-                    aria-checked={sort === value}
-                    onClick={() => {
-                      setSort(value)
-                      close()
-                    }}
-                  >
-                    <span className="menu-text">{label}</span>
-                    {sort === value && <Check size={14} />}
-                  </button>
-                ))}
-              </>
-            )}
-          </Dropdown>
+          <div className="filter-actions">
+            <Dropdown
+              placement="bottom"
+              align="end"
+              trigger={({ open, toggle }) => (
+                <button
+                  className="sort-trigger filter-trigger"
+                  aria-label="Filter sessions"
+                  aria-expanded={open}
+                  onClick={toggle}
+                >
+                  <ListFilter size={12} />
+                  <span>Filter</span>
+                  {filterCount > 0 && <span className="filter-count">{filterCount}</span>}
+                </button>
+              )}
+            >
+              {() => (
+                <div className="filter-menu">
+                  <div className="filter-head">Status</div>
+                  <div className="filter-options">
+                    {(Object.keys(STATUS_LABELS) as (keyof typeof STATUS_LABELS)[]).map((st) => (
+                      <button
+                        key={st}
+                        className="filter-chip"
+                        aria-pressed={filters.statuses.includes(st)}
+                        onClick={() =>
+                          setFilters({ ...filters, statuses: toggled(filters.statuses, st) })
+                        }
+                      >
+                        {STATUS_LABELS[st]}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="filter-head">Active</div>
+                  <div className="filter-options">
+                    {(Object.keys(WINDOW_LABELS) as ActivityWindow[]).map((w) => (
+                      <button
+                        key={w}
+                        className="filter-chip"
+                        aria-pressed={filters.since === w}
+                        onClick={() => setFilters({ ...filters, since: w })}
+                      >
+                        {WINDOW_LABELS[w]}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="filter-head">Show only</div>
+                  <div className="filter-options">
+                    <button
+                      className="filter-chip"
+                      aria-pressed={filters.pinnedOnly}
+                      onClick={() => setFilters({ ...filters, pinnedOnly: !filters.pinnedOnly })}
+                    >
+                      Pinned
+                    </button>
+                    <button
+                      className="filter-chip"
+                      aria-pressed={filters.worktreeOnly}
+                      onClick={() =>
+                        setFilters({ ...filters, worktreeOnly: !filters.worktreeOnly })
+                      }
+                    >
+                      In a worktree
+                    </button>
+                  </div>
+                  {projectOptions.length > 1 && (
+                    <>
+                      <div className="filter-head">Folder</div>
+                      <div className="filter-options filter-projects">
+                        {projectOptions.map(([key, name]) => (
+                          <button
+                            key={key}
+                            className="filter-chip"
+                            aria-pressed={filters.projects.includes(key)}
+                            onClick={() =>
+                              setFilters({ ...filters, projects: toggled(filters.projects, key) })
+                            }
+                          >
+                            {name}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {filterCount > 0 && (
+                    <button className="filter-clear" onClick={() => setFilters(NO_FILTERS)}>
+                      Clear all filters
+                    </button>
+                  )}
+                </div>
+              )}
+            </Dropdown>
+            <Dropdown
+              placement="bottom"
+              align="end"
+              trigger={({ open, toggle }) => (
+                <button
+                  className="sort-trigger"
+                  aria-label="Sort sessions"
+                  aria-expanded={open}
+                  onClick={toggle}
+                >
+                  <ArrowDownWideNarrow size={12} />
+                  <span>{SORTS.find((o) => o.value === sort)?.label}</span>
+                  <ChevronDown size={10} />
+                </button>
+              )}
+            >
+              {(close) => (
+                <>
+                  {SORTS.map(({ value, label }) => (
+                    <button
+                      key={value}
+                      className="menu-row"
+                      role="menuitemradio"
+                      aria-checked={sort === value}
+                      onClick={() => {
+                        setSort(value)
+                        close()
+                      }}
+                    >
+                      <span className="menu-text">{label}</span>
+                      {sort === value && <Check size={14} />}
+                    </button>
+                  ))}
+                </>
+              )}
+            </Dropdown>
+          </div>
+        </div>
+      )}
+
+      {filterCount > 0 && (
+        <div className="active-filters" aria-label="Active filters">
+          {filters.statuses.map((st) => (
+            <button
+              key={st}
+              className="filter-chip active"
+              onClick={() => setFilters({ ...filters, statuses: toggled(filters.statuses, st) })}
+            >
+              {STATUS_LABELS[st]} <X size={10} />
+            </button>
+          ))}
+          {filters.since !== 'any' && (
+            <button
+              className="filter-chip active"
+              onClick={() => setFilters({ ...filters, since: 'any' })}
+            >
+              {WINDOW_LABELS[filters.since]} <X size={10} />
+            </button>
+          )}
+          {filters.pinnedOnly && (
+            <button
+              className="filter-chip active"
+              onClick={() => setFilters({ ...filters, pinnedOnly: false })}
+            >
+              Pinned <X size={10} />
+            </button>
+          )}
+          {filters.worktreeOnly && (
+            <button
+              className="filter-chip active"
+              onClick={() => setFilters({ ...filters, worktreeOnly: false })}
+            >
+              In a worktree <X size={10} />
+            </button>
+          )}
+          {filters.projects.map((key) => (
+            <button
+              key={key}
+              className="filter-chip active"
+              onClick={() => setFilters({ ...filters, projects: toggled(filters.projects, key) })}
+            >
+              {projectOptions.find(([k]) => k === key)?.[1] ?? 'Folder'} <X size={10} />
+            </button>
+          ))}
+          <button className="filter-clear" onClick={() => setFilters(NO_FILTERS)}>
+            Clear
+          </button>
         </div>
       )}
 
@@ -752,7 +920,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
         {sessionGroups.length === 0 && emptyFolders.length === 0 && pinned.length === 0 && (
           <div className="sidebar-empty">
             <span className="empty-icon">
-              {searchOpen && query ? (
+              {(searchOpen && query) || filterCount > 0 ? (
                 <Search size={22} />
               ) : all.length === 0 ? (
                 <Layers size={22} />
@@ -761,7 +929,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               )}
             </span>
             <h3>
-              {searchOpen && query
+              {(searchOpen && query) || filterCount > 0
                 ? 'No matching sessions'
                 : all.length === 0
                   ? hasFolders
@@ -770,16 +938,23 @@ ${s.projectless ? 'no-project' : s.projectPath}`
                   : 'All caught up'}
             </h3>
             <p>
-              {searchOpen && query
-                ? 'Try other words from a title, folder, branch, or message.'
-                : local?.connection !== 'connected' && online === 0
-                  ? 'Connecting to host…'
-                  : all.length === 0
-                    ? hasFolders
-                      ? 'Sessions you start will appear here, grouped by folder.'
-                      : 'Start a session without a project, or add a folder to work in.'
-                    : 'No sessions need your attention right now.'}
+              {filterCount > 0
+                ? 'No session fits every filter you have on.'
+                : searchOpen && query
+                  ? 'Try other words from a title, folder, branch, or message.'
+                  : local?.connection !== 'connected' && online === 0
+                    ? 'Connecting to host…'
+                    : all.length === 0
+                      ? hasFolders
+                        ? 'Sessions you start will appear here, grouped by folder.'
+                        : 'Start a session without a project, or add a folder to work in.'
+                      : 'No sessions need your attention right now.'}
             </p>
+            {filterCount > 0 && (
+              <button className="filter-clear" onClick={() => setFilters(NO_FILTERS)}>
+                Clear all filters
+              </button>
+            )}
           </div>
         )}
         {sessionGroups.map(({ key, hostKey, projectPath, projectless, list }) => (
