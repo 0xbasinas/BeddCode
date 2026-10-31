@@ -1,5 +1,18 @@
 # Ideas from the reference projects
 
+## Pi and OpenCode adapters (2026-10-31)
+
+Reviewed [Paseo's provider guide](https://github.com/getpaseo/paseo/blob/main/docs/providers.md) and
+OpenCode's [ACP documentation](https://opencode.ai/v2/docs/cli/acp/). Paseo's Pi notes surfaced two
+compatibility cases now handled in BeddCode: send image blocks only when the active Pi model reports
+image input, and keep the model/thinking setting in sync when Pi changes either during a session.
+OpenCode's version-aware native server adapter is designed for Paseo's broader bridge and server
+management; BeddCode keeps to OpenCode's supported ACP entry point, which already provides model,
+variant/effort, mode, permission, command, and session configuration through the protocol.
+
+These are behavior-level references. No Paseo adapter code was copied; see
+`THIRD_PARTY_NOTICES.md` for the acknowledgement.
+
 Reviewed the local `paseo`, `synara`, and `t3code` checkouts on 2026-10-23. This is a source and test review, not a runtime reliability comparison. The recommendations below fit BeddCode's native provider adapters, Node/SQLite host, React/Zustand client, and Tailscale connections. Reference implementations were examples in that first pass; later code adapted from permissive projects is listed in `THIRD_PARTY_NOTICES.md`.
 
 ## Git workflow implemented

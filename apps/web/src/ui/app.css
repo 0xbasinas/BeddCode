@@ -5228,6 +5228,9 @@ button.tcall-row:hover .tcall-chevron,
 .agent-avatar[data-agent='grok'] {
   color: var(--agent-grok);
 }
+.agent-avatar[data-agent='pi'] {
+  color: var(--agent-pi);
+}
 .agent-card-title {
   flex: 1;
   min-width: 0;

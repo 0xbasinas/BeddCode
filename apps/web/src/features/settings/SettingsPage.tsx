@@ -8,6 +8,7 @@ import {
   ChartPie,
   Code2,
   GitBranch,
+  Globe,
   Info,
   Keyboard,
   Monitor,
@@ -24,6 +25,7 @@ import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { HostsDialog, type HostDialogView } from '../hosts/HostsDialog.tsx'
 import { HostsOverview } from '../hosts/HostsOverview.tsx'
 import { AgentsSettings } from './AgentsSettings.tsx'
+import { BrowserSettings } from './BrowserSettings.tsx'
 import { PreferencesSettings } from './PreferencesSettings.tsx'
 import { PermissionsSettings } from './PermissionsSettings.tsx'
 import { ToolsSettings } from './ToolsSettings.tsx'
@@ -48,6 +50,7 @@ export type SettingsSection =
   | 'hosts'
   | 'git'
   | 'editor'
+  | 'browser'
   | 'usage'
   | 'about'
 const SECTIONS = [
@@ -63,6 +66,7 @@ const SECTIONS = [
   { id: 'hosts', label: 'Hosts', group: 'Workspace', icon: Server },
   { id: 'git', label: 'Git', group: 'Workspace', icon: GitBranch },
   { id: 'editor', label: 'Editor', group: 'Workspace', icon: Code2 },
+  { id: 'browser', label: 'Browser', group: 'Workspace', icon: Globe },
   { id: 'usage', label: 'Usage', group: 'Account', icon: ChartPie },
   { id: 'about', label: 'About', group: 'Account', icon: Info },
 ] as const
@@ -168,6 +172,7 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
             {(['general', 'appearance', 'shortcuts', 'git', 'editor'] as const).map((page) =>
               section === page ? <PreferencesSettings key={page} section={page} /> : null,
             )}
+            {section === 'browser' && <BrowserSettings />}
             {(section === 'agents' ||
               section === 'permissions' ||
               section === 'tools' ||

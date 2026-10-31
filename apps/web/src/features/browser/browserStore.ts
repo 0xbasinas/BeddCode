@@ -24,6 +24,12 @@ export interface BrowserTabAgent {
   localPort?: number
 }
 
+interface PendingBrowserOpen {
+  id: number
+  projectKey: string
+  url: string
+}
+
 /** The key an agent session's browser state is kept under. */
 export const agentKey = (hostKey: string, sessionId: string) => `${hostKey}|${sessionId}`
 
@@ -53,6 +59,8 @@ interface BrowserState {
   agentTab: Record<string, number>
   /** Something to tell an agent with its next answer (a page opened a tab), by agentKey. */
   agentNotes: Record<string, string>
+  /** Links requested elsewhere, held until the matching project's browser profile is ready. */
+  pendingOpen: PendingBrowserOpen[]
   /** Opens a page; returns its tab. `background` leaves the shown tab as it is. */
   open(
     url: string,
@@ -70,9 +78,12 @@ interface BrowserState {
   titled(id: number, title: string): void
   faviconed(id: number, favicon: string): void
   dismissDownload(id: string): void
+  requestOpen(url: string, projectKey: string): void
+  consumePendingOpen(id: number): void
 }
 
 let nextId = 1
+let nextOpenId = 1
 
 /** The desktop app's native pages, absent in a plain browser. */
 export const nativeBrowser = () =>
@@ -102,6 +113,7 @@ export const useBrowser = create<BrowserState>((set, get) => ({
   paused: {},
   agentTab: {},
   agentNotes: {},
+  pendingOpen: [],
 
   open(url, options) {
     const { tabs, active } = get()
@@ -166,6 +178,14 @@ export const useBrowser = create<BrowserState>((set, get) => ({
 
   dismissDownload(id) {
     set((s) => ({ downloads: s.downloads.filter((d) => d.id !== id) }))
+  },
+
+  requestOpen(url, projectKey) {
+    set((s) => ({ pendingOpen: [...s.pendingOpen, { id: nextOpenId++, projectKey, url }] }))
+  },
+
+  consumePendingOpen(id) {
+    set((s) => ({ pendingOpen: s.pendingOpen.filter((request) => request.id !== id) }))
   },
 }))
 

@@ -1,9 +1,15 @@
 import os from 'node:os'
 import path from 'node:path'
-import { AcpAgentStore, AcpRegistry, createAcpAdapter } from '@beddcode/provider-acp'
+import {
+  AcpAgentStore,
+  AcpRegistry,
+  createAcpAdapter,
+  createOpenCodeAdapter,
+} from '@beddcode/provider-acp'
 import { createClaudeAdapter } from '@beddcode/provider-claude'
 import { createCodexAdapter } from '@beddcode/provider-codex'
 import { createGrokAdapter } from '@beddcode/provider-grok'
+import { createPiAdapter } from '@beddcode/provider-pi'
 import { createFakeAdapter, type ProviderAdapter } from '@beddcode/provider-core'
 import type { RelaySettings } from '@beddcode/contracts'
 import {
@@ -70,6 +76,8 @@ export async function runServer(config: ServerConfig): Promise<void> {
     createClaudeAdapter({ log: createLogger('claude') }),
     createCodexAdapter({ log: createLogger('codex') }),
     createGrokAdapter({ log: createLogger('grok') }),
+    createPiAdapter({ log: createLogger('pi'), sessionDir: path.join(home, 'sessions', 'pi') }),
+    createOpenCodeAdapter({ log: createLogger('opencode') }),
     createAcpAdapter({ store: acpStore, log: createLogger('acp') }),
   ]
   // "advanced" adds steering, plans, questions, forks and history to the scripted agent.

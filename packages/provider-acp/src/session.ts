@@ -554,13 +554,16 @@ export class AcpSession implements ProviderSession {
     this.startWatchdog(turnId)
 
     try {
-      const request = this.rpc.request<{ stopReason: string }>('session/prompt', {
-        sessionId: this.acpSessionId,
-        prompt: [
-          { type: 'text', text: await this.promptText(input.text) },
-          ...(await this.imageBlocks(input.attachments)),
-        ],
-      })
+      const request = this.rpc.request<{ stopReason: string; _meta?: unknown; usage?: unknown }>(
+        'session/prompt',
+        {
+          sessionId: this.acpSessionId,
+          prompt: [
+            { type: 'text', text: await this.promptText(input.text) },
+            ...(await this.imageBlocks(input.attachments)),
+          ],
+        },
+      )
       const res = await Promise.race([request, forced])
       if (res === 'forced') return
       // What the turn used, when the agent says; counted even if the turn was cut short.

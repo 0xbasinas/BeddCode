@@ -4,7 +4,7 @@ import { BrandIcon } from './BrandIcon.tsx'
 // The marks of the agents BeddCode knows by name, from theSVG (see brandIconData.ts). Claude keeps
 // its own colour; Codex and Grok take the text colour so they read on light and dark themes alike.
 
-export type AgentKind = 'claude' | 'codex' | 'grok'
+export type AgentKind = 'claude' | 'codex' | 'grok' | 'pi' | 'opencode'
 
 /** Which of the known agents an id or label is ("claude", "acp:grok", "Codex"), if any. */
 export function agentKind(...names: (string | undefined)[]): AgentKind | undefined {
@@ -12,6 +12,8 @@ export function agentKind(...names: (string | undefined)[]): AgentKind | undefin
   if (/claude|anthropic/.test(text)) return 'claude'
   if (/codex|openai/.test(text)) return 'codex'
   if (/grok|xai/.test(text)) return 'grok'
+  if (/(^|[\s:/-])pi($|[\s:/-])|\bpi coding agent\b/.test(text)) return 'pi'
+  if (/opencode/.test(text)) return 'opencode'
   return undefined
 }
 
@@ -23,7 +25,13 @@ const initialsOf = (label: string) =>
     .slice(0, 2)
     .toUpperCase()
 
-const AGENT_NAMES: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex', grok: 'Grok' }
+const AGENT_NAMES: Record<AgentKind, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  grok: 'Grok',
+  pi: 'Pi',
+  opencode: 'OpenCode',
+}
 
 /**
  * The bare mark (theSVG's Claude, Codex and Grok logos), or nothing for an agent without one.

@@ -42,6 +42,10 @@ describe('brand icons', () => {
     expect(renderToStaticMarkup(<AgentIcon agent="claude" labelled />)).toContain(
       'aria-label="Claude"',
     )
+    expect(renderToStaticMarkup(<AgentIcon agent="pi" labelled />)).toContain('brand-pi')
+    expect(renderToStaticMarkup(<AgentIcon agent="opencode" labelled />)).toContain(
+      'brand-opencode',
+    )
     expect(renderToStaticMarkup(<AgentIcon agent="acp:gemini" />)).toBe('')
   })
 

@@ -29,6 +29,8 @@ const AGENTS = [
   { name: 'claude', login: 'claude auth login' },
   { name: 'codex', login: 'codex login' },
   { name: 'grok', login: 'grok login' },
+  { name: 'pi', login: 'pi /login' },
+  { name: 'opencode', login: 'opencode auth login' },
 ]
 
 async function version(deps: DoctorDeps, file: string): Promise<string | null> {
@@ -118,7 +120,7 @@ export async function doctor(deps: DoctorDeps): Promise<Check[]> {
       name: 'Agents',
       level: 'fail',
       detail: 'no agent CLI found',
-      fix: 'Install Claude Code, Codex or another agent and sign in; BeddCode runs the ones you have.',
+      fix: 'Install Claude Code, Codex, Grok, Pi, OpenCode or another agent and sign in; BeddCode runs the ones you have.',
     })
   }
 
