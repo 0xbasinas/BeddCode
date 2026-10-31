@@ -67,6 +67,8 @@ export interface DesktopDriver {
   launch(app: string): Promise<Outcome<{ pid: number; windows: DesktopWindow[] }>>
   /** Reads a window. Indexes in the result are only good until the window is read again. */
   snapshot(window: DesktopWindow): Promise<Outcome<{ snapshot: Snapshot }>>
+  /** Restores a minimized window without activating it, where the platform supports that. */
+  restore?(window: DesktopWindow): Promise<Outcome<{ detail: string }>>
   click(
     window: DesktopWindow,
     target: ClickTarget,

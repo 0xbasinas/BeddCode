@@ -439,6 +439,10 @@ ipcMain.handle('beddcode:browser', (event, raw: unknown) => {
 
 /** The whole app: its window and the host it supervises. */
 function startApp() {
+  // Expose Electron's own UI to Windows UI Automation. Without Chromium accessibility, desktop
+  // agents can see the BeddCode window but only get its title bar instead of the actual controls.
+  app.setAccessibilitySupportEnabled(true)
+
   // One app at a time: a second launch brings the first one forward instead of starting its own host.
   if (!app.requestSingleInstanceLock()) {
     app.quit()

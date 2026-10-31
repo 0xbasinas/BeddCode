@@ -8,6 +8,7 @@ import type {
   Snapshot,
 } from './driver.ts'
 import { readFields, regionsOf, type RunScript } from './uiaSecrets.ts'
+import { restoreMinimizedWindow } from './windowRestore.ts'
 
 // A DesktopDriver on Cua Driver (@trycua/cua-driver, MIT): UI Automation for the tree and for
 // clicks that do not move the user's mouse, Windows Graphics Capture for pictures, and SendInput or
@@ -33,7 +34,12 @@ type Raw = Awaited<ReturnType<CuaClient['callTool']>>
 /** Maps the driver's refusals to codes an agent can act on. */
 export function failCode(text: string): FailCode {
   if (/UIPI|higher-integrity|High integrity/i.test(text)) return 'elevated'
-  if (/Background delivery is not available/i.test(text)) return 'foreground_needed'
+  if (
+    /Background delivery is not available|could not find a UIA AcceleratorKey|PostMessage WM_KEYDOWN\/?UP is ignored by this target's input pipeline/i.test(
+      text,
+    )
+  )
+    return 'foreground_needed'
   if (/token is stale|stale element/i.test(text)) return 'stale'
   return 'error'
 }
@@ -175,6 +181,16 @@ export class CuaDesktopDriver implements DesktopDriver {
       size: width > 0 && height > 0 ? { width, height } : undefined,
     }
     return { ok: true as const, snapshot }
+  }
+
+  async restore(window: DesktopWindow) {
+    if (process.platform !== 'win32')
+      return {
+        ok: false as const,
+        code: 'unavailable' as const,
+        error: 'Restoring a minimized window without activation is only available on Windows.',
+      }
+    return restoreMinimizedWindow(window.id)
   }
 
   async secretRegions(

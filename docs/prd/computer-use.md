@@ -26,21 +26,32 @@ Policy that ships:
   refused as stale. Cua only honours tokens from a window's latest snapshot, so each ref action re-reads the window.
 - Fields named like passwords or secrets have their values replaced, and the picture is withheld.
 - Typing a secret-looking string, typing into a password field, and system key combinations ask first.
-- Typing is verified by reading the field back. Background input is tried first, with a foreground
-  fallback (`foreground: auto|never|always`), which says so in the result.
+- Input stays in the background by default. UIA element actions (such as invoking a button or setting
+  a supported field value with `computer_type` + `clear: true`) do not activate the target window.
+  Keyboard input that needs focus fails with guidance; an agent must explicitly request
+  `foreground: "auto"` for a brief foreground fallback or `"always"` to start there. Typing into a
+  referenced field is verified by reading it back. On failure or garbled output, agents are told to
+  inspect a new snapshot instead of resending the entire text repeatedly.
+- `computer_restore` restores a minimized Windows window with `SW_SHOWNOACTIVATE`, places it behind
+  the current foreground window, checks that it is no longer minimized, and verifies that foreground
+  focus stayed unchanged. Agents use this instead of shell commands to recover a minimized target.
+- Modern XAML/UWP apps may ignore background `PostMessage` hotkeys. BeddCode treats Cua's missing
+  accelerator hint / ignored-message diagnostic as `foreground_needed`, tells the agent to inspect a
+  fresh snapshot and invoke a visible menu item directly, and documents foreground fallback as an
+  explicit escalation.
 - One call at a time (one mouse, one keyboard), 300 actions per session, and `revoke` on session end.
 
 Measured on Windows 11 (Cua 0.37, Calculator, a throwaway Electron app, Windows Terminal):
 
-| Finding                      | Detail                                                                                                                                                                                                                                                           |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| UIA clicks in the background | Reliable; 5–11 ms; no focus change.                                                                                                                                                                                                                              |
-| Background typing            | Unreliable. It landed once in Calculator and not on a second try, and was ignored by Notepad. The SDK reports "not verified". Chromium and Windows Terminal refuse it outright.                                                                                  |
-| Foreground typing            | SendInput works in simple fields; the driver restores the previous foreground. In Notepad it dropped and repeated characters ("Hello m BeddCode rrrrr..."), and a 25 ms pause per key still lost words ("Hello from BeddCode ...."). Always read the field back. |
-| Setting a value              | `computer_type` with `clear: true` replaces an element's content through UI Automation: exact in Notepad (verified), no keystrokes, no focus change. Chromium fields do not support it.                                                                          |
-| Electron                     | Only the title bar until Chromium accessibility is on: launch the app with `--force-renderer-accessibility`. Then the full DOM tree and background clicks work. `set_value` is not supported on Chromium fields.                                                 |
-| Elevated windows             | The driver refuses with a clear UIPI error and returns almost nothing from `get_window_state`. Nothing is typed.                                                                                                                                                 |
-| Screenshots                  | Clear PNGs per window, also of windows that are not in front.                                                                                                                                                                                                    |
+| Finding                      | Detail                                                                                                                                                                                                                                                                      |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| UIA clicks in the background | Reliable; 5–11 ms; no focus change.                                                                                                                                                                                                                                         |
+| Background typing            | Unreliable. It landed once in Calculator and not on a second try, and was ignored by Notepad. The SDK reports "not verified". Chromium and Windows Terminal refuse it outright. BeddCode now stays background-only by default and requires an explicit foreground fallback. |
+| Foreground typing            | SendInput works in simple fields; the driver restores the previous foreground. In Notepad it dropped and repeated characters ("Hello m BeddCode rrrrr..."), and a 25 ms pause per key still lost words ("Hello from BeddCode ...."). Always read the field back.            |
+| Setting a value              | `computer_type` with `clear: true` replaces an element's content through UI Automation: exact in Notepad (verified), no keystrokes, no focus change. Chromium fields do not support it.                                                                                     |
+| Electron                     | Chromium accessibility must be enabled for the full UIA tree; BeddCode enables it at startup. Without it, only the title bar is exposed. `set_value` is not supported on Chromium fields.                                                                                   |
+| Elevated windows             | The driver refuses with a clear UIPI error and returns almost nothing from `get_window_state`. Nothing is typed.                                                                                                                                                            |
+| Screenshots                  | Clear PNGs per window, also of windows that are not in front.                                                                                                                                                                                                               |
 
 Packaging: `apps/desktop/scripts/build-host.mjs` installs `@trycua/cua-driver` beside the host bundle on Windows builds
 (about 31 MB on disk, outside the ASAR archive, copied by `after-pack.cjs` like the other native packages).

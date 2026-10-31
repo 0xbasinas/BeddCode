@@ -436,11 +436,16 @@ describe('acting', () => {
     expect(text(await call('computer_click', { window: id }))).toMatch(/ref, or x and y/)
   })
 
-  it('falls back to the foreground for typing when the window needs it, and says so', async () => {
+  it('falls back to the foreground when explicitly allowed and the window needs it', async () => {
     const { call, id, desktop, text } = await calc()
     desktop.needsForeground.add(id)
     await call('computer_snapshot', { window: id })
-    const r = await call('computer_type', { window: id, text: 'hello', ref: 'e2' })
+    const r = await call('computer_type', {
+      window: id,
+      text: 'hello',
+      ref: 'e2',
+      foreground: 'auto',
+    })
     expect(r.isError).toBeUndefined()
     expect(text(r)).toMatch(/foreground/)
     expect(text(r)).toMatch(/Verified/)
