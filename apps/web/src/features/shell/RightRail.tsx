@@ -30,9 +30,13 @@ const FilesPane = lazy(() =>
   import('../files/FilesPane.tsx').then((m) => ({ default: m.FilesPane })),
 )
 const GitPane = lazy(() => import('../git/GitPane.tsx').then((m) => ({ default: m.GitPane })))
-const TerminalPane = lazy(() =>
-  import('../terminal/TerminalPane.tsx').then((m) => ({ default: m.TerminalPane })),
-)
+const loadTerminalPane = () => import('../terminal/TerminalPane.tsx')
+const TerminalPane = lazy(() => loadTerminalPane().then((m) => ({ default: m.TerminalPane })))
+
+/** The pane's chunk (xterm is most of it) is fetched before it is asked for. */
+const preloadPane: Partial<Record<PaneId, () => void>> = {
+  terminal: () => void loadTerminalPane().catch(() => {}),
+}
 
 const panes: { id: PaneId; label: string; Icon: ComponentType<{ size?: number }> }[] = [
   { id: 'terminal', label: 'Terminal', Icon: SquareTerminal },
@@ -87,6 +91,13 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
   }, [wanted, wantWidth])
 
   const folderMissing = useFolderMissing(hostKey, workspace)
+
+  // Once the app is idle, so the first terminal does not wait for the download.
+  useEffect(() => {
+    const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1500))
+    const handle = idle(() => preloadPane.terminal?.())
+    return () => (window.cancelIdleCallback ?? window.clearTimeout)(handle)
+  }, [])
 
   const needFolder = (render: (s: PaneWorkspace) => ReactNode) =>
     workspace ? (
@@ -160,6 +171,8 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
             title={label}
             aria-label={label}
             aria-pressed={activePane === id}
+            onPointerEnter={preloadPane[id]}
+            onFocus={preloadPane[id]}
             onClick={() => togglePane(id)}
           >
             <Icon size={20} />
