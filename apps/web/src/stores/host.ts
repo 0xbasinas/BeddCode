@@ -37,6 +37,7 @@ import {
   type HostEntry,
 } from './hostCatalog.ts'
 import { localHostUrl } from './localHostUrl.ts'
+import { composerDraftKey, useComposerDrafts } from '../features/composer/drafts.ts'
 import { onDeviceWake } from './wake.ts'
 
 const LOCAL_URL = localHostUrl({
@@ -601,7 +602,9 @@ export async function setSessionDone(sessionId: string, done: boolean) {
 }
 
 export async function deleteSession(sessionId: string) {
+  const hostKey = hostKeyOfSession(sessionId)
   await sessionRequest(sessionId, 'sessions.delete', { sessionId })
+  if (hostKey) useComposerDrafts.getState().dropDrafts([composerDraftKey(hostKey, sessionId)])
 }
 
 export async function setSessionPinned(sessionId: string, pinned: boolean) {

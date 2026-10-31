@@ -42,3 +42,13 @@ describe('composer drafts', () => {
     expect(useComposerDrafts.getState().drafts[key]).toBe('Newer message')
   })
 })
+
+it('forgets the drafts of deleted sessions', () => {
+  const kept = composerDraftKey('local', 'kept')
+  const gone = composerDraftKey('local', 'gone')
+  const { setDraft, dropDrafts } = useComposerDrafts.getState()
+  setDraft(kept, 'Keep me')
+  setDraft(gone, 'Delete me')
+  dropDrafts([gone])
+  expect(useComposerDrafts.getState().drafts).toEqual({ [kept]: 'Keep me' })
+})
