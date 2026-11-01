@@ -97,3 +97,33 @@ out(`${images}/android-icon-monochrome.png`, render(glyph(0.95, cutMask), 1024))
 // The splash shows the rounded mark on the app's dark background (set in app.json).
 out(`${images}/splash-icon.png`, png(1024))
 out(`${images}/favicon.png`, png(48))
+
+// GitHub's social preview: upload it under the repository's Settings > General > Social preview.
+const fonts = path.join(root, 'apps/mobile/node_modules/@expo-google-fonts')
+const mark = svg.replace(
+  'width="256" height="256" role',
+  'x="154" y="200" width="240" height="240" role',
+)
+const preview = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640">
+  <rect width="1280" height="640" fill="#171717" />
+  ${mark}
+  <text x="442" y="306" font-family="Inter" font-weight="700" font-size="124" letter-spacing="-4" fill="#fafafa">BeddCode</text>
+  <text x="448" y="376" font-family="Inter" font-weight="400" font-size="36" fill="#a3a3a3">A desktop workspace for coding agents</text>
+  <text x="448" y="432" font-family="JetBrains Mono" font-weight="500" font-size="28" fill="#f2ab3c">local and remote hosts</text>
+</svg>`
+out(
+  'assets/social-preview.png',
+  new Resvg(preview, {
+    fitTo: { mode: 'width', value: 1280 },
+    font: {
+      loadSystemFonts: false,
+      fontFiles: [
+        `${fonts}/inter/400Regular/Inter_400Regular.ttf`,
+        `${fonts}/inter/700Bold/Inter_700Bold.ttf`,
+        `${fonts}/jetbrains-mono/500Medium/JetBrainsMono_500Medium.ttf`,
+      ],
+    },
+  })
+    .render()
+    .asPng(),
+)
