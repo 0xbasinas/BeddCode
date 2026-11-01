@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Branch and PR Cleanup'
+  short_description: 'Manage branches, PRs, CI, and merged-work cleanup'
+  default_prompt: 'Use $pr-branch-cleanup to prepare and merge this change, then clean up safe branch refs.'
