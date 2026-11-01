@@ -42,7 +42,10 @@ export function ReviewBar({
         await prompt(sessionId!, text)
       } else {
         const file = new File([text], 'review-comments.md', { type: 'text/markdown' })
-        await stageAttachment(hostKey, draftId!, file.name, file.size, () => upload(hostKey, file))
+        const attached = await stageAttachment(hostKey, draftId!, file.name, file.size, () =>
+          upload(hostKey, file),
+        )
+        if (!attached) throw new Error('Could not attach the review; your comments are still here')
       }
       clearSent(storeKey, sent)
     } catch (err) {

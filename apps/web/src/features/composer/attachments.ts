@@ -42,7 +42,7 @@ export async function stageAttachment(
   name: string,
   size: number,
   save: () => Promise<RpcResult<'attachments.upload'>>,
-): Promise<void> {
+): Promise<boolean> {
   const draft = attachmentDraftKey(hostKey, draftId)
   const key = nextKey++
   useAttachments.setState((s) => ({
@@ -68,6 +68,10 @@ export async function stageAttachment(
       },
     }
   })
+  return (
+    useAttachments.getState().drafts[draft]?.some((f) => f.key === key && f.status === 'done') ??
+    false
+  )
 }
 
 export function attachUpload(hostKey: string, draftId: string, file: File) {

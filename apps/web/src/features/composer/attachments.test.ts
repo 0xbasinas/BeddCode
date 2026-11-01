@@ -79,11 +79,13 @@ describe('composer attachment drafts', () => {
 
   it('shows read failures and size limits without losing existing attachments', async () => {
     const save = vi.fn()
-    await stageAttachment('remote', 'session', 'large', 21 * 1024 * 1024, save)
+    expect(await stageAttachment('remote', 'session', 'large', 21 * 1024 * 1024, save)).toBe(false)
     expect(save).not.toHaveBeenCalled()
-    await stageAttachment('remote', 'session', 'missing', 0, async () => {
-      throw new Error('File disappeared')
-    })
+    expect(
+      await stageAttachment('remote', 'session', 'missing', 0, async () => {
+        throw new Error('File disappeared')
+      }),
+    ).toBe(false)
     expect(useAttachments.getState().drafts[draft]).toMatchObject([
       { status: 'error', error: 'Larger than 20 MB' },
       { status: 'error', error: 'File disappeared' },
