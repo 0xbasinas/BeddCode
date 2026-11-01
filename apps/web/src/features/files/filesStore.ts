@@ -76,7 +76,7 @@ interface FilesState {
   close(cwd: string, path: string): void
   setDirty(cwd: string, path: string, dirty: boolean): void
   setDraft(cwd: string, path: string, text: string): void
-  save(cwd: string, path: string, content: string, force?: boolean): Promise<void>
+  save(cwd: string, path: string, content: string, force?: boolean | number): Promise<void>
   reload(cwd: string, path: string): Promise<void>
   create(cwd: string, path: string, type: 'file' | 'dir'): Promise<void>
   /** Applies `fs.changed` paths: refreshes listings and open files. */
@@ -219,7 +219,7 @@ export const useFiles = create<FilesState>((set, get) => {
         const { mtime } = await request(cwd, 'files.write', {
           path,
           content,
-          expectedMtime: force ? undefined : doc.mtime,
+          expectedMtime: typeof force === 'number' ? force : force ? undefined : doc.mtime,
         })
         const latest = get().byCwd[cwd]?.docs[path]
         const draft =

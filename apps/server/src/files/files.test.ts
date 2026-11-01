@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -27,6 +28,15 @@ const tmp = () => {
   return d
 }
 const files = new FileService()
+
+it('keeps external files intact when saving a copy and rejects saving over a deleted original', async () => {
+  const cwd = tmp()
+  await files.saveCopy(cwd, 'copy.txt', 'my draft')
+  await expect(files.saveCopy(cwd, 'copy.txt', 'replacement')).rejects.toThrow()
+  expect(readFileSync(path.join(cwd, 'copy.txt'), 'utf8')).toBe('my draft')
+  await expect(files.write(cwd, 'deleted.txt', 'draft', 123)).rejects.toThrow('changed on disk')
+  expect(existsSync(path.join(cwd, 'deleted.txt'))).toBe(false)
+})
 
 describe('FileService.readAttachment', () => {
   it('reads binary bytes and files larger than the editor limit without decoding', async () => {

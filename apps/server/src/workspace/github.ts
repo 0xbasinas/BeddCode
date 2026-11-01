@@ -37,6 +37,7 @@ export interface PrLookup {
 }
 
 const PR_FIELDS = [
+  'headRefOid',
   'number',
   'title',
   'url',
@@ -363,6 +364,7 @@ export class GithubService {
 
   private mapPr(pr: RawPr): PullRequest {
     return {
+      headOid: pr.headRefOid || undefined,
       number: pr.number,
       title: pr.title,
       url: pr.url,
@@ -408,7 +410,7 @@ export class GithubService {
    * failed.
    */
   async ciReport(cwd: string): Promise<CiReport> {
-    const pr = await this.pullRequest(cwd)
+    const pr = await this.readPullRequest(cwd)
     const branch = pr?.headBranch
     const runs: CiReport['runs'] = []
     if (branch) {
@@ -431,7 +433,7 @@ export class GithubService {
               title: r.displayTitle,
               status: r.status,
               conclusion: r.conclusion || undefined,
-              sha: r.headSha?.slice(0, 7),
+              sha: r.headSha,
               at: time(r.createdAt),
               url: r.url,
             })
@@ -463,7 +465,7 @@ export class GithubService {
       }),
     )
     return {
-      pr: pr ? { number: pr.number, title: pr.title, url: pr.url } : null,
+      pr: pr ? { number: pr.number, title: pr.title, url: pr.url, headOid: pr.headOid } : null,
       branch,
       runs,
       failures: failures.map(([, f]) => f),

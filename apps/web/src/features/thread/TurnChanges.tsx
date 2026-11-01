@@ -1,20 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import {
-  ChevronDown,
-  ChevronUp,
-  FolderOpen,
-  GitPullRequest,
-  History,
-  Undo2,
-  Wrench,
-} from 'lucide-react'
+import { ChevronDown, ChevronUp, FolderOpen, GitPullRequest, History, Undo2 } from 'lucide-react'
 import { useUiStore } from '../../stores/ui.ts'
 import type { TranscriptItem } from '@beddcode/client-runtime'
 import type { GitDiff, TurnChangedFile } from '@beddcode/contracts'
 import { INLINE_PATCH_LINES, PatchView } from '../../ui/PatchView.tsx'
-import { hostRequest, prompt } from '../../stores/host.ts'
-import { ciPrompt } from '../git/ciPrompt.ts'
+import { hostRequest } from '../../stores/host.ts'
+import { CiFollowUp } from '../git/CiFollowUp.tsx'
 import { refreshSessionPr, useSessionPr } from '../../stores/sessionPr.ts'
 import { FileIcon } from '../files/FileIcon.tsx'
 
@@ -55,7 +47,6 @@ export function TurnChangesCard({
   const [confirming, setConfirming] = useState(false)
   const [undoing, setUndoing] = useState(false)
   const [error, setError] = useState<string>()
-  const [fixing, setFixing] = useState(false)
   const added = item.files.reduce((n, f) => n + f.added, 0)
   const removed = item.files.reduce((n, f) => n + f.removed, 0)
   const count = item.files.length
@@ -67,20 +58,6 @@ export function TurnChangesCard({
   useEffect(() => {
     if (offerPr) void refreshSessionPr(hostKey, cwd)
   }, [offerPr, hostKey, cwd, item.id])
-
-  // Gathers what CI said (the branch's Actions runs and the failed logs) and hands it to this agent.
-  const fixCi = async () => {
-    setFixing(true)
-    setError(undefined)
-    try {
-      const report = await hostRequest(hostKey, 'git.ci.report', { cwd })
-      await prompt(sessionId, ciPrompt(report))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setFixing(false)
-    }
-  }
 
   const undo = async () => {
     setUndoing(true)
@@ -126,16 +103,6 @@ export function TurnChangesCard({
             >
               Commit
             </button>
-            {openPr.checks === 'failure' && (
-              <button
-                className="turn-undo"
-                disabled={fixing}
-                onClick={() => void fixCi()}
-                title="Send this agent the failing checks' logs from GitHub Actions to fix"
-              >
-                <Wrench size={14} /> {fixing ? 'Reading CI…' : 'Fix CI'}
-              </button>
-            )}
             <button
               className="turn-undo"
               onClick={() => useUiStore.getState().showPr()}
@@ -184,6 +151,9 @@ export function TurnChangesCard({
           </button>
         )}
       </div>
+      {openPr?.checks === 'failure' && offerPr && (
+        <CiFollowUp hostKey={hostKey} cwd={cwd} sessionId={sessionId} />
+      )}
       {open && (
         <p className="turn-diff-note muted">
           Compared folder snapshots. Edits made by you or another session during this turn may be

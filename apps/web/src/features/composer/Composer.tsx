@@ -19,9 +19,10 @@ import {
   useAttachments,
   retryAttachment,
   canRetryAttachment,
+  validateAttachmentDraft,
 } from './attachments.ts'
 import { insertCommand, insertMention, matchCommands, mentionAt } from '@beddcode/client-runtime'
-import { hostRequest } from '../../stores/host.ts'
+import { useRuntime } from '../../stores/host.ts'
 import { FileIcon, FolderIcon } from '../files/FileIcon.tsx'
 import { mentionItems, type MentionItem } from './mentionItems.ts'
 import { ModeMenu, type ModeItem } from './Menus.tsx'
@@ -42,7 +43,8 @@ interface ComposerProps {
   hostKey: string
   /** Session id, or a separate draft for the new-session composer. */
   draftId?: string
-  onSend(text: string, attachmentIds: string[]): Promise<void>
+  onSend(text: string, attachmentIds: string[], delivery?: 'auto' | 'queue'): Promise<void>
+  canSteer?: boolean
   onStop?(): void
   modes?: ModeItem[]
   modeId?: string
@@ -60,9 +62,16 @@ interface ComposerProps {
 }
 
 export function Composer(props: ComposerProps) {
+  const [delivery, setDelivery] = useState<'auto' | 'queue'>('queue')
+  const requestedDelivery = useRef<'auto' | 'queue'>('queue')
   const draftId = props.draftId ?? 'new-session'
   const draft = attachmentDraftKey(props.hostKey, draftId)
   const files = useAttachments((s) => s.drafts[draft] ?? EMPTY_ATTACHMENTS)
+  const storageError = useAttachments((s) => s.storageError)
+  const { epoch, connection } = useRuntime(props.hostKey)
+  useEffect(() => {
+    if (connection === 'connected') void validateAttachmentDraft(props.hostKey, draftId)
+  }, [props.hostKey, draftId, epoch, connection])
   const latest = useRef({ draft, text: props.text })
   latest.current = { draft, text: props.text }
   const mounted = useRef(true)
@@ -103,7 +112,8 @@ export function Composer(props: ComposerProps) {
     if (armed !== undefined && (armed !== draft || !hasContent)) setArmed(undefined)
   }, [armed, draft, hasContent])
   useEffect(() => setError(null), [draft])
-  const trySend = () => {
+  const trySend = (requested?: 'auto' | 'queue') => {
+    requestedDelivery.current = requested ?? delivery
     if (canSend) void send()
     else if (hasContent && !sending) setArmed(draft)
   }
@@ -119,6 +129,7 @@ export function Composer(props: ComposerProps) {
       const request = props.onSend(
         sent.trim(),
         ready.map((f) => f.id!),
+        props.busy ? requestedDelivery.current : 'auto',
       )
       // The box empties as Enter is pressed instead of when the host answers; a failure puts the
       // words back (unless something new was typed meanwhile).
@@ -209,6 +220,11 @@ export function Composer(props: ComposerProps) {
 
   return (
     <div className="composer-wrap">
+      {storageError && (
+        <div className="composer-error" role="alert">
+          {storageError}
+        </div>
+      )}
       {props.above}
       <div
         className={`composer ${dragging ? 'dragging' : ''}`}
@@ -253,6 +269,7 @@ export function Composer(props: ComposerProps) {
                   <Paperclip size={12} /> {f.name}
                   {f.status === 'uploading' && <span className="muted">uploading…</span>}
                   {f.status === 'queued' && <span className="muted">waiting to upload…</span>}
+                  {f.status === 'checking' && <span className="muted">checking saved file…</span>}
                   {f.status === 'error' && <span className="muted">{f.error}</span>}
                   {f.status === 'error' && canRetryAttachment(f.key) && (
                     <button
@@ -390,7 +407,9 @@ export function Composer(props: ComposerProps) {
             const composing = e.nativeEvent.isComposing || e.keyCode === 229
             if (e.key === 'Enter' && !e.shiftKey && !composing) {
               e.preventDefault()
-              trySend()
+              trySend(
+                e.ctrlKey || e.metaKey ? 'queue' : e.altKey && props.canSteer ? 'auto' : undefined,
+              )
               return
             }
             // Backspace in an empty box takes back the newest attachment.
@@ -448,6 +467,17 @@ export function Composer(props: ComposerProps) {
             <ModeMenu modes={props.modes} modeId={props.modeId} onChange={props.onModeChange} />
           )}
           <span className="spacer" />
+          {props.busy && (
+            <select
+              aria-label="Message delivery"
+              title="Ctrl/Cmd+Enter queues; Alt+Enter steers when supported"
+              value={delivery}
+              onChange={(e) => setDelivery(e.target.value as 'auto' | 'queue')}
+            >
+              <option value="queue">Queue after this turn</option>
+              {props.canSteer && <option value="auto">Steer current turn</option>}
+            </select>
+          )}
           {props.modelSlot}
           {props.busy && (
             <button className="send stop" title="Stop" aria-label="Stop" onClick={props.onStop}>
@@ -456,11 +486,17 @@ export function Composer(props: ComposerProps) {
           )}
           <button
             className="send"
-            title={props.busy ? 'Send (steers the agent, or queues it)' : 'Send'}
+            title={
+              props.busy
+                ? delivery === 'queue'
+                  ? 'Queue after this turn'
+                  : 'Steer current turn'
+                : 'Send'
+            }
             aria-label="Send"
             disabled={!canSend && !(hasContent && !sending && (props.disabled || pending))}
             aria-busy={waitingToSend || sending}
-            onClick={trySend}
+            onClick={() => trySend()}
           >
             <ArrowUp size={18} />
           </button>

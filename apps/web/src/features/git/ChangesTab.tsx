@@ -89,7 +89,7 @@ export function ChangesTab({
     }
   }
 
-  if (status.files.length === 0) {
+  if (status.files.length === 0 && comments.length === 0) {
     return (
       <div className="git-empty">
         <Check size={22} />

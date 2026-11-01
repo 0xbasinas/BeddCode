@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { MessageSquareText } from 'lucide-react'
-import { formatReview, type ReviewComment } from '@beddcode/client-runtime'
-import { prompt, upload, useSession } from '../../stores/host.ts'
+import { formatReview, reviewPatchVersion, type ReviewComment } from '@beddcode/client-runtime'
+import { hostRequest, prompt, upload, useSession } from '../../stores/host.ts'
 import { useReviewStore } from '../../stores/review.ts'
 import { stageAttachment } from '../composer/attachments.ts'
 
@@ -30,14 +30,38 @@ export function ReviewBar({
   const clearSent = useReviewStore((s) => s.clearSent)
   const [busy, setBusy] = useState<'send' | 'attach' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [stale, setStale] = useState<string[]>([])
+  const [allowStale, setAllowStale] = useState(false)
   const count = comments.length
 
   const run = async (kind: 'send' | 'attach') => {
     const sent = [...comments]
-    const text = formatReview({ cwd, comments: sent })
     setBusy(kind)
     setError(null)
     try {
+      const versions = new Map<string, string | null>()
+      await Promise.all(
+        [...new Set(sent.map((c) => c.path))].map(async (path) => {
+          try {
+            const diff = await hostRequest(hostKey, 'git.diff', { cwd, path })
+            versions.set(path, diff.truncated ? null : reviewPatchVersion(diff.patch))
+          } catch {
+            versions.set(path, null)
+          }
+        }),
+      )
+      const outdated = sent.filter(
+        (c) => !c.patchVersion || versions.get(c.path) !== c.patchVersion,
+      )
+      setStale(outdated.map((c) => c.id))
+      if (outdated.length && !allowStale)
+        throw new Error(
+          'Some review comments refer to a changed or unavailable diff. Review their captured context below before sending.',
+        )
+      const text =
+        (outdated.length
+          ? 'These comments include earlier diff context. Files have changed or could not be verified; check their current contents before acting.\n\n'
+          : '') + formatReview({ cwd, comments: sent })
       if (kind === 'send') {
         await prompt(sessionId!, text)
       } else {
@@ -97,6 +121,36 @@ export function ReviewBar({
         </Button>
       )}
       {error && <div className="composer-error review-error">{error}</div>}
+      {stale.length > 0 && (
+        <div className="review-error" role="region" aria-label="Comments needing review">
+          {comments
+            .filter((c) => stale.includes(c.id))
+            .map((c) => (
+              <details key={c.id}>
+                <summary>
+                  {c.path}:{c.line} — captured context may be stale
+                </summary>
+                <pre>{c.context.lines.map((line) => line.text).join('\n')}</pre>
+                <textarea
+                  aria-label={`Edit review comment for ${c.path}:${c.line}`}
+                  value={c.body}
+                  onChange={(e) => useReviewStore.getState().edit(storeKey, c.id, e.target.value)}
+                />
+                <button onClick={() => useReviewStore.getState().remove(storeKey, c.id)}>
+                  Remove comment
+                </button>
+              </details>
+            ))}
+          <label>
+            <input
+              type="checkbox"
+              checked={allowStale}
+              onChange={(e) => setAllowStale(e.target.checked)}
+            />
+            Send original captured context even if the diff has changed
+          </label>
+        </div>
+      )}
     </div>
   )
 }

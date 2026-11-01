@@ -21,6 +21,19 @@ const created = {
   instanceId: 'fake',
 }
 
+it('replays host-backed notes and queued edits in their reordered positions', () => {
+  const state = fold([
+    created,
+    { type: 'prompt.queued', queueId: 'a', text: 'a' },
+    { type: 'prompt.queued', queueId: 'b', text: 'b' },
+    { type: 'prompt.edited', queueId: 'a', text: 'changed' },
+    { type: 'prompt.reordered', queueIds: ['b', 'a'] },
+    { type: 'session.notes', text: 'Shared note', version: 1 },
+  ])
+  expect(state.sessions.s1?.queue.map((q) => q.text)).toEqual(['b', 'changed'])
+  expect(state.sessions.s1?.notes).toEqual({ text: 'Shared note', version: 1 })
+})
+
 it('batch application matches individual events, including reconnect duplicates and tool boundaries', () => {
   const events: SessionEvent[] = [
     { ...base, ...created },

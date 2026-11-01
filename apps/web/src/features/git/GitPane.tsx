@@ -14,6 +14,7 @@ import { PullRequestTab } from './PullRequestTab.tsx'
 import { usePolled } from './usePolled.ts'
 import { EMPTY_OPERATION, gitOperationKey, useGitOperations } from './operations.ts'
 import { GitOperationStatus } from './GitOperationStatus.tsx'
+import { CiFollowUp } from './CiFollowUp.tsx'
 
 /**
  * Changes, commits and pull request of the folder a session works in. Git is read live (the
@@ -74,6 +75,9 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
 
   return (
     <div className="git-pane">
+      {tab === 'pr' && workspace.sessionId && (
+        <CiFollowUp hostKey={hostKey} cwd={cwd} sessionId={workspace.sessionId} />
+      )}
       <Tabs className="gap-0" value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
         <TabsList className="git-tabs h-auto justify-start rounded-none">
           <TabsTrigger

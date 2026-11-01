@@ -66,6 +66,8 @@ export function numberPatch(patch: string): PatchLine[] {
 export type ReviewSide = 'old' | 'new'
 
 export interface ReviewComment {
+  /** Fingerprint of the complete diff reviewed; older comments have no fingerprint. */
+  patchVersion?: string
   id: string
   /** Repository-relative path of the file. */
   path: string
@@ -76,6 +78,17 @@ export interface ReviewComment {
   /** The diff around the line when the comment was made, so the agent sees what was meant. */
   context: { hunk: string; lines: PatchLine[]; target: number }
   createdAt: number
+}
+
+/** Stable change detector, not a security digest. Both accumulators and length identify a diff. */
+export function reviewPatchVersion(patch: string): string {
+  let a = 2166136261,
+    b = 5381
+  for (let i = 0; i < patch.length; i++) {
+    a = Math.imul(a ^ patch.charCodeAt(i), 16777619)
+    b = Math.imul(b, 33) ^ patch.charCodeAt(i)
+  }
+  return `${patch.length}:${a >>> 0}:${b >>> 0}`
 }
 
 /** Lines shown before and after the commented one. */
@@ -177,6 +190,9 @@ export function withoutSent(
   all: readonly ReviewComment[],
   sent: readonly ReviewComment[],
 ): ReviewComment[] {
-  const ids = new Set(sent.map((c) => c.id))
-  return all.filter((c) => !ids.has(c.id))
+  const sentById = new Map(sent.map((c) => [c.id, c]))
+  return all.filter((c) => {
+    const original = sentById.get(c.id)
+    return !original || original.body !== c.body || original.patchVersion !== c.patchVersion
+  })
 }

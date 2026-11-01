@@ -2,12 +2,13 @@ import { create } from 'zustand'
 import type { RpcResult } from '@beddcode/contracts'
 import { hostRequest, upload } from '../../stores/host.ts'
 import { UploadQueue } from './uploadQueue.ts'
+import { ATTACHMENT_DRAFT_STORAGE, readAttachmentDrafts } from './attachmentPersistence.ts'
 
 export interface DraftAttachment {
   key: number
   name: string
   size: number
-  status: 'queued' | 'uploading' | 'done' | 'error'
+  status: 'checking' | 'queued' | 'uploading' | 'done' | 'error'
   id?: string
   error?: string
 }
@@ -21,12 +22,28 @@ const uploads = new UploadQueue()
 const retries = new Map<number, () => Promise<boolean>>()
 
 interface AttachmentState {
+  storageError?: string
   drafts: Record<string, DraftAttachment[]>
   remove(draft: string, keys: number[]): void
 }
 
+function loadDrafts(): Pick<AttachmentState, 'drafts' | 'storageError'> {
+  try {
+    return {
+      drafts: readAttachmentDrafts(
+        globalThis.localStorage?.getItem(ATTACHMENT_DRAFT_STORAGE) ?? null,
+      ),
+    }
+  } catch {
+    return {
+      drafts: {},
+      storageError: 'Attachment drafts could not be restored from this browser.',
+    }
+  }
+}
+
 export const useAttachments = create<AttachmentState>((set) => ({
-  drafts: {},
+  ...loadDrafts(),
   remove: (draft, keys) =>
     set((s) => {
       for (const key of keys) retries.delete(key)
@@ -38,7 +55,60 @@ export const useAttachments = create<AttachmentState>((set) => ({
     }),
 }))
 
-let nextKey = 1
+useAttachments.subscribe((state, before) => {
+  if (state.drafts === before.drafts) return
+  try {
+    globalThis.localStorage?.setItem(ATTACHMENT_DRAFT_STORAGE, JSON.stringify(state.drafts))
+    if (state.storageError) useAttachments.setState({ storageError: undefined })
+  } catch {
+    useAttachments.setState({
+      storageError: 'Attachment drafts could not be saved in this browser.',
+    })
+  }
+})
+
+let nextKey =
+  Math.max(
+    0,
+    ...Object.values(useAttachments.getState().drafts)
+      .flat()
+      .map((f) => f.key),
+  ) + 1
+
+/** Revalidate restored references on the owning host before they can be sent. */
+export async function validateAttachmentDraft(hostKey: string, draftId: string): Promise<void> {
+  const draft = attachmentDraftKey(hostKey, draftId)
+  const files = (useAttachments.getState().drafts[draft] ?? []).filter(
+    (f) => f.status === 'checking' && f.id,
+  )
+  if (!files.length) return
+  try {
+    const found = await hostRequest(hostKey, 'attachments.inspect', {
+      ids: files.map((f) => f.id!),
+    })
+    useAttachments.setState((s) => ({
+      drafts: {
+        ...s.drafts,
+        [draft]: (s.drafts[draft] ?? []).map((f) => {
+          const at = files.findIndex((old) => old.key === f.key)
+          if (at < 0 || f.status !== 'checking') return f
+          const file = found[at]
+          return file
+            ? { ...f, name: file.name, size: file.size, status: 'done' as const, error: undefined }
+            : {
+                ...f,
+                status: 'error' as const,
+                error: 'File is missing on the host. Remove it and attach it again.',
+              }
+        }),
+      },
+    }))
+  } catch (err) {
+    useAttachments.setState({
+      storageError: `Could not verify saved attachments: ${err instanceof Error ? err.message : String(err)}. Reconnect to retry.`,
+    })
+  }
+}
 
 /** Reserve a chip before starting work. A late upload never restores a removed attachment. */
 export async function stageAttachment(

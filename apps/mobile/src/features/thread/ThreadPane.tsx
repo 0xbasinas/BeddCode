@@ -9,7 +9,6 @@ import { ModelPicker } from '@/features/composer/ModelPicker'
 import {
   answerQuestion,
   approve,
-  dequeue,
   interrupt,
   prompt,
   recordMetric,
@@ -24,13 +23,16 @@ import { colors, radius } from '@/theme/tokens'
 import { Header } from '@/ui/Header'
 import { Icon } from '@/ui/Icon'
 import { MenuSheet, type MenuItem } from '@/ui/MenuSheet'
-import { Faint, Muted, Text } from '@/ui/Text'
+import { Faint, Muted } from '@/ui/Text'
 import { attachBase64, EMPTY_ATTACHMENTS, useAttachments } from '@/host/attachments'
 import type { Pane } from '@/features/panes/PaneBar'
 import * as ImagePicker from 'expo-image-picker'
 import { Camera, Image as ImageIcon, FolderSimple, TerminalWindow } from 'phosphor-react-native'
 import { Transcript } from './Transcript'
 import { StartedByBanner } from './AgentToolCard'
+import { QueueControls } from './QueueControls'
+import { SessionNotes } from './SessionNotes'
+import { Button } from '@/ui/Button'
 
 /** The conversation with the agent: transcript, anything it waits on, and the composer. */
 export function ThreadPane({
@@ -40,6 +42,7 @@ export function ThreadPane({
   sessionId: string
   onOpenPane(pane: Pane): void
 }) {
+  const [queueOnly, setQueueOnly] = useState(true)
   const session = useSession(sessionId)
   const hostKey = useSessionHostKey(sessionId)
   const openedAt = useRef(now())
@@ -50,6 +53,7 @@ export function ThreadPane({
   const hostName =
     useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.host?.name : undefined)) ?? 'Host'
   const [menu, setMenu] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(false)
   const [modeMenu, setModeMenu] = useState(false)
   const [attachMenu, setAttachMenu] = useState(false)
   const [modelMenu, setModelMenu] = useState(false)
@@ -114,6 +118,11 @@ export function ThreadPane({
 
   const action = doneMenuAction(session)
   const items: MenuItem[] = [
+    {
+      id: 'notes',
+      label: notesOpen ? 'Hide session notes' : 'Session notes',
+      onSelect: () => setNotesOpen((open) => !open),
+    },
     {
       id: 'done',
       label: action.label,
@@ -182,28 +191,17 @@ export function ThreadPane({
             </View>
           }
         />
-        {session.queue.length > 0 && (
-          <View style={styles.queue}>
-            {session.queue.map((q) => (
-              <View key={q.queueId} style={styles.queued}>
-                <Text size={12.5} color={colors.muted} numberOfLines={1} style={{ flex: 1 }}>
-                  {q.text}
-                </Text>
-                <Pressable onPress={() => void dequeue(session.id, q.queueId, 'steer')}>
-                  <Text size={12.5} color={colors.accent}>
-                    Send now
-                  </Text>
-                </Pressable>
-                <Pressable onPress={() => void dequeue(session.id, q.queueId, 'cancel')}>
-                  <Text size={12.5} color={colors.muted}>
-                    Cancel
-                  </Text>
-                </Pressable>
-              </View>
-            ))}
-          </View>
+        {notesOpen && (
+          <SessionNotes key={`${hostKey}:${session.id}`} session={session} hostKey={hostKey!} />
         )}
+        {session.queue.length > 0 && <QueueControls session={session} hostKey={hostKey!} />}
         <View style={styles.composer}>
+          {running && (
+            <Button
+              onPress={() => setQueueOnly((value) => !value)}
+              label={queueOnly ? 'Queue after this turn' : 'Steer if supported, otherwise queue'}
+            />
+          )}
           <Composer
             placeholder={
               endedByDecline(session)
@@ -213,7 +211,7 @@ export function ThreadPane({
             running={running}
             onStop={() => void interrupt(session.id)}
             onSend={async (text, ids) => {
-              await prompt(session.id, text, ids)
+              await prompt(session.id, text, ids, running && queueOnly ? 'queue' : 'auto')
               useAttachments.getState().remove(
                 session.id,
                 draft.filter((a) => a.id && ids.includes(a.id)).map((a) => a.key),

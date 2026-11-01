@@ -229,6 +229,8 @@ function EditorColumn({
   const { activate, close, setDraft, save, reload } = useFiles.getState()
   const [position, setPosition] = useState<EditorPosition>({ line: 1, col: 1 })
   const [saveError, setSaveError] = useState<string>()
+  const [comparison, setComparison] = useState<{ path: string; text: string; mtime: number }>()
+  const [copyPath, setCopyPath] = useState<string>()
   const [mediaInfo, setMediaInfo] = useState('')
   const doc = folder.active ? folder.docs[folder.active] : undefined
   // Reads the text the editor currently holds, for the Save and Overwrite buttons.
@@ -266,7 +268,7 @@ function EditorColumn({
       return
     close(cwd, path)
   }
-  const doSave = async (text: string, force = false) => {
+  const doSave = async (text: string, force: boolean | number = false) => {
     setSaveError(undefined)
     try {
       await save(cwd, doc.path, text, force)
@@ -347,11 +349,98 @@ function EditorColumn({
       {doc.conflict && (
         <div className="banner">
           <span>This file changed on disk{doc.dirty ? ' and you have unsaved edits' : ''}.</span>
-          <button onClick={() => void reload(cwd, doc.path)}>Load from disk</button>
-          <button onClick={() => void doSave(liveText(), true)}>Overwrite</button>
+          <button
+            onClick={() =>
+              void (async () => {
+                if (
+                  doc.dirty &&
+                  !(await confirmDialog(
+                    'Discard your unsaved draft and load the current file from disk?',
+                    'Discard draft',
+                  ))
+                )
+                  return
+                try {
+                  await reload(cwd, doc.path)
+                  setComparison(undefined)
+                } catch (err) {
+                  setSaveError(err instanceof Error ? err.message : String(err))
+                }
+              })()
+            }
+          >
+            Load from disk
+          </button>
+          <button
+            onClick={() =>
+              void hostRequest(hostKey, 'files.read', { cwd: realCwd, path: doc.path }).then(
+                (file) => {
+                  setComparison({ path: doc.path, text: file.content, mtime: file.mtime })
+                  setSaveError(undefined)
+                },
+                (err) => setSaveError(err instanceof Error ? err.message : String(err)),
+              )
+            }
+          >
+            Compare with disk
+          </button>
+          <button onClick={() => setCopyPath(`${doc.path}.draft`)}>Save a copy</button>
+          {comparison?.path === doc.path && (
+            <>
+              <pre aria-label="Current disk contents">{comparison.text}</pre>
+              <button
+                onClick={() =>
+                  void (async () => {
+                    if (
+                      !(await confirmDialog(
+                        'Replace the disk version you compared with your draft? A newer disk change will stop the save.',
+                        'Save my draft',
+                      ))
+                    )
+                      return
+                    await doSave(liveText(), comparison.mtime)
+                    setComparison(undefined)
+                  })()
+                }
+              >
+                Replace compared version
+              </button>
+            </>
+          )}
+          {copyPath !== undefined && (
+            <div>
+              <input
+                aria-label="Save draft copy as"
+                value={copyPath}
+                onChange={(e) => setCopyPath(e.target.value)}
+              />
+              <button
+                onClick={() =>
+                  void hostRequest(hostKey, 'files.saveCopy', {
+                    cwd: realCwd,
+                    path: copyPath,
+                    content: liveText(),
+                  }).then(
+                    async () => {
+                      setCopyPath(undefined)
+                      setSaveError(undefined)
+                      await useFiles.getState().open(cwd, copyPath)
+                    },
+                    (err) => setSaveError(err instanceof Error ? err.message : String(err)),
+                  )
+                }
+              >
+                Save new copy
+              </button>
+            </div>
+          )}
         </div>
       )}
-      {saveError && !doc.conflict && <div className="banner error">{saveError}</div>}
+      {saveError && (
+        <div className="banner error" role="alert">
+          {saveError}
+        </div>
+      )}
 
       {doc.error ? (
         <div className="pane-empty">

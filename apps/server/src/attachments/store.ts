@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile, readFile } from 'node:fs/promises'
+import { lstatSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 
 export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
@@ -26,8 +27,6 @@ export function safeFileName(name: string): string {
  * Each upload gets its own directory, so identical names never collide.
  */
 export class AttachmentStore {
-  private readonly byId = new Map<string, StoredAttachment>()
-
   /** `root` is where uploads live; agents get read access to it so attachments never prompt. */
   constructor(readonly root: string) {}
 
@@ -42,7 +41,6 @@ export class AttachmentStore {
     const file = path.join(dir, fileName)
     await writeFile(file, data)
     const attachment = { id, name: fileName, path: file, size: data.length }
-    this.byId.set(id, attachment)
     return attachment
   }
 
@@ -51,15 +49,49 @@ export class AttachmentStore {
    * sent message remembers, and they outlive the in-memory ids.
    */
   locate(ref: { id?: string; path?: string }): string | undefined {
-    if (ref.id) return this.byId.get(ref.id)?.path
+    if (ref.id) return this.get(ref.id)?.path
     if (!ref.path) return undefined
     const file = path.resolve(ref.path)
     const rel = path.relative(path.resolve(this.root), file)
     return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? file : undefined
   }
 
-  /** Resolves an id from `save`. Ids do not survive a server restart; re-attach after one. */
+  /** Resolve durable upload ids from their own directory after a host restart. */
   get(id: string): StoredAttachment | undefined {
-    return this.byId.get(id)
+    if (!/^[a-f0-9-]{36}$/i.test(id)) return undefined
+    try {
+      const dir = path.join(this.root, id)
+      if (!lstatSync(dir).isDirectory() || lstatSync(dir).isSymbolicLink()) return undefined
+      const files = readdirSync(dir)
+      if (files.length !== 1) return undefined
+      const name = files[0]!
+      const file = path.join(dir, name)
+      const info = lstatSync(file)
+      if (!info.isFile() || info.isSymbolicLink() || info.size > MAX_ATTACHMENT_BYTES)
+        return undefined
+      return { id, name, path: file, size: info.size }
+    } catch {
+      return undefined
+    }
+  }
+
+  /** Export only an actual upload, never an arbitrary workspace file. */
+  async read(ref: { id?: string; path?: string }) {
+    const id =
+      ref.id ??
+      (ref.path
+        ? path.relative(path.resolve(this.root), path.resolve(ref.path)).split(path.sep)[0]
+        : undefined)
+    const stored = id ? this.get(id) : undefined
+    if (!stored || (ref.path && path.resolve(ref.path) !== stored.path))
+      throw new Error('Attachment is missing or is not a stored upload')
+    const data = await readFile(stored.path)
+    if (data.length > MAX_ATTACHMENT_BYTES) throw new Error('Attachment exceeds the export limit')
+    return {
+      id: stored.id,
+      name: stored.name,
+      size: data.length,
+      dataBase64: data.toString('base64'),
+    }
   }
 }

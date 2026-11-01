@@ -515,6 +515,36 @@ export class SessionManager {
   }
 
   /** Cancels a queued message, or pushes it ahead of the agent's current work. */
+  editQueued(sessionId: string, queueId: string, text: string, expectedText: string) {
+    const item = this.turnState(sessionId).queue.find((q) => q.queueId === queueId)
+    if (!item) throw new Error('That message is no longer waiting')
+    if (item.text !== expectedText)
+      throw new Error(
+        'This queued message changed on another device. Reopen it to edit the latest version.',
+      )
+    if (!text.trim() && !item.attachments.length)
+      throw new Error('A queued message needs text or an attachment')
+    this.deps.store.append({ type: 'prompt.edited', sessionId, queueId, text, at: Date.now() })
+    item.text = text
+  }
+
+  moveQueued(sessionId: string, queueId: string, direction: 'up' | 'down') {
+    const queue = this.turnState(sessionId).queue
+    const index = queue.findIndex((q) => q.queueId === queueId)
+    if (index < 0) throw new Error('That message is no longer waiting')
+    const to = index + (direction === 'up' ? -1 : 1)
+    if (to < 0 || to >= queue.length) return
+    const reordered = [...queue]
+    ;[reordered[index], reordered[to]] = [reordered[to]!, reordered[index]!]
+    this.deps.store.append({
+      type: 'prompt.reordered',
+      sessionId,
+      at: Date.now(),
+      queueIds: reordered.map((q) => q.queueId),
+    })
+    queue.splice(0, queue.length, ...reordered)
+  }
+
   async dequeue(sessionId: string, queueId: string, action: 'cancel' | 'steer'): Promise<void> {
     const turn = this.turnState(sessionId)
     const index = turn.queue.findIndex((q) => q.queueId === queueId)
@@ -853,6 +883,15 @@ export class SessionManager {
           })
         } else if (event.type === 'prompt.dequeued') {
           waiting.delete(event.queueId)
+        } else if (event.type === 'prompt.edited') {
+          const item = waiting.get(event.queueId)
+          if (item) item.text = event.text
+        } else if (event.type === 'prompt.reordered') {
+          const ordered = event.queueIds
+            .map((id) => waiting.get(id))
+            .filter((q): q is QueuedPrompt => !!q)
+          for (const item of ordered) waiting.delete(item.queueId)
+          for (const item of ordered) waiting.set(item.queueId, item)
         }
       }
       state = { busy: false, queue: [...waiting.values()] }
@@ -934,18 +973,39 @@ export class SessionManager {
   }
 
   /** Deletes the worktree a session was started in. The session's branch and history are kept. */
+  busySessionsIn(cwd: string): string[] {
+    const normalize = (value: string) =>
+      process.platform === 'win32' ? path.resolve(value).toLowerCase() : path.resolve(value)
+    return [...this.turns]
+      .filter(
+        ([id, turn]) => turn.busy && normalize(this.createdEvent(id)?.cwd ?? '') === normalize(cwd),
+      )
+      .map(([id]) => id)
+  }
+
   async removeWorktree(sessionId: string): Promise<boolean> {
     const created = this.createdEvent(sessionId)
     if (!created?.worktree) return false
+    if (this.busySessionsIn(created.cwd).length)
+      throw new Error('Stop active sessions before removing this worktree')
+    if ((await this.deps.git.status(created.cwd)).files.length)
+      throw new Error(
+        'This worktree has uncommitted or untracked files. Commit or preserve them before removal.',
+      )
     // The agent must stop using the folder before it is deleted.
     const live = this.live.get(sessionId)
     if (live) {
-      this.live.delete(sessionId)
       this.closedOnPurpose.add(live.session)
-      await withTimeout(live.session.close(), 5_000, 'closing the agent').catch((err: unknown) =>
-        this.deps.log.warn(`could not close the agent of ${sessionId} cleanly`, err),
-      )
+      try {
+        await withTimeout(live.session.close(), 5_000, 'closing the agent')
+        this.live.delete(sessionId)
+      } catch (err) {
+        this.closedOnPurpose.delete(live.session)
+        throw err
+      }
     }
+    if ((await this.deps.git.status(created.cwd)).files.length)
+      throw new Error('Files changed while the agent was closing. The worktree was kept.')
     // Its turn snapshots go too (they live in the shared repository).
     await this.deps.git
       .dropSnapshots(created.cwd, `refs/beddcode/checkpoints/${sessionId}/`)
@@ -1301,6 +1361,28 @@ export class SessionManager {
   /** How a session was created (its folder, branch, agent). */
   sessionInfo(sessionId: string) {
     return this.createdEvent(sessionId)
+  }
+
+  notes(sessionId: string): { text: string; version: number } {
+    if (!this.createdEvent(sessionId)) throw new Error(`Unknown session: ${sessionId}`)
+    const event = this.deps.store
+      .readSession(sessionId)
+      .map((s) => s.event)
+      .findLast((e) => e.type === 'session.notes')
+    return event?.type === 'session.notes'
+      ? { text: event.text, version: event.version }
+      : { text: '', version: 0 }
+  }
+
+  setNotes(sessionId: string, text: string, expectedVersion: number) {
+    const current = this.notes(sessionId)
+    if (current.version !== expectedVersion)
+      throw new Error(
+        'Notes changed on another device. Compare with the latest version before saving.',
+      )
+    const version = current.version + 1
+    this.deps.store.append({ type: 'session.notes', sessionId, at: Date.now(), text, version })
+    return { text, version }
   }
 
   private createdEvent(sessionId: string) {

@@ -99,6 +99,7 @@ export type TranscriptItem =
   | { kind: 'error'; id: string; message: string }
 
 export interface SessionView {
+  notes?: { text: string; version: number }
   id: string
   title: string
   cwd: string
@@ -314,6 +315,10 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
   switch (e.type) {
     case 'session.renamed':
       next.title = e.title
+      break
+    case 'session.notes':
+      next.notes = { text: e.text, version: e.version }
+      next.updatedAt = current.updatedAt
       break
     case 'session.done':
       next.done = e.done || undefined
@@ -555,6 +560,16 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     case 'prompt.dequeued':
       next.queue = current.queue.filter((q) => q.queueId !== e.queueId)
       break
+    case 'prompt.edited':
+      next.queue = current.queue.map((q) => (q.queueId === e.queueId ? { ...q, text: e.text } : q))
+      break
+    case 'prompt.reordered': {
+      const rank = new Map(e.queueIds.map((id, i) => [id, i]))
+      next.queue = [...current.queue].sort(
+        (a, b) => (rank.get(a.queueId) ?? Infinity) - (rank.get(b.queueId) ?? Infinity),
+      )
+      break
+    }
     case 'plan.updated':
       next.plan = { steps: e.steps, explanation: e.explanation }
       break

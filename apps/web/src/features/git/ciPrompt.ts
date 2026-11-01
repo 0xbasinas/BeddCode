@@ -7,6 +7,11 @@ export function ciPrompt(report: CiReport): string {
       report.branch ? ` for branch ${report.branch}` : ''
     }. Work out the cause from the logs below, fix it in this folder, and run the same check locally before you stop.`,
   ]
+  if (report.pr)
+    lines.push(
+      `Pull request: ${report.pr.url}`,
+      `Captured PR head: ${report.pr.headOid ?? 'unavailable; verify before acting'}`,
+    )
   if (report.runs.length > 0) {
     lines.push(
       '',
@@ -23,11 +28,14 @@ export function ciPrompt(report: CiReport): string {
       `Failed: ${f.checks.join(', ')}${f.workflow ? ` (${f.workflow})` : ''}${f.url ? ` · ${f.url}` : ''}`,
     )
     if (f.log) {
+      const fence = '`'.repeat(
+        Math.max(3, ...[...f.log.matchAll(/`+/g)].map((m) => m[0].length + 1)),
+      )
       lines.push(
         f.truncated ? 'Failed steps, the end of the log:' : 'Failed steps:',
-        '```',
+        fence,
         f.log,
-        '```',
+        fence,
       )
     } else {
       lines.push('No log was available for this check; open the link above.')

@@ -22,6 +22,7 @@ import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { usePane } from '../split/paneContext.ts'
 import { useUiStore } from '../../stores/ui.ts'
 import { folderName } from '../../ui/format.ts'
+import { SessionNotes } from './SessionNotes.tsx'
 import { environmentHint } from './environment.ts'
 
 /** The agent's name under the composer. The Environment bar is always there; nothing here hides it. */
@@ -65,14 +66,6 @@ export function EnvironmentButton({
   const [error, setError] = useState<string>()
   const [changing, setChanging] = useState(false)
   const [copied, setCopied] = useState(false)
-  const noteKey = `beddcode.session-notes:${hostKey}:${session.id}`
-  const [notes, setNotes] = useState(() => {
-    try {
-      return localStorage.getItem(noteKey) ?? ''
-    } catch {
-      return ''
-    }
-  })
   const toggle = (row: typeof expanded) =>
     setExpanded((current) => (current === row ? undefined : row))
 
@@ -299,22 +292,7 @@ export function EnvironmentButton({
               </span>
             </button>
             <div className="session-panel-heading">Notes</div>
-            <div className="session-notes">
-              <textarea
-                aria-label="Session notes"
-                placeholder="Notes for this session…"
-                value={notes}
-                onChange={(event) => {
-                  const value = event.target.value
-                  setNotes(value)
-                  try {
-                    localStorage.setItem(noteKey, value)
-                  } catch {
-                    setError('Notes could not be saved in this browser.')
-                  }
-                }}
-              />
-            </div>
+            <SessionNotes key={`${hostKey}:${session.id}`} session={session} hostKey={hostKey} />
             {error && (
               <p className="composer-error menu-error" role="alert">
                 {error}

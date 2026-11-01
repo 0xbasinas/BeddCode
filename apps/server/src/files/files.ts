@@ -216,7 +216,10 @@ export class FileService {
     const file = this.resolve(cwd, rel)
     const current = await stat(file).catch(() => null)
     if (current && !current.isFile()) throw new FileError(`Not a file: ${rel}`)
-    if (current && expectedMtime !== undefined && Math.abs(current.mtimeMs - expectedMtime) > 1) {
+    if (
+      expectedMtime !== undefined &&
+      (!current || Math.abs(current.mtimeMs - expectedMtime) > 1)
+    ) {
       throw new FileConflictError('The file changed on disk since you opened it')
     }
     await mkdir(path.dirname(file), { recursive: true })
@@ -233,6 +236,14 @@ export class FileService {
       await mkdir(path.dirname(target), { recursive: true })
       await writeFile(target, '', { flag: 'wx' })
     }
+    this.invalidate(cwd)
+  }
+
+  /** Saves a draft under a new name without ever overwriting an existing file. */
+  async saveCopy(cwd: string, rel: string, content: string): Promise<void> {
+    const target = this.resolve(cwd, rel)
+    await mkdir(path.dirname(target), { recursive: true })
+    await writeFile(target, content, { encoding: 'utf8', flag: 'wx' })
     this.invalidate(cwd)
   }
 

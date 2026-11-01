@@ -17,14 +17,37 @@ import { confirmDialog } from '../../ui/confirm.tsx'
 
 /** Terminals of the folder selected in the composer or open conversation. */
 export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
+  const hostKey = useHostKey()
+  return (
+    <TerminalPaneContent key={JSON.stringify([hostKey, workspace.cwd])} workspace={workspace} />
+  )
+}
+
+function TerminalPaneContent({ workspace }: { workspace: PaneWorkspace }) {
   const cwd = workspace.cwd
   const hostKey = useHostKey()
-  const { epoch, projects } = useRuntime(hostKey)
+  const { epoch, projects, connection, host } = useRuntime(hostKey)
   const project = workspace.projectPath
     ? projects.find((p) => samePath(p.path, workspace.projectPath!))
     : undefined
   const [terminals, setTerminals] = useState<TerminalInfo[] | null>(null)
-  const [active, setActive] = useState<string>()
+  const terminalKey = `beddcode.active-terminal:${JSON.stringify([hostKey, cwd])}`
+  const [active, setActive] = useState<string | undefined>(() => {
+    try {
+      return localStorage.getItem(terminalKey) ?? undefined
+    } catch {
+      return undefined
+    }
+  })
+  const [recoveryNotice, setRecoveryNotice] = useState<string>()
+  const previousEpoch = useRef(epoch)
+  useEffect(() => {
+    try {
+      if (active) localStorage.setItem(terminalKey, active)
+    } catch {
+      /* Terminal still works for this window. */
+    }
+  }, [terminalKey, active])
   const [size, setSize] = useState<{ cols: number; rows: number }>()
   const [error, setError] = useState<string>()
   const [selection, setSelection] = useState({ terminalId: '', text: '' })
@@ -52,7 +75,21 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
     hostRequest(hostKey, 'terminals.list', { cwd }).then(
       (list) => {
         if (cancelled) return
+        setError(undefined)
+        if (previousEpoch.current !== epoch) {
+          setRecoveryNotice(
+            (notice) =>
+              notice ??
+              'Reconnected. Available terminal history was reloaded; older output may no longer be retained by the host. Commands were not rerun.',
+          )
+          previousEpoch.current = epoch
+        }
         setTerminals(list)
+        const selected = activeRef.current
+        if (selected && !list.some((t) => t.id === selected))
+          setRecoveryNotice(
+            'The previously selected terminal is no longer available on this host. Start a new terminal to continue.',
+          )
         setActive((cur) => (cur && list.some((t) => t.id === cur) ? cur : list[0]?.id))
       },
       (err: unknown) => !cancelled && setError(err instanceof Error ? err.message : String(err)),
@@ -129,6 +166,11 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
         return
       setError(undefined)
       await hostRequest(hostKey, 'terminals.close', { id })
+      try {
+        if (localStorage.getItem(terminalKey) === id) localStorage.removeItem(terminalKey)
+      } catch {
+        /* The terminal was closed even if browser storage is unavailable. */
+      }
       setTerminals((list) => {
         const next = (list ?? []).filter((t) => t.id !== id)
         setActive((cur) => (cur === id ? next.at(-1)?.id : cur))
@@ -169,10 +211,34 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
 
   return (
     <div className="pane-body">
+      {connection !== 'connected' && (
+        <div className="banner" role="status">
+          Disconnected from host. Reconnecting will reattach to surviving terminals.
+        </div>
+      )}
+      {recoveryNotice && (
+        <div className="banner" role="status">
+          {recoveryNotice}
+          <button
+            onClick={() => {
+              setRecoveryNotice(undefined)
+              if (!active) {
+                try {
+                  localStorage.removeItem(terminalKey)
+                } catch {
+                  /* Optional persistence. */
+                }
+              }
+            }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <div className="pane-head">
         <h2>Terminal</h2>
         <span className="muted pane-project" title={shown.title}>
-          {shown.label}
+          {host?.name ?? hostKey} · {shown.label}
           {workspace.branch ? ` · ${workspace.branch}` : ''}
         </span>
         <span className="spacer" />
@@ -209,6 +275,15 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
           <Trash2 size={17} />
         </Button>
       </div>
+      {current && !current.agent && (
+        <div className="muted term-agent-bar" role="status">
+          {connection !== 'connected'
+            ? 'Disconnected'
+            : current.exited !== undefined
+              ? `Shell exited${current.exited === null ? '' : ` (${current.exited})`}`
+              : 'Shell running'}
+        </div>
+      )}
 
       {project && (
         <ProjectScripts

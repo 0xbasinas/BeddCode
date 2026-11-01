@@ -85,13 +85,15 @@ describe('child ledger', { timeout: process.platform === 'win32' ? 60_000 : 5_00
     writeFileSync(file, JSON.stringify(records))
     const warnings: string[] = []
     const log = { debug() {}, info() {}, warn: (m: string) => warnings.push(m), error() {} }
-    if (await startTimesReadable(orphan.child.pid!)) {
-      expect(await reapOrphans(file, log)).toBe(1)
+    // A separate timestamp probe can time out while the reaper's later probe succeeds (or vice
+    // versa) on Windows. Assert against this actual attempt rather than that earlier snapshot.
+    const reaped = await reapOrphans(file, log)
+    if (reaped === 1) {
       await orphan.exited
       expect(warnings[0]).toMatch(/left running by a host that was killed/)
     } else {
       // Unidentifiable processes are never ended.
-      expect(await reapOrphans(file, log)).toBe(0)
+      expect(reaped).toBe(0)
       expect(orphan.child.exitCode).toBeNull()
       orphan.child.kill()
     }

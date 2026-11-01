@@ -68,6 +68,7 @@ import { threadKey } from './threadState.ts'
 import { useComposerDrafts } from '../composer/drafts.ts'
 import { appendReplyQuote } from './quote.ts'
 import { downloadSession } from './exportSession.ts'
+import { sessionArchive } from './sessionArchive.ts'
 import { usePane, type PaneInfo } from '../split/paneContext.ts'
 
 export function ThreadView({ sessionId }: { sessionId: string }) {
@@ -98,6 +99,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
   const [renaming, setRenaming] = useState(false)
   const [actionError, setActionError] = useState<string>()
   const [quoteFocus, setQuoteFocus] = useState(0)
+  const [exporting, setExporting] = useState(false)
   const scroller = useRef<HTMLDivElement>(null)
   const followEnd = useFollowEnd(scroller, session?.items, memoryKey)
   const [jump, setJump] = useState<{ id: string; n: number }>()
@@ -380,6 +382,32 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                 </button>
                 <button
                   className="menu-row"
+                  disabled={exporting}
+                  onClick={() => {
+                    close()
+                    setExporting(true)
+                    void sessionArchive(session, hostName ?? hostKey, (path) =>
+                      hostRequest(hostKey, 'attachments.read', { path }),
+                    )
+                      .then((archive) => {
+                        const url = URL.createObjectURL(
+                          new Blob([archive as BlobPart], { type: 'application/x-tar' }),
+                        )
+                        const anchor = document.createElement('a')
+                        anchor.href = url
+                        anchor.download = `session-${session.id.replace(/[^a-zA-Z0-9-]/g, '')}.tar`
+                        document.body.append(anchor)
+                        anchor.click()
+                        anchor.remove()
+                        setTimeout(() => URL.revokeObjectURL(url), 1000)
+                      }, report)
+                      .finally(() => setExporting(false))
+                  }}
+                >
+                  Export with attachments (.tar)
+                </button>
+                <button
+                  className="menu-row"
                   onClick={() => {
                     void navigator.clipboard?.writeText(window.location.href)
                     close()
@@ -395,6 +423,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
         </div>
       </header>
       <div className="transcript" ref={scroller}>
+        {exporting && <div role="status">Preparing session archive and available attachments…</div>}
         <div className="transcript-inner">
           <div className="session-start">
             Started{' '}
@@ -486,6 +515,17 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
               canSteer={canSteer}
               onSend={(queueId) => void dequeue(sessionId, queueId, 'steer').catch(report)}
               onCancel={(queueId) => void dequeue(sessionId, queueId, 'cancel').catch(report)}
+              onEdit={async (queueId, text, expectedText) => {
+                await hostRequest(hostKey, 'sessions.queue.edit', {
+                  sessionId,
+                  queueId,
+                  text,
+                  expectedText,
+                })
+              }}
+              onMove={async (queueId, direction) => {
+                await hostRequest(hostKey, 'sessions.queue.move', { sessionId, queueId, direction })
+              }}
             />
           </>
         }
@@ -496,10 +536,11 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             setActionError(err instanceof Error ? err.message : String(err)),
           )
         }}
-        onSend={async (value, attachments) => {
+        canSteer={canSteer}
+        onSend={async (value, attachments, delivery) => {
           followEnd()
           try {
-            await prompt(sessionId, value, attachments)
+            await prompt(sessionId, value, attachments, delivery)
           } catch (err) {
             useComposerDrafts.getState().restoreDraft(memoryKey, text)
             throw err
@@ -636,11 +677,27 @@ function WorktreeChip({ session, hostKey }: { session: SessionView; hostKey: str
   const [copied, setCopied] = useState(false)
 
   const remove = async (close: () => void) => {
-    if (
-      !(await confirmDialog('Delete this worktree? The branch and its commits are kept.', 'Delete'))
-    )
-      return
     try {
+      const check = await hostRequest(hostKey, 'worktrees.preflight', { sessionId: session.id })
+      const details = [
+        `${check.files.length} uncommitted/untracked files${check.files.length ? ': ' + check.files.slice(0, 10).join(', ') : ''}`,
+        `${check.activeSessions.length} active sessions`,
+        `${check.activeTerminals.length} running terminals`,
+        check.ahead === undefined
+          ? 'No upstream comparison available'
+          : `${check.ahead} unpushed commits`,
+      ].join('\n')
+      if (!check.canRemove) {
+        setError(`${details}. Preserve changes and stop active work before removal.`)
+        return
+      }
+      if (
+        !(await confirmDialog(
+          `Remove ${check.path}?\n${details}\nThe branch and its commits are kept.`,
+          'Remove worktree',
+        ))
+      )
+        return
       await hostRequest(hostKey, 'worktrees.remove', { sessionId: session.id })
       close()
       void navigate({ to: '/' })

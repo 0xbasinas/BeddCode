@@ -9,6 +9,7 @@ import {
   stageAttachment,
   useAttachments,
   retryAttachment,
+  validateAttachmentDraft,
 } from './attachments.ts'
 
 const draft = attachmentDraftKey('remote', 'session')
@@ -18,6 +19,25 @@ beforeEach(() => {
 })
 
 describe('composer attachment drafts', () => {
+  it('verifies restored references on their host without reviving removed chips', async () => {
+    useAttachments.setState({
+      drafts: {
+        [draft]: [
+          { key: 100, id: 'exists', name: 'exists.txt', size: 1, status: 'checking' },
+          { key: 101, id: 'gone', name: 'gone.txt', size: 1, status: 'checking' },
+        ],
+      },
+    })
+    vi.mocked(hostRequest).mockResolvedValue([{ id: 'exists', name: 'exists.txt', size: 2 }, null])
+    await validateAttachmentDraft('remote', 'session')
+    expect(hostRequest).toHaveBeenCalledWith('remote', 'attachments.inspect', {
+      ids: ['exists', 'gone'],
+    })
+    expect(useAttachments.getState().drafts[draft]).toMatchObject([
+      { status: 'done', size: 2 },
+      { status: 'error' },
+    ])
+  })
   it('retries a failed upload in place and rejects retries after removal', async () => {
     const save = vi
       .fn()

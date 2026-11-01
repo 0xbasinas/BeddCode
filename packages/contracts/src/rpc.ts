@@ -342,6 +342,18 @@ export const RpcMethods = {
     params: z.object({ sessionId: z.string() }),
     result: z.object({ removed: z.boolean() }),
   },
+  'worktrees.preflight': {
+    params: z.object({ sessionId: z.string() }),
+    result: z.object({
+      path: z.string(),
+      branch: z.string().optional(),
+      files: z.array(z.string()),
+      ahead: z.number().optional(),
+      activeSessions: z.array(z.string()),
+      activeTerminals: z.array(z.string()),
+      canRemove: z.boolean(),
+    }),
+  },
   /** New pairing code for this host. Only the machine itself may ask (loopback connections). */
   'host.pair': { params: z.object({}), result: PairingCode },
   /** The relay that lets devices on other networks reach this host. Loopback connections only. */
@@ -504,6 +516,29 @@ export const RpcMethods = {
     }),
     result: z.object({ id: z.string(), name: z.string(), size: z.number().int() }),
   },
+  'attachments.inspect': {
+    params: z.object({ ids: z.array(z.string().max(200)).max(200) }),
+    result: z.array(
+      z.object({ id: z.string(), name: z.string(), size: z.number().int() }).nullable(),
+    ),
+  },
+  'attachments.read': {
+    params: z.object({ id: z.string().optional(), path: z.string().optional() }),
+    result: z.object({
+      id: z.string(),
+      name: z.string(),
+      size: z.number().int(),
+      dataBase64: z.string(),
+    }),
+  },
+  'files.saveCopy': {
+    params: z.object({
+      cwd: z.string(),
+      path: z.string().min(1),
+      content: z.string().max(2 * 1024 * 1024),
+    }),
+    result: z.object({}),
+  },
   /** Snapshot a file from the workspace on its host, including images and other binary files. */
   'attachments.fromFile': {
     params: z.object({ cwd: z.string(), path: z.string().min(1) }),
@@ -545,6 +580,23 @@ export const RpcMethods = {
       sessionId: z.string(),
       queueId: z.string(),
       action: z.enum(['cancel', 'steer']),
+    }),
+    result: z.object({}),
+  },
+  'sessions.queue.edit': {
+    params: z.object({
+      sessionId: z.string(),
+      queueId: z.string(),
+      text: z.string().max(100_000),
+      expectedText: z.string(),
+    }),
+    result: z.object({}),
+  },
+  'sessions.queue.move': {
+    params: z.object({
+      sessionId: z.string(),
+      queueId: z.string(),
+      direction: z.enum(['up', 'down']),
     }),
     result: z.object({}),
   },
@@ -669,6 +721,18 @@ export const RpcMethods = {
   'sessions.rename': {
     params: z.object({ sessionId: z.string(), title: z.string().trim().min(1).max(120) }),
     result: z.object({}),
+  },
+  'sessions.notes.get': {
+    params: z.object({ sessionId: z.string() }),
+    result: z.object({ text: z.string(), version: z.number().int() }),
+  },
+  'sessions.notes.set': {
+    params: z.object({
+      sessionId: z.string(),
+      text: z.string().max(100_000),
+      expectedVersion: z.number().int().nonnegative(),
+    }),
+    result: z.object({ text: z.string(), version: z.number().int() }),
   },
   /** Moves a session into the sidebar's Done section, or back out of it. */
   'sessions.setDone': {
