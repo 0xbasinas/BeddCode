@@ -56,7 +56,12 @@ export class StorageAPI {
     const result: Record<string, unknown> = {}
     for (const key of keyList) {
       if (Object.hasOwn(store, key)) result[key] = store[key]
-      else if (keys && typeof keys === 'object' && !Array.isArray(keys) && Object.hasOwn(keys, key)) {
+      else if (
+        keys &&
+        typeof keys === 'object' &&
+        !Array.isArray(keys) &&
+        Object.hasOwn(keys, key)
+      ) {
         result[key] = (keys as Record<string, unknown>)[key]
       }
     }
@@ -79,7 +84,8 @@ export class StorageAPI {
     }, 0)
   }
 
-  private sessionGetKeys = ({ extension }: ExtensionEvent) => Object.keys(this.getStore(extension.id))
+  private sessionGetKeys = ({ extension }: ExtensionEvent) =>
+    Object.keys(this.getStore(extension.id))
 
   private sessionRemove = ({ extension }: ExtensionEvent, keys: string | string[]) => {
     const store = this.getStore(extension.id)

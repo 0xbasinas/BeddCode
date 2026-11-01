@@ -2,11 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { ExternalLink, Plus, Puzzle, Trash2 } from 'lucide-react'
-import type {
-  BrowserExtension,
-  BrowserProfile,
-  InstalledBrowser,
-} from '@beddcode/contracts'
+import type { BrowserExtension, BrowserProfile, InstalledBrowser } from '@beddcode/contracts'
 import { useHostStore } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { Select } from '../../ui/Select.tsx'
@@ -47,9 +43,7 @@ export function BrowserSettings() {
     const byPath = new Map<string, BrowserProject>()
     for (const entry of entries) {
       const hostName =
-        entry.key === LOCAL_HOST_KEY
-          ? 'This PC'
-          : (runtimes[entry.key]?.host?.name ?? entry.name)
+        entry.key === LOCAL_HOST_KEY ? 'This PC' : (runtimes[entry.key]?.host?.name ?? entry.name)
       for (const project of runtimes[entry.key]?.projects ?? []) {
         if (!byPath.has(project.path))
           byPath.set(project.path, { path: project.path, name: project.name, host: hostName })
@@ -69,8 +63,7 @@ export function BrowserSettings() {
 
   useEffect(() => {
     if (!projects.length) return
-    if (!projects.some((project) => project.path === projectPath))
-      setProjectPath(projects[0]!.path)
+    if (!projects.some((project) => project.path === projectPath)) setProjectPath(projects[0]!.path)
   }, [projectPath, projects])
 
   useEffect(() => {
@@ -98,10 +91,13 @@ export function BrowserSettings() {
     }
     setLoading(true)
     setError(undefined)
-    void browser.profiles(projectPath).then(
-      (next) => live && setData(next),
-      (cause: unknown) => live && setError(errorText(cause)),
-    ).finally(() => live && setLoading(false))
+    void browser
+      .profiles(projectPath)
+      .then(
+        (next) => live && setData(next),
+        (cause: unknown) => live && setError(errorText(cause)),
+      )
+      .finally(() => live && setLoading(false))
     return () => {
       live = false
     }
@@ -181,7 +177,8 @@ export function BrowserSettings() {
         extension.key,
         enabled,
       )
-      if (!extensions) throw new Error(`Could not ${enabled ? 'enable' : 'disable'} ${extension.name}.`)
+      if (!extensions)
+        throw new Error(`Could not ${enabled ? 'enable' : 'disable'} ${extension.name}.`)
       updateExtensions(extensions)
     })
   }
@@ -210,11 +207,16 @@ export function BrowserSettings() {
     <>
       <header className="settings-heading">
         <h2>Browser</h2>
-        <p>Choose project browser profiles, extensions, and the browser used for links. Your choices are saved on this device.</p>
+        <p>
+          Choose project browser profiles, extensions, and the browser used for links. Your choices
+          are saved on this device.
+        </p>
       </header>
       {!browser ? (
         <div className="settings-card">
-          <p className="settings-inline-note">Browser profile settings are available in the BeddCode desktop app.</p>
+          <p className="settings-inline-note">
+            Browser profile settings are available in the BeddCode desktop app.
+          </p>
         </div>
       ) : (
         <>
@@ -240,7 +242,9 @@ export function BrowserSettings() {
             </div>
             {selectedProject && (
               <div className="setting-row browser-project-path">
-                <div className="setting-label"><span>Project folder</span></div>
+                <div className="setting-label">
+                  <span>Project folder</span>
+                </div>
                 <code title={selectedProject.path}>{selectedProject.path}</code>
               </div>
             )}
@@ -248,10 +252,14 @@ export function BrowserSettings() {
 
           {projects.length === 0 ? (
             <div className="settings-card">
-              <p className="settings-inline-note">Add a project in the workspace first, then its browser preferences will appear here.</p>
+              <p className="settings-inline-note">
+                Add a project in the workspace first, then its browser preferences will appear here.
+              </p>
             </div>
           ) : loading ? (
-            <p className="muted" role="status">Loading browser preferences…</p>
+            <p className="muted" role="status">
+              Loading browser preferences…
+            </p>
           ) : data ? (
             <>
               <div className="settings-section-head">
@@ -271,7 +279,9 @@ export function BrowserSettings() {
                     onChange={(event) => void selectProfile(event.target.value)}
                   >
                     {data.profiles.map((profile) => (
-                      <option key={profile.id} value={profile.id}>{profile.name}</option>
+                      <option key={profile.id} value={profile.id}>
+                        {profile.name}
+                      </option>
                     ))}
                   </Select>
                 </div>
@@ -288,7 +298,11 @@ export function BrowserSettings() {
                     onChange={(event) => void setDefaultBrowser(event.target.value)}
                   >
                     <option value="system">System default</option>
-                    {installed.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    {installed.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
                   </Select>
                 </div>
               </div>
@@ -300,8 +314,14 @@ export function BrowserSettings() {
                 {data.profiles.map((profile) => (
                   <div className="setting-row browser-profile-setting" key={profile.id}>
                     <div className="setting-label">
-                      <span>{profile.name}{profile.id === data.activeId ? ' · Default' : ''}</span>
-                      <small>Agent browser tools {profile.agentsAllowed ? 'can use' : 'cannot use'} this profile.</small>
+                      <span>
+                        {profile.name}
+                        {profile.id === data.activeId ? ' · Default' : ''}
+                      </span>
+                      <small>
+                        Agent browser tools {profile.agentsAllowed ? 'can use' : 'cannot use'} this
+                        profile.
+                      </small>
                     </div>
                     <label className="browser-profile-access">
                       <span>Allow agents</span>
@@ -316,7 +336,10 @@ export function BrowserSettings() {
                 ))}
                 <form
                   className="setting-row browser-profile-create"
-                  onSubmit={(event) => { event.preventDefault(); void createProfile() }}
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    void createProfile()
+                  }}
                 >
                   <input
                     aria-label="New browser profile name"
@@ -341,7 +364,11 @@ export function BrowserSettings() {
                     onChange={(event) => setSourceBrowser(event.target.value)}
                   >
                     <option value="manual">Choose folder…</option>
-                    {installed.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    {installed.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
                   </Select>
                   <Button variant="outline" disabled={busy} onClick={() => void importExtensions()}>
                     <Puzzle size={15} /> Import
@@ -351,33 +378,52 @@ export function BrowserSettings() {
               <div className="settings-card browser-extension-settings">
                 {data.extensions.length === 0 ? (
                   <p className="settings-inline-note">No extensions in this profile yet.</p>
-                ) : data.extensions.map((extension) => (
-                  <div className="setting-row" key={extension.key}>
-                    <div className="setting-label">
-                      <span>{extension.name}</span>
-                      <small>{extension.enabled === false ? 'Disabled' : 'Enabled'}</small>
-                    </div>
-                    <Switch
-                      aria-label={`Enable ${extension.name}`}
-                      checked={extension.enabled !== false}
-                      disabled={busy}
-                      onCheckedChange={(enabled) => void setEnabled(extension, enabled)}
-                    />
-                    {extension.hasOptions && (
-                      <Button variant="ghost" size="icon" aria-label={`Open ${extension.name} settings`} title="Extension settings" disabled={busy} onClick={() => void openExtensionSettings(extension)}>
-                        <ExternalLink size={15} />
+                ) : (
+                  data.extensions.map((extension) => (
+                    <div className="setting-row" key={extension.key}>
+                      <div className="setting-label">
+                        <span>{extension.name}</span>
+                        <small>{extension.enabled === false ? 'Disabled' : 'Enabled'}</small>
+                      </div>
+                      <Switch
+                        aria-label={`Enable ${extension.name}`}
+                        checked={extension.enabled !== false}
+                        disabled={busy}
+                        onCheckedChange={(enabled) => void setEnabled(extension, enabled)}
+                      />
+                      {extension.hasOptions && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Open ${extension.name} settings`}
+                          title="Extension settings"
+                          disabled={busy}
+                          onClick={() => void openExtensionSettings(extension)}
+                        >
+                          <ExternalLink size={15} />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Remove ${extension.name}`}
+                        title="Remove extension"
+                        disabled={busy}
+                        onClick={() => void removeExtension(extension)}
+                      >
+                        <Trash2 size={15} />
                       </Button>
-                    )}
-                    <Button variant="ghost" size="icon" aria-label={`Remove ${extension.name}`} title="Remove extension" disabled={busy} onClick={() => void removeExtension(extension)}>
-                      <Trash2 size={15} />
-                    </Button>
-                  </div>
-                ))}
+                    </div>
+                  ))
+                )}
               </div>
             </>
           ) : null}
           {(error || notice) && (
-            <p className={error ? 'browser-settings-error' : 'browser-settings-notice'} role="status">
+            <p
+              className={error ? 'browser-settings-error' : 'browser-settings-notice'}
+              role="status"
+            >
               {error ?? notice}
             </p>
           )}
@@ -386,4 +432,3 @@ export function BrowserSettings() {
     </>
   )
 }
-

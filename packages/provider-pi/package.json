@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
@@ -13,5 +15,7 @@
     "@beddcode/provider-core": "workspace:*",
     "@beddcode/shared": "workspace:*"
   },
-  "devDependencies": { "@types/node": "^22.0.0" }
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
 }
