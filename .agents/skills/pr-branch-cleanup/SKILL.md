@@ -36,10 +36,15 @@ Use this skill when a task includes creating or updating a feature branch or pul
 
 - Clean up only after confirming the PR is merged. Update the local default branch with a fast-forward, then verify it is clean and points to the remote default branch.
 - Delete the PR's remote head branch only after confirming it is merged. Prefer the hosting platform's delete-head option or a targeted delete of that one branch.
+- When remote branch cleanup is requested, enumerate actual remote heads (for example, `git ls-remote --heads origin`) and identify the hosting platform's default branch before deleting anything. Remote-tracking refs from `git branch -r` may be stale.
+- For each remote branch considered for deletion, check its open PRs and whether its work is merged into the default branch. Do not infer that a branch is disposable from its name, age, or lack of a local checkout.
+- Delete only the exact, confirmed-safe remote branch refs with the hosting platform or `git push <remote> --delete <branch>`. Never use a broad wildcard deletion. Keep the default branch and any branch backing an open PR.
+- If the user asks for only the default branch to remain remotely, verify every other head is merged or otherwise explicitly approved for deletion. If any branch carries unmerged work, stop and ask before removing it.
 - Delete local branches only after checking their upstream, associated PR, worktree, and unique commits. Prefer `git branch -d` for branches reachable from the updated default branch.
 - A squash-merged branch may not be an ancestor of the default branch. In that case, verify the exact PR is merged and its head is the branch being removed before deleting its local ref.
 - Keep branches for open PRs and preserve branches with unique unmerged work. If the user asks to leave only the default branch but other branches contain unique work, explain which refs would lose work and ask before deleting them.
 - Prune stale remote-tracking refs with `git fetch --prune`. This removes only local tracking refs for remote branches that are already gone.
+- After remote deletion, verify actual server heads again with `git ls-remote --heads <remote>`; pruning local tracking refs alone does not delete remote branches.
 - Do not remove worktrees or delete their directories as part of routine branch cleanup. Inspect `git worktree list`; handle worktree removal only when requested and safe.
 
 ## Finish with a verified state
