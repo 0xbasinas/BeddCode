@@ -398,6 +398,9 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       break
     case 'session.provider-session':
       return { ...state, lastSeq: stored.seq }
+    case 'host.updating':
+      next.items = [...current.items, { kind: 'notice', id, message: e.message }]
+      break
     case 'session.modes':
       next.modes = e.modes
       next.currentModeId = e.currentModeId

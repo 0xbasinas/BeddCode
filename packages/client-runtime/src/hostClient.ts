@@ -46,7 +46,7 @@ export interface HostClientOptions {
   onFrame?(
     frame: Extract<
       ServerFrame,
-      { t: 'term.out' | 'term.exit' | 'term.changed' | 'fs.changed' | 'design.changed' }
+      { t: 'term.out' | 'term.exit' | 'term.changed' | 'fs.changed' | 'design.changed' | 'host.updating' }
     >,
   ): void
   onState?(state: ConnectionState, host?: HostInfo): void
@@ -443,6 +443,10 @@ export class HostClient {
         this.awaitingPong = false
         if (this.probeTimer) clearTimeout(this.probeTimer)
         this.probeTimer = null
+        break
+      case 'host.updating':
+        this.options.onFrame?.(frame)
+        this.reconnectNow()
         break
       case 'event':
         this.take(frame.stored)

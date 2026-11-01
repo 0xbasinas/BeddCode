@@ -133,6 +133,12 @@ interface Activity {
   stalled?: boolean
 }
 
+export interface ResumeSession {
+  sessionId: string
+  turnId?: string
+  prompt: { text: string; attachments: { name: string; path: string }[] }
+}
+
 /**
  * How long the agent's start waits for the turn's starting snapshot before going ahead without
  * one (the snapshot then carries on). The sender is answered at once either way. Waiting for the
@@ -163,6 +169,7 @@ export class SessionManager {
   private storeFailedAt = -Infinity
   /** Set while the host shuts down: agents ending then is expected, not a failure. */
   private closing = false
+  private readonly restarting = new Set<string>()
   /** Agents the host itself closed (stalled, deleted): their failing prompt is no news. */
   private readonly closedOnPurpose = new WeakSet<ProviderSession>()
   /** Agents that could not find the conversation they resumed: the rest of their stream is dropped. */
@@ -1031,6 +1038,52 @@ export class SessionManager {
     this.live.clear()
   }
 
+  /** Saves intent to continue active turns, then closes providers so their histories are flushed. */
+  async prepareForRestart(message = 'Host is updating, back in a moment') {
+    this.closing = true
+    const resumable: ResumeSession[] = []
+    const ids = new Map<string, string>()
+    for (const { event } of this.deps.store.readAfter(0, Number.MAX_SAFE_INTEGER)) {
+      if (event.type === 'session.provider-session') ids.set(event.sessionId, event.providerSessionId)
+    }
+    for (const [sessionId, live] of this.live) {
+      const turn = this.turns.get(sessionId)
+      if (turn?.busy && turn.lastPrompt && ids.has(sessionId)) {
+        this.restarting.add(sessionId)
+        const stored = this.deps.store.readSession(sessionId).findLast(({ event }) => event.type === 'turn.started')
+        resumable.push({ sessionId, turnId: stored?.event.turnId, prompt: turn.lastPrompt })
+      }
+    }
+    // The marker is written before closing, so a forced stop still leaves a recovery record.
+    const markers = resumable.map((saved) => ({ ...saved, providerSessionId: ids.get(saved.sessionId)! }))
+    for (const marker of markers) {
+      this.deps.store.append({ type: 'host.updating', sessionId: marker.sessionId, at: Date.now(), message, providerSessionId: marker.providerSessionId, prompt: marker.prompt })
+    }
+    await this.close()
+    return resumable
+  }
+
+  /** Restores active turns from the saved host-upgrade marker and resends their last user prompt. */
+  async resumeAfterRestart(sessions: ResumeSession[]) {
+    this.closing = false
+    for (const saved of sessions) {
+      try {
+        const live = await this.ensureLive(saved.sessionId)
+        const turn = this.turnState(saved.sessionId)
+        turn.busy = true
+        turn.lastPrompt = saved.prompt
+        live.skipTurnStart = true
+        this.appendUserMessage(saved.sessionId, saved.prompt.text, saved.prompt.attachments)
+        await live.session.prompt(promptInput(saved.prompt.text, saved.prompt.attachments)).catch((err: unknown) => this.promptFailed(saved.sessionId, live.session, err))
+      } catch (err) {
+        this.deps.log.error(`could not resume ${saved.sessionId} after host restart`, err)
+        this.deps.store.append({ type: 'turn.completed', sessionId: saved.sessionId, turnId: saved.turnId, at: Date.now(), reason: 'error', message: 'The host restarted but could not resume this turn. Send a message to continue.' })
+      }
+    }
+    this.closing = false
+  }
+
+
   private async detect(force = false) {
     const ttl = this.deps.detectTtlMs ?? 60_000
     if (!force && this.detected && Date.now() - this.detected.at < ttl)
@@ -1084,6 +1137,7 @@ export class SessionManager {
   }
 
   private async resume(sessionId: string): Promise<LiveSession> {
+    this.closing = false
     const events = this.deps.store.readSession(sessionId)
     const created = events.find(
       (e): e is { seq: number; event: Extract<SessionEvent, { type: 'session.created' }> } =>
@@ -1579,6 +1633,12 @@ export class SessionManager {
         this.observe(sessionId, event)
         this.seedPreview(sessionId, event)
         if (event.type === 'turn.started') this.turnState(sessionId).busy = true
+        if (event.type === 'turn.completed' && this.restarting.delete(sessionId)) {
+          // The agent's shutdown response is expected; preserve the durable marker so startup
+          // knows to resend the turn that was active before the upgrade.
+          this.deps.log.debug(`provider ${sessionId} stopped for host restart`)
+          continue
+        }
         if (event.type === 'turn.completed') {
           const turn = this.turnState(sessionId)
           turn.stopRequested = false
