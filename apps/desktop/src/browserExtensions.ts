@@ -21,10 +21,7 @@ export interface InstalledExtensionSource {
 }
 
 /** Resolve the manifest's Chrome-style localized extension name when possible. */
-export async function localizedExtensionName(
-  directory: string,
-  fallback = '',
-): Promise<string> {
+export async function localizedExtensionName(directory: string, fallback = ''): Promise<string> {
   try {
     const manifest = JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8')) as {
       name?: unknown
@@ -162,9 +159,10 @@ export async function prepareExtensionIdentityCompatibility(directory: string): 
     const original = await readFile(workerPath, 'utf8')
     const marker = '/* BeddCode Proton identity compatibility */'
     if (!original.includes(marker)) {
-      const prefix = background.type === 'module'
-        ? `import './${shimName}';\n${marker}\n`
-        : `importScripts('./${shimName}');\n${marker}\n`
+      const prefix =
+        background.type === 'module'
+          ? `import './${shimName}';\n${marker}\n`
+          : `importScripts('./${shimName}');\n${marker}\n`
       await writeFile(workerPath, prefix + original, 'utf8')
     }
   } else {

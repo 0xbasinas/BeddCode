@@ -97,8 +97,8 @@ export function Welcome({ hostKey, onSkip }: { hostKey: string; onSkip(): void }
             <Logo size={64} className="welcome-logo" />
             <h1>Welcome to BeddCode</h1>
             <p className="wizard-lead">
-              Supervise coding agents like Claude Code, Codex and Grok across all your machines. A
-              few quick steps and you are running.
+              Supervise coding agents like Claude Code, Codex, Grok, Pi and OpenCode across all your
+              machines. A few quick steps and you are running.
             </p>
             <Button variant="app" className="wizard-primary" onClick={next}>
               Get started
@@ -186,8 +186,8 @@ export function Welcome({ hostKey, onSkip }: { hostKey: string; onSkip(): void }
             </div>
             {connected && readyAgents.length === 0 && (
               <p className="wizard-note">
-                No agent is ready yet. Install one such as Claude Code, Codex or Grok and sign in,
-                then scan again — or continue and set it up in Settings.
+                No agent is ready yet. Install one such as Claude Code, Codex, Grok, Pi or OpenCode
+                and sign in, then scan again — or continue and set it up in Settings.
               </p>
             )}
             <Button variant="app" className="wizard-primary" disabled={!connected} onClick={next}>

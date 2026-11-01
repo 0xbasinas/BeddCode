@@ -862,8 +862,7 @@ export class BrowserShared {
     extensionWindow.webContents.on('will-redirect', interceptIdentityRedirect)
     extensionWindow.webContents.on('will-navigate', (event, url) => {
       if (interceptIdentityRedirect(event, url)) return
-      if (!/^https:\/\//i.test(url) && !/^chrome-extension:\/\//i.test(url))
-        event.preventDefault()
+      if (!/^https:\/\//i.test(url) && !/^chrome-extension:\/\//i.test(url)) event.preventDefault()
     })
   }
 

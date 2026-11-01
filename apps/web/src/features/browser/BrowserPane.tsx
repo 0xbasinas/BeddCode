@@ -99,6 +99,8 @@ export function BrowserPane({
 }) {
   const hostKey = useHostKey()
   const { tabs, active, open, close, activate, pages, prompts, requests } = useBrowser()
+  const pendingOpen = useBrowser((s) => s.pendingOpen)
+  const consumePendingOpen = useBrowser((s) => s.consumePendingOpen)
   const current = tabs.find((t) => t.id === active)
   const page = (current && pages[current.id]) || IDLE
   const desktop = Boolean(nativeBrowser())
@@ -120,11 +122,16 @@ export function BrowserPane({
   const [installed, setInstalled] = useState<InstalledBrowser[]>([])
   const [defaultBrowserId, setDefaultBrowserId] = useState<string>('system')
   const loadedProject = useRef<{ path: string; profileId: string } | null>(null)
+  const [profileReadyPath, setProfileReadyPath] = useState<string | null>(null)
   const projectPath = project?.key ?? project?.title ?? ''
 
   useEffect(() => {
     const native = nativeBrowser()
-    if (!native) return
+    setProfileReadyPath(null)
+    if (!native) {
+      setProfileReadyPath(projectPath)
+      return
+    }
     let alive = true
     void native.profiles(projectPath).then(async (data) => {
       if (!alive) return
@@ -138,12 +145,22 @@ export function BrowserPane({
       setActiveProfileId(data.activeId)
       setDefaultBrowserId(data.browserId ?? 'system')
       setExtensions(data.extensions)
+      setProfileReadyPath(projectPath)
     })
     void native.installedBrowsers().then((browsers) => alive && setInstalled(browsers))
     return () => {
       alive = false
     }
   }, [projectPath])
+
+  useEffect(() => {
+    if (profileReadyPath !== projectPath) return
+    for (const request of pendingOpen) {
+      if (request.projectKey !== projectPath) continue
+      open(request.url, { newTab: true })
+      consumePendingOpen(request.id)
+    }
+  }, [consumePendingOpen, open, pendingOpen, profileReadyPath, projectPath])
 
   const selectProfile = async (profileId: string) => {
     const native = nativeBrowser()

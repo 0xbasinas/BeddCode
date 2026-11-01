@@ -239,7 +239,10 @@ export function NewSession({
   // The agent's slash commands and skills for this folder, so `/` works before the session exists.
   useEffect(() => {
     setCommands([])
-    if (!agent?.capabilities.commands || connection !== 'connected') return
+    // OpenCode's settings preview also returns its slash commands. Avoid starting a second ACP
+    // process just to fetch the same list while its model catalog is being probed.
+    if (!agent?.capabilities.commands || agent.kind === 'opencode' || connection !== 'connected')
+      return
     let cancelled = false
     hostRequest(hostKey, 'commands.list', { instanceId: agent.id, cwd: folder || undefined }).then(
       (list) => !cancelled && setCommands(list),
@@ -248,13 +251,14 @@ export function NewSession({
     return () => {
       cancelled = true
     }
-  }, [hostKey, agent?.id, agent?.capabilities.commands, folder, connection])
+  }, [hostKey, agent?.id, agent?.kind, agent?.capabilities.commands, folder, connection])
 
-  // ACP agents only say what they offer (modes, model, thinking level, commands) when a session
-  // starts, so the host probes once and remembers it. Without this their composer would be bare.
+  // ACP agents, including built-in OpenCode, only say what they offer when a session starts, so
+  // the host probes once and remembers it. Without this their composer would be bare.
   const previewKey = `${hostKey}:${agent?.id ?? ''}`
   useEffect(() => {
-    if (!agent || agent.kind !== 'acp' || connection !== 'connected') return
+    if (!agent || (agent.kind !== 'acp' && agent.kind !== 'opencode') || connection !== 'connected')
+      return
     let cancelled = false
     setPreview({ key: previewKey })
     hostRequest(hostKey, 'agents.preview', { instanceId: agent.id, cwd: folder || undefined }).then(
@@ -270,7 +274,10 @@ export function NewSession({
   const agentPreview = preview?.key === previewKey ? preview : undefined
   const offered = agentPreview?.data
   const loadingOffer =
-    agent?.kind === 'acp' && agentPreview !== undefined && !offered && !agentPreview.error
+    (agent?.kind === 'acp' || agent?.kind === 'opencode') &&
+    agentPreview !== undefined &&
+    !offered &&
+    !agentPreview.error
 
   const configValues = configState?.key === selectionKey ? configState.values : {}
   const configOptions = (offered?.config ?? []).map((o) => ({
@@ -379,7 +386,7 @@ export function NewSession({
               ? 'Describe a task, paste an issue link, or ask a question.'
               : loadError && providers.length === 0
                 ? `${loadError}. Trying again…`
-                : 'No agent is ready on this host yet. Install and sign in to Claude Code, Codex or Grok, or add an ACP agent.'}
+                : 'No agent is ready on this host yet. Install and sign in to Claude Code, Codex, Grok, Pi or OpenCode, or add an ACP agent.'}
         </p>
         <Composer
           cwd={(workspace.existing?.path ?? folder) || undefined}
@@ -408,8 +415,10 @@ export function NewSession({
           modelSlot={
             agent && (
               <>
-                {loadingOffer && <span className="muted offer-note">Reading settings…</span>}
-                {agentPreview?.error && (
+                {(agent.kind === 'acp' || agent.kind === 'opencode') && loadingOffer && (
+                  <span className="muted offer-note">Reading settings…</span>
+                )}
+                {(agent.kind === 'acp' || agent.kind === 'opencode') && agentPreview?.error && (
                   <button
                     type="button"
                     className="offer-note"
@@ -419,16 +428,18 @@ export function NewSession({
                     Settings unavailable · Retry
                   </button>
                 )}
-                <ConfigMenu
-                  agent={agent.id}
-                  options={configOptions}
-                  onChange={(id, value) =>
-                    setConfigState({
-                      key: selectionKey,
-                      values: { ...configValues, [id]: value },
-                    })
-                  }
-                />
+                {(agent.kind === 'acp' || agent.kind === 'opencode') && (
+                  <ConfigMenu
+                    agent={agent.id}
+                    options={configOptions}
+                    onChange={(id, value) =>
+                      setConfigState({
+                        key: selectionKey,
+                        values: { ...configValues, [id]: value },
+                      })
+                    }
+                  />
+                )}
                 <ModelMenu
                   agent={agent.id}
                   models={agent.capabilities.models ?? []}

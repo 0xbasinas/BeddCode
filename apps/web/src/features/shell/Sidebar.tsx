@@ -94,6 +94,7 @@ import {
   type SessionFilters,
 } from './sessionFilters.ts'
 import { useUiStore } from '../../stores/ui.ts'
+import { useBrowser } from '../browser/browserStore.ts'
 import { AddFolderMenu } from '../folders/AddFolderMenu.tsx'
 import { Logo } from '../../ui/Logo.tsx'
 import { isFresh, useFolderFlow } from '../folders/folderFlow.ts'
@@ -462,6 +463,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
                 cwd={s.cwd}
                 branch={s.branch}
                 repo={s.projectPath}
+                sessionId={s.id}
               />
             )}
             {s.waitingMark && (
@@ -1050,12 +1052,15 @@ function SessionPr({
   cwd,
   branch,
   repo,
+  sessionId,
 }: {
   hostKey: string
   cwd: string
   branch?: string
   repo?: string
+  sessionId: string
 }) {
+  const navigate = useNavigate()
   const pr = useSessionPr(hostKey, cwd, { branch, repo })
   if (!pr) return null
   const kind = prStateKind(pr)
@@ -1067,11 +1072,13 @@ function SessionPr({
         : pr.checks === 'success'
           ? 'checks passed'
           : undefined
-  // The row is a link, so this opens GitHub itself instead of the session.
+  // Keep the PR in BeddCode's project-scoped browser profile, including from another session.
   const open = (event: MouseEvent | KeyboardEvent) => {
     event.preventDefault()
     event.stopPropagation()
-    window.open(pr.url, '_blank', 'noopener,noreferrer')
+    useBrowser.getState().requestOpen(pr.url, repo || cwd)
+    useUiStore.getState().openPane('browser')
+    void navigate({ to: '/session/$sessionId', params: { sessionId } })
   }
   return (
     <span

@@ -6,8 +6,8 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { Host } from '../shared/hostClient.ts'
 import { desktopEnv, launchDesktop, root, type DesktopEnv } from './launch.ts'
 
-// Real agent CLIs inside the real desktop app. Session counts are small by default (2 Claude,
-// 3 Grok) so the tests themselves can be checked cheaply; raise them with the environment variables.
+// Real agent CLIs inside the real desktop app. OpenCode is opt-in with DESKTOP_PROVIDERS=opencode.
+// Session counts are small by default (2 Claude, 3 Grok) so tests stay cheap; raise them with env vars.
 const providers = [
   {
     name: 'claude',
@@ -29,6 +29,20 @@ const providers = [
     menu: 'G Grok',
     mode: 'ask',
     count: Number(process.env.DESKTOP_GROK_SESSIONS) || 3,
+  },
+  {
+    name: 'pi',
+    id: 'pi',
+    menu: 'P Pi',
+    mode: 'default',
+    count: Number(process.env.DESKTOP_PI_SESSIONS) || 2,
+  },
+  {
+    name: 'opencode',
+    id: 'opencode',
+    menu: 'OpenCode',
+    mode: 'build',
+    count: Number(process.env.DESKTOP_OPENCODE_SESSIONS) || 2,
   },
 ].filter((p) => (process.env.DESKTOP_PROVIDERS ?? 'claude,grok').split(',').includes(p.name))
 

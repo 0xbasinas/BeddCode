@@ -4,6 +4,8 @@ export { AcpAgentStore, AcpAgentConfig, instanceIdFor, RESERVED_IDS } from './co
 export { AcpRegistry, RegistryAgent, launchFor, REGISTRY_URL } from './registry.ts'
 export type { LaunchResult, LaunchSpec } from './registry.ts'
 export { AcpEventMapper } from './mapper.ts'
+export { createOpenCodeAdapter, opencodeCapabilities, OPENCODE_INSTANCE_ID } from './opencode.ts'
+export type { OpenCodeAdapterOptions } from './opencode.ts'
 export { TerminalManager } from './terminals.ts'
 export { binaryFor, currentPlatform, installBinary, planInstall, removeInstall } from './binary.ts'
 export type { BinaryTarget, InstallOptions, InstallPlan } from './binary.ts'

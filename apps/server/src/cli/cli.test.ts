@@ -107,6 +107,8 @@ describe('doctor', () => {
       'Host',
       'codex',
       'grok',
+      'pi',
+      'opencode',
       'GitHub',
       'Tailscale',
       'Data',

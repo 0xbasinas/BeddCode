@@ -98,6 +98,7 @@
   --agent-claude: #e8a07a;
   --agent-codex: #9ec5ff;
   --agent-grok: #d9d9d9;
+  --agent-pi: #a89bff;
   --scrollbar: rgba(255, 255, 255, 0.14);
   --scrollbar-hover: rgba(255, 255, 255, 0.28);
   --bg-terminal: #0e0e0e;
@@ -143,6 +144,7 @@
   --agent-claude: #b8582a;
   --agent-codex: #2f6fc4;
   --agent-grok: #3a3a40;
+  --agent-pi: #6e5acb;
   --scrollbar: rgba(0, 0, 0, 0.18);
   --scrollbar-hover: rgba(0, 0, 0, 0.34);
   --bg-terminal: #fbfbfc;

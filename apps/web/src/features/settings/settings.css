@@ -189,6 +189,63 @@
   font-size: calc(12px * var(--ui-scale));
   color: var(--text-muted);
 }
+.settings-inline-note {
+  margin: 0;
+  padding: calc(16px * var(--ui-scale));
+  color: var(--text-muted);
+  font-size: calc(12px * var(--ui-scale));
+  line-height: 1.5;
+}
+.browser-project-path {
+  min-width: 0;
+  background: var(--bg-raised);
+}
+.browser-project-path code {
+  max-width: 60%;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: calc(11px * var(--ui-scale));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-profile-setting {
+  min-height: calc(58px * var(--ui-scale));
+}
+.browser-profile-access {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(9px * var(--ui-scale));
+  color: var(--text-muted);
+  font-size: calc(12px * var(--ui-scale));
+  white-space: nowrap;
+}
+.browser-profile-create {
+  justify-content: flex-end;
+  border-top: 1px solid var(--border-subtle);
+}
+.browser-profile-create input {
+  min-width: 0;
+  width: min(260px, 55%);
+  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: calc(12px * var(--ui-scale));
+}
+.browser-extension-settings .setting-row {
+  min-height: calc(58px * var(--ui-scale));
+}
+.browser-settings-error,
+.browser-settings-notice {
+  margin: calc(10px * var(--ui-scale)) 0;
+  color: var(--danger);
+  font-size: calc(12px * var(--ui-scale));
+}
+.browser-settings-notice {
+  color: var(--text-muted);
+}
 .host-avatar {
   display: grid;
   place-items: center;

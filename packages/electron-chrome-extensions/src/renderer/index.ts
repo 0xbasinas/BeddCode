@@ -542,7 +542,8 @@ export const injectExtensionAPIs = () => {
             const removeListener = baseOnChanged.removeListener.bind(baseOnChanged)
             baseOnChanged.addListener = (callback: Function) => {
               addListener(callback)
-              const sessionListener = (changes: Record<string, unknown>) => callback(changes, 'session')
+              const sessionListener = (changes: Record<string, unknown>) =>
+                callback(changes, 'session')
               sessionListeners.set(callback, sessionListener)
               session.onChanged.addListener(sessionListener as never)
             }

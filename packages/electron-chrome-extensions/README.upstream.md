@@ -476,6 +476,7 @@ See [Electron's Notification tutorial](https://www.electronjs.org/docs/tutorial/
 - [x] chrome.windows.onRemoved
 - [x] chrome.windows.onFocusChanged
 - [x] chrome.windows.onBoundsChanged
+
 </details>
 
 ## Limitations
