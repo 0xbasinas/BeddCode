@@ -356,7 +356,8 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
   const lastSeen = new Map<ConnSocket, number>()
   const updateClients = (message = 'Host is updating, back in a moment') => {
     for (const ws of lastSeen.keys()) {
-      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: 'host.updating', message, version: VERSION }))
+      if (ws.readyState === ws.OPEN)
+        ws.send(JSON.stringify({ t: 'host.updating', message, version: VERSION }))
     }
   }
   const sweep = setInterval(

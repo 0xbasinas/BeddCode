@@ -280,7 +280,8 @@ export async function runServer(config: ServerConfig): Promise<void> {
       telemetry.stop()
       automation.stop()
       const resumable = await sessions.prepareForRestart()
-      if (resumable.length) log.info(`saved ${resumable.length} active turn(s) for resume after host update`)
+      if (resumable.length)
+        log.info(`saved ${resumable.length} active turn(s) for resume after host update`)
       workspace.terminals.shutdown()
       // Agents were asked to stop (stdin closed): give them a moment to save their conversation,
       // then end whatever is left so no agent outlives the host.

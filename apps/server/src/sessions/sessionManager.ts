@@ -1044,20 +1044,33 @@ export class SessionManager {
     const resumable: ResumeSession[] = []
     const ids = new Map<string, string>()
     for (const { event } of this.deps.store.readAfter(0, Number.MAX_SAFE_INTEGER)) {
-      if (event.type === 'session.provider-session') ids.set(event.sessionId, event.providerSessionId)
+      if (event.type === 'session.provider-session')
+        ids.set(event.sessionId, event.providerSessionId)
     }
     for (const [sessionId, live] of this.live) {
       const turn = this.turns.get(sessionId)
       if (turn?.busy && turn.lastPrompt && ids.has(sessionId)) {
         this.restarting.add(sessionId)
-        const stored = this.deps.store.readSession(sessionId).findLast(({ event }) => event.type === 'turn.started')
+        const stored = this.deps.store
+          .readSession(sessionId)
+          .findLast(({ event }) => event.type === 'turn.started')
         resumable.push({ sessionId, turnId: stored?.event.turnId, prompt: turn.lastPrompt })
       }
     }
     // The marker is written before closing, so a forced stop still leaves a recovery record.
-    const markers = resumable.map((saved) => ({ ...saved, providerSessionId: ids.get(saved.sessionId)! }))
+    const markers = resumable.map((saved) => ({
+      ...saved,
+      providerSessionId: ids.get(saved.sessionId)!,
+    }))
     for (const marker of markers) {
-      this.deps.store.append({ type: 'host.updating', sessionId: marker.sessionId, at: Date.now(), message, providerSessionId: marker.providerSessionId, prompt: marker.prompt })
+      this.deps.store.append({
+        type: 'host.updating',
+        sessionId: marker.sessionId,
+        at: Date.now(),
+        message,
+        providerSessionId: marker.providerSessionId,
+        prompt: marker.prompt,
+      })
     }
     await this.close()
     return resumable
@@ -1074,15 +1087,23 @@ export class SessionManager {
         turn.lastPrompt = saved.prompt
         live.skipTurnStart = true
         this.appendUserMessage(saved.sessionId, saved.prompt.text, saved.prompt.attachments)
-        await live.session.prompt(promptInput(saved.prompt.text, saved.prompt.attachments)).catch((err: unknown) => this.promptFailed(saved.sessionId, live.session, err))
+        await live.session
+          .prompt(promptInput(saved.prompt.text, saved.prompt.attachments))
+          .catch((err: unknown) => this.promptFailed(saved.sessionId, live.session, err))
       } catch (err) {
         this.deps.log.error(`could not resume ${saved.sessionId} after host restart`, err)
-        this.deps.store.append({ type: 'turn.completed', sessionId: saved.sessionId, turnId: saved.turnId, at: Date.now(), reason: 'error', message: 'The host restarted but could not resume this turn. Send a message to continue.' })
+        this.deps.store.append({
+          type: 'turn.completed',
+          sessionId: saved.sessionId,
+          turnId: saved.turnId,
+          at: Date.now(),
+          reason: 'error',
+          message: 'The host restarted but could not resume this turn. Send a message to continue.',
+        })
       }
     }
     this.closing = false
   }
-
 
   private async detect(force = false) {
     const ttl = this.deps.detectTtlMs ?? 60_000

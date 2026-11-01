@@ -1,7 +1,10 @@
 import type { StoredEvent } from '@beddcode/contracts'
 import type { EventStore } from '../store/eventStore.ts'
 
-const pendingResume = new Map<string, { turnId?: string; prompt: { text: string; attachments: { name: string; path: string }[] } }>()
+const pendingResume = new Map<
+  string,
+  { turnId?: string; prompt: { text: string; attachments: { name: string; path: string }[] } }
+>()
 
 function track(active: Map<string, { turnId?: string; at: number }>, { event }: StoredEvent) {
   if (
@@ -31,7 +34,8 @@ export function recoverInterruptedTurns(store: EventStore): string[] {
       track(active, stored)
       if (event.type === 'session.created') createdAt.set(event.sessionId, event.at)
       if (event.type === 'host.updating') updating.set(event.sessionId, event)
-      if (event.type === 'turn.completed' || event.type === 'error') updating.delete(event.sessionId)
+      if (event.type === 'turn.completed' || event.type === 'error')
+        updating.delete(event.sessionId)
     }
     cursor = events.at(-1)!.seq
   }

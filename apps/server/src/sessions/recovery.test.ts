@@ -62,15 +62,44 @@ describe('interrupted turn recovery', () => {
 
   it('keeps an intentionally interrupted turn open for automatic resume', () => {
     const store = new EventStore(':memory:')
-    store.append({ type: 'session.created', sessionId: 's', title: 'Demo', cwd: '/w', instanceId: 'fake', at: 1 })
-    store.append({ type: 'session.provider-session', sessionId: 's', providerSessionId: 'native-1', at: 2 })
+    store.append({
+      type: 'session.created',
+      sessionId: 's',
+      title: 'Demo',
+      cwd: '/w',
+      instanceId: 'fake',
+      at: 1,
+    })
+    store.append({
+      type: 'session.provider-session',
+      sessionId: 's',
+      providerSessionId: 'native-1',
+      at: 2,
+    })
     store.append({ type: 'turn.started', sessionId: 's', turnId: 't', at: 3 })
-    store.append({ type: 'message.delta', sessionId: 's', role: 'user', text: 'finish the task', at: 4 })
-    store.append({ type: 'host.updating', sessionId: 's', at: 5, message: 'Host is updating, back in a moment', providerSessionId: 'native-1', prompt: { text: 'finish the task', attachments: [] } })
+    store.append({
+      type: 'message.delta',
+      sessionId: 's',
+      role: 'user',
+      text: 'finish the task',
+      at: 4,
+    })
+    store.append({
+      type: 'host.updating',
+      sessionId: 's',
+      at: 5,
+      message: 'Host is updating, back in a moment',
+      providerSessionId: 'native-1',
+      prompt: { text: 'finish the task', attachments: [] },
+    })
     expect(recoverInterruptedTurns(store)).toEqual(['s'])
-    expect(takeInterruptedSessions()).toEqual([{ sessionId: 's', turnId: 't', prompt: { text: 'finish the task', attachments: [] } }])
+    expect(takeInterruptedSessions()).toEqual([
+      { sessionId: 's', turnId: 't', prompt: { text: 'finish the task', attachments: [] } },
+    ])
     expect(store.readSession('s').map((row) => row.event.type)).not.toContain('turn.completed')
-    const reopened = store.readSession('s').findLast(({ event }) => event.type === 'host.updating')?.event
+    const reopened = store
+      .readSession('s')
+      .findLast(({ event }) => event.type === 'host.updating')?.event
     expect(reopened).toMatchObject({ type: 'host.updating', prompt: { text: 'finish the task' } })
     store.close()
   })

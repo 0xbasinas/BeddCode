@@ -46,7 +46,15 @@ export interface HostClientOptions {
   onFrame?(
     frame: Extract<
       ServerFrame,
-      { t: 'term.out' | 'term.exit' | 'term.changed' | 'fs.changed' | 'design.changed' | 'host.updating' }
+      {
+        t:
+          | 'term.out'
+          | 'term.exit'
+          | 'term.changed'
+          | 'fs.changed'
+          | 'design.changed'
+          | 'host.updating'
+      }
     >,
   ): void
   onState?(state: ConnectionState, host?: HostInfo): void
