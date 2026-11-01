@@ -41,7 +41,7 @@ import { findWebRoot } from './web/static.ts'
 import { TailscaleService } from './network/tailscale.ts'
 import { reachableRoutes } from './network/reachable.ts'
 import { SessionManager } from './sessions/sessionManager.ts'
-import { recoverInterruptedTurns } from './sessions/recovery.ts'
+import { recoverInterruptedTurns, takeInterruptedSessions } from './sessions/recovery.ts'
 import { openEventStore } from './store/eventStore.ts'
 import { startServer } from './transport/server.ts'
 import { FileService } from './files/files.ts'
@@ -88,6 +88,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
 
   const store = openEventStore(path.join(home, 'beddcode.db'))
   recoverInterruptedTurns(store)
+  const interruptedSessions = takeInterruptedSessions()
   const attachments = new AttachmentStore(path.join(home, 'attachments'))
   const git = new GitService()
   const workspace = {
@@ -121,6 +122,8 @@ export async function runServer(config: ServerConfig): Promise<void> {
       root: path.join(home, 'agents'),
     },
   )
+
+  if (interruptedSessions.length) void sessions.resumeAfterRestart(interruptedSessions)
 
   const hostId = loadHostId(home)
   const automation = createAutomation({
@@ -271,11 +274,14 @@ export async function runServer(config: ServerConfig): Promise<void> {
     log,
     exit: (code) => process.exit(code),
     close: async () => {
+      server.notifyUpdating()
       relay?.stop()
       mcpGateway.stop()
       telemetry.stop()
       automation.stop()
-      await sessions.close()
+      const resumable = await sessions.prepareForRestart()
+      if (resumable.length)
+        log.info(`saved ${resumable.length} active turn(s) for resume after host update`)
       workspace.terminals.shutdown()
       // Agents were asked to stop (stdin closed): give them a moment to save their conversation,
       // then end whatever is left so no agent outlives the host.

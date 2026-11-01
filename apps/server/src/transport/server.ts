@@ -152,6 +152,8 @@ export interface RunningServer {
   hostInfo: HostInfo
   /** Serves a connection that did not come in through this host's own listener (a relay's). */
   attach(socket: ConnSocket, peer: PeerClass): void
+  /** Warns connected clients before the listener is closed for a host upgrade. */
+  notifyUpdating(message?: string): void
   close(): Promise<void>
 }
 
@@ -352,6 +354,12 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
   // own; its subscriptions, terminals and watchers would stay attached. Close the silent ones.
   const idleMs = options.idleTimeoutMs ?? IDLE_TIMEOUT_MS
   const lastSeen = new Map<ConnSocket, number>()
+  const updateClients = (message = 'Host is updating, back in a moment') => {
+    for (const ws of lastSeen.keys()) {
+      if (ws.readyState === ws.OPEN)
+        ws.send(JSON.stringify({ t: 'host.updating', message, version: VERSION }))
+    }
+  }
   const sweep = setInterval(
     () => {
       const now = Date.now()
@@ -595,6 +603,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     port,
     hostInfo,
     attach: handleConnection,
+    notifyUpdating: updateClients,
     close: () =>
       new Promise<void>((resolve) => {
         clearInterval(sweep)

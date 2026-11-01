@@ -104,7 +104,9 @@ const telemetryStops = new Map<string, () => void>()
 
 type LiveFrame = Extract<
   ServerFrame,
-  { t: 'term.out' | 'term.exit' | 'term.changed' | 'fs.changed' | 'design.changed' }
+  {
+    t: 'term.out' | 'term.exit' | 'term.changed' | 'fs.changed' | 'design.changed' | 'host.updating'
+  }
 >
 const frameListeners = new Map<string, Set<(frame: LiveFrame) => void>>()
 

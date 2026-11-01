@@ -124,6 +124,7 @@ export type HostInfo = z.infer<typeof HostInfo>
 
 export const ServerFrame = z.discriminatedUnion('t', [
   z.object({ t: z.literal('pong') }),
+  z.object({ t: z.literal('host.updating'), message: z.string(), version: z.string() }),
   z.object({ t: z.literal('welcome'), protocol: z.number().int(), host: HostInfo }),
   z.object({
     t: z.literal('res'),

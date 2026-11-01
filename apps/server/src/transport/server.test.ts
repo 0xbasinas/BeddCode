@@ -225,6 +225,18 @@ describe('server', () => {
     expect(welcome?.t === 'welcome' && welcome.host.hostId).toBe('host-1')
   })
 
+  it('warns connected clients before the host closes for an update', async () => {
+    const { server } = await boot()
+    const c = await Client.connect(server.port)
+    await c.until((fs) => fs.some((f) => f.t === 'welcome'))
+    server.notifyUpdating()
+    await c.until((fs) => fs.some((f) => f.t === 'host.updating'))
+    expect(c.frames.find((f) => f.t === 'host.updating')).toMatchObject({
+      message: 'Host is updating, back in a moment',
+      version: expect.any(String),
+    })
+  })
+
   it('manages ACP agents: custom command, registry add, listing and removal', async () => {
     const { server } = await boot()
     const c = await Client.connect(server.port)

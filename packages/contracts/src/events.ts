@@ -172,6 +172,15 @@ export const SessionEvent = z.discriminatedUnion('type', [
   }),
   Base.extend({ type: z.literal('turn.started') }),
   Base.extend({
+    type: z.literal('host.updating'),
+    message: z.string(),
+    providerSessionId: z.string(),
+    prompt: z.object({
+      text: z.string(),
+      attachments: z.array(z.object({ name: z.string(), path: z.string() })),
+    }),
+  }),
+  Base.extend({
     type: z.literal('message.delta'),
     role: z.enum(['user', 'assistant']),
     text: z.string(),
