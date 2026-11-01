@@ -135,7 +135,9 @@ describe('TerminalManager (real pty)', () => {
   })
 
   it('lists terminals per folder', () => {
-    const m = track(new TerminalManager({ pty: () => fakePty().factory() }))
+    const m = track(
+      new TerminalManager({ pty: (file, args, options) => fakePty().factory(file, args, options) }),
+    )
     const a = tmp()
     const b = tmp()
     m.create({ cwd: a, shell: node('') })
