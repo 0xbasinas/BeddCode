@@ -66,6 +66,8 @@ import { EnvironmentButton, SessionChip } from './SessionPanel.tsx'
 import { RenameSessionDialog } from './RenameSessionDialog.tsx'
 import { threadKey } from './threadState.ts'
 import { useComposerDrafts } from '../composer/drafts.ts'
+import { appendReplyQuote } from './quote.ts'
+import { downloadSession } from './exportSession.ts'
 import { usePane, type PaneInfo } from '../split/paneContext.ts'
 
 export function ThreadView({ sessionId }: { sessionId: string }) {
@@ -95,6 +97,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
   )
   const [renaming, setRenaming] = useState(false)
   const [actionError, setActionError] = useState<string>()
+  const [quoteFocus, setQuoteFocus] = useState(0)
   const scroller = useRef<HTMLDivElement>(null)
   const followEnd = useFollowEnd(scroller, session?.items, memoryKey)
   const [jump, setJump] = useState<{ id: string; n: number }>()
@@ -369,6 +372,15 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                 <button
                   className="menu-row"
                   onClick={() => {
+                    close()
+                    downloadSession(session, hostName ?? hostKey)
+                  }}
+                >
+                  <Copy size={15} /> Export transcript (.md)
+                </button>
+                <button
+                  className="menu-row"
+                  onClick={() => {
                     void navigator.clipboard?.writeText(window.location.href)
                     close()
                   }}
@@ -407,6 +419,14 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
               onOpenFile={openFile}
               onApprove={approveRequest}
               onAnswer={answerRequest}
+              onQuote={(selected, turnNo) => {
+                const drafts = useComposerDrafts.getState()
+                drafts.setDraft(
+                  memoryKey,
+                  appendReplyQuote(drafts.drafts[memoryKey] ?? '', selected, turnNo),
+                )
+                setQuoteFocus((n) => n + 1)
+              }}
               onFork={canFork ? fork : undefined}
               jumpTo={jump}
               completedTurns={session.completedTurns}
@@ -450,7 +470,11 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                 ? `You declined. Tell ${provider?.label ?? 'the agent'} what to do instead…`
                 : `Reply to ${provider?.label ?? 'the agent'}…`
         }
-        focusSignal={endedByDecline(session) ? session.completedTurns : undefined}
+        focusSignal={
+          quoteFocus || endedByDecline(session)
+            ? `quote-${quoteFocus}:decline-${endedByDecline(session) ? session.completedTurns : ''}`
+            : undefined
+        }
         commands={session.commands}
         above={
           <>

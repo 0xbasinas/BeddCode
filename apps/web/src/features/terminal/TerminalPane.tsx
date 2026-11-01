@@ -13,6 +13,7 @@ import { attachUpload } from '../composer/attachments.ts'
 import { terminalContext } from './context.ts'
 import { ProjectScripts } from './ProjectScripts.tsx'
 import { samePath } from '../folders/folderLogic.ts'
+import { confirmDialog } from '../../ui/confirm.tsx'
 
 /** Terminals of the folder selected in the composer or open conversation. */
 export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
@@ -28,6 +29,7 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
   const [error, setError] = useState<string>()
   const [selection, setSelection] = useState({ terminalId: '', text: '' })
   const [renaming, setRenaming] = useState<string>()
+  const closing = useRef(new Set<string>())
 
   const rename = async (id: string, name: string) => {
     setRenaming(undefined)
@@ -112,12 +114,33 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
   )
 
   const close = async (id: string) => {
-    await hostRequest(hostKey, 'terminals.close', { id }).catch(() => {})
-    setTerminals((list) => {
-      const next = (list ?? []).filter((t) => t.id !== id)
-      setActive((cur) => (cur === id ? next.at(-1)?.id : cur))
-      return next
-    })
+    if (closing.current.has(id)) return
+    const terminal = listRef.current?.find((t) => t.id === id)
+    if (!terminal) return
+    closing.current.add(id)
+    try {
+      if (
+        terminal.exited === undefined &&
+        !(await confirmDialog(
+          `Close ${tabLabel(terminal)}? This stops its process and clears its terminal history.`,
+          'Close terminal',
+        ))
+      )
+        return
+      setError(undefined)
+      await hostRequest(hostKey, 'terminals.close', { id })
+      setTerminals((list) => {
+        const next = (list ?? []).filter((t) => t.id !== id)
+        setActive((cur) => (cur === id ? next.at(-1)?.id : cur))
+        return next
+      })
+    } catch (err) {
+      setError(
+        `Could not close ${tabLabel(terminal)}: ${err instanceof Error ? err.message : String(err)}. Try closing it again.`,
+      )
+    } finally {
+      closing.current.delete(id)
+    }
   }
 
   const current = terminals?.find((t) => t.id === active)

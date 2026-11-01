@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, type RefObject } from 'react'
 import { readingPosition, rememberReadingPosition } from './threadState.ts'
+import { captureReadingAnchor } from './scrollAnchor.ts'
 
 const NEAR_END_PX = 80
 
@@ -22,9 +23,11 @@ export function useFollowEnd(
     const saved = readingPosition(memoryKey)
     pinned.current = saved?.following ?? true
     el.scrollTop = pinned.current ? el.scrollHeight : (saved?.top ?? 0)
+    let restore = captureReadingAnchor(el)
     const onScroll = () => {
       pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_END_PX
       rememberReadingPosition(memoryKey, { top: el.scrollTop, following: pinned.current })
+      restore = captureReadingAnchor(el)
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     // Content keeps growing after first paint (markdown, images, highlighted code); stay at the end
@@ -33,6 +36,7 @@ export function useFollowEnd(
     const observer = content
       ? new ResizeObserver(() => {
           if (pinned.current) el.scrollTop = el.scrollHeight
+          else restore()
         })
       : undefined
     if (content) observer?.observe(content)

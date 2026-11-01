@@ -1,5 +1,20 @@
 # Ideas from the reference projects
 
+## Workspace quality of life (2026-11-01)
+
+Branch: `codex/workspace-quality-of-life`.
+
+- Attachment uploads now have a three-job limit per host, a visible waiting state, and in-place retry after a failure. Removing a waiting attachment prevents its upload from starting; removing an active one prevents its late result from restoring the chip. Active RPC uploads cannot currently be aborted. Inspired by T3 Code's `apps/web/src/lib/attachmentUploadQueue.ts`; implemented with BeddCode's existing upload RPC.
+- Closing a live terminal asks for confirmation. Failed close requests keep the tab visible and report the error, allowing another attempt.
+- Selected agent reply text can be quoted into the current draft without replacing its contents. Inspired by MonoCode's transcript selection actions.
+- Transcript reading position anchors to message identity when earlier history is shown or content above the reader changes size. Inspired by PandaCode's transcript anchoring; BeddCode keeps its existing React rendering and follow-end behavior.
+- Session menus can export the loaded transcript as Markdown with a coverage manifest. Secret question answers are omitted; attachment bytes and snapshot file contents are explicitly excluded. This is the first slice of 0XB-45, not a resumable archive or an attachment bundle.
+- Multi-question cards show answer progress and can focus the next unanswered question.
+- Truncated Git diffs explicitly report incomplete review and offer to open the current file. Turn-change cards explain snapshot attribution and incomplete file lists. These address portions of 0XB-53 and 0XB-47; diff paging, submodule handling and exact change attribution remain separate work.
+- Confirmations opened from a native modal stay inside that modal, fixing device revocation from the Hosts dialog.
+
+The changes use the local reference projects for behavior and retain BeddCode's existing architecture. No reference implementation was copied. Desktop fixture checks exercise quoting and export, failed terminal close and retry, reading-position preservation, and device revocation in the native Hosts modal. Web tests exercise upload host isolation, concurrency, removed waiting jobs, retries and export redaction.
+
 ## Pi and OpenCode adapters (2026-10-31)
 
 Reviewed [Paseo's provider guide](https://github.com/getpaseo/paseo/blob/main/docs/providers.md) and

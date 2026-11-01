@@ -17,6 +17,8 @@ import {
   attachmentDraftKey,
   EMPTY_ATTACHMENTS,
   useAttachments,
+  retryAttachment,
+  canRetryAttachment,
 } from './attachments.ts'
 import { insertCommand, insertMention, matchCommands, mentionAt } from '@beddcode/client-runtime'
 import { hostRequest } from '../../stores/host.ts'
@@ -250,7 +252,16 @@ export function Composer(props: ComposerProps) {
                 >
                   <Paperclip size={12} /> {f.name}
                   {f.status === 'uploading' && <span className="muted">uploading…</span>}
+                  {f.status === 'queued' && <span className="muted">waiting to upload…</span>}
                   {f.status === 'error' && <span className="muted">{f.error}</span>}
+                  {f.status === 'error' && canRetryAttachment(f.key) && (
+                    <button
+                      aria-label={`Retry ${f.name}`}
+                      onClick={() => void retryAttachment(draft, f.key)}
+                    >
+                      Retry
+                    </button>
+                  )}
                   <button
                     aria-label={`Remove ${f.name}`}
                     onClick={() => useAttachments.getState().remove(draft, [f.key])}

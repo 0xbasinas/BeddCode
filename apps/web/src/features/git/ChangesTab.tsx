@@ -16,6 +16,8 @@ import {
 import { usePolled } from './usePolled.ts'
 import { GenerateGitText } from './GenerateGitText.tsx'
 import { commitFiles, gitOperationKey, useGitOperations } from './operations.ts'
+import { folderId, useFiles } from '../files/filesStore.ts'
+import { useUiStore } from '../../stores/ui.ts'
 
 const STATUS_COLOR: Record<GitFile['status'], string> = {
   M: 'var(--accent)',
@@ -181,6 +183,7 @@ export function ChangesTab({
                       <FileDiffView
                         cwd={cwd}
                         path={file.path}
+                        deleted={file.status === 'D'}
                         refreshKey={diffRefreshKey(file, refreshKey)}
                         review={{
                           path: file.path,
@@ -257,25 +260,54 @@ function FileDiffView({
   path,
   refreshKey,
   review,
+  deleted,
 }: {
   cwd: string
   path: string
   refreshKey: string
   review?: PatchReview
+  deleted?: boolean
 }) {
   const hostKey = useHostKey()
+  const [openError, setOpenError] = useState<string>()
+  const openFile = async () => {
+    setOpenError(undefined)
+    try {
+      await useFiles.getState().open(folderId(hostKey, cwd), path)
+      useUiStore.getState().openPane('files')
+    } catch (err) {
+      setOpenError(err instanceof Error ? err.message : String(err))
+    }
+  }
   // Reloads when the file's status changes, and on the same interval as the list, so an edit
   // that keeps the line counts the same still shows up.
   const diff = usePolled(() => hostRequest(hostKey, 'git.diff', { cwd, path }), refreshKey)
   if (diff.loading) return <div className="muted diff-note">Loading…</div>
   if (diff.error) return <div className="composer-error diff-note">{diff.error}</div>
-  if (!diff.data || (diff.data.truncated && !diff.data.patch)) {
-    return <div className="muted diff-note">Binary or very large file: no preview.</div>
-  }
+  if (!diff.data) return <div className="muted diff-note">No diff available.</div>
+  const incomplete = diff.data.truncated
   return (
     <>
-      <PatchView patch={diff.data.patch} review={review} />
-      {diff.data.truncated && <div className="muted diff-note">Showing the first part only.</div>}
+      {incomplete && (
+        <div className="muted diff-note" role="status">
+          {diff.data.patch
+            ? 'Partial diff: some changes are omitted.'
+            : 'Binary or oversized file: changes cannot be previewed.'}{' '}
+          Review of {path} is incomplete.
+          {!deleted && (
+            <Button variant="app" className="secondary" onClick={() => void openFile()}>
+              Open current file
+            </Button>
+          )}
+        </div>
+      )}
+      {openError && (
+        <div className="composer-error diff-note" role="alert">
+          {openError}
+        </div>
+      )}
+      {diff.data.patch && <PatchView patch={diff.data.patch} review={review} />}
+      {!diff.data.patch && !incomplete && <div className="muted diff-note">No line changes.</div>}
     </>
   )
 }

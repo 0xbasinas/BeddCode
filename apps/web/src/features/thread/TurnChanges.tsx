@@ -102,13 +102,14 @@ export function TurnChangesCard({
           className="edits-head"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
-          title="Every file this turn changed in the folder"
+          title="Folder differences between the snapshots before and after this turn"
         >
           <History size={16} />
           <span>
             <strong>
-              {item.reverted ? 'Undone: ' : ''}Changed {count === 1 ? '1 file' : `${count} files`}
-              {item.truncated ? '+' : ''} this turn
+              {item.reverted ? 'Undone: ' : ''}Folder changes:{' '}
+              {count === 1 ? '1 file' : `${count} files`}
+              {item.truncated ? '+' : ''} during this turn
             </strong>
             <span className="stat">
               <span className="add">+{added}</span> <span className="del">−{removed}</span>
@@ -183,13 +184,21 @@ export function TurnChangesCard({
           </button>
         )}
       </div>
+      {open && (
+        <p className="turn-diff-note muted">
+          Compared folder snapshots. Edits made by you or another session during this turn may be
+          included.
+          {item.truncated ? ' The file list is incomplete; additional changes may be omitted.' : ''}
+        </p>
+      )}
       {confirming && (
         <div className="turn-undo-confirm" role="group" aria-label="Undo these changes">
           <span>
             {count === 1
               ? 'Put this file back the way it was before the turn?'
               : `Put these ${count} files back the way they were before the turn?`}{' '}
-            Staged changes and commits stay as they are.
+            Staged changes and commits stay as they are. This restores the recorded folder
+            differences, including any edits made by other sessions during the turn.
           </span>
           <Button
             variant="app"

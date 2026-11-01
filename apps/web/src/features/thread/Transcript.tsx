@@ -26,6 +26,7 @@ import { isAgentTool, isBrowserTool } from '@beddcode/client-runtime'
 import { BrowserToolCard } from './BrowserToolCard.tsx'
 import { TurnChangesCard } from './TurnChanges.tsx'
 import { readingPosition, rememberReadingPosition } from './threadState.ts'
+import { captureReadingAnchor } from './scrollAnchor.ts'
 
 type Item = TranscriptItem
 
@@ -40,6 +41,7 @@ export const Transcript = memo(function Transcript({
   onAnswer,
   onOpenFile,
   onFork,
+  onQuote,
   completedTurns = 0,
   turnDurations,
   stoppedTurn,
@@ -62,6 +64,7 @@ export const Transcript = memo(function Transcript({
   onOpenFile?(path: string): void
   /** Starts a session that continues this one up to the end of the given turn. */
   onFork?(turnNo: number): void | Promise<void>
+  onQuote?(text: string, turnNo?: number): void
   /** Turns that have finished; a fork can only end after one of them. */
   completedTurns?: number
   /** How long each finished turn ran, in ms, by turn number. */
@@ -74,6 +77,8 @@ export const Transcript = memo(function Transcript({
   stoppedTurn?: number
 }) {
   const build = useMemo(() => createBlockBuilder(), [sessionId])
+  const earlierButton = useRef<HTMLButtonElement>(null)
+  const restoreAnchor = useRef<(() => void) | undefined>(undefined)
   const blocks = useMemo(() => build(items), [build, items])
   // Where drawing starts. It stays put as the thread grows, so rows already on screen keep their place.
   const [view, setWindow] = useState(() => ({
@@ -98,9 +103,15 @@ export const Transcript = memo(function Transcript({
     }
   }
   useLayoutEffect(() => {
+    restoreAnchor.current?.()
+    restoreAnchor.current = undefined
     if (readingKey) rememberReadingPosition(readingKey, { from })
   }, [readingKey, from])
-  const showEarlier = () => setWindow({ id: sessionId, from: Math.max(0, from - MORE_BLOCKS) })
+  const showEarlier = () => {
+    const scroller = earlierButton.current?.closest<HTMLElement>('.transcript')
+    if (scroller) restoreAnchor.current = captureReadingAnchor(scroller)
+    setWindow({ id: sessionId, from: Math.max(0, from - MORE_BLOCKS) })
+  }
   const latestChanges = items.findLast((i) => i.kind === 'changes')?.id
   // "Fork from here" goes at the end of each turn: after its last reply or, when the turn was
   // stopped mid-work, after the tool calls that ran before the stop.
@@ -141,7 +152,7 @@ export const Transcript = memo(function Transcript({
   return (
     <>
       {from > 0 && (
-        <button className="show-earlier" onClick={showEarlier}>
+        <button ref={earlierButton} className="show-earlier" onClick={showEarlier}>
           Show earlier ({from})
         </button>
       )}
@@ -241,6 +252,7 @@ export const Transcript = memo(function Transcript({
               hostKey={hostKey ?? changes?.hostKey}
               onApprove={onApprove}
               onAnswer={onAnswer}
+              onQuote={onQuote}
               live={live && block.item === items.at(-1)}
             />
             {canFork && forkButton(turnNo!)}
@@ -308,6 +320,7 @@ function ItemView({
   hostKey,
   onApprove,
   onAnswer,
+  onQuote,
   live,
 }: {
   item: Item
@@ -315,6 +328,7 @@ function ItemView({
   hostKey?: string
   onApprove(requestId: string, optionId: string): void | Promise<void>
   onAnswer?(requestId: string, answers?: Record<string, string[]>): void | Promise<void>
+  onQuote?(text: string, turnNo?: number): void
   live?: boolean
 }) {
   switch (item.kind) {
@@ -337,7 +351,7 @@ function ItemView({
           {item.text && <UserText text={item.text} />}
         </div>
       ) : (
-        <Markdown text={item.text} live={live} />
+        <ReplyText item={item} live={live} onQuote={onQuote} />
       )
     case 'tool':
       return <ToolGroup tools={[item]} />
@@ -361,6 +375,49 @@ function ItemView({
     case 'changes':
       return null // drawn by Transcript, which knows the host
   }
+}
+
+function ReplyText({
+  item,
+  live,
+  onQuote,
+}: {
+  item: Extract<Item, { kind: 'message' }>
+  live?: boolean
+  onQuote?(text: string, turnNo?: number): void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [selected, setSelected] = useState('')
+  const capture = () => {
+    const selection = window.getSelection()
+    setSelected(
+      selection &&
+        !selection.isCollapsed &&
+        ref.current?.contains(selection.anchorNode) &&
+        ref.current.contains(selection.focusNode)
+        ? selection.toString().trim()
+        : '',
+    )
+  }
+  return (
+    <div data-msg-id={item.id}>
+      <div ref={ref} onMouseUp={capture} onKeyUp={capture}>
+        <Markdown text={item.text} live={live} />
+      </div>
+      {onQuote && selected && (
+        <button
+          className="secondary-btn"
+          onClick={() => {
+            onQuote(selected, item.turnNo)
+            setSelected('')
+            window.getSelection()?.removeAllRanges()
+          }}
+        >
+          Quote in reply
+        </button>
+      )}
+    </div>
+  )
 }
 
 const tokens = (n: number) => (n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n))
