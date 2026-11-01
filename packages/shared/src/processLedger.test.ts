@@ -120,15 +120,28 @@ describe('child ledger', { timeout: process.platform === 'win32' ? 60_000 : 5_00
   it('looks up several processes at once, leaving out ones that are gone', async () => {
     const a = sleeper()
     const b = sleeper()
-    const gone = deadPid()
-    const infos = await processInfos([a.child.pid!, b.child.pid!, gone])
-    expect(infos).toBeDefined()
-    expect([...infos!.keys()].sort()).toEqual([a.child.pid!, b.child.pid!].sort())
-    if (await startTimesReadable(a.child.pid!)) {
-      expect(Math.abs(infos!.get(a.child.pid!)!.startedAt - a.startedAt)).toBeLessThan(15_000)
+    try {
+      const gone = deadPid()
+      const infos = await processInfos([a.child.pid!, b.child.pid!, gone])
+      expect(infos).toBeDefined()
+      expect([...infos!.keys()].sort()).toEqual([a.child.pid!, b.child.pid!].sort())
+      for (const process of [a, b]) {
+        const info = infos!.get(process.child.pid!)!
+        expect(info.command).toMatch(/node/i)
+        // Check this lookup, not a second PowerShell invocation that may succeed after this
+        // one timed out. Windows deliberately keeps the name with an unknown start time.
+        if (Number.isFinite(info.startedAt)) {
+          expect(Math.abs(info.startedAt - process.startedAt)).toBeLessThan(15_000)
+        } else {
+          expect(globalThis.process.platform).toBe('win32')
+          expect(info.startedAt).toBeNaN()
+        }
+      }
+    } finally {
+      a.child.kill()
+      b.child.kill()
+      await Promise.all([a.exited, b.exited])
     }
-    a.child.kill()
-    b.child.kill()
   })
 
   it('reads a missing or damaged ledger as empty', async () => {
