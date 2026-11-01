@@ -135,11 +135,11 @@ describe('TerminalManager (real pty)', () => {
   })
 
   it('lists terminals per folder', () => {
-    const m = track(new TerminalManager())
+    const m = track(new TerminalManager({ pty: () => fakePty().factory() }))
     const a = tmp()
     const b = tmp()
-    m.create({ cwd: a, shell: node('setInterval(() => {}, 1000)') })
-    m.create({ cwd: b, shell: node('setInterval(() => {}, 1000)') })
+    m.create({ cwd: a, shell: node('') })
+    m.create({ cwd: b, shell: node('') })
     expect(m.list(a)).toHaveLength(1)
     expect(m.list()).toHaveLength(2)
   })
