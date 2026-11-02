@@ -5,6 +5,7 @@ import { findElementInList } from '../../lib/element-utils'
 import { PropertiesPanel } from './PropertiesPanel'
 import { ComponentPanel } from './ComponentPanel'
 import { MousePointer2, Zap, Copy, Check, ChevronDown, ChevronRight } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 
 export function RightSidebar() {
   const {
@@ -15,7 +16,17 @@ export function RightSidebar() {
     addComponent,
     createInstance,
     pushHistory,
-  } = useEditorStore()
+  } = useEditorStore(
+    useShallow((s) => ({
+      rightTab: s.rightTab,
+      setRightTab: s.setRightTab,
+      elements: s.elements,
+      selectedElementIds: s.selectedElementIds,
+      addComponent: s.addComponent,
+      createInstance: s.createInstance,
+      pushHistory: s.pushHistory,
+    })),
+  )
   const selectedElement =
     selectedElementIds.length === 1 ? findElementInList(elements, selectedElementIds[0]) : null
 

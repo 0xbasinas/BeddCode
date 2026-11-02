@@ -7,6 +7,7 @@ import { RightSidebar } from './RightSidebar'
 import { Toolbar } from './Toolbar'
 import { FindReplaceModal } from './FindReplaceModal'
 import { ShortcutsModal } from './ShortcutsModal'
+import { useShallow } from 'zustand/react/shallow'
 
 /** Left sidebar 241px, right sidebar 320px (the Figma UI3 measurements OpenFigma uses). */
 /** Shown for a few seconds while an agent is drawing on the canvas. */
@@ -22,7 +23,12 @@ function AgentBadge() {
 }
 
 export function EditorLayout() {
-  const { leftSidebarVisible, rightSidebarVisible } = useEditorStore()
+  const { leftSidebarVisible, rightSidebarVisible } = useEditorStore(
+    useShallow((s) => ({
+      leftSidebarVisible: s.leftSidebarVisible,
+      rightSidebarVisible: s.rightSidebarVisible,
+    })),
+  )
   return (
     <div className="design-root @container h-full w-full flex flex-col overflow-hidden bg-[color:var(--dc-app)]">
       <TopBar />

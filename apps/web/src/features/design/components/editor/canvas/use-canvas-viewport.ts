@@ -23,6 +23,20 @@ export function useCanvasViewport() {
   const setPan = useEditorStore((s) => s.setPan)
 
   const containerRef = useRef<HTMLDivElement>(null)
+  // Reading the rect forces the browser to recalculate the whole scene's style when anything has
+  // changed since the last frame, and it was read several times per mouse move. It is kept for a
+  // moment and read again after a resize.
+  const rectCache = useRef<{ rect: DOMRect; at: number } | null>(null)
+  const getContainerRect = useCallback((): DOMRect | null => {
+    const el = containerRef.current
+    if (!el) return null
+    const now = performance.now()
+    const cached = rectCache.current
+    if (cached && now - cached.at < 300) return cached.rect
+    const rect = el.getBoundingClientRect()
+    rectCache.current = { rect, at: now }
+    return rect
+  }, [])
   const [isPanning, setIsPanning] = useState(false)
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 })
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
@@ -79,6 +93,7 @@ export function useCanvasViewport() {
   useEffect(() => {
     if (!containerRef.current) return
     const observer = new ResizeObserver((entries) => {
+      rectCache.current = null
       for (const entry of entries) {
         const size = { width: entry.contentRect.width, height: entry.contentRect.height }
         setContainerSize(size)
@@ -127,7 +142,7 @@ export function useCanvasViewport() {
 
   const screenToCanvas = useCallback(
     (clientX: number, clientY: number) => {
-      const rect = containerRef.current?.getBoundingClientRect()
+      const rect = getContainerRect()
       if (!rect) return { x: 0, y: 0 }
       const safeZoom = isFinite(zoom) && zoom > 0.001 ? zoom : 1
       const cx = (containerSize.width || 0) / 2 + panX
@@ -136,13 +151,13 @@ export function useCanvasViewport() {
       const y = (clientY - rect.top - cy) / safeZoom
       return { x: isFinite(x) ? x : 0, y: isFinite(y) ? y : 0 }
     },
-    [zoom, panX, panY, containerSize],
+    [zoom, panX, panY, containerSize, getContainerRect],
   )
 
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
       e.preventDefault()
-      const rect = containerRef.current?.getBoundingClientRect()
+      const rect = getContainerRect()
 
       if (e.ctrlKey || e.metaKey) {
         // Ctrl/Cmd + scroll = zoom centered on cursor (Figma default)
@@ -178,7 +193,7 @@ export function useCanvasViewport() {
         setPan(panX - e.deltaX, panY - e.deltaY)
       }
     },
-    [zoom, panX, panY, setZoom, setPan, containerSize],
+    [zoom, panX, panY, setZoom, setPan, containerSize, getContainerRect],
   )
 
   return {

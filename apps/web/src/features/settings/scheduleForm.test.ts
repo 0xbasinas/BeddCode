@@ -16,6 +16,7 @@ describe('schedule form', () => {
       prompt: 'Check CI',
       cwd: '/w',
       worktree: true,
+      repeat: 'every' as const,
     }
     expect(formToInput(form)).toEqual({
       input: {
@@ -44,10 +45,10 @@ describe('schedule form', () => {
   it('says what is missing', () => {
     const form = { ...emptyScheduleForm('codex'), name: 'x', prompt: 'p' }
     expect(formToInput({ ...form, name: ' ' })).toEqual({ error: 'Give the schedule a name' })
-    expect(formToInput({ ...form, minutes: '0' })).toMatchObject({
+    expect(formToInput({ ...form, repeat: 'every', minutes: '0' })).toMatchObject({
       error: expect.stringMatching(/minutes/),
     })
-    expect(formToInput({ ...form, triggerKind: 'cron', expr: '* *' })).toMatchObject({
+    expect(formToInput({ ...form, repeat: 'cron', expr: '* *' })).toMatchObject({
       error: expect.stringMatching(/five fields/),
     })
     expect(formToInput({ ...form, targetKind: 'session' })).toEqual({
@@ -82,7 +83,10 @@ describe('schedule form', () => {
     expect(describeTrigger({ kind: 'every', minutes: 45 })).toBe('Every 45 minutes')
     expect(describeTrigger({ kind: 'every', minutes: 120 })).toBe('Every 2 hours')
     expect(describeTrigger({ kind: 'every', minutes: 1440 })).toBe('Every day')
-    expect(describeTrigger({ kind: 'cron', expr: '0 9 * * 1-5' })).toBe('Cron 0 9 * * 1-5')
+    expect(describeTrigger({ kind: 'cron', expr: '0 9 * * 1-5' })).toBe('Weekdays at 09:00')
+    expect(describeTrigger({ kind: 'cron', expr: '30 16 * * 5' })).toBe('Fri at 16:30')
+    expect(describeTrigger({ kind: 'cron', expr: '0 8 1 * *' })).toBe('Monthly on day 1 at 08:00')
+    expect(describeTrigger({ kind: 'cron', expr: '0 9 1 1 *' })).toBe('Cron 0 9 1 1 *')
     expect(
       runLabel({
         id: 'r',
@@ -92,5 +96,46 @@ describe('schedule form', () => {
         note: 'Still running',
       }),
     ).toBe('Skipped: Still running')
+  })
+
+  it('builds a weekly schedule in a time zone, and reads it back', () => {
+    const form = {
+      ...emptyScheduleForm('codex'),
+      name: 'Audit',
+      prompt: 'Look',
+      repeat: 'weekly' as const,
+      days: [1, 3, 5],
+      time: '07:30',
+      timezone: 'Europe/Athens',
+      openPr: true,
+      retryOnFailure: true,
+      notify: 'failure' as const,
+      enabled: false,
+    }
+    const result = formToInput(form)
+    expect(result).toMatchObject({
+      input: {
+        trigger: { kind: 'cron', expr: '30 7 * * 1,3,5', timezone: 'Europe/Athens' },
+        openPr: true,
+        retryOnFailure: true,
+        notify: 'failure',
+        paused: true,
+      },
+    })
+    const saved = {
+      ...('input' in result ? result.input : {}),
+      id: 's9',
+      paused: true,
+      createdAt: 0,
+    }
+    expect(scheduleToForm(saved as Schedule)).toMatchObject({
+      repeat: 'weekly',
+      days: [1, 3, 5],
+      time: '07:30',
+      timezone: 'Europe/Athens',
+      openPr: true,
+      enabled: false,
+    })
+    expect(formToInput({ ...form, days: [] })).toEqual({ error: 'Pick at least one day' })
   })
 })

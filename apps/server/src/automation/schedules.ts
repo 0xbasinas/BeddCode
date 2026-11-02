@@ -10,12 +10,17 @@ import {
 } from '@beddcode/contracts'
 import type { Logger } from '@beddcode/shared'
 import type { SessionOrigin } from '../sessions/sessionManager.ts'
-import { nextRun, parseCron } from './cron.ts'
+import { isTimeZone, nextRun, parseCron } from './cron.ts'
 import { digest } from './digest.ts'
 
 /** Runs kept per schedule, newest first. */
 const RUNS_KEPT = 20
 const TICK_MS = 15_000
+/** How long a failed run waits before its one retry. */
+const RETRY_MS = 10 * 60_000
+/** Added to the prompt when a run should hand its work over as a pull request. */
+const PR_INSTRUCTION =
+  '\n\nWhen you are done, make your changes on a new branch (never on main) and open a pull request with them.'
 
 export interface ScheduleHost {
   create(
@@ -136,7 +141,11 @@ export class ScheduleService {
   }
 
   saveSchedule(input: ScheduleInput): Schedule {
-    if (input.trigger.kind === 'cron') parseCron(input.trigger.expr)
+    if (input.trigger.kind === 'cron') {
+      parseCron(input.trigger.expr)
+      if (input.trigger.timezone && !isTimeZone(input.trigger.timezone))
+        throw new Error(`"${input.trigger.timezone}" is not a time zone`)
+    }
     if (
       input.target.kind === 'session' &&
       !digest(this.options.host.readSession(input.target.sessionId))
@@ -151,6 +160,7 @@ export class ScheduleService {
       paused: input.paused ?? existing?.paused ?? false,
       createdAt: existing?.createdAt ?? now,
       lastRunAt: existing?.lastRunAt,
+      retryAt: existing?.retryAt,
     }
     // A changed timer starts counting again from now.
     const timerChanged = JSON.stringify(existing?.trigger) !== JSON.stringify(input.trigger)
@@ -177,6 +187,7 @@ export class ScheduleService {
   setPaused(id: string, paused: boolean): Schedule {
     const s = this.require(id)
     s.paused = paused
+    if (paused) s.retryAt = undefined
     s.nextRunAt = paused ? undefined : nextRun(s.trigger, this.now(), this.now())
     this.save()
     return s
@@ -202,6 +213,28 @@ export class ScheduleService {
       s.nextRunAt = nextRun(s.trigger, now, now)
       await this.fire(s, false).catch((err) => this.options.log.warn(`schedule ${s.name}`, err))
     }
+    // Failed runs waiting for their second try.
+    for (const s of this.schedules.filter(
+      (x) => !x.paused && x.retryAt !== undefined && x.retryAt <= now && !due.includes(x),
+    )) {
+      s.retryAt = undefined
+      await this.fire(s, false, true).catch((err) =>
+        this.options.log.warn(`schedule ${s.name}`, err),
+      )
+    }
+  }
+
+  /** Tells the alerts a run ended, unless it failed and is about to be tried again. */
+  private ended(run: ScheduleRun, schedule: Schedule) {
+    if (run.status === 'error' && schedule.retryOnFailure && !run.retry && !schedule.paused) {
+      schedule.retryAt = this.now() + RETRY_MS
+      this.save()
+      return
+    }
+    schedule.retryAt = undefined
+    const notify = schedule.notify ?? 'always'
+    if (notify === 'never' || (notify === 'failure' && run.status === 'done')) return
+    this.options.onRunEnded?.(run, schedule)
   }
 
   private record(run: ScheduleRun) {
@@ -216,13 +249,14 @@ export class ScheduleService {
     this.save()
   }
 
-  private async fire(schedule: Schedule, manual: boolean): Promise<ScheduleRun> {
+  private async fire(schedule: Schedule, manual: boolean, retry = false): Promise<ScheduleRun> {
     const now = this.now()
     const base = {
       id: randomUUID(),
       scheduleId: schedule.id,
       startedAt: now,
       manual: manual || undefined,
+      retry: retry || undefined,
     }
     const skip = (note: string) => {
       const run: ScheduleRun = { ...base, status: 'skipped', endedAt: now, note }
@@ -263,7 +297,10 @@ export class ScheduleService {
       }
       const run: ScheduleRun = { ...base, status: 'running', sessionId }
       this.record(run)
-      await this.options.host.prompt(sessionId, schedule.prompt)
+      await this.options.host.prompt(
+        sessionId,
+        schedule.openPr ? schedule.prompt + PR_INSTRUCTION : schedule.prompt,
+      )
       return run
     } catch (err) {
       const run: ScheduleRun = {
@@ -273,7 +310,7 @@ export class ScheduleService {
         note: err instanceof Error ? err.message : String(err),
       }
       this.record(run)
-      this.options.onRunEnded?.(run, schedule)
+      this.ended(run, schedule)
       return run
     } finally {
       this.firing.delete(schedule.id)
@@ -301,6 +338,6 @@ export class ScheduleService {
     const ended: ScheduleRun = { ...run, status, endedAt: this.now(), ...(note ? { note } : {}) }
     this.record(ended)
     const schedule = this.schedules.find((s) => s.id === run.scheduleId)
-    if (schedule) this.options.onRunEnded?.(ended, schedule)
+    if (schedule) this.ended(ended, schedule)
   }
 }

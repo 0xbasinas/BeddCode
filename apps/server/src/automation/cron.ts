@@ -110,6 +110,69 @@ export function nextCron(cron: Cron, after: number): number | undefined {
   return undefined
 }
 
+const zoneFormats = new Map<string, Intl.DateTimeFormat>()
+
+/** The calendar fields of a moment on a clock in `timeZone`. Throws for a name that is not a zone. */
+function zoned(timeZone: string, at: number) {
+  let format = zoneFormats.get(timeZone)
+  if (!format) {
+    format = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      weekday: 'short',
+    })
+    zoneFormats.set(timeZone, format)
+  }
+  const parts = Object.fromEntries(format.formatToParts(at).map((p) => [p.type, p.value]))
+  return {
+    month: Number(parts.month),
+    day: Number(parts.day),
+    hour: Number(parts.hour) % 24,
+    minute: Number(parts.minute),
+    weekday: DAYS.indexOf((parts.weekday ?? '').toLowerCase().slice(0, 3)),
+  }
+}
+
+export function isTimeZone(name: string): boolean {
+  try {
+    zoned(name, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Like `nextCron`, on the clock of `timeZone`: it steps by day, then hour, then minute. */
+export function nextCronInZone(cron: Cron, after: number, timeZone: string): number | undefined {
+  let t = Math.floor(after / 60_000) * 60_000 + 60_000
+  const limit = after + 4 * 366 * 24 * 60 * 60_000
+  while (t <= limit) {
+    const z = zoned(timeZone, t)
+    const dom = cron.days.has(z.day)
+    const dow = cron.weekdays.has(z.weekday)
+    const dayOk = cron.months.has(z.month) && (cron.eitherDay ? dom || dow : dom && dow)
+    if (!dayOk) {
+      // On to the next local midnight.
+      t += (24 * 60 - (z.hour * 60 + z.minute)) * 60_000
+      continue
+    }
+    if (!cron.hours.has(z.hour)) {
+      t += (60 - z.minute) * 60_000
+      continue
+    }
+    if (!cron.minutes.has(z.minute)) {
+      t += 60_000
+      continue
+    }
+    return t
+  }
+  return undefined
+}
+
 /**
  * When a trigger fires next after `after`. Intervals count from the last run (or from when the
  * schedule was saved), so a host that was off does not fire a burst of missed runs on waking.
@@ -126,7 +189,8 @@ export function nextRun(
     // Missed runs are not made up: the next one is a whole period from now.
     return after + period - ((after - from) % period)
   }
-  return nextCron(parseCron(trigger.expr), after)
+  const cron = parseCron(trigger.expr)
+  return trigger.timezone ? nextCronInZone(cron, after, trigger.timezone) : nextCron(cron, after)
 }
 
 /** The next `count` times a trigger fires, or why it cannot. */

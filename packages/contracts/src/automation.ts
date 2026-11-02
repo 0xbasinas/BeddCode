@@ -1,9 +1,16 @@
 import { z } from 'zod'
 
-/** When a schedule fires: every N minutes, or a five-field cron expression in the host's time. */
+/**
+ * When a schedule fires: every N minutes, or a five-field cron expression in the host's time (or in
+ * `timezone`, an IANA name such as "Europe/Athens").
+ */
 export const ScheduleTrigger = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('every'), minutes: z.number().int().min(1).max(10_080) }),
-  z.object({ kind: z.literal('cron'), expr: z.string().trim().min(9).max(120) }),
+  z.object({
+    kind: z.literal('cron'),
+    expr: z.string().trim().min(9).max(120),
+    timezone: z.string().trim().min(1).max(60).optional(),
+  }),
 ])
 export type ScheduleTrigger = z.infer<typeof ScheduleTrigger>
 
@@ -32,6 +39,12 @@ export const ScheduleInput = z.object({
   trigger: ScheduleTrigger,
   target: ScheduleTarget,
   paused: z.boolean().optional(),
+  /** Each run is asked to work on a new branch and open a pull request with its changes. */
+  openPr: z.boolean().optional(),
+  /** A failed run is tried once more, ten minutes later, before anyone is told. */
+  retryOnFailure: z.boolean().optional(),
+  /** Which finished runs send an alert; every run when left out. */
+  notify: z.enum(['always', 'failure', 'never']).optional(),
 })
 export type ScheduleInput = z.infer<typeof ScheduleInput>
 
@@ -42,6 +55,8 @@ export const Schedule = ScheduleInput.extend({
   lastRunAt: z.number().int().optional(),
   /** When it fires next; absent while paused or when the cron expression never matches. */
   nextRunAt: z.number().int().optional(),
+  /** When a failed run is tried again. */
+  retryAt: z.number().int().optional(),
 })
 export type Schedule = z.infer<typeof Schedule>
 
@@ -56,6 +71,8 @@ export const ScheduleRun = z.object({
   /** Why it was skipped or failed. */
   note: z.string().optional(),
   manual: z.boolean().optional(),
+  /** The second try after a failed run. */
+  retry: z.boolean().optional(),
 })
 export type ScheduleRun = z.infer<typeof ScheduleRun>
 

@@ -797,6 +797,16 @@ export const RpcMethods = {
     params: z.object({ key: z.string().max(500).nullable() }),
     result: z.object({ connected: z.boolean() }),
   },
+  /** What the host does in Linear by itself, with the connected key. */
+  'linear.setSync': {
+    params: z.object({
+      /** File a Linear issue when a scheduled task fails. */
+      fileFailedRuns: z.boolean(),
+      /** The team that issue is filed in. */
+      teamId: z.string().max(100).optional(),
+    }),
+    result: z.object({ fileFailedRuns: z.boolean(), teamId: z.string().optional() }),
+  },
   /** The Telegram bot that lets the user message agents from a chat. */
   'telegram.status': { params: z.object({}), result: TelegramStatus },
   'telegram.configure': {

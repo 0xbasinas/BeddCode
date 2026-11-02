@@ -3220,8 +3220,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   // previous entry (the state before the last change).
   pushHistory: () =>
     set((state) => {
+      // Elements are replaced, never changed in place, so a snapshot can share them with the live
+      // state; copying the whole document on every edit made large designs slow. undo/redo still
+      // copy what they restore.
       const entry: HistoryEntry = {
-        elements: deepCloneElements(state.elements),
+        elements: state.elements,
         selectedElementIds: [...state.selectedElementIds],
       }
       const newHistory = state.history.slice(0, state.historyIndex + 1)

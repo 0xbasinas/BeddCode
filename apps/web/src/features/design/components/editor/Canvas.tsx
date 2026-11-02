@@ -19,6 +19,7 @@ import {
   isElementInViewport,
   type HandlePosition,
 } from './canvas/canvas-helpers'
+import { nextCullBounds } from './canvas/cull-bounds'
 import { useCanvasViewport } from './canvas/use-canvas-viewport'
 import { useCanvasHitTest } from './canvas/use-canvas-hittest'
 import { usePenTool } from './canvas/use-pen-tool'
@@ -68,13 +69,19 @@ const OutlinesContext = React.createContext<OutlinesState>({
 })
 
 // Generate SVG defs for gradients, filters, clip paths, and image patterns
-function generateSVGDefs(elements: DesignElement[], zoom: number): React.ReactNode {
+/**
+ * The gradient, pattern, filter and clip-path defs of one element. Elements are replaced, never
+ * changed in place, so the result is kept per element object: editing one element of a large
+ * scene rebuilds only that element's defs.
+ */
+const defsCache = new WeakMap<DesignElement, React.ReactNode[]>()
+
+function defsForElement(el: DesignElement): React.ReactNode[] {
+  const cached = defsCache.get(el)
+  if (cached) return cached
   const defs: React.ReactNode[] = []
-  const allEls = getAllElements(elements)
 
-  let filterIndex = 0
-
-  for (const el of allEls) {
+  {
     // Generate gradient defs for fills.
     // PHASE 14 FIX: ids must use the fill's index in the element's fills array
     // (getFillForElement resolves url(#grad-{el.id}-{fillIndex})) — the old
@@ -259,7 +266,8 @@ function generateSVGDefs(elements: DesignElement[], zoom: number): React.ReactNo
     const shadows = el.shadows || []
     const blurs = el.blurs || []
     if (shadows.length > 0 || blurs.length > 0) {
-      const filterId = `filter-${el.id}-${filterIndex++}`
+      // One filter per element: getFilterAttr refers to it as `filter-<id>-0`.
+      const filterId = `filter-${el.id}-0`
       const filterParts: string[] = []
 
       for (const shadow of shadows) {
@@ -298,22 +306,25 @@ function generateSVGDefs(elements: DesignElement[], zoom: number): React.ReactNo
   }
 
   // Clip paths for frames
-  for (const el of allEls) {
-    if (
-      (el.type === 'frame' || el.type === 'group' || el.type === 'section') &&
-      el.clipContent &&
-      el.children &&
-      el.children.length > 0
-    ) {
-      defs.push(
-        <clipPath key={`clip-${el.id}`} id={`clip-${el.id}`}>
-          <rect x={0} y={0} width={el.width} height={el.height} rx={el.cornerRadius || 0} />
-        </clipPath>,
-      )
-    }
+  if (
+    (el.type === 'frame' || el.type === 'group' || el.type === 'section') &&
+    el.clipContent &&
+    el.children &&
+    el.children.length > 0
+  ) {
+    defs.push(
+      <clipPath key={`clip-${el.id}`} id={`clip-${el.id}`}>
+        <rect x={0} y={0} width={el.width} height={el.height} rx={el.cornerRadius || 0} />
+      </clipPath>,
+    )
   }
 
-  return <defs>{defs}</defs>
+  defsCache.set(el, defs)
+  return defs
+}
+
+function generateSVGDefs(elements: DesignElement[]): React.ReactNode {
+  return <defs>{getAllElements(elements).flatMap(defsForElement)}</defs>
 }
 
 function getFillForElement(el: DesignElement, zoom: number, fillIndex: number = 0): string {
@@ -341,8 +352,15 @@ function getFillForElement(el: DesignElement, zoom: number, fillIndex: number = 
   return el.fill === 'transparent' ? 'none' : el.fill
 }
 
+const SUBPIXEL_SKIP_TYPES: ReadonlySet<string> = new Set([
+  'rectangle',
+  'ellipse',
+  'polygon',
+  'star',
+])
+
 // Memoized element renderer
-const CanvasElement = React.memo(function CanvasElement({
+function CanvasElementImpl({
   element,
   zoom,
   selectedIds,
@@ -393,6 +411,13 @@ const CanvasElement = React.memo(function CanvasElement({
   const isGroup = element.type === 'group' || element.type === 'component-set'
   const isFrame = element.type === 'frame'
   const hasChildren = (isGroup || isFrame) && element.children && element.children.length > 0
+  // Zoomed far out, a plain shape under half a pixel across cannot be seen: leave it out.
+  if (
+    !isSelected &&
+    SUBPIXEL_SKIP_TYPES.has(element.type) &&
+    Math.max(element.width, element.height) * safeZoom < 0.5
+  )
+    return null
 
   const getFilterAttr = () => {
     const shadows = element.shadows || []
@@ -1546,7 +1571,38 @@ const CanvasElement = React.memo(function CanvasElement({
       )}
     </g>
   )
-})
+}
+
+/** Whether an element, or anything inside it, is among the selected ids. */
+function touchesSelection(el: DesignElement, ids: ReadonlySet<string>): boolean {
+  if (ids.has(el.id)) return true
+  return el.children?.some((child) => touchesSelection(child, ids)) ?? false
+}
+
+/**
+ * A change of selection re-renders only the elements it touches, not every element on the page;
+ * everything else is compared by identity.
+ */
+function sameCanvasElementProps(
+  prev: React.ComponentProps<typeof CanvasElementImpl>,
+  next: React.ComponentProps<typeof CanvasElementImpl>,
+): boolean {
+  if (
+    prev.element !== next.element ||
+    prev.zoom !== next.zoom ||
+    prev.viewportBounds !== next.viewportBounds ||
+    prev.onElementMouseDown !== next.onElementMouseDown ||
+    prev.onDoubleClick !== next.onDoubleClick
+  )
+    return false
+  if (prev.selectedIds === next.selectedIds) return true
+  return (
+    !touchesSelection(prev.element, new Set(prev.selectedIds)) &&
+    !touchesSelection(next.element, new Set(next.selectedIds))
+  )
+}
+
+const CanvasElement = React.memo(CanvasElementImpl, sameCanvasElementProps)
 
 /**
  * PHASE 23 debug dispatcher — module-level so the React Compiler keeps the
@@ -1860,6 +1916,18 @@ export function Canvas() {
   // PHASE 22 (C19) — presence broadcast (cursor/viewport/selection)
   usePresence(containerRef)
 
+  // react-resizable-panels listens for pointermove on the whole panel group and, on every move,
+  // reads the layout of its panels and separators — which forces the browser to recalculate the
+  // style of the entire scene first (over half the time while dragging a large design). The
+  // canvas has no separators, so its pointer moves are kept from reaching that listener.
+  React.useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const stop = (e: PointerEvent) => e.stopPropagation()
+    el.addEventListener('pointermove', stop)
+    return () => el.removeEventListener('pointermove', stop)
+  }, [containerRef])
+
   // keyboard: global shortcut layer (undo, tools, zoom, clipboard, ...)
   useCanvasKeyboard({
     fitToScreen: viewport.fitToScreen,
@@ -1896,8 +1964,8 @@ export function Canvas() {
   // Scene content version — bumps whenever the element tree changes so the
   // pixel-preview raster re-renders (cheap JSON stamp; avoids deep compare)
   const sceneVersion = useMemo(
-    () => JSON.stringify(elements).length ^ Math.round(safeZoom * 100000),
-    [elements, safeZoom],
+    () => (pixelPreview ? JSON.stringify(elements).length ^ Math.round(safeZoom * 100000) : 0),
+    [elements, safeZoom, pixelPreview],
   )
 
   // Calculate viewport bounds for frustum culling
@@ -1911,8 +1979,16 @@ export function Canvas() {
     [safeZoom, panX, panY, containerSize],
   )
 
+  // Elements are culled against a padded copy of the viewport that is only replaced once the real
+  // viewport nears its edge, so panning inside it leaves every element's props (and memo) alone.
+  // A ref, not state: replacing it must never trigger another render.
+  const cullBoundsRef = React.useRef(viewportBounds)
+  cullBoundsRef.current = nextCullBounds(viewportBounds, cullBoundsRef.current)
+  const cullBounds = cullBoundsRef.current
+
   // SVG Defs
-  const svgDefs = useMemo(() => generateSVGDefs(elements, safeZoom), [elements, safeZoom])
+  // Defs do not depend on the zoom, so zooming does not rebuild them.
+  const svgDefs = useMemo(() => generateSVGDefs(elements), [elements])
 
   // Drawing preview
   const drawPreviewEl =
@@ -3133,6 +3209,9 @@ export function Canvas() {
   return (
     <div
       className="relative w-full h-full overflow-hidden bg-[color:var(--dc-input)] select-none"
+      // The scene can hold thousands of SVG nodes; containment keeps its style and layout work from
+      // spreading to the panels around it (which read layout on every mouse event).
+      style={{ contain: 'layout paint style' }}
       ref={containerRef}
       onMouseDown={(e) => {
         if (e.button === 1) e.preventDefault()
@@ -3183,7 +3262,7 @@ export function Canvas() {
                       selectedIds={selectedElementIds}
                       onElementMouseDown={handleElementMouseDown}
                       onDoubleClick={handleElementDoubleClick}
-                      viewportBounds={viewportBounds}
+                      viewportBounds={cullBounds}
                     />
                   ))}
                 </g>

@@ -45,7 +45,13 @@ export interface AutomationServices {
   alerts: AlertService
   designs: DesignStore
   computer: ComputerPane
-  linear: { setKey(key: string | null): boolean }
+  linear: {
+    setKey(key: string | null): boolean
+    setSync(settings: { fileFailedRuns: boolean; teamId?: string }): {
+      fileFailedRuns: boolean
+      teamId?: string
+    }
+  }
   telegram: TelegramBridge
 }
 
@@ -400,6 +406,7 @@ export function createRpcRouter(
       paused: automation.computer.control(p.sessionId, p.paused),
     }),
     'linear.setKey': async (p) => ({ connected: automation.linear.setKey(p.key) }),
+    'linear.setSync': async (p) => automation.linear.setSync(p),
     'telegram.status': async () => automation.telegram.status(),
     'telegram.configure': async (p) => {
       const { telegram } = automation
