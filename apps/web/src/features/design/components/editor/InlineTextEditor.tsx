@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useRef } from 'react'
 import { useEditorStore } from '../../store/editor-store'
 import { findElementInList } from '../../lib/element-utils'
+import { useShallow } from 'zustand/react/shallow'
 
 interface InlineTextEditorProps {
   elementId: string
@@ -24,7 +25,14 @@ export function InlineTextEditor({
   containerHeight,
   onClose,
 }: InlineTextEditorProps) {
-  const { elements, updateElement, pushHistory, applyTextAutoSize } = useEditorStore()
+  const { elements, updateElement, pushHistory, applyTextAutoSize } = useEditorStore(
+    useShallow((s) => ({
+      elements: s.elements,
+      updateElement: s.updateElement,
+      pushHistory: s.pushHistory,
+      applyTextAutoSize: s.applyTextAutoSize,
+    })),
+  )
   const editorRef = useRef<HTMLDivElement>(null)
   const hasPushedHistory = useRef(false)
 

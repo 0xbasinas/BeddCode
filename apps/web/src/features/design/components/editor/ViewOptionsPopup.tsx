@@ -14,6 +14,7 @@
 import React, { useEffect, useRef } from 'react'
 import { useEditorStore } from '../../store/editor-store'
 import type { RulerUnit } from '../../lib/layout-grids'
+import { useShallow } from 'zustand/react/shallow'
 
 function ToggleRow({
   label,
@@ -76,7 +77,39 @@ export function ViewOptionsPopup({ onClose }: { onClose: () => void }) {
     setOutlineObjectBounds,
     setPixelPreview,
     setPixelPreviewRetina,
-  } = useEditorStore()
+  } = useEditorStore(
+    useShallow((s) => ({
+      showPixelGrid: s.showPixelGrid,
+      showLayoutGrids: s.showLayoutGrids,
+      showGrid: s.showGrid,
+      snapToPixels: s.snapToPixels,
+      snapToElements: s.snapToElements,
+      showRulers: s.showRulers,
+      rulerUnit: s.rulerUnit,
+      zoom: s.zoom,
+      setShowPixelGrid: s.setShowPixelGrid,
+      setShowLayoutGrids: s.setShowLayoutGrids,
+      setShowGrid: s.setShowGrid,
+      setSnapToPixels: s.setSnapToPixels,
+      setSnapToElements: s.setSnapToElements,
+      setShowRulers: s.setShowRulers,
+      setRulerUnit: s.setRulerUnit,
+      nudgeAmount: s.nudgeAmount,
+      setNudgeAmount: s.setNudgeAmount,
+      showComments: s.showComments,
+      setShowComments: s.setShowComments,
+      outlinesMode: s.outlinesMode,
+      outlineHiddenLayers: s.outlineHiddenLayers,
+      outlineObjectBounds: s.outlineObjectBounds,
+      pixelPreview: s.pixelPreview,
+      pixelPreviewRetina: s.pixelPreviewRetina,
+      setOutlinesMode: s.setOutlinesMode,
+      setOutlineHiddenLayers: s.setOutlineHiddenLayers,
+      setOutlineObjectBounds: s.setOutlineObjectBounds,
+      setPixelPreview: s.setPixelPreview,
+      setPixelPreviewRetina: s.setPixelPreviewRetina,
+    })),
+  )
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

@@ -28,7 +28,7 @@
   font-display: swap;
 }
 :root {
-  --ui-scale: 0.9;
+  --ui-scale: 0.85;
   /* Window behind the panels: close to them so the gaps read as shadow, not as holes. */
   --bg-app: #101010;
   --bg-panel: #161616;

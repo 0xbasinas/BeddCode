@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextCron, nextRun, parseCron, previewTrigger } from './cron.ts'
+import { isTimeZone, nextCron, nextCronInZone, nextRun, parseCron, previewTrigger } from './cron.ts'
 
 const at = (y: number, mo: number, d: number, h = 0, mi = 0) =>
   new Date(y, mo - 1, d, h, mi).getTime()
@@ -44,5 +44,24 @@ describe('cron', () => {
       t0 + 90 * 60_000,
     ])
     expect(previewTrigger({ kind: 'cron', expr: 'x * * * *' }, t0).error).toMatch(/range/)
+  })
+
+  it('reads a cron expression on the clock of a time zone', () => {
+    // 09:00 in Athens (UTC+2 in January) is 07:00 UTC; weekdays only.
+    const friday = Date.UTC(2026, 0, 2, 8, 0) // Fri 2 Jan, 08:00 UTC: after 09:00 in Athens' morning
+    const next = nextCronInZone(parseCron('0 9 * * 1-5'), friday, 'Europe/Athens')
+    expect(new Date(next!).toISOString()).toBe('2026-01-05T07:00:00.000Z') // Monday
+    const before = Date.UTC(2026, 0, 2, 6, 0)
+    expect(
+      new Date(nextCronInZone(parseCron('0 9 * * 1-5'), before, 'Europe/Athens')!).toISOString(),
+    ).toBe('2026-01-02T07:00:00.000Z')
+    expect(nextRun({ kind: 'cron', expr: '0 9 * * *', timezone: 'Asia/Tokyo' }, before)).toBe(
+      Date.UTC(2026, 0, 3, 0, 0),
+    )
+  })
+
+  it('knows which names are time zones', () => {
+    expect(isTimeZone('Europe/Athens')).toBe(true)
+    expect(isTimeZone('Mars/Olympus')).toBe(false)
   })
 })

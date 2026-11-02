@@ -205,4 +205,77 @@ describe('ScheduleService', () => {
     expect(t.ended).toHaveLength(1)
     svc.stop()
   })
+
+  it('retries a failed run once, ten minutes later, before telling anyone', async () => {
+    const t = setup()
+    const svc = t.make()
+    svc.start()
+    const s = svc.saveSchedule({
+      name: 'Flaky',
+      prompt: 'p',
+      trigger: { kind: 'every', minutes: 1440 },
+      target: NEW,
+      retryOnFailure: true,
+    })
+    await svc.runNow(s.id)
+    t.finish('s1', 'error')
+    expect(t.ended).toHaveLength(0)
+    expect(svc.list().schedules[0]!.retryAt).toBe(t.now + 10 * 60_000)
+
+    await svc.tick()
+    expect(t.prompts).toHaveLength(1)
+    t.advance(10 * 60_000)
+    await svc.tick()
+    expect(t.prompts.map(([id]) => id)).toEqual(['s1', 's2'])
+    expect(svc.list().runs[0]).toMatchObject({ retry: true, status: 'running' })
+    t.finish('s2', 'error')
+    // The second failure is the one reported, and there is no third try.
+    expect(t.ended.map(([r]) => [r.status, r.retry])).toEqual([['error', true]])
+    expect(svc.list().schedules[0]!.retryAt).toBeUndefined()
+    svc.stop()
+  })
+
+  it('asks for a pull request, and alerts only as the schedule says', async () => {
+    const t = setup()
+    const svc = t.make()
+    svc.start()
+    const loud = svc.saveSchedule({
+      name: 'PR',
+      prompt: 'Bump deps',
+      trigger: { kind: 'every', minutes: 60 },
+      target: NEW,
+      openPr: true,
+      notify: 'failure',
+    })
+    await svc.runNow(loud.id)
+    expect(t.prompts[0]![1]).toContain('open a pull request')
+    expect(t.prompts[0]![1].startsWith('Bump deps')).toBe(true)
+    t.finish('s1', 'done')
+    expect(t.ended).toHaveLength(0)
+
+    t.advance(60_000)
+    const quiet = svc.saveSchedule({
+      name: 'Quiet',
+      prompt: 'q',
+      trigger: { kind: 'every', minutes: 60 },
+      target: NEW,
+      notify: 'never',
+    })
+    await svc.runNow(quiet.id)
+    t.finish('s2', 'error')
+    expect(t.ended).toHaveLength(0)
+    svc.stop()
+  })
+
+  it('refuses a time zone that does not exist', () => {
+    const svc = setup().make()
+    expect(() =>
+      svc.saveSchedule({
+        name: 'Z',
+        prompt: 'p',
+        trigger: { kind: 'cron', expr: '0 9 * * *', timezone: 'Mars/Olympus' },
+        target: NEW,
+      }),
+    ).toThrow(/time zone/)
+  })
 })

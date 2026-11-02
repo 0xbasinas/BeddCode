@@ -288,7 +288,7 @@ kbd {
    line sits outside the row, and painting is clipped to it). */
 .session-row:not(.child) {
   content-visibility: auto;
-  contain-intrinsic-size: auto calc(56px * var(--ui-scale));
+  contain-intrinsic-size: auto calc(60px * var(--ui-scale));
 }
 .session-row:hover {
   background: var(--bg-card);
@@ -4010,12 +4010,13 @@ button.tcall-row:hover .tcall-chevron,
   margin: 0;
 }
 
-/* Sidebar: sessions as two tight lines */
+/* Sidebar: sessions as two lines, with room to breathe */
 .session-row {
   align-items: center;
-  gap: calc(8px * var(--ui-scale));
-  padding: calc(5px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  line-height: 1.35;
+  gap: calc(9px * var(--ui-scale));
+  padding: calc(7px * var(--ui-scale)) calc(11px * var(--ui-scale));
+  font-size: calc(13.5px * var(--ui-scale));
+  line-height: 1.4;
 }
 .session-row .dot,
 .session-row .session-done {
@@ -4023,7 +4024,7 @@ button.tcall-row:hover .tcall-chevron,
   margin: 0 calc(3px * var(--ui-scale));
 }
 .session-main {
-  gap: 0;
+  gap: calc(1px * var(--ui-scale));
 }
 .session-top {
   display: flex;
@@ -4177,7 +4178,7 @@ button.tcall-row:hover .tcall-chevron,
 }
 .session-meta .stat {
   flex: none;
-  font-size: calc(11px * var(--ui-scale));
+  font-size: calc(11.5px * var(--ui-scale));
 }
 .group-title {
   padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(3px * var(--ui-scale));

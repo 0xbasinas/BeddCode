@@ -8,13 +8,21 @@ import {
   type DesignElement,
 } from '../../store/editor-store'
 import { ColorPicker } from './ColorPicker'
+import { useShallow } from 'zustand/react/shallow'
 
 interface EffectsPanelProps {
   element: DesignElement
 }
 
 export function EffectsPanel({ element }: EffectsPanelProps) {
-  const { addEffect, removeEffect, updateEffect, pushHistory } = useEditorStore()
+  const { addEffect, removeEffect, updateEffect, pushHistory } = useEditorStore(
+    useShallow((s) => ({
+      addEffect: s.addEffect,
+      removeEffect: s.removeEffect,
+      updateEffect: s.updateEffect,
+      pushHistory: s.pushHistory,
+    })),
+  )
   const shadows = element.shadows || []
   const blurs = element.blurs || []
   const totalEffects = shadows.length + blurs.length

@@ -28,6 +28,7 @@ import {
 import { useEditorStore, type ToolType } from '../../store/editor-store'
 // PHASE 8 — view options popup
 import { ViewOptionsPopup } from './ViewOptionsPopup'
+import { useShallow } from 'zustand/react/shallow'
 
 interface ToolDef {
   type: ToolType
@@ -157,7 +158,15 @@ const toolOptions: Partial<
 }
 
 export function Toolbar() {
-  const { activeTool, setActiveTool, zoom, setZoom, setPan } = useEditorStore()
+  const { activeTool, setActiveTool, zoom, setZoom, setPan } = useEditorStore(
+    useShallow((s) => ({
+      activeTool: s.activeTool,
+      setActiveTool: s.setActiveTool,
+      zoom: s.zoom,
+      setZoom: s.setZoom,
+      setPan: s.setPan,
+    })),
+  )
   // PHASE 8 — view options popup
   const [viewOptionsOpen, setViewOptionsOpen] = useState(false)
   const [openMenuIdx, setOpenMenuIdx] = useState<number | null>(null)

@@ -236,6 +236,10 @@ export function useElementInteractions({
 
   // RAF throttle for smooth drag/resize
   const dragRafRef = useRef<number>(0)
+  // The frame callbacks still waiting; mouse-up runs them so the last position is never lost.
+  const dragFlushRef = useRef<(() => void) | null>(null)
+  const panRafRef = useRef<number>(0)
+  const panFlushRef = useRef<(() => void) | null>(null)
   const pendingDragUpdate = useRef<{ id: string; updates: Partial<DesignElement> }[] | null>(null)
 
   const safeZoom = isFinite(zoom) && zoom > 0.001 ? zoom : 1
@@ -664,8 +668,16 @@ export function useElementInteractions({
       if (isPanning) {
         const dx = e.clientX - panStartRef.current.x
         const dy = e.clientY - panStartRef.current.y
-        const state = useEditorStore.getState()
-        state.setPan(panStartRef.current.panX + dx, panStartRef.current.panY + dy)
+        const nextPanX = panStartRef.current.panX + dx
+        const nextPanY = panStartRef.current.panY + dy
+        // Mouse events can arrive faster than frames; apply only the latest once per frame.
+        cancelAnimationFrame(panRafRef.current)
+        const applyPan = () => {
+          panFlushRef.current = null
+          useEditorStore.getState().setPan(nextPanX, nextPanY)
+        }
+        panFlushRef.current = applyPan
+        panRafRef.current = requestAnimationFrame(applyPan)
         return
       }
 
@@ -805,6 +817,7 @@ export function useElementInteractions({
 
         // Throttle resize updates using RAF for smoothness
         cancelAnimationFrame(dragRafRef.current)
+        dragFlushRef.current = null
         pendingDragUpdate.current = [{ id: resizeId, updates: resizeUpdates }]
         dragRafRef.current = requestAnimationFrame(() => {
           if (pendingDragUpdate.current) {
@@ -865,52 +878,57 @@ export function useElementInteractions({
           setDragDuplicates(dups)
         }
 
-        // Calculate snap for the primary element
-        const primaryId = Object.keys(dragElementStartsRef.current)[0]
-        const primaryStart = dragElementStartsRef.current[primaryId]
-        if (primaryStart) {
-          const primaryEl = findElementInList(state.elements, primaryId)
-          if (primaryEl) {
-            const tempEl = { ...primaryEl, x: primaryStart.x + dx, y: primaryStart.y + dy }
-            const snap = calculateSnapLines(
-              tempEl,
-              state.elements,
-              state.selectedElementIds,
-              gridSize,
-              snapToGrid,
-              snapToElements,
-            )
-            setSnapLines(snap.snapLines)
-
-            const actualDx = snap.snapX !== null ? snap.snapX - primaryStart.x : dx
-            const actualDy = snap.snapY !== null ? snap.snapY - primaryStart.y : dy
-
-            // Batch drag updates using RAF for smoother editing
-            // PHASE 8: snap-to-pixels is now a view option — when disabled,
-            // positions may be fractional (Figma parity)
-            const pixelSnap = state.snapToPixels !== false
-            const updates: { id: string; updates: Partial<DesignElement> }[] = []
-            Object.entries(dragElementStartsRef.current).forEach(([id, startPos]) => {
-              const nx = startPos.x + actualDx
-              const ny = startPos.y + actualDy
-              updates.push({
-                id,
-                updates: { x: pixelSnap ? Math.round(nx) : nx, y: pixelSnap ? Math.round(ny) : ny },
-              })
-            })
-            cancelAnimationFrame(dragRafRef.current)
-            pendingDragUpdate.current = updates
-            dragRafRef.current = requestAnimationFrame(() => {
-              if (pendingDragUpdate.current) {
-                const s = useEditorStore.getState()
-                for (const { id, updates: u } of pendingDragUpdate.current) {
-                  s.updateElement(id, u)
-                }
-                pendingDragUpdate.current = null
-              }
+        // Snap and position updates run once per frame, with the latest pointer position.
+        const dragClientX = e.clientX
+        const dragClientY = e.clientY
+        cancelAnimationFrame(dragRafRef.current)
+        pendingDragUpdate.current = null
+        const applyDrag = () => {
+          dragFlushRef.current = null
+          const start = dragStartRef.current
+          if (!start) {
+            pendingDragUpdate.current = null
+            return
+          }
+          const s = useEditorStore.getState()
+          const ddx = (dragClientX - start.x) / zoom
+          const ddy = (dragClientY - start.y) / zoom
+          const primaryId = Object.keys(dragElementStartsRef.current)[0]
+          const primaryStart = dragElementStartsRef.current[primaryId]
+          if (!primaryStart) {
+            pendingDragUpdate.current = null
+            return
+          }
+          const primaryEl = findElementInList(s.elements, primaryId)
+          if (!primaryEl) {
+            pendingDragUpdate.current = null
+            return
+          }
+          const tempEl = { ...primaryEl, x: primaryStart.x + ddx, y: primaryStart.y + ddy }
+          const snap = calculateSnapLines(
+            tempEl,
+            s.elements,
+            s.selectedElementIds,
+            gridSize,
+            snapToGrid,
+            snapToElements,
+          )
+          setSnapLines(snap.snapLines)
+          const actualDx = snap.snapX !== null ? snap.snapX - primaryStart.x : ddx
+          const actualDy = snap.snapY !== null ? snap.snapY - primaryStart.y : ddy
+          // PHASE 8: snap-to-pixels is a view option; when off, positions may be fractional
+          const pixelSnap = s.snapToPixels !== false
+          for (const [id, startPos] of Object.entries(dragElementStartsRef.current)) {
+            const nx = startPos.x + actualDx
+            const ny = startPos.y + actualDy
+            s.updateElement(id, {
+              x: pixelSnap ? Math.round(nx) : nx,
+              y: pixelSnap ? Math.round(ny) : ny,
             })
           }
         }
+        dragFlushRef.current = applyDrag
+        dragRafRef.current = requestAnimationFrame(applyDrag)
 
         // Check if we're dragging over a frame for drop target
         if (selectedElementIds.length > 0) {
@@ -1000,7 +1018,10 @@ export function useElementInteractions({
       if (activeTool === 'move' && !isDragging && !isResizing && !isScaling) {
         const canvasPos = screenToCanvas(e.clientX, e.clientY)
         const hoveredEl = findElementAtPosition(canvasPos.x, canvasPos.y)
-        setHoveredElementId(hoveredEl ? hoveredEl.id : null)
+        setHoveredElementId((prev) => {
+          const next = hoveredEl ? hoveredEl.id : null
+          return prev === next ? prev : next
+        })
 
         // PHASE 11 — alt+hover distance measurement (single selection + another element)
         if (
@@ -1115,6 +1136,9 @@ export function useElementInteractions({
     (e: React.MouseEvent) => {
       // Flush any pending RAF drag/resize updates before handling mouse up
       cancelAnimationFrame(dragRafRef.current)
+      cancelAnimationFrame(panRafRef.current)
+      panFlushRef.current?.()
+      dragFlushRef.current?.()
       if (pendingDragUpdate.current) {
         const s = useEditorStore.getState()
         for (const { id, updates } of pendingDragUpdate.current) {

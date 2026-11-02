@@ -50,12 +50,21 @@ export function usePresence(containerRef: React.RefObject<HTMLDivElement | null>
     const el = containerRef.current
     if (!el) return
 
+    // Reading the element's rect forces the browser to recalculate the whole scene's style, so it
+    // is read when the size changes and on the heartbeat, not on every mouse move.
+    let rect = el.getBoundingClientRect()
+    const refreshRect = () => {
+      rect = el.getBoundingClientRect()
+    }
+    const resizeObserver = new ResizeObserver(refreshRect)
+    resizeObserver.observe(el)
+    window.addEventListener('resize', refreshRect)
+
     const send = (force = false) => {
       const s = useEditorStore.getState()
       if (!s.currentProjectId) return
       const now = Date.now()
 
-      const rect = el.getBoundingClientRect()
       // canvas coords of the viewport corners: screen = center + canvas*zoom
       const zoom = isFinite(s.zoom) && s.zoom > 0.001 ? s.zoom : 1
       const cx = rect.width / 2 + s.panX
@@ -113,7 +122,6 @@ export function usePresence(containerRef: React.RefObject<HTMLDivElement | null>
     const cursorRef: { current: { x: number; y: number } | null } = { current: null }
 
     const onMouseMove = (e: MouseEvent) => {
-      const rect = el.getBoundingClientRect()
       cursorRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
       send()
     }
@@ -136,7 +144,10 @@ export function usePresence(containerRef: React.RefObject<HTMLDivElement | null>
       }
     })
 
-    const heartbeat = setInterval(() => send(true), HEARTBEAT_MS)
+    const heartbeat = setInterval(() => {
+      refreshRect()
+      send(true)
+    }, HEARTBEAT_MS)
 
     el.addEventListener('mousemove', onMouseMove)
     el.addEventListener('mouseleave', onMouseLeave)
@@ -144,6 +155,8 @@ export function usePresence(containerRef: React.RefObject<HTMLDivElement | null>
       el.removeEventListener('mousemove', onMouseMove)
       el.removeEventListener('mouseleave', onMouseLeave)
       unsub()
+      resizeObserver.disconnect()
+      window.removeEventListener('resize', refreshRect)
       clearInterval(heartbeat)
       // broadcast leave
       const s = useEditorStore.getState()

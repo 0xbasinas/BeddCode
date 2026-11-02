@@ -8,6 +8,7 @@
 import React, { useCallback, useRef } from 'react'
 import { useEditorStore, type Guide } from '../../store/editor-store'
 import { PX_PER_UNIT, rulerTickSteps, type RulerUnit } from '../../lib/layout-grids'
+import { useShallow } from 'zustand/react/shallow'
 
 interface RulersProps {
   containerWidth: number
@@ -27,7 +28,14 @@ function fmtLabel(unitValue: number, unit: RulerUnit): string {
 }
 
 export function Rulers({ containerWidth, containerHeight, zoom, panX, panY }: RulersProps) {
-  const { guides, addGuide, showRulers, rulerUnit } = useEditorStore()
+  const { guides, addGuide, showRulers, rulerUnit } = useEditorStore(
+    useShallow((s) => ({
+      guides: s.guides,
+      addGuide: s.addGuide,
+      showRulers: s.showRulers,
+      rulerUnit: s.rulerUnit,
+    })),
+  )
   const isDraggingGuide = useRef<{
     orientation: 'horizontal' | 'vertical'
     startPos: number
