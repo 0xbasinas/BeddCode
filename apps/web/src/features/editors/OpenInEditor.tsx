@@ -34,7 +34,7 @@ export function OpenInEditor({ hostKey, cwd }: { hostKey: string; cwd: string })
           {preferred && preferred.id !== 'file-manager' ? (
             <EditorIcon id={preferred.id} platform={platform} size={16} />
           ) : (
-            <Code2 size={17} />
+            <Code2 size={18} />
           )}
         </Button>
       )}

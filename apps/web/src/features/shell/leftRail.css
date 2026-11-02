@@ -42,12 +42,12 @@
   place-items: center;
   width: calc(36px * var(--ui-scale));
   height: calc(36px * var(--ui-scale));
-  border-radius: calc(10px * var(--ui-scale));
+  border-radius: var(--corner-lg);
   color: var(--text-muted);
   transition:
-    background 0.12s,
-    color 0.12s,
-    border-radius 0.12s;
+    background var(--motion-fast),
+    color var(--motion-fast),
+    border-radius var(--motion-fast);
 }
 .rail-item:hover {
   background: var(--bg-hover);

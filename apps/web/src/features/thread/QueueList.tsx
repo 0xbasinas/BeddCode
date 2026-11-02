@@ -1,4 +1,4 @@
-import { Clock, CornerDownRight, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Clock, CornerDownRight, Pencil, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { SessionView } from '@beddcode/client-runtime'
 import { useState } from 'react'
@@ -10,6 +10,7 @@ export function QueueList({
   queue,
   busy,
   canSteer,
+  editingId,
   onSend,
   onCancel,
   onEdit,
@@ -20,12 +21,14 @@ export function QueueList({
   busy: boolean
   /** The agent takes messages mid-turn; without that, "send now" stops the current turn first. */
   canSteer: boolean
+  /** The queued message being edited in the composer, if any. */
+  editingId?: string
   onSend(queueId: string): void
   onCancel(queueId: string): void
-  onEdit?(queueId: string, text: string, expectedText: string): Promise<void>
+  /** Opens the message in the composer; saving happens there. */
+  onEdit?(queueId: string): void
   onMove?(queueId: string, direction: 'up' | 'down'): Promise<void>
 }) {
-  const [editing, setEditing] = useState<{ id: string; text: string; original: string }>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string>()
   const run = async (action: () => Promise<void>) => {
@@ -42,105 +45,102 @@ export function QueueList({
   if (queue.length === 0) return null
   return (
     <ul className="queue-list" aria-label="Queued messages">
-      {queue.map((q, i) => (
-        <li
-          key={q.queueId}
-          className="queue-item"
-          draggable={!!onMove && !pending && !editing}
-          onDragStart={(event) => event.dataTransfer.setData('text/beddcode-queue', q.queueId)}
-          onDragOver={(event) => {
-            if (onMove) event.preventDefault()
-          }}
-          onDrop={(event) => {
-            event.preventDefault()
-            const id = event.dataTransfer.getData('text/beddcode-queue')
-            const from = queue.findIndex((item) => item.queueId === id)
-            if (!onMove || from < 0 || from === i) return
-            void run(async () => {
-              for (let n = 0; n < Math.abs(i - from); n++)
-                await onMove(id, i > from ? 'down' : 'up')
-            })
-          }}
-        >
-          <Clock size={14} />
-          <span className="queue-text" title={q.text}>
-            {q.text || q.attachments.map((a) => a.name).join(', ')}
-          </span>
-          {onEdit && (
-            <button
-              disabled={pending}
-              onClick={() => setEditing({ id: q.queueId, text: q.text, original: q.text })}
-            >
-              Edit
-            </button>
-          )}
-          {onMove && (
-            <>
-              <button
-                disabled={pending || i === 0}
-                aria-label={`Move queued message ${i + 1} up`}
-                onClick={() => void run(() => onMove(q.queueId, 'up'))}
-              >
-                ↑
-              </button>
-              <button
-                disabled={pending || i === queue.length - 1}
-                aria-label={`Move queued message ${i + 1} down`}
-                onClick={() => void run(() => onMove(q.queueId, 'down'))}
-              >
-                ↓
-              </button>
-            </>
-          )}
-          {editing?.id === q.queueId && (
-            <div>
-              <textarea
-                aria-label="Edit queued message"
-                value={editing.text}
-                onChange={(e) => setEditing({ ...editing, text: e.target.value })}
-              />
-              <button
-                disabled={pending}
-                onClick={() =>
-                  void run(async () => {
-                    await onEdit!(q.queueId, editing.text, editing.original)
-                    setEditing(undefined)
-                  })
-                }
-              >
-                Save queued message
-              </button>
-              <button disabled={pending} onClick={() => setEditing(undefined)}>
-                Cancel edit
-              </button>
-            </div>
-          )}
-          {i === 0 && (
-            <button
-              className="queue-send"
-              onClick={() => onSend(q.queueId)}
-              title={
-                busy && !canSteer
-                  ? 'Stops the current turn and sends this now'
-                  : busy
-                    ? 'Adds this to what the agent is doing now'
-                    : 'Send this now'
-              }
-            >
-              <CornerDownRight size={13} />{' '}
-              {busy ? (canSteer ? 'Steer now' : 'Stop and send') : 'Send now'}
-            </button>
-          )}
-          <Button
-            variant="app"
-            className="icon-btn small"
-            aria-label="Remove queued message"
-            onClick={() => onCancel(q.queueId)}
+      {queue.map((q, i) => {
+        const editing = q.queueId === editingId
+        return (
+          <li
+            key={q.queueId}
+            className={`queue-item${editing ? ' editing' : ''}`}
+            draggable={!!onMove && !pending && !editingId}
+            onDragStart={(event) => event.dataTransfer.setData('text/beddcode-queue', q.queueId)}
+            onDragOver={(event) => {
+              if (onMove) event.preventDefault()
+            }}
+            onDrop={(event) => {
+              event.preventDefault()
+              const id = event.dataTransfer.getData('text/beddcode-queue')
+              const from = queue.findIndex((item) => item.queueId === id)
+              if (!onMove || from < 0 || from === i) return
+              void run(async () => {
+                for (let n = 0; n < Math.abs(i - from); n++)
+                  await onMove(id, i > from ? 'down' : 'up')
+              })
+            }}
           >
-            <X size={14} />
-          </Button>
-        </li>
-      ))}
+            <Clock size={14} />
+            <span className="queue-text" title={q.text}>
+              {q.text || q.attachments.map((a) => a.name).join(', ')}
+            </span>
+            {editing ? (
+              <span className="queue-tag">Editing below</span>
+            ) : (
+              <>
+                {onEdit && (
+                  <Button
+                    variant="app"
+                    className="icon-btn small"
+                    disabled={pending || !!editingId}
+                    aria-label="Edit"
+                    title="Edit in the message box"
+                    onClick={() => onEdit(q.queueId)}
+                  >
+                    <Pencil size={14} />
+                  </Button>
+                )}
+                {onMove && (
+                  <>
+                    <Button
+                      variant="app"
+                      className="icon-btn small"
+                      disabled={pending || i === 0}
+                      aria-label={`Move queued message ${i + 1} up`}
+                      title="Move up"
+                      onClick={() => void run(() => onMove(q.queueId, 'up'))}
+                    >
+                      <ArrowUp size={14} />
+                    </Button>
+                    <Button
+                      variant="app"
+                      className="icon-btn small"
+                      disabled={pending || i === queue.length - 1}
+                      aria-label={`Move queued message ${i + 1} down`}
+                      title="Move down"
+                      onClick={() => void run(() => onMove(q.queueId, 'down'))}
+                    >
+                      <ArrowDown size={14} />
+                    </Button>
+                  </>
+                )}
+                {i === 0 && (
+                  <button
+                    className="queue-send"
+                    onClick={() => onSend(q.queueId)}
+                    title={
+                      busy && !canSteer
+                        ? 'Stops the current turn and sends this now'
+                        : busy
+                          ? 'Adds this to what the agent is doing now'
+                          : 'Send this now'
+                    }
+                  >
+                    <CornerDownRight size={14} />{' '}
+                    {busy ? (canSteer ? 'Steer now' : 'Stop and send') : 'Send now'}
+                  </button>
+                )}
+                <Button
+                  variant="app"
+                  className="icon-btn small"
+                  aria-label="Remove queued message"
+                  title="Remove"
+                  onClick={() => onCancel(q.queueId)}
+                >
+                  <X size={14} />
+                </Button>
+              </>
+            )}
+          </li>
+        )
+      })}
       {error && (
         <li className="composer-error" role="alert">
           {error}

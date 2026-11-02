@@ -75,7 +75,7 @@ export function DesktopPane({ sessionId, working }: { sessionId: string; working
   if (!v?.enabled) {
     return (
       <div className="git-empty">
-        <MonitorSmartphone size={22} />
+        <MonitorSmartphone size={24} />
         <div>This session cannot use the computer</div>
         <div className="muted">Turn on “Use computer” when starting a session.</div>
       </div>
@@ -92,11 +92,11 @@ export function DesktopPane({ sessionId, working }: { sessionId: string; working
         <span className="desktop-spacer" />
         {v.paused ? (
           <button className="desktop-btn" disabled={busy} onClick={() => void control(false)}>
-            <Play size={13} /> Hand back
+            <Play size={14} /> Hand back
           </button>
         ) : (
           <button className="desktop-btn" disabled={busy} onClick={() => void control(true)}>
-            <Hand size={13} /> Take over
+            <Hand size={14} /> Take over
           </button>
         )}
         <button
@@ -105,7 +105,7 @@ export function DesktopPane({ sessionId, working }: { sessionId: string; working
           title={working ? 'Stop the agent and take back its access' : 'The agent is not running'}
           onClick={() => void stop()}
         >
-          <Square size={13} /> Stop
+          <Square size={14} /> Stop
         </button>
       </div>
       {error && <div className="desktop-error">{error}</div>}

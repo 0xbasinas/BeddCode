@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import { MessageSquareText } from 'lucide-react'
 import { formatReview, reviewPatchVersion, type ReviewComment } from '@beddcode/client-runtime'
@@ -141,11 +142,10 @@ export function ReviewBar({
                 </button>
               </details>
             ))}
-          <label>
-            <input
-              type="checkbox"
+          <label className="check-row">
+            <Checkbox
               checked={allowStale}
-              onChange={(e) => setAllowStale(e.target.checked)}
+              onCheckedChange={(checked) => setAllowStale(checked === true)}
             />
             Send original captured context even if the diff has changed
           </label>

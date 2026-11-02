@@ -67,7 +67,7 @@ export function AddMcpDialog({
             disabled={busy}
             onClick={onClose}
           >
-            <X size={17} />
+            <X size={18} />
           </Button>
         </header>
         <div className="agent-dialog-body mcp-dialog-body">
@@ -85,7 +85,7 @@ export function AddMcpDialog({
               disabled={busy}
               onClick={() => setForm({ ...form, kind: 'stdio' })}
             >
-              <Terminal size={17} />
+              <Terminal size={18} />
               <span>
                 <strong>Local command</strong>
                 <small>Runs on this host</small>
@@ -98,7 +98,7 @@ export function AddMcpDialog({
               disabled={busy}
               onClick={() => setForm({ ...form, kind: 'http' })}
             >
-              <Globe size={17} />
+              <Globe size={18} />
               <span>
                 <strong>Remote server</strong>
                 <small>Connects to a URL</small>

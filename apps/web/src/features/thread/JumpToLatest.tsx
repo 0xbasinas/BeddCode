@@ -25,6 +25,8 @@ export function JumpToLatest({
     if (!el) return
     const measure = () => {
       const isAway = el.scrollHeight - el.scrollTop - el.clientHeight > AWAY_PX
+      // Most scroll events leave the answer unchanged; skip the state update then.
+      if (isAway === awayRef.current) return
       awayRef.current = isAway
       setAway(isAway)
     }

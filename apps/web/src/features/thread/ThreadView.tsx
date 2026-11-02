@@ -70,6 +70,7 @@ import { appendReplyQuote } from './quote.ts'
 import { downloadSession } from './exportSession.ts'
 import { sessionArchive } from './sessionArchive.ts'
 import { usePane, type PaneInfo } from '../split/paneContext.ts'
+import { DiffStat } from '../../ui/DiffStat.tsx'
 
 export function ThreadView({ sessionId }: { sessionId: string }) {
   const navigate = useNavigate()
@@ -91,26 +92,38 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
     Object.values(s.runtimes).some((r) => r.connection !== 'connected'),
   )
   const memoryKey = threadKey(hostKey, sessionId)
-  const text = useComposerDrafts((s) => s.drafts[memoryKey] ?? '')
-  const setText = useCallback(
-    (value: string) => useComposerDrafts.getState().setDraft(memoryKey, value),
-    [memoryKey],
-  )
   const [renaming, setRenaming] = useState(false)
   const [actionError, setActionError] = useState<string>()
   const [quoteFocus, setQuoteFocus] = useState(0)
+  // A queued message being edited in the composer; the draft that was there waits to be put back.
+  const [editingQueue, setEditingQueue] = useState<{ queueId: string; original: string }>()
+  const stashedDraft = useRef<string | undefined>(undefined)
   const [exporting, setExporting] = useState(false)
   const scroller = useRef<HTMLDivElement>(null)
-  const followEnd = useFollowEnd(scroller, session?.items, memoryKey)
+  const { follow: followEnd, release: releaseEnd } = useFollowEnd(
+    scroller,
+    session?.items,
+    memoryKey,
+  )
   const [jump, setJump] = useState<{ id: string; n: number }>()
   const jumpToMessage = useCallback(
-    (id: string) => setJump((j) => ({ id, n: (j?.n ?? 0) + 1 })),
-    [],
+    (id: string) => {
+      // Let go of the end first: drawing earlier messages grows the thread, and a pinned view
+      // would snap back to the bottom and undo the jump.
+      releaseEnd()
+      setJump((j) => ({ id, n: (j?.n ?? 0) + 1 }))
+    },
+    [releaseEnd],
   )
   useEffect(() => {
     if (!jump) return
-    const node = scroller.current?.querySelector(`[data-msg-id="${CSS.escape(jump.id)}"]`)
-    node?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    const el = scroller.current
+    const node = el?.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(jump.id)}"]`)
+    if (!el || !node) return
+    // Instant, not smooth: a long smooth scroll fires scroll handlers on every frame and is cut
+    // short whenever the thread above it settles.
+    const top = node.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop
+    el.scrollTo({ top: Math.max(0, top - 12), behavior: 'auto' })
   }, [jump])
 
   // The agent's browser tool calls go to the window showing its session.
@@ -154,6 +167,15 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
     (requestId: string, answers?: Record<string, string[]>) =>
       answerQuestion(sessionId, requestId, answers),
     [sessionId],
+  )
+  // Stable on purpose: an inline function here would re-render the whole transcript on every keystroke.
+  const quote = useCallback(
+    (selected: string, turnNo: number) => {
+      const drafts = useComposerDrafts.getState()
+      drafts.setDraft(memoryKey, appendReplyQuote(drafts.drafts[memoryKey] ?? '', selected, turnNo))
+      setQuoteFocus((n) => n + 1)
+    },
+    [memoryKey],
   )
   const fork = useCallback(
     async (throughTurn?: number) => {
@@ -208,6 +230,35 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
   // Forking needs the agent's own conversation id, which exists once the first turn has begun.
   const canFork = provider?.capabilities.fork === true && session.completedTurns > 0
 
+  const startEditingQueued = (queueId: string) => {
+    const queued = session.queue.find((q) => q.queueId === queueId)
+    if (!queued || editingQueue) return
+    const drafts = useComposerDrafts.getState()
+    stashedDraft.current = drafts.drafts[memoryKey] ?? ''
+    drafts.setDraft(memoryKey, queued.text)
+    setEditingQueue({ queueId, original: queued.text })
+    setQuoteFocus((n) => n + 1)
+  }
+  const stopEditingQueued = () => {
+    const stashed = stashedDraft.current
+    if (stashed !== undefined) useComposerDrafts.getState().setDraft(memoryKey, stashed)
+    stashedDraft.current = undefined
+    setEditingQueue(undefined)
+  }
+  // The message went out or was removed while it was open: the box goes back to what it held.
+  const stillQueued = !editingQueue || session.queue.some((q) => q.queueId === editingQueue.queueId)
+  useEffect(() => {
+    if (!stillQueued) stopEditingQueued()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stillQueued])
+  // Leaving the session mid-edit must not leave the edited text behind as its draft.
+  useEffect(
+    () => () => {
+      const stashed = stashedDraft.current
+      if (stashed !== undefined) useComposerDrafts.getState().setDraft(memoryKey, stashed)
+    },
+    [memoryKey],
+  )
   const report = (err: unknown) => setActionError(err instanceof Error ? err.message : String(err))
 
   return (
@@ -292,7 +343,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                     setRenaming(true)
                   }}
                 >
-                  <Pencil size={15} /> Rename session
+                  <Pencil size={14} /> Rename session
                 </button>
                 <button
                   className="menu-row"
@@ -306,7 +357,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                     })
                   }}
                 >
-                  <Plus size={15} />
+                  <Plus size={14} />
                   {session.projectless
                     ? 'New session without a project'
                     : 'New session in this folder'}
@@ -319,7 +370,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                     else openWaitingDialog(sessionId)
                   }}
                 >
-                  <BellRing size={15} />
+                  <BellRing size={14} />
                   {session.waitingMark ? 'Clear waiting on you' : 'Mark as waiting on you'}
                 </button>
                 <button
@@ -329,7 +380,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                     void setSessionPinned(sessionId, !session.pinned)
                   }}
                 >
-                  {session.pinned ? <PinOff size={15} /> : <Pin size={15} />}
+                  {session.pinned ? <PinOff size={14} /> : <Pin size={14} />}
                   {session.pinned ? 'Unpin' : 'Pin to top'}
                 </button>
                 <button
@@ -346,7 +397,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                     })
                   }}
                 >
-                  <ArrowRightLeft size={15} />
+                  <ArrowRightLeft size={14} />
                   Continue with another agent
                 </button>
                 {canFork && (
@@ -357,7 +408,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                       void fork()
                     }}
                   >
-                    <GitFork size={15} />
+                    <GitFork size={14} />
                     Fork this session
                   </button>
                 )}
@@ -368,7 +419,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                     close()
                   }}
                 >
-                  <Copy size={15} />
+                  <Copy size={14} />
                   {session.projectless ? 'Copy session files path' : 'Copy folder path'}
                 </button>
                 <button
@@ -378,7 +429,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                     downloadSession(session, hostName ?? hostKey)
                   }}
                 >
-                  <Copy size={15} /> Export transcript (.md)
+                  <Copy size={14} /> Export transcript (.md)
                 </button>
                 <button
                   className="menu-row"
@@ -413,7 +464,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                     close()
                   }}
                 >
-                  <Copy size={15} />
+                  <Copy size={14} />
                   Copy session link
                 </button>
               </>
@@ -448,14 +499,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
               onOpenFile={openFile}
               onApprove={approveRequest}
               onAnswer={answerRequest}
-              onQuote={(selected, turnNo) => {
-                const drafts = useComposerDrafts.getState()
-                drafts.setDraft(
-                  memoryKey,
-                  appendReplyQuote(drafts.drafts[memoryKey] ?? '', selected, turnNo),
-                )
-                setQuoteFocus((n) => n + 1)
-              }}
+              onQuote={quote}
               onFork={canFork ? fork : undefined}
               jumpTo={jump}
               completedTurns={session.completedTurns}
@@ -486,8 +530,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
         key={sessionId}
         draftId={sessionId}
         cwd={session.cwd}
-        text={text}
-        onTextChange={setText}
+        memoryKey={memoryKey}
         placeholder={
           session.items.length === 0
             ? 'Describe a task…'
@@ -515,19 +558,29 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
               canSteer={canSteer}
               onSend={(queueId) => void dequeue(sessionId, queueId, 'steer').catch(report)}
               onCancel={(queueId) => void dequeue(sessionId, queueId, 'cancel').catch(report)}
-              onEdit={async (queueId, text, expectedText) => {
-                await hostRequest(hostKey, 'sessions.queue.edit', {
-                  sessionId,
-                  queueId,
-                  text,
-                  expectedText,
-                })
-              }}
+              editingId={editingQueue?.queueId}
+              onEdit={startEditingQueued}
               onMove={async (queueId, direction) => {
                 await hostRequest(hostKey, 'sessions.queue.move', { sessionId, queueId, direction })
               }}
             />
           </>
+        }
+        editing={
+          editingQueue
+            ? {
+                onSave: async (text) => {
+                  await hostRequest(hostKey, 'sessions.queue.edit', {
+                    sessionId,
+                    queueId: editingQueue.queueId,
+                    text,
+                    expectedText: editingQueue.original,
+                  })
+                  stopEditingQueued()
+                },
+                onCancel: stopEditingQueued,
+              }
+            : undefined
         }
         busy={busy}
         onStop={() => {
@@ -542,7 +595,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
           try {
             await prompt(sessionId, value, attachments, delivery)
           } catch (err) {
-            useComposerDrafts.getState().restoreDraft(memoryKey, text)
+            useComposerDrafts.getState().restoreDraft(memoryKey, value)
             throw err
           }
         }}
@@ -609,7 +662,7 @@ function PaneButtons({ pane }: { pane: PaneInfo }) {
         title="Show this session alone"
         onClick={pane.solo}
       >
-        <Maximize2 size={15} />
+        <Maximize2 size={14} />
       </Button>
       <Button
         variant="app"
@@ -618,7 +671,7 @@ function PaneButtons({ pane }: { pane: PaneInfo }) {
         title="Close this pane (the session keeps running)"
         onClick={pane.close}
       >
-        <X size={17} />
+        <X size={18} />
       </Button>
     </>
   )
@@ -662,9 +715,7 @@ function SessionFooter({
         </span>
       )}
       {(stats.added > 0 || stats.removed > 0) && (
-        <span className="stat">
-          <span className="add">+{stats.added}</span> <span className="del">−{stats.removed}</span>
-        </span>
+        <DiffStat added={stats.added} removed={stats.removed} />
       )}
     </div>
   )

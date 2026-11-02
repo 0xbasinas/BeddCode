@@ -15,6 +15,7 @@ import { usePolled } from './usePolled.ts'
 import { EMPTY_OPERATION, gitOperationKey, useGitOperations } from './operations.ts'
 import { GitOperationStatus } from './GitOperationStatus.tsx'
 import { CiFollowUp } from './CiFollowUp.tsx'
+import { DiffStat } from '../../ui/DiffStat.tsx'
 
 /**
  * Changes, commits and pull request of the folder a session works in. Git is read live (the
@@ -53,7 +54,7 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
   if (info.error) {
     return (
       <div className="git-empty">
-        <BrandIcon brand="git" size={22} />
+        <BrandIcon brand="git" size={24} />
         <div>Git is unavailable here</div>
         <div className="muted">{info.error}</div>
       </div>
@@ -62,7 +63,7 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
   if (!info.data?.isRepo) {
     return (
       <div className="git-empty">
-        <BrandIcon brand="git" size={22} />
+        <BrandIcon brand="git" size={24} />
         <div>This folder is not a git repository</div>
         <div className="muted">Run `git init` in it to track changes here.</div>
       </div>
@@ -105,7 +106,7 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
         <span className="git-project pane-project" title={project.title}>
           <Folder size={14} /> {project.label}
         </span>
-        <GitBranch size={15} />
+        <GitBranch size={14} />
         <code>{info.data.branch ?? 'detached HEAD'}</code>
         {(info.data.ahead ?? 0) > 0 && <span className="add">↑{info.data.ahead}</span>}
         {(info.data.behind ?? 0) > 0 && <span className="del">↓{info.data.behind}</span>}
@@ -122,11 +123,7 @@ export function GitPane({ workspace }: { workspace: PaneWorkspace }) {
         {tab === 'commits' && log.data?.base ? (
           <span className="muted">vs {log.data.base}</span>
         ) : (
-          (added > 0 || removed > 0) && (
-            <span className="stat">
-              <span className="add">+{added}</span> <span className="del">−{removed}</span>
-            </span>
-          )
+          (added > 0 || removed > 0) && <DiffStat added={added} removed={removed} />
         )}
       </div>
 

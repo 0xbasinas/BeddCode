@@ -7,7 +7,14 @@ import {
   PanelRightOpen,
   SquareTerminal,
 } from 'lucide-react'
-import { lazy, Suspense, useEffect, type ComponentType, type ReactNode } from 'react'
+import {
+  lazy,
+  Suspense,
+  useDeferredValue,
+  useEffect,
+  type ComponentType,
+  type ReactNode,
+} from 'react'
 import { useRouterState } from '@tanstack/react-router'
 import { useSession, useSessionHostKey } from '../../stores/host.ts'
 import { HostScopeProvider } from '../../stores/HostScope.tsx'
@@ -56,7 +63,10 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
   const togglePaneCollapsed = useUiStore((s) => s.togglePaneCollapsed)
   const lastPane = useUiStore((s) => s.lastPane)
   const lastLabel = panes.find((p) => p.id === lastPane)?.label ?? 'pane'
-  const sessionId = useActiveSessionId()
+  // The side pane follows the session one low-priority render later. It is rebuilt for each session
+  // (a new terminal, git status, file tree), and doing that in the same render as the thread switch
+  // made every Ctrl+Tab wait for both.
+  const sessionId = useDeferredValue(useActiveSessionId())
   const session = useSession(sessionId)
   const sessionHostKey = useSessionHostKey(sessionId)
   const composer = useComposerWorkspace((s) => s.workspace)
@@ -185,7 +195,7 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
             onFocus={preloadPane[id]}
             onClick={() => togglePane(id)}
           >
-            <Icon size={20} />
+            <Icon size={18} />
           </button>
         ))}
       </nav>

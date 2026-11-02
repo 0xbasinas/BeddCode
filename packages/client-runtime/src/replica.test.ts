@@ -591,3 +591,27 @@ describe('replica: tool approvals', () => {
     })
   })
 })
+
+it('files a turn’s changes card before a message queued behind it, not after', () => {
+  const state = fold([
+    created,
+    { type: 'turn.started', turnId: 't1' },
+    { type: 'message.delta', role: 'user', text: 'first', turnId: 't1' },
+    { type: 'message.delta', role: 'assistant', text: 'done', turnId: 't1' },
+    // The next message starts its turn while the first turn's snapshot is still being taken.
+    { type: 'message.delta', role: 'user', text: 'second', turnId: 't2' },
+    {
+      type: 'turn.changes',
+      turnId: 't1',
+      before: 'a',
+      after: 'b',
+      files: [{ path: 'x.ts', status: 'modified', added: 1, removed: 0 }],
+    },
+  ] as Draft[])
+  expect(state.sessions.s1?.items.map((i) => (i.kind === 'message' ? i.text : i.kind))).toEqual([
+    'first',
+    'done',
+    'changes',
+    'second',
+  ])
+})

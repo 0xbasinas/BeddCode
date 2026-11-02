@@ -54,7 +54,7 @@ export function ModeMenu({
           onClick={toggle}
           aria-label="Permission mode"
         >
-          <Shield size={15} /> {current.label} <ChevronDown size={14} />
+          <Shield size={14} /> {current.label} <ChevronDown size={14} />
         </button>
       )}
     >

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Checkbox } from '@/components/ui/checkbox'
 import type { CiReport } from '@beddcode/contracts'
 import { hostRequest } from '../../stores/host.ts'
 import { composerDraftKey, useComposerDrafts } from '../composer/drafts.ts'
@@ -98,14 +99,12 @@ export function CiFollowUp({
             Review before sending.
           </p>
           {report.failures.map((failure, index) => (
-            <label key={index} style={{ display: 'block' }}>
-              <input
-                type="checkbox"
+            <label key={index} className="check-row">
+              <Checkbox
                 checked={selected.includes(index)}
-                onChange={(event) => {
-                  const selection = event.target.checked
-                    ? [...selected, index]
-                    : selected.filter((i) => i !== index)
+                onCheckedChange={(checked) => {
+                  const selection =
+                    checked === true ? [...selected, index] : selected.filter((i) => i !== index)
                   setSelected(selection)
                   setText(
                     ciPrompt({
@@ -114,7 +113,7 @@ export function CiFollowUp({
                     }),
                   )
                 }}
-              />{' '}
+              />
               {failure.checks.join(', ')}
             </label>
           ))}
@@ -131,12 +130,11 @@ export function CiFollowUp({
             Add to message draft
           </button>
           {stale && (
-            <label>
-              <input
-                type="checkbox"
+            <label className="check-row">
+              <Checkbox
                 checked={allowStale}
-                onChange={(event) => setAllowStale(event.target.checked)}
-              />{' '}
+                onCheckedChange={(checked) => setAllowStale(checked === true)}
+              />
               Keep captured logs despite stale or unverified PR head
             </label>
           )}

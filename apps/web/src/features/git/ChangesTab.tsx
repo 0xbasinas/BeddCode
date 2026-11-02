@@ -18,6 +18,7 @@ import { GenerateGitText } from './GenerateGitText.tsx'
 import { commitFiles, gitOperationKey, useGitOperations } from './operations.ts'
 import { folderId, useFiles } from '../files/filesStore.ts'
 import { useUiStore } from '../../stores/ui.ts'
+import { DiffStat } from '../../ui/DiffStat.tsx'
 
 const STATUS_COLOR: Record<GitFile['status'], string> = {
   M: 'var(--accent)',
@@ -91,10 +92,12 @@ export function ChangesTab({
 
   if (status.files.length === 0 && comments.length === 0) {
     return (
-      <div className="git-empty">
-        <Check size={22} />
-        <div>Nothing to commit</div>
-        <div className="muted">Your working tree is clean.</div>
+      <div className="pane-empty">
+        <span className="empty-icon">
+          <Check size={24} />
+        </span>
+        <h3>Nothing to commit</h3>
+        <p>Your working tree is clean.</p>
         <Button variant="app" className="secondary" onClick={onOpenCommits}>
           View commits & push
         </Button>
@@ -118,7 +121,7 @@ export function ChangesTab({
             aria-label="Select all"
             disabled={busy !== null}
           >
-            {allSelected ? <Check size={13} /> : selected.length > 0 ? <Minus size={13} /> : null}
+            {allSelected ? <Check size={14} /> : selected.length > 0 ? <Minus size={14} /> : null}
           </button>
           <span>
             {selected.length} of {status.files.length} selected
@@ -162,7 +165,7 @@ export function ChangesTab({
                         disabled={busy !== null}
                         onClick={() => setOverrides((o) => ({ ...o, [file.path]: !checked }))}
                       >
-                        {checked && <Check size={13} />}
+                        {checked && <Check size={14} />}
                       </button>
                       <button
                         className="change-name"
@@ -171,10 +174,7 @@ export function ChangesTab({
                       >
                         {file.name}
                       </button>
-                      <span className="stat">
-                        <span className="add">+{file.added}</span>{' '}
-                        <span className="del">−{file.removed}</span>
-                      </span>
+                      <DiffStat added={file.added} removed={file.removed} />
                       <span className="status-letter" style={{ color: STATUS_COLOR[file.status] }}>
                         {file.status}
                       </span>

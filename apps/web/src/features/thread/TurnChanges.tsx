@@ -9,6 +9,7 @@ import { hostRequest } from '../../stores/host.ts'
 import { CiFollowUp } from '../git/CiFollowUp.tsx'
 import { refreshSessionPr, useSessionPr } from '../../stores/sessionPr.ts'
 import { FileIcon } from '../files/FileIcon.tsx'
+import { DiffStat } from '../../ui/DiffStat.tsx'
 
 type Changes = Extract<TranscriptItem, { kind: 'changes' }>
 
@@ -88,9 +89,7 @@ export function TurnChangesCard({
               {count === 1 ? '1 file' : `${count} files`}
               {item.truncated ? '+' : ''} during this turn
             </strong>
-            <span className="stat">
-              <span className="add">+{added}</span> <span className="del">−{removed}</span>
-            </span>
+            <DiffStat added={added} removed={removed} />
           </span>
           {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </button>
@@ -243,10 +242,7 @@ function ChangedFile({
           {file.binary ? (
             <span className="stat muted">binary</span>
           ) : (
-            <span className="stat">
-              <span className="add">+{file.added}</span>{' '}
-              <span className="del">−{file.removed}</span>
-            </span>
+            <DiffStat added={file.added} removed={file.removed} />
           )}
         </button>
         {onOpenFile && (
@@ -263,7 +259,7 @@ function ChangedFile({
           aria-label={`${open ? 'Collapse' : 'Expand'} diff for ${file.path}`}
           onClick={toggle}
         >
-          {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+          {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </button>
       </div>
       {open &&

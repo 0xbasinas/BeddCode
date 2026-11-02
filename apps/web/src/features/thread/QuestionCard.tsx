@@ -70,11 +70,11 @@ export function QuestionCard({
     >
       <div className="approval-state">
         {open ? (
-          <CircleHelp size={15} />
+          <CircleHelp size={14} />
         ) : item.dismissed ? (
-          <CirclePause size={15} />
+          <CirclePause size={14} />
         ) : (
-          <Check size={15} />
+          <Check size={14} />
         )}
         {open ? 'The agent has a question' : item.dismissed ? 'Question dismissed' : 'Answered'}
       </div>

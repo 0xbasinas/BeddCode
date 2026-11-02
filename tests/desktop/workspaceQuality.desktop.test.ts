@@ -490,8 +490,9 @@ test('edits and reorders queued follow-ups without steering the running turn', a
   }
   const queue = page.getByRole('list', { name: 'Queued messages' })
   await queue.getByRole('button', { name: 'Edit', exact: true }).first().click()
-  await queue.getByRole('textbox', { name: 'Edit queued message' }).fill('edited first follow-up')
-  await queue.getByRole('button', { name: 'Save queued message', exact: true }).click()
+  // Editing happens in the composer: its box holds the text and Send becomes Save.
+  await page.getByRole('textbox', { name: 'Edit queued message' }).fill('edited first follow-up')
+  await page.getByRole('button', { name: 'Save queued message', exact: true }).click()
   await queue.getByRole('button', { name: 'Move queued message 2 up' }).click()
   await expect
     .poll(async () => queue.locator('.queue-text').allTextContents())

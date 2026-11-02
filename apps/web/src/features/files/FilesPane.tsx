@@ -116,7 +116,7 @@ export function FilesPane({ workspace }: { workspace: PaneWorkspace }) {
           </Button>
         </div>
         <div className="search-box">
-          <Search size={15} />
+          <Search size={14} />
           <input
             placeholder="Search files"
             value={query}
@@ -304,7 +304,7 @@ function EditorColumn({
                 }
                 onClick={() => closeTab(path)}
               >
-                {d?.dirty ? <span className="dirty-dot" /> : <X size={13} />}
+                {d?.dirty ? <span className="dirty-dot" /> : <X size={14} />}
               </button>
             </div>
           )
@@ -333,7 +333,7 @@ function EditorColumn({
           title="Attach saved file to message"
           onClick={() => onAttach(doc.path)}
         >
-          <Paperclip size={15} />
+          <Paperclip size={14} />
         </Button>
         {!doc.binary && !doc.tooLarge && !doc.error && !doc.media && (
           <button
@@ -458,7 +458,7 @@ function EditorColumn({
       ) : doc.binary ? (
         <div className="pane-empty">
           <span className="empty-icon">
-            <FolderOpen size={26} />
+            <FolderOpen size={24} />
           </span>
           <h3>Binary file</h3>
           <p>{formatBytes(doc.size)} · no preview.</p>

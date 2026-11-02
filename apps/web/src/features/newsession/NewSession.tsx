@@ -150,11 +150,6 @@ export function NewSession({
   const welcome = showWelcome({ initialProject, compose, synced, hasSessions, setupSkipped })
   const draftId = projectDraftId(folder)
   const memoryKey = composerDraftKey(hostKey, draftId)
-  const text = useComposerDrafts((s) => s.drafts[memoryKey] ?? '')
-  const setText = useCallback(
-    (value: string) => useComposerDrafts.getState().setDraft(memoryKey, value),
-    [memoryKey],
-  )
   // Drafts are kept per host and folder, so picking another one would show an empty box; what is
   // already written goes along instead.
   const carryText = (nextHostKey: string, nextFolder: string) => {
@@ -342,7 +337,7 @@ export function NewSession({
       if (activeDraft.current === memoryKey)
         void navigate({ to: '/session/$sessionId', params: { sessionId } })
     } catch (err) {
-      useComposerDrafts.getState().restoreDraft(memoryKey, text)
+      useComposerDrafts.getState().restoreDraft(memoryKey, value)
       throw err
     }
   }
@@ -390,8 +385,7 @@ export function NewSession({
         </p>
         <Composer
           cwd={(workspace.existing?.path ?? folder) || undefined}
-          text={text}
-          onTextChange={setText}
+          memoryKey={memoryKey}
           placeholder="Describe a task, or paste an issue link…"
           busy={false}
           disabled={connection !== 'connected' || !agent || (!!folder && repo === 'loading')}
@@ -481,7 +475,7 @@ export function NewSession({
                   title={`Start other agents: ${agentTools ? 'on' : 'off'}. Approvals still come to you.`}
                   onClick={() => setAgentTools((v) => !v)}
                 >
-                  <Bot size={15} aria-hidden="true" />
+                  <Bot size={14} aria-hidden="true" />
                 </button>
                 <button
                   className="capability-toggle"
@@ -490,7 +484,7 @@ export function NewSession({
                   title={`Use browser: ${browserTools ? 'on' : 'off'}. Let the agent use browser tabs in the desktop app.`}
                   onClick={() => setBrowserTools((v) => !v)}
                 >
-                  <Globe size={15} aria-hidden="true" />
+                  <Globe size={14} aria-hidden="true" />
                 </button>
                 <button
                   className="capability-toggle"
@@ -499,7 +493,7 @@ export function NewSession({
                   title={`Design canvases: ${designTools ? 'on' : 'off'}. Let the agent read and edit designs.`}
                   onClick={() => setDesignTools((v) => !v)}
                 >
-                  <PenTool size={15} aria-hidden="true" />
+                  <PenTool size={14} aria-hidden="true" />
                 </button>
                 <button
                   className="capability-toggle"
@@ -508,7 +502,7 @@ export function NewSession({
                   title={`Use computer: ${computerTools ? 'on' : 'off'}. Let the agent open and operate apps on this machine's desktop. You approve each app it did not open.`}
                   onClick={() => setComputerTools((v) => !v)}
                 >
-                  <MousePointer2 size={15} aria-hidden="true" />
+                  <MousePointer2 size={14} aria-hidden="true" />
                 </button>
                 <button
                   className="capability-toggle"
@@ -517,7 +511,7 @@ export function NewSession({
                   title={`Linear issues: ${linearTools ? 'on' : 'off'}. Let the agent read your Linear issues (read-only). Connect Linear first.`}
                   onClick={() => setLinearTools((v) => !v)}
                 >
-                  <ListChecks size={15} aria-hidden="true" />
+                  <ListChecks size={14} aria-hidden="true" />
                 </button>
               </div>
               {repo && repo !== 'loading' && (
@@ -552,7 +546,7 @@ function HostChip({ hostKey, onPick }: { hostKey: string; onPick(key: string): v
       trigger={({ toggle }) => (
         <button className="chip-lite" onClick={toggle} aria-label="Host">
           {hostKey === LOCAL_HOST_KEY ? <Monitor size={14} /> : <Server size={14} />}{' '}
-          <span className="chip-text">{name}</span> <ChevronDown size={13} />
+          <span className="chip-text">{name}</span> <ChevronDown size={14} />
         </button>
       )}
     >
@@ -622,7 +616,7 @@ export function AgentChip({
         <button className="chip-lite" onClick={toggle} aria-label="Agent">
           <AgentMark agent={current?.id} label={current?.label ?? '–'} />
           <span className="chip-text">{current?.label ?? 'No agent'}</span>{' '}
-          <ChevronDown size={13} />
+          <ChevronDown size={14} />
         </button>
       )}
     >
@@ -697,7 +691,7 @@ function FolderChip({
               close()
             }}
           >
-            <MessageSquare size={15} />
+            <MessageSquare size={14} />
             <span className="menu-text">
               <span className="menu-title">No project</span>
               <span className="menu-desc">Start a session without a project folder</span>
@@ -731,7 +725,7 @@ function FolderChip({
               void onAdd()
             }}
           >
-            <FolderPlus size={15} />
+            <FolderPlus size={14} />
             <span className="menu-text">Add folder…</span>
           </button>
         </>
@@ -786,7 +780,7 @@ function WorkspaceChip({
       trigger={({ toggle }) => (
         <button className="chip-lite" onClick={toggle} aria-label="Workspace">
           <GitBranch size={14} /> <span className="chip-text">{label}</span>{' '}
-          <ChevronDown size={13} />
+          <ChevronDown size={14} />
         </button>
       )}
     >

@@ -127,7 +127,7 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
               aria-label="Back to workspace"
               title="Back to workspace"
             >
-              <ArrowLeft size={17} />
+              <ArrowLeft size={18} />
             </Link>
           </div>
           <label className="settings-search">

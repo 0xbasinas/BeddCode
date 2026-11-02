@@ -102,6 +102,8 @@ declare global {
       pickFolder?(options?: { defaultPath?: string }): Promise<string | null>
       /** Tells the window which theme the page draws, so what shows behind it matches. */
       setTheme?(theme: 'light' | 'dark'): Promise<boolean>
+      /** Shows how many sessions wait for the user on the app's icon (dock badge or taskbar overlay). */
+      setAttention?(count: number, overlay?: string | null): Promise<boolean>
       /** The app's own window buttons; absent on macOS builds that keep the traffic lights. */
       window?: DesktopWindow
       /** The browser pane's pages, native views the desktop app lays over the pane. */

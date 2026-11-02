@@ -103,7 +103,7 @@ function FolderBrowserDialog({ hostKey }: { hostKey: string }) {
             aria-label="Close"
             onClick={() => closeBrowser(null)}
           >
-            <X size={15} />
+            <X size={14} />
           </Button>
         </header>
         <nav className="fb-crumbs" aria-label="Folder path">
@@ -115,17 +115,17 @@ function FolderBrowserDialog({ hostKey }: { hostKey: string }) {
                 aria-current={i === crumbs.length - 1 ? 'location' : undefined}
                 onClick={() => open(c.path)}
               >
-                {c.home && <House size={13} />}
+                {c.home && <House size={14} />}
                 {c.name}
               </button>
             </span>
           ))}
-          {loading && <Loader2 size={13} className="fb-spin" />}
+          {loading && <Loader2 size={14} className="fb-spin" />}
         </nav>
         <div className="fb-list" ref={list} role="listbox" aria-label="Folders">
           {listing?.parent && (
             <button className="fb-row up" onClick={() => open(listing.parent!)}>
-              <CornerLeftUp size={15} />
+              <CornerLeftUp size={14} />
               <span className="fb-name">{folderBaseName(listing.parent)}</span>
             </button>
           )}
@@ -162,16 +162,16 @@ function FolderBrowserDialog({ hostKey }: { hostKey: string }) {
                   }
                 }}
               >
-                <Icon size={15} />
+                <Icon size={14} />
                 <span className="fb-name">{entry.name}</span>
                 {isAdded(entry.path) ? (
                   <span className="recent-added">
-                    <Check size={11} /> Added
+                    <Check size={12} /> Added
                   </span>
                 ) : entry.isRepo ? (
                   entry.branch && (
                     <span className="folder-chip">
-                      <GitBranch size={10} />
+                      <GitBranch size={12} />
                       {entry.branch}
                     </span>
                   )
@@ -190,7 +190,7 @@ function FolderBrowserDialog({ hostKey }: { hostKey: string }) {
                     open(entry.path)
                   }}
                 >
-                  <ChevronRight size={13} />
+                  <ChevronRight size={14} />
                 </button>
               </div>
             )

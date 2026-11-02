@@ -24,6 +24,7 @@ import { useUiStore } from '../../stores/ui.ts'
 import { folderName } from '../../ui/format.ts'
 import { SessionNotes } from './SessionNotes.tsx'
 import { environmentHint } from './environment.ts'
+import { DiffStat } from '../../ui/DiffStat.tsx'
 
 /** The agent's name under the composer. The Environment bar is always there; nothing here hides it. */
 /** Focuses the element `selector` names as soon as it exists (within ~10 frames), else `fallback`. */
@@ -117,7 +118,7 @@ export function EnvironmentButton({
         aria-controls={open ? cardId : undefined}
         onClick={() => setOpen(!open)}
       >
-        <Layers size={17} />
+        <Layers size={18} />
         {hint && <span className={`env-hint ${hint}`} aria-hidden="true" />}
       </button>
       {open && (
@@ -142,7 +143,7 @@ export function EnvironmentButton({
                   void navigate({ to: '/settings' })
                 }}
               >
-                <Settings size={13} />
+                <Settings size={14} />
               </Button>
               <Button
                 variant="app"
@@ -150,7 +151,7 @@ export function EnvironmentButton({
                 aria-label="Minimize"
                 onClick={() => close(true)}
               >
-                <Minus size={13} />
+                <Minus size={14} />
               </Button>
             </span>
           </div>
@@ -169,10 +170,7 @@ export function EnvironmentButton({
             >
               <FileDiff size={16} />
               <span className="menu-text menu-title">Changes</span>
-              <span className="stat">
-                <span className="add">+{stats.added}</span>{' '}
-                <span className="del">−{stats.removed}</span>
-              </span>
+              <DiffStat added={stats.added} removed={stats.removed} />
             </button>
             <button
               className="menu-row"
@@ -249,7 +247,7 @@ export function EnvironmentButton({
                       >
                         {option.label}
                         <span className="spacer" />
-                        {mode.id === option.id && <Check size={13} />}
+                        {mode.id === option.id && <Check size={14} />}
                       </button>
                     ))}
                   </div>

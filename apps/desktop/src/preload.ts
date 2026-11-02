@@ -13,6 +13,12 @@ contextBridge.exposeInMainWorld('beddcodeDesktop', {
     ipcRenderer.invoke('beddcode:pick-folder', options ?? {}),
   setTheme: (theme: 'light' | 'dark'): Promise<boolean> =>
     ipcRenderer.invoke('beddcode:theme', theme),
+  /**
+   * How many sessions are waiting for the user: the dock badge (macOS, Linux) and, on Windows, the
+   * taskbar overlay, drawn by the page and passed as a PNG data URL (null clears it).
+   */
+  setAttention: (count: number, overlay?: string | null): Promise<boolean> =>
+    ipcRenderer.invoke('beddcode:attention', count, overlay ?? null),
   /** The local host the app keeps running (see daemon.ts). */
   daemon: {
     status: (): Promise<unknown> => ipcRenderer.invoke('beddcode:daemon', 'status'),

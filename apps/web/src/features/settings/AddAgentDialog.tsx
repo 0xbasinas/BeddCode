@@ -149,7 +149,7 @@ export function AddAgentDialog({
                 setError(undefined)
               }}
             >
-              <ArrowLeft size={17} />
+              <ArrowLeft size={18} />
             </Button>
           )}
           <div>
@@ -317,7 +317,7 @@ export function AddAgentDialog({
                   className="settings-button"
                   onClick={() => setVariables((current) => [...current, { name: '', value: '' }])}
                 >
-                  <Plus size={13} /> Add variable
+                  <Plus size={14} /> Add variable
                 </Button>
               </div>
               {variables.map((variable, i) => (

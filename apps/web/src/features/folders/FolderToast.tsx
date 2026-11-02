@@ -121,7 +121,7 @@ function ToastBody({ toast, onDismiss }: { toast: Toast; onDismiss(): void }) {
         aria-label="Dismiss"
         onClick={onDismiss}
       >
-        <X size={13} />
+        <X size={14} />
       </button>
     </>
   )
@@ -134,7 +134,7 @@ export function FolderPickerHint() {
   return (
     <div className="folder-picking" aria-live="polite">
       <div className="folder-picking-hint">
-        <FolderOpen size={13} /> Choose a folder in the window that opened…
+        <FolderOpen size={14} /> Choose a folder in the window that opened…
       </div>
     </div>
   )

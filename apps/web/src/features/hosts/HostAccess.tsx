@@ -106,7 +106,7 @@ export function ShareThisComputer({ onClose }: { onClose(): void }) {
             <div className="hosts-code-caption">
               <CopyHostText text={code.code} label="Copy code" />
               <span className="hosts-timer">
-                <Clock size={13} />
+                <Clock size={14} />
                 {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')} · works once
               </span>
             </div>
@@ -261,7 +261,7 @@ function RelaySetting({ onChange }: { onChange(): void }) {
               onKeyDown={(e) => (e.key === ' ' || e.key === 'Enter') && setPeeking(true)}
               onKeyUp={() => setPeeking(false)}
             >
-              <Eye size={15} />
+              <Eye size={14} />
             </button>
           )}
         </span>
@@ -394,7 +394,7 @@ function PairedDevices() {
         <div className="hosts-list">
           {devices.map((device) => (
             <div className="hosts-saved-row" key={device.id}>
-              <Monitor size={22} />
+              <Monitor size={24} />
               <span className="hosts-machine">
                 <strong>{device.name}</strong>
                 <span>

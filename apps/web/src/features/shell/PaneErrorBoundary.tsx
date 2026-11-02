@@ -30,7 +30,7 @@ export class PaneErrorBoundary extends Component<Props, State> {
     if (error) {
       return (
         <div className="pane-error" role="alert">
-          <TriangleAlert size={22} />
+          <TriangleAlert size={24} />
           <strong>{this.props.pane} pane stopped after an error.</strong>
           <span className="muted small">Try reloading this pane.</span>
           <button type="button" className="icon-btn" onClick={this.retry}>

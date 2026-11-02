@@ -1,3 +1,4 @@
+import { Slider } from '@/components/ui/slider'
 import { useEffect, useRef, useState } from 'react'
 import {
   Check,
@@ -309,7 +310,7 @@ export function ImageAnnotator({ src, onDone }: { src: string; onDone(png: Blob)
               setNote(null)
             }}
           >
-            <Icon size={15} />
+            <Icon size={14} />
           </button>
         ))}
         <span className="annotate-sep" />
@@ -338,14 +339,14 @@ export function ImageAnnotator({ src, onDone }: { src: string; onDone(png: Blob)
           <button aria-label="Smaller" title="Smaller ([)" onClick={() => setSize(size - 1)}>
             −
           </button>
-          <input
-            type="range"
+          <Slider
+            className="annotate-slider"
             aria-label="Size"
             min={min}
             max={max}
             step={1}
-            value={size}
-            onChange={(e) => setSize(Number(e.target.value))}
+            value={[size]}
+            onValueChange={([v]) => setSize(v ?? size)}
           />
           <button aria-label="Larger" title="Larger (])" onClick={() => setSize(size + 1)}>
             +
@@ -361,11 +362,11 @@ export function ImageAnnotator({ src, onDone }: { src: string; onDone(png: Blob)
           disabled={!hasFill}
           onClick={() => setFilled(!filled)}
         >
-          <PaintBucket size={15} />
+          <PaintBucket size={14} />
         </button>
         <span className="annotate-sep" />
         <button aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!strokes.length} onClick={undo}>
-          <Undo2 size={15} />
+          <Undo2 size={14} />
         </button>
         <button
           aria-label="Clear"
@@ -373,14 +374,14 @@ export function ImageAnnotator({ src, onDone }: { src: string; onDone(png: Blob)
           disabled={!strokes.length}
           onClick={() => setStrokes([])}
         >
-          <Eraser size={15} />
+          <Eraser size={14} />
         </button>
         <button
           className="annotate-done"
           disabled={!strokes.length}
           onClick={() => canvas.current?.toBlob((b) => b && onDone(b), 'image/png')}
         >
-          <Check size={15} /> Attach
+          <Check size={14} /> Attach
         </button>
       </div>
       <div className="annotate-stage">

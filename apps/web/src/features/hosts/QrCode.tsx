@@ -29,7 +29,7 @@ export function QrCode({
       height={size}
       viewBox={`0 0 ${modules} ${modules}`}
       shapeRendering="crispEdges"
-      style={{ borderRadius: 10, background: '#fff', flex: 'none' }}
+      style={{ borderRadius: 'var(--corner-lg)', background: '#fff', flex: 'none' }}
     >
       <rect width={modules} height={modules} fill="#fff" />
       <path d={path} fill="#111" />

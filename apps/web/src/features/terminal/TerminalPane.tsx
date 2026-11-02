@@ -211,30 +211,6 @@ function TerminalPaneContent({ workspace }: { workspace: PaneWorkspace }) {
 
   return (
     <div className="pane-body">
-      {connection !== 'connected' && (
-        <div className="banner" role="status">
-          Disconnected from host. Reconnecting will reattach to surviving terminals.
-        </div>
-      )}
-      {recoveryNotice && (
-        <div className="banner" role="status">
-          {recoveryNotice}
-          <button
-            onClick={() => {
-              setRecoveryNotice(undefined)
-              if (!active) {
-                try {
-                  localStorage.removeItem(terminalKey)
-                } catch {
-                  /* Optional persistence. */
-                }
-              }
-            }}
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
       <div className="pane-head">
         <h2>Terminal</h2>
         <span className="muted pane-project" title={shown.title}>
@@ -255,7 +231,7 @@ function TerminalPaneContent({ workspace }: { workspace: PaneWorkspace }) {
           onMouseDown={(e) => e.preventDefault()}
           onClick={attachSelection}
         >
-          <Paperclip size={17} />
+          <Paperclip size={18} />
         </Button>
         <Button
           variant="app"
@@ -272,9 +248,37 @@ function TerminalPaneContent({ workspace }: { workspace: PaneWorkspace }) {
           disabled={!current}
           onClick={() => current && void close(current.id)}
         >
-          <Trash2 size={17} />
+          <Trash2 size={18} />
         </Button>
       </div>
+      {connection !== 'connected' && (
+        <div className="banner" role="status">
+          Disconnected from host. Reconnecting will reattach to surviving terminals.
+        </div>
+      )}
+      {recoveryNotice && (
+        <div className="banner" role="status">
+          <span className="banner-text">{recoveryNotice}</span>
+          <Button
+            variant="app"
+            className="icon-btn"
+            aria-label="Dismiss notice"
+            title="Dismiss"
+            onClick={() => {
+              setRecoveryNotice(undefined)
+              if (!active) {
+                try {
+                  localStorage.removeItem(terminalKey)
+                } catch {
+                  /* Optional persistence. */
+                }
+              }
+            }}
+          >
+            <X size={14} />
+          </Button>
+        </div>
+      )}
       {current && !current.agent && (
         <div className="muted term-agent-bar" role="status">
           {connection !== 'connected'
@@ -298,7 +302,7 @@ function TerminalPaneContent({ workspace }: { workspace: PaneWorkspace }) {
       {terminals?.length === 0 && (
         <div className="pane-empty">
           <span className="empty-icon">
-            <SquareTerminal size={26} />
+            <SquareTerminal size={24} />
           </span>
           <h3>No terminal yet</h3>
           <p>Start a shell in {shown.label} to run commands.</p>
@@ -350,7 +354,7 @@ function TerminalPaneContent({ workspace }: { workspace: PaneWorkspace }) {
                   >
                     {t.agent ? (
                       <span className="term-tab-agent">
-                        <AgentIcon agent={t.agent.instanceId} label={t.agent.label} size={13} />
+                        <AgentIcon agent={t.agent.instanceId} label={t.agent.label} size={14} />
                         {!agentKind(t.agent.instanceId, t.agent.label) && (
                           <SquareTerminal size={14} />
                         )}
@@ -366,7 +370,7 @@ function TerminalPaneContent({ workspace }: { workspace: PaneWorkspace }) {
                   </button>
                 )}
                 <button aria-label={`Close ${tabLabel(t)}`} onClick={() => void close(t.id)}>
-                  <X size={13} />
+                  <X size={14} />
                 </button>
               </div>
             ))}

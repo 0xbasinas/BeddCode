@@ -156,7 +156,7 @@ export function AddHostFlow({
           <div className={`hosts-flow-heading ${connected ? 'connected' : ''}`}>
             {connected && (
               <span className="hosts-success-mark">
-                <Check size={28} />
+                <Check size={24} />
               </span>
             )}
             <h2>{connected ? `${paired.name} is connected` : `Connecting to ${paired.name}`}</h2>
@@ -299,7 +299,7 @@ export function AddHostFlow({
                       aria-pressed={selected}
                       onClick={() => choose(peer)}
                     >
-                      <Server size={22} />
+                      <Server size={24} />
                       <span className="hosts-machine">
                         <strong>{host.name || peer.name}</strong>
                         <code>
@@ -309,7 +309,7 @@ export function AddHostFlow({
                       <span className={`hosts-status ${peer.online && !added ? 'success' : ''}`}>
                         {added ? 'Already added' : peer.online ? '' : 'Offline'}
                       </span>
-                      {selected ? <Check size={15} /> : <ChevronRight size={15} />}
+                      {selected ? <Check size={14} /> : <ChevronRight size={14} />}
                     </button>
                   )
                 })}

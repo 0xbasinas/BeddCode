@@ -65,7 +65,7 @@ export function HostsDialog({
         <header className="hosts-dialog-header">
           <span>{view === 'add' ? 'Add host' : view === 'share' ? 'This PC' : 'Hosts'}</span>
           <button className="hosts-icon-button" aria-label="Close hosts" onClick={onClose}>
-            <X size={20} />
+            <X size={18} />
           </button>
         </header>
         {view === 'add' ? (

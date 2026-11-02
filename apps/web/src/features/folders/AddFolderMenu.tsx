@@ -89,7 +89,7 @@ function AddFolderPanel({ hostKey, close }: { hostKey: string; close(): void }) 
                 setChoosingHost(false)
               }}
             >
-              {e.key === LOCAL_HOST_KEY ? <Monitor size={15} /> : <Server size={15} />}
+              {e.key === LOCAL_HOST_KEY ? <Monitor size={14} /> : <Server size={14} />}
               <span className="menu-text">
                 <span className="menu-title">
                   {hostLabel(e.key, runtimes[e.key]?.host?.name ?? e.name)}
@@ -113,9 +113,9 @@ function AddFolderPanel({ hostKey, close }: { hostKey: string; close(): void }) 
           disabled={entries.length < 2}
           onClick={() => setChoosingHost(true)}
         >
-          {hostKey === LOCAL_HOST_KEY ? <Monitor size={11} /> : <Server size={11} />}
+          {hostKey === LOCAL_HOST_KEY ? <Monitor size={12} /> : <Server size={12} />}
           {hostLabel(hostKey, host?.name)}
-          {entries.length > 1 && <ChevronDown size={10} />}
+          {entries.length > 1 && <ChevronDown size={12} />}
         </button>
       </div>
       <button
@@ -126,7 +126,7 @@ function AddFolderPanel({ hostKey, close }: { hostKey: string; close(): void }) 
           void chooseFolder(hostKey)
         }}
       >
-        <FolderOpen size={15} />
+        <FolderOpen size={14} />
         <span className="menu-text">Browse…</span>
         <span className="add-folder-keys">
           <kbd>{keys[0]}</kbd>
@@ -195,19 +195,19 @@ function RecentRow({
       title={folder.path}
       onClick={onPick}
     >
-      <Icon size={15} />
+      <Icon size={14} />
       <span className="menu-text">
         <span className="menu-title">{folder.name}</span>
         <span className="recent-path">{shortPath(folder.path, home)}</span>
       </span>
       {folder.added ? (
         <span className="recent-added">
-          <Check size={11} /> Added
+          <Check size={12} /> Added
         </span>
       ) : git?.isRepo ? (
         git.branch && (
           <span className="folder-chip">
-            <GitBranch size={10} />
+            <GitBranch size={12} />
             {git.branch}
           </span>
         )

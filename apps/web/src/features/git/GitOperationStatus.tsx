@@ -27,7 +27,7 @@ export function GitOperationStatus({
       className={`git-operation ${operation.error ? 'failed' : ''}`}
       role={operation.error ? 'alert' : 'status'}
     >
-      <Icon size={15} className={operation.pending ? 'git-operation-spinner' : undefined} />
+      <Icon size={14} className={operation.pending ? 'git-operation-spinner' : undefined} />
       <div className="git-operation-content">
         <div className="git-operation-message">
           {operation.pending ? pendingText : (operation.error ?? completeText)}
@@ -49,7 +49,7 @@ export function GitOperationStatus({
           aria-label="Dismiss Git result"
           onClick={() => dismissGitOperation(hostKey, cwd)}
         >
-          <X size={13} />
+          <X size={14} />
         </Button>
       )}
     </div>

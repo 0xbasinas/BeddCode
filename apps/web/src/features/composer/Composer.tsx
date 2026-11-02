@@ -1,13 +1,16 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ClipboardEvent,
   type DragEvent,
   type ReactNode,
 } from 'react'
+import { Select } from '../../ui/Select.tsx'
+import { useComposerDrafts } from './drafts.ts'
 import { Button } from '@/components/ui/button'
-import { ArrowUp, ChevronRight, Paperclip, Plus, Square, X } from 'lucide-react'
+import { ArrowUp, Check, ChevronRight, Paperclip, Pencil, Plus, Square, X } from 'lucide-react'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import { formatBytes } from '../../ui/format.ts'
 import type { SlashCommand } from '@beddcode/contracts'
@@ -27,9 +30,17 @@ import { FileIcon, FolderIcon } from '../files/FileIcon.tsx'
 import { mentionItems, type MentionItem } from './mentionItems.ts'
 import { ModeMenu, type ModeItem } from './Menus.tsx'
 
+/** Drafts at least this long show their size beside the toolbar. */
+const LARGE_DRAFT_CHARS = 1500
+
+const formatCount = (n: number) => (n >= 10_000 ? `${Math.round(n / 1000)}k` : n.toLocaleString())
+
 interface ComposerProps {
-  text: string
-  onTextChange(text: string): void
+  /** Draft key: the composer reads and writes this draft itself, so its parent does not re-render per keystroke. */
+  memoryKey?: string
+  /** Controlled alternative to `memoryKey`. */
+  text?: string
+  onTextChange?(text: string): void
   placeholder: string
   /** A turn is running or waiting on an answer: show Stop instead of Send. */
   busy: boolean
@@ -59,9 +70,23 @@ interface ComposerProps {
   commands?: SlashCommand[]
   /** Shown above the box: the agent's plan, queued messages. */
   above?: ReactNode
+  /**
+   * Editing a queued message here: the box holds its text, Send becomes Save, and Escape or Cancel
+   * leaves it as it was. Nothing is sent to the agent.
+   */
+  editing?: { onSave(text: string): Promise<void>; onCancel(): void }
 }
 
 export function Composer(props: ComposerProps) {
+  const { memoryKey } = props
+  const stored = useComposerDrafts((s) =>
+    memoryKey === undefined ? '' : (s.drafts[memoryKey] ?? ''),
+  )
+  const text = memoryKey === undefined ? (props.text ?? '') : stored
+  const setText = (value: string) => {
+    if (memoryKey !== undefined) useComposerDrafts.getState().setDraft(memoryKey, value)
+    else props.onTextChange?.(value)
+  }
   const [delivery, setDelivery] = useState<'auto' | 'queue'>('queue')
   const requestedDelivery = useRef<'auto' | 'queue'>('queue')
   const draftId = props.draftId ?? 'new-session'
@@ -72,8 +97,8 @@ export function Composer(props: ComposerProps) {
   useEffect(() => {
     if (connection === 'connected') void validateAttachmentDraft(props.hostKey, draftId)
   }, [props.hostKey, draftId, epoch, connection])
-  const latest = useRef({ draft, text: props.text })
-  latest.current = { draft, text: props.text }
+  const latest = useRef({ draft, text: text })
+  latest.current = { draft, text: text }
   const mounted = useRef(true)
   useEffect(() => {
     mounted.current = true
@@ -101,9 +126,9 @@ export function Composer(props: ComposerProps) {
   const pending = files.some((f) => f.status !== 'done')
   // Sending is allowed while the agent works: the host steers the message in or queues it.
   const canSend =
-    !props.disabled && !pending && !sending && (props.text.trim().length > 0 || ready.length > 0)
+    !props.disabled && !pending && !sending && (text.trim().length > 0 || ready.length > 0)
 
-  const hasContent = props.text.trim().length > 0 || files.length > 0
+  const hasContent = text.trim().length > 0 || files.length > 0
   // Enter (or Send) while the host is still connecting or the agent or an upload is still loading
   // is not dropped: the message goes out as soon as it can.
   const [armed, setArmed] = useState<string>()
@@ -125,29 +150,32 @@ export function Composer(props: ComposerProps) {
     setSending(true)
     setError(null)
     try {
-      const sent = props.text
-      const request = props.onSend(
-        sent.trim(),
-        ready.map((f) => f.id!),
-        props.busy ? requestedDelivery.current : 'auto',
-      )
+      const sent = text
+      const request = props.editing
+        ? props.editing.onSave(sent.trim())
+        : props.onSend(
+            sent.trim(),
+            ready.map((f) => f.id!),
+            props.busy ? requestedDelivery.current : 'auto',
+          )
       // The box empties as Enter is pressed instead of when the host answers; a failure puts the
       // words back (unless something new was typed meanwhile).
       if (mounted.current && latest.current.draft === draft && latest.current.text === sent) {
-        props.onTextChange('')
+        setText('')
       }
       try {
         await request
       } catch (err) {
         if (mounted.current && latest.current.draft === draft && latest.current.text === '') {
-          props.onTextChange(sent)
+          setText(sent)
         }
         throw err
       }
-      useAttachments.getState().remove(
-        draft,
-        ready.map((f) => f.key),
-      )
+      if (!props.editing)
+        useAttachments.getState().remove(
+          draft,
+          ready.map((f) => f.key),
+        )
     } catch (err) {
       if (mounted.current && latest.current.draft === draft)
         setError(err instanceof Error ? err.message : 'Could not send')
@@ -161,19 +189,19 @@ export function Composer(props: ComposerProps) {
     if (waitingToSend && canSend) void send()
   }, [waitingToSend, canSend])
 
-  const matches = matchCommands(props.text, props.commands)
+  const matches = matchCommands(text, props.commands)
   const [slashIndex, setSlashIndex] = useState(0)
   const [slashClosed, setSlashClosed] = useState<string | null>(null)
-  const slashOpen = matches.length > 0 && slashClosed !== props.text
-  useEffect(() => setSlashIndex(0), [props.text])
+  const slashOpen = matches.length > 0 && slashClosed !== text
+  useEffect(() => setSlashIndex(0), [text])
   const choose = (command: SlashCommand) => {
-    props.onTextChange(insertCommand(command))
+    setText(insertCommand(command))
     setSlashClosed(null)
   }
 
   // `@` mentions: files of the working folder that match what follows the `@`.
   const [caret, setCaret] = useState(0)
-  const mention = props.cwd && !slashOpen ? mentionAt(props.text, caret) : undefined
+  const mention = props.cwd && !slashOpen ? mentionAt(text, caret) : undefined
   const mentionKey = mention ? `${mention.start}:${mention.query}` : ''
   const [paths, setPaths] = useState<{ key: string; list: MentionItem[] }>()
   const [mentionIndex, setMentionIndex] = useState(0)
@@ -199,11 +227,19 @@ export function Composer(props: ComposerProps) {
   const mentionDir = mention ? mention.query.slice(0, mention.query.lastIndexOf('/') + 1) : ''
   const chooseMention = (item: MentionItem) => {
     if (!mention) return
-    const next = insertMention(props.text, caret, mention, item.path, item.dir)
-    props.onTextChange(next.text)
+    const next = insertMention(text, caret, mention, item.path, item.dir)
+    setText(next.text)
     setCaret(next.caret)
     requestAnimationFrame(() => box.current?.setSelectionRange(next.caret, next.caret))
   }
+
+  // A long draft (usually a paste) is too big to read in the box, so say how much of it there is.
+  const size = useMemo(() => {
+    if (text.length < LARGE_DRAFT_CHARS) return undefined
+    let lines = 1
+    for (let i = text.indexOf('\n'); i !== -1; i = text.indexOf('\n', i + 1)) lines++
+    return { lines, chars: text.length }
+  }, [text])
 
   const onPaste = (e: ClipboardEvent) => {
     const pasted = Array.from(e.clipboardData.files)
@@ -349,15 +385,25 @@ export function Composer(props: ComposerProps) {
             ))}
           </div>
         )}
+        {props.editing && (
+          <div className="composer-editing" role="status">
+            <Pencil size={12} />
+            <span>Editing queued message</span>
+            <span className="composer-editing-hint">Enter to save · Esc to cancel</span>
+            <Button variant="app" className="link-btn" onClick={props.editing.onCancel}>
+              Cancel
+            </Button>
+          </div>
+        )}
         <textarea
           ref={box}
-          aria-label="Message"
-          value={props.text}
+          aria-label={props.editing ? 'Edit queued message' : 'Message'}
+          value={text}
           placeholder={props.placeholder}
           rows={2}
           autoFocus={props.autoFocus}
           onChange={(e) => {
-            props.onTextChange(e.target.value)
+            setText(e.target.value)
             setCaret(e.target.selectionStart)
           }}
           onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
@@ -399,7 +445,7 @@ export function Composer(props: ComposerProps) {
               }
               if (e.key === 'Escape') {
                 e.preventDefault()
-                setSlashClosed(props.text)
+                setSlashClosed(text)
                 return
               }
             }
@@ -422,6 +468,11 @@ export function Composer(props: ComposerProps) {
             ) {
               e.preventDefault()
               useAttachments.getState().remove(draft, [files[files.length - 1]!.key])
+              return
+            }
+            if (e.key === 'Escape' && props.editing) {
+              e.preventDefault()
+              props.editing.onCancel()
               return
             }
             if (e.key === 'Escape' && waitingToSend) {
@@ -466,20 +517,24 @@ export function Composer(props: ComposerProps) {
           {props.modes && props.modes.length > 0 && props.onModeChange && (
             <ModeMenu modes={props.modes} modeId={props.modeId} onChange={props.onModeChange} />
           )}
+          {size && (
+            <span className="paste-stat" title="Size of this message">
+              {size.lines.toLocaleString()} lines · {formatCount(size.chars)} characters
+            </span>
+          )}
           <span className="spacer" />
-          {props.busy && (
-            <select
+          {props.busy && !props.editing && (
+            <Select
               aria-label="Message delivery"
-              title="Ctrl/Cmd+Enter queues; Alt+Enter steers when supported"
               value={delivery}
               onChange={(e) => setDelivery(e.target.value as 'auto' | 'queue')}
             >
               <option value="queue">Queue after this turn</option>
               {props.canSteer && <option value="auto">Steer current turn</option>}
-            </select>
+            </Select>
           )}
           {props.modelSlot}
-          {props.busy && (
+          {props.busy && !props.editing && (
             <button className="send stop" title="Stop" aria-label="Stop" onClick={props.onStop}>
               <Square size={14} fill="currentColor" />
             </button>
@@ -487,18 +542,20 @@ export function Composer(props: ComposerProps) {
           <button
             className="send"
             title={
-              props.busy
-                ? delivery === 'queue'
-                  ? 'Queue after this turn'
-                  : 'Steer current turn'
-                : 'Send'
+              props.editing
+                ? 'Save the queued message'
+                : props.busy
+                  ? delivery === 'queue'
+                    ? 'Queue after this turn'
+                    : 'Steer current turn'
+                  : 'Send'
             }
-            aria-label="Send"
+            aria-label={props.editing ? 'Save queued message' : 'Send'}
             disabled={!canSend && !(hasContent && !sending && (props.disabled || pending))}
             aria-busy={waitingToSend || sending}
             onClick={() => trySend()}
           >
-            <ArrowUp size={18} />
+            {props.editing ? <Check size={18} /> : <ArrowUp size={18} />}
           </button>
         </div>
       </div>

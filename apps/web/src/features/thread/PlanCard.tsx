@@ -27,14 +27,14 @@ export function PlanCard({ plan }: { plan: Plan }) {
         aria-expanded={shown}
         aria-label="Plan"
       >
-        <ListChecks size={15} />
+        <ListChecks size={14} />
         <span>
           Plan{' '}
           <span className="muted">
             · {done} of {plan.steps.length} done
           </span>
         </span>
-        {shown ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+        {shown ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
       </button>
       {shown && (
         <ol className="plan-steps">

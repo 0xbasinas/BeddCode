@@ -31,7 +31,7 @@ export function useFolderMissing(hostKey: string, session: Folder | undefined): 
 export function MissingFolder({ session }: { session: Folder }) {
   return (
     <div className="git-empty">
-      <FolderX size={22} />
+      <FolderX size={24} />
       <div>{session.worktree ? 'This worktree was removed' : 'This folder no longer exists'}</div>
       <div className="muted">
         {session.worktree

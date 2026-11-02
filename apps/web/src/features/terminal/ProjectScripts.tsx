@@ -85,7 +85,7 @@ export function ProjectScripts({
               aria-label={`Remove ${s.name || 'script'}`}
               onClick={() => setEditing((list) => list && list.filter((x) => x.id !== s.id))}
             >
-              <Trash2 size={15} />
+              <Trash2 size={14} />
             </Button>
           </div>
         ))}
