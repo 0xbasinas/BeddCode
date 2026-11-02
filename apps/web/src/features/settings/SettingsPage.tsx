@@ -113,7 +113,7 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
       <Panel
         id="settings-navigation"
         className="settings-navigation-panel"
-        defaultSize="234px"
+        defaultSize="224px"
         minSize="160px"
         maxSize="400px"
         groupResizeBehavior="preserve-pixel-size"
@@ -131,7 +131,7 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
             </Link>
           </div>
           <label className="settings-search">
-            <Search size={16} />
+            <Search size={15} />
             <input
               aria-label="Search settings"
               placeholder="Search settings"
@@ -151,7 +151,7 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
                   className={`settings-nav-link ${section === id ? 'selected' : ''}`}
                   aria-current={section === id ? 'page' : undefined}
                 >
-                  <Icon size={18} /> {label}
+                  <Icon size={16} /> {label}
                 </Link>
               </div>
             ))}

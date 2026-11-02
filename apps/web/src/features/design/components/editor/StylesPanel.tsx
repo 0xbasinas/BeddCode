@@ -16,6 +16,7 @@ import { useEditorStore } from '../../store/editor-store'
 import type { DesignElement } from '../../store/editor-store'
 import { countStyleUsage, styleSwatchStyle, STYLE_KIND_LABEL } from '../../lib/styles'
 import type { ProjectStyle } from '../../lib/styles'
+import { useShallow } from 'zustand/react/shallow'
 
 function StyleRow({ style }: { style: ProjectStyle }) {
   const {
@@ -25,7 +26,16 @@ function StyleRow({ style }: { style: ProjectStyle }) {
     detachStyleFromSelection,
     deleteStyle,
     renameStyle,
-  } = useEditorStore()
+  } = useEditorStore(
+    useShallow((s) => ({
+      elements: s.elements,
+      selectedElementIds: s.selectedElementIds,
+      applyStyleToSelection: s.applyStyleToSelection,
+      detachStyleFromSelection: s.detachStyleFromSelection,
+      deleteStyle: s.deleteStyle,
+      renameStyle: s.renameStyle,
+    })),
+  )
   const [editingName, setEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState(style.name)
 

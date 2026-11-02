@@ -23,6 +23,7 @@ import {
   copyTextToClipboard,
   copyLayerNameToClipboard,
 } from '../../lib/clipboard-io'
+import { useShallow } from 'zustand/react/shallow'
 
 interface CanvasContextMenuProps {
   children: React.ReactNode
@@ -67,7 +68,44 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
     unlockAllOnPage,
     frameSelection,
     addVariantToSet,
-  } = useEditorStore()
+  } = useEditorStore(
+    useShallow((s) => ({
+      selectedElementIds: s.selectedElementIds,
+      deleteSelectedElements: s.deleteSelectedElements,
+      duplicateSelectedElements: s.duplicateSelectedElements,
+      groupElements: s.groupElements,
+      ungroupElements: s.ungroupElements,
+      bringForward: s.bringForward,
+      sendBackward: s.sendBackward,
+      bringToFront: s.bringToFront,
+      sendToBack: s.sendToBack,
+      addComponent: s.addComponent,
+      detachInstance: s.detachInstance,
+      flipHorizontal: s.flipHorizontal,
+      flipVertical: s.flipVertical,
+      updateElement: s.updateElement,
+      pushHistory: s.pushHistory,
+      copySelected: s.copySelected,
+      pasteClipboard: s.pasteClipboard,
+      elements: s.elements,
+      applyBooleanOperation: s.applyBooleanOperation,
+      setElementAsMask: s.setElementAsMask,
+      outlineStrokeSelection: s.outlineStrokeSelection,
+      flattenSelection: s.flattenSelection,
+      splitVectorSelection: s.splitVectorSelection,
+      pasteOverSelection: s.pasteOverSelection,
+      selectSimilar: s.selectSimilar,
+      selectInverse: s.selectInverse,
+      clipboard: s.clipboard,
+      propertyClipboard: s.propertyClipboard,
+      pasteClipboardAt: s.pasteClipboardAt,
+      copyProperties: s.copyProperties,
+      pasteProperties: s.pasteProperties,
+      unlockAllOnPage: s.unlockAllOnPage,
+      frameSelection: s.frameSelection,
+      addVariantToSet: s.addVariantToSet,
+    })),
+  )
 
   const selectedElement =
     selectedElementIds.length === 1 ? findElementInList(elements, selectedElementIds[0]) : null

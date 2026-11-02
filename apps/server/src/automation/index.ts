@@ -15,6 +15,7 @@ import { BrowserBroker, BrowserTools, type BrowserToolsHost } from './browserUse
 import { auditFile } from '../computer/audit.ts'
 import { ComputerTools, type ComputerToolsHost } from '../computer/computerTools.ts'
 import { CuaDesktopDriver } from '../computer/cuaDriver.ts'
+import { LinearSync } from '../linear/linearSync.ts'
 import { LinearKeyStore, LinearTools } from '../linear/linearTools.ts'
 import { ScheduleService } from './schedules.ts'
 import { TelegramBridge } from '../telegram/bridge.ts'
@@ -56,6 +57,7 @@ export function createAutomation(deps: AutomationDeps) {
   const isBusy = (id: string) => sessions.isBusy(id)
 
   let schedules: ScheduleService | undefined
+  let linearSync: LinearSync | undefined
   const alerts = new AlertService({
     file: path.join(home, 'alerts.json'),
     log: createLogger('alerts'),
@@ -68,7 +70,10 @@ export function createAutomation(deps: AutomationDeps) {
     file: path.join(home, 'schedules.json'),
     host: { create, prompt, isBusy, readSession, subscribe },
     log: createLogger('schedules'),
-    onRunEnded: (run, schedule) => alerts.onRunEnded(run, schedule),
+    onRunEnded: (run, schedule) => {
+      alerts.onRunEnded(run, schedule)
+      void linearSync?.onRunEnded(run, schedule)
+    },
     tickMs: deps.tickMs,
   })
   const broker = new BrowserBroker()
@@ -102,6 +107,8 @@ export function createAutomation(deps: AutomationDeps) {
   const designs = new DesignStore(path.join(home, 'designs'))
   const designLink = new DesignLink()
   const linearKey = new LinearKeyStore(path.join(home, 'linear.json'))
+  const sync = new LinearSync(path.join(home, 'linear-sync.json'), linearKey)
+  linearSync = sync
   const agentTools = new AgentTools(
     {
       create,
@@ -181,6 +188,7 @@ export function createAutomation(deps: AutomationDeps) {
         linearKey.set(key)
         return linearKey.get() !== undefined
       },
+      setSync: (settings: { fileFailedRuns: boolean; teamId?: string }) => sync.set(settings),
     },
     stop() {
       schedules.stop()

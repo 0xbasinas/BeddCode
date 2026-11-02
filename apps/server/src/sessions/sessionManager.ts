@@ -4,6 +4,7 @@ import { performance } from 'node:perf_hooks'
 import path from 'node:path'
 import { mkdir, mkdtemp, rm, rmdir } from 'node:fs/promises'
 import os from 'node:os'
+import { designMcpServers } from '../design/designMcp.ts'
 import { gitTextPrompt, parseGitText } from '../workspace/gitText.ts'
 import type {
   AgentPreview,
@@ -381,6 +382,7 @@ export class SessionManager {
             params.designTools ||
             params.computerTools ||
             params.linearTools,
+          params.designTools,
         ),
       })
     } catch (err) {
@@ -1280,6 +1282,7 @@ export class SessionManager {
           created.event.designTools ||
           created.event.computerTools ||
           created.event.linearTools,
+        created.event.designTools,
       ),
     }
     let session: ProviderSession
@@ -1339,8 +1342,10 @@ export class SessionManager {
     })
   }
 
-  private toolServersFor(sessionId: string, wanted: boolean | undefined) {
-    return wanted && this.deps.agentToolServers ? this.deps.agentToolServers(sessionId) : undefined
+  private toolServersFor(sessionId: string, wanted: boolean | undefined, design?: boolean) {
+    if (!wanted || !this.deps.agentToolServers) return undefined
+    // Sessions that work on designs also get the logo lookup server.
+    return [...this.deps.agentToolServers(sessionId), ...(design ? designMcpServers() : [])]
   }
 
   /** A turn is running, or about to. */

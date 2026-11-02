@@ -24,6 +24,7 @@ import { ComponentPanel } from './ComponentPanel'
 // PHASE 22 (C21) — published libraries section
 import { UITemplatesPanel } from './UITemplatesPanel'
 import { StylesPanel } from './StylesPanel'
+import { useShallow } from 'zustand/react/shallow'
 
 export function LeftSidebar() {
   const {
@@ -38,7 +39,21 @@ export function LeftSidebar() {
     duplicatePage,
     reorderPages,
     elements,
-  } = useEditorStore()
+  } = useEditorStore(
+    useShallow((s) => ({
+      leftTab: s.leftTab,
+      setLeftTab: s.setLeftTab,
+      pages: s.pages,
+      activePageId: s.activePageId,
+      addPage: s.addPage,
+      deletePage: s.deletePage,
+      renamePage: s.renamePage,
+      setActivePage: s.setActivePage,
+      duplicatePage: s.duplicatePage,
+      reorderPages: s.reorderPages,
+      elements: s.elements,
+    })),
+  )
   const [renamingPageId, setRenamingPageId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [colorsExpanded, setColorsExpanded] = useState(true)

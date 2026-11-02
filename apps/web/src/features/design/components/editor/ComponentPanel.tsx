@@ -21,6 +21,7 @@ import {
   type VariantGroupProperty,
 } from '../../store/editor-store'
 import { findElementInList } from '../../lib/element-utils'
+import { useShallow } from 'zustand/react/shallow'
 
 export function ComponentPanel() {
   const {
@@ -41,7 +42,27 @@ export function ComponentPanel() {
     swapInstanceComponent,
     setDefaultVariant,
     addVariantToSet,
-  } = useEditorStore()
+  } = useEditorStore(
+    useShallow((s) => ({
+      elements: s.elements,
+      createInstance: s.createInstance,
+      resetOverrides: s.resetOverrides,
+      detachInstance: s.detachInstance,
+      addComponent: s.addComponent,
+      addComponentSet: s.addComponentSet,
+      selectedElementIds: s.selectedElementIds,
+      pushHistory: s.pushHistory,
+      addComponentPropertyDefinition: s.addComponentPropertyDefinition,
+      editComponentPropertyDefinition: s.editComponentPropertyDefinition,
+      deleteComponentPropertyDefinition: s.deleteComponentPropertyDefinition,
+      addVariantPropertyDefinition: s.addVariantPropertyDefinition,
+      setVariantPropertyValue: s.setVariantPropertyValue,
+      setComponentPropertyValue: s.setComponentPropertyValue,
+      swapInstanceComponent: s.swapInstanceComponent,
+      setDefaultVariant: s.setDefaultVariant,
+      addVariantToSet: s.addVariantToSet,
+    })),
+  )
 
   const components = elements.filter((el) => el.isComponent || el.isComponentSet)
   const instances = elements.filter((el) => el.componentId)

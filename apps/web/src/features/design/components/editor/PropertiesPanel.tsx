@@ -49,6 +49,7 @@ import { EmojiPickerButton } from './EmojiPicker'
 import { gradientPreviewCSS } from '../../lib/gradient-paints'
 // PHASE 8 — per-frame layout grid editor
 import { LayoutGridsPanel } from './LayoutGridsPanel'
+import { useShallow } from 'zustand/react/shallow'
 
 /** Figma-style four-dots style menu for a slot (fill/stroke/text/effect). */
 function StyleMenuButton({
@@ -345,7 +346,36 @@ export function PropertiesPanel() {
     resizeTableColumn,
     resizeTableRow,
     resizeSelectionToFit,
-  } = useEditorStore()
+  } = useEditorStore(
+    useShallow((s) => ({
+      elements: s.elements,
+      selectedElementIds: s.selectedElementIds,
+      updateElement: s.updateElement,
+      alignElements: s.alignElements,
+      distributeElements: s.distributeElements,
+      pushHistory: s.pushHistory,
+      addFill: s.addFill,
+      removeFill: s.removeFill,
+      updateFill: s.updateFill,
+      addStroke: s.addStroke,
+      removeStroke: s.removeStroke,
+      updateStroke: s.updateStroke,
+      setBlendMode: s.setBlendMode,
+      flipHorizontal: s.flipHorizontal,
+      flipVertical: s.flipVertical,
+      addComponent: s.addComponent,
+      detachInstance: s.detachInstance,
+      resizeFrameWithConstraints: s.resizeFrameWithConstraints,
+      applyTextAutoSize: s.applyTextAutoSize,
+      addTableRow: s.addTableRow,
+      removeTableRow: s.removeTableRow,
+      addTableColumn: s.addTableColumn,
+      removeTableColumn: s.removeTableColumn,
+      resizeTableColumn: s.resizeTableColumn,
+      resizeTableRow: s.resizeTableRow,
+      resizeSelectionToFit: s.resizeSelectionToFit,
+    })),
+  )
   const [aspectLocked, setAspectLocked] = useState(false)
   const [cornersLinked, setCornersLinked] = useState(true)
   const showInspect = false
@@ -2574,7 +2604,13 @@ function FillLayerItem({
   fill: FillStyle
   index: number
 }) {
-  const { removeFill, updateFill, pushHistory } = useEditorStore()
+  const { removeFill, updateFill, pushHistory } = useEditorStore(
+    useShallow((s) => ({
+      removeFill: s.removeFill,
+      updateFill: s.updateFill,
+      pushHistory: s.pushHistory,
+    })),
+  )
   const [showGradient, setShowGradient] = useState(false)
 
   return (
@@ -2795,7 +2831,13 @@ function StrokeLayerItem({
   stroke: StrokeStyle
   index: number
 }) {
-  const { removeStroke, updateStroke, pushHistory } = useEditorStore()
+  const { removeStroke, updateStroke, pushHistory } = useEditorStore(
+    useShallow((s) => ({
+      removeStroke: s.removeStroke,
+      updateStroke: s.updateStroke,
+      pushHistory: s.pushHistory,
+    })),
+  )
 
   return (
     <div className="p-1.5 rounded bg-[color:var(--dc-input)] border border-[color:var(--dc-border)] mb-1">

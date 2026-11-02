@@ -70,6 +70,7 @@ import { pushProjectToServer } from '../../lib/server-project'
 import { findElementInList } from '../../lib/element-utils'
 import { isBooleanOperandType } from '../../lib/boolean-ops'
 import { toast } from '../../hooks/use-toast'
+import { useShallow } from 'zustand/react/shallow'
 
 export function TopBar() {
   const {
@@ -94,7 +95,31 @@ export function TopBar() {
     guides,
     loadElements,
     loadServerProject,
-  } = useEditorStore()
+  } = useEditorStore(
+    useShallow((s) => ({
+      zoom: s.zoom,
+      setZoom: s.setZoom,
+      setPan: s.setPan,
+      toggleLeftSidebar: s.toggleLeftSidebar,
+      toggleRightSidebar: s.toggleRightSidebar,
+      fileName: s.fileName,
+      setFileName: s.setFileName,
+      undo: s.undo,
+      redo: s.redo,
+      pushHistory: s.pushHistory,
+      lastSavedAt: s.lastSavedAt,
+      isSaving: s.isSaving,
+      isDirty: s.isDirty,
+      setLastSavedAt: s.setLastSavedAt,
+      setSaving: s.setSaving,
+      setDirty: s.setDirty,
+      elements: s.elements,
+      pages: s.pages,
+      guides: s.guides,
+      loadElements: s.loadElements,
+      loadServerProject: s.loadServerProject,
+    })),
+  )
   const currentProjectId = useEditorStore((s) => s.currentProjectId)
   const syncStatus = useEditorStore((s) => s.syncStatus)
   const lastRemoteOrigin = useEditorStore((s) => s.lastRemoteOrigin)

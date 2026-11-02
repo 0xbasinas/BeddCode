@@ -10,6 +10,7 @@ import React from 'react'
 import { Plus, Trash2, Download } from 'lucide-react'
 import { useEditorStore, type DesignElement } from '../../store/editor-store'
 import { exportElement, EXPORT_FORMATS, type ExportFormat } from '../../lib/export'
+import { useShallow } from 'zustand/react/shallow'
 
 interface ExportPanelProps {
   element: DesignElement
@@ -24,7 +25,14 @@ function supportsQuality(format: string): boolean {
 }
 
 export function ExportPanel({ element }: ExportPanelProps) {
-  const { addExportSetting, removeExportSetting, updateElement, pushHistory } = useEditorStore()
+  const { addExportSetting, removeExportSetting, updateElement, pushHistory } = useEditorStore(
+    useShallow((s) => ({
+      addExportSetting: s.addExportSetting,
+      removeExportSetting: s.removeExportSetting,
+      updateElement: s.updateElement,
+      pushHistory: s.pushHistory,
+    })),
+  )
   const exportSettings = element.exportSettings || []
   const [busyIndex, setBusyIndex] = React.useState<number | null>(null)
 

@@ -21,6 +21,7 @@ import {
   ContextMenuTrigger,
   ContextMenuShortcut,
 } from '../ui/context-menu'
+import { useShallow } from 'zustand/react/shallow'
 
 const typeLabels: Record<string, string> = {
   frame: 'Frame',
@@ -333,7 +334,13 @@ function LayerItem({
   hoveredLayerId: string | null
   onHoverLayer: (id: string | null) => void
 }) {
-  const { selectedElementIds, setSelectedElementIds, updateElement } = useEditorStore()
+  const { selectedElementIds, setSelectedElementIds, updateElement } = useEditorStore(
+    useShallow((s) => ({
+      selectedElementIds: s.selectedElementIds,
+      setSelectedElementIds: s.setSelectedElementIds,
+      updateElement: s.updateElement,
+    })),
+  )
   const isSelected = selectedElementIds.includes(element.id)
   const [isExpanded, setIsExpanded] = useState(true)
   const [isRenaming, setIsRenaming] = useState(false)
@@ -663,7 +670,21 @@ export function LayerPanel() {
     pushHistory,
     addComponent,
     createInstance,
-  } = useEditorStore()
+  } = useEditorStore(
+    useShallow((s) => ({
+      elements: s.elements,
+      deleteElement: s.deleteElement,
+      duplicateElement: s.duplicateElement,
+      bringForward: s.bringForward,
+      sendBackward: s.sendBackward,
+      bringToFront: s.bringToFront,
+      sendToBack: s.sendToBack,
+      setSelectedElementIds: s.setSelectedElementIds,
+      pushHistory: s.pushHistory,
+      addComponent: s.addComponent,
+      createInstance: s.createInstance,
+    })),
+  )
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState('all')
   const [hoveredLayerId, setHoveredLayerId] = useState<string | null>(null)

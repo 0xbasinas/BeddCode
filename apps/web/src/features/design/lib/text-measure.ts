@@ -41,11 +41,24 @@ export function fontString(
 
 /** Measured advance width of a single line (includes letterSpacing per char). */
 export function measureLine(line: string, p: TextStyleParams): number {
+  if (line.length === 0) return 0
+  // Measuring goes through a canvas, which is slow; the same line is measured again on every
+  // render, so remember the width per font and line.
+  const font = fontString(p)
+  const key = `${font}|${line}`
+  const hit = lineWidthCache.get(key)
+  if (hit !== undefined) return hit + p.letterSpacing * line.length
   const ctx = getCtx()
-  if (!ctx || line.length === 0) return 0
-  ctx.font = fontString(p)
-  return ctx.measureText(line).width + p.letterSpacing * line.length
+  if (!ctx) return 0
+  ctx.font = font
+  const width = ctx.measureText(line).width
+  if (lineWidthCache.size >= LINE_CACHE_LIMIT) lineWidthCache.clear()
+  lineWidthCache.set(key, width)
+  return width + p.letterSpacing * line.length
 }
+
+const LINE_CACHE_LIMIT = 20000
+const lineWidthCache = new Map<string, number>()
 
 /** Greedy word-wrap of `text` at `maxWidth`. Honors explicit \n breaks. */
 export function wrapText(text: string, p: TextStyleParams, maxWidth: number): string[] {
