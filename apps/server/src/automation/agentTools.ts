@@ -284,9 +284,18 @@ const brief = (d: SessionDigest) => ({
   ...(d.result ? { reported: d.result.status } : {}),
 })
 
+export interface AgentToolFeatures {
+  agentTools?: boolean
+  browserTools?: boolean
+  designTools?: boolean
+  computerTools?: boolean
+  linearTools?: boolean
+}
+
 export class AgentTools {
   private readonly tokens = new Map<string, string>()
   private readonly bySession = new Map<string, string>()
+  private readonly startingFeatures = new Map<string, AgentToolFeatures>()
   /** The last request of each child that wait_for already told its parent about. */
   private readonly reported = new Map<string, number>()
   /** Turn timers of children, by session; cleared when the turn ends. */
@@ -312,7 +321,8 @@ export class AgentTools {
     linear: boolean
   } {
     const created = this.host.readSession(sessionId).find((e) => e.event.type === 'session.created')
-    const event = created?.event.type === 'session.created' ? created.event : undefined
+    const event = created?.event.type === 'session.created' ? created.event : this.startingFeatures.get(sessionId)
+    if (created) this.startingFeatures.delete(sessionId)
     return {
       // The server is only given to sessions with one of the five; without the other flags it
       // was for the agent tools.
@@ -330,7 +340,8 @@ export class AgentTools {
   }
 
   /** The MCP server to give a session that may use the tools. */
-  serversFor(sessionId: string): SessionMcpServer[] {
+  serversFor(sessionId: string, features?: AgentToolFeatures): SessionMcpServer[] {
+    if (features) this.startingFeatures.set(sessionId, features)
     let token = this.bySession.get(sessionId)
     if (!token) {
       token = randomBytes(24).toString('base64url')
@@ -575,6 +586,7 @@ export class AgentTools {
     const token = this.bySession.get(sessionId)
     if (token) this.tokens.delete(token)
     this.bySession.delete(sessionId)
+    this.startingFeatures.delete(sessionId)
   }
 
   private async start(parentId: string, args: Args) {

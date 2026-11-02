@@ -913,19 +913,35 @@ export function useElementInteractions({
             snapToGrid,
             snapToElements,
           )
-          setSnapLines(snap.snapLines)
+          // Most frames snap to the same lines (usually none); keep the old array so React skips the render.
+          setSnapLines((prev) =>
+            prev.length === snap.snapLines.length &&
+            prev.every((l, i) => {
+              const n = snap.snapLines[i]
+              return (
+                l.orientation === n.orientation &&
+                l.position === n.position &&
+                l.start === n.start &&
+                l.end === n.end
+              )
+            })
+              ? prev
+              : snap.snapLines,
+          )
           const actualDx = snap.snapX !== null ? snap.snapX - primaryStart.x : ddx
           const actualDy = snap.snapY !== null ? snap.snapY - primaryStart.y : ddy
           // PHASE 8: snap-to-pixels is a view option; when off, positions may be fractional
           const pixelSnap = s.snapToPixels !== false
-          for (const [id, startPos] of Object.entries(dragElementStartsRef.current)) {
-            const nx = startPos.x + actualDx
-            const ny = startPos.y + actualDy
-            s.updateElement(id, {
-              x: pixelSnap ? Math.round(nx) : nx,
-              y: pixelSnap ? Math.round(ny) : ny,
-            })
-          }
+          s.updateElements(
+            Object.entries(dragElementStartsRef.current).map(([id, startPos]) => {
+              const nx = startPos.x + actualDx
+              const ny = startPos.y + actualDy
+              return {
+                id,
+                updates: { x: pixelSnap ? Math.round(nx) : nx, y: pixelSnap ? Math.round(ny) : ny },
+              }
+            }),
+          )
         }
         dragFlushRef.current = applyDrag
         dragRafRef.current = requestAnimationFrame(applyDrag)

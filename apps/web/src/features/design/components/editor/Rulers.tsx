@@ -95,7 +95,8 @@ export function Rulers({ containerWidth, containerHeight, zoom, panX, panY }: Ru
     // startPx/endPx in CANVAS px; ticks computed in UNIT space
     const startU = startPx / pxPerUnit
     const endU = endPx / pxPerUnit
-    const ticks: { pos: number; label: string; isMajor: boolean }[] = []
+    // `key` is the tick's value, so a pan moves existing lines instead of rewriting them all.
+    const ticks: { key: number; pos: number; label: string; isMajor: boolean }[] = []
     const first = Math.floor(startU / minor) * minor
     // guard against runaway loops at extreme zoom/unit combos
     const maxTicks = 4000
@@ -106,7 +107,12 @@ export function Rulers({ containerWidth, containerHeight, zoom, panX, panY }: Ru
       const screenPos = cx === undefined ? 0 : 0 // placeholder, set by caller
       void screenPos
       const isMajor = Math.abs(snapped % major) < minor / 2
-      ticks.push({ pos: snapped, label: isMajor ? fmtLabel(snapped, unit) : '', isMajor })
+      ticks.push({
+        key: snapped,
+        pos: snapped,
+        label: isMajor ? fmtLabel(snapped, unit) : '',
+        isMajor,
+      })
     }
     return ticks
   }
@@ -137,8 +143,8 @@ export function Rulers({ containerWidth, containerHeight, zoom, panX, panY }: Ru
         onMouseDown={(e) => handleRulerMouseDown('horizontal', e)}
       >
         <svg width="100%" height={RULER_SIZE} className="block">
-          {hTicks.map((tick, i) => (
-            <React.Fragment key={i}>
+          {hTicks.map((tick) => (
+            <React.Fragment key={tick.key}>
               {tick.isMajor ? (
                 <>
                   <line
@@ -181,8 +187,8 @@ export function Rulers({ containerWidth, containerHeight, zoom, panX, panY }: Ru
         onMouseDown={(e) => handleRulerMouseDown('vertical', e)}
       >
         <svg width={RULER_SIZE} height="100%" className="block">
-          {vTicks.map((tick, i) => (
-            <React.Fragment key={i}>
+          {vTicks.map((tick) => (
+            <React.Fragment key={tick.key}>
               {tick.isMajor ? (
                 <>
                   <line

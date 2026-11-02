@@ -755,6 +755,8 @@ interface EditorState {
 
   // Actions - Element CRUD
   updateElement: (id: string, updates: Partial<DesignElement>) => void
+  /** Position-style updates to several elements in one store change (e.g. a multi-select drag). */
+  updateElements: (updates: { id: string; updates: Partial<DesignElement> }[]) => void
   /** PHASE 12 — re-run the auto layout engine for an element's frame chain */
   syncAutoLayoutTree: (elementId: string) => void
   /** PHASE 12 — re-run the engine starting at a specific frame (then up the chain) */
@@ -2029,6 +2031,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         applied = { ...updates, autoLayout: al }
       }
       const elements = applyAutoLayoutSync(updateElementInList(state.elements, id, applied), [id])
+      return { elements, isDirty: true }
+    })
+  },
+
+  updateElements: (batch) => {
+    if (get().viewingVersion || batch.length === 0) return
+    return set((state) => {
+      let elements = state.elements
+      for (const { id, updates } of batch) elements = updateElementInList(elements, id, updates)
+      elements = applyAutoLayoutSync(
+        elements,
+        batch.map((b) => b.id),
+      )
       return { elements, isDirty: true }
     })
   },

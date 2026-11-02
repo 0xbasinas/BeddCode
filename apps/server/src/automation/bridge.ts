@@ -9,6 +9,8 @@ import path from 'node:path'
 export const BRIDGE_SOURCE = `// Written by BeddCode. Lets an agent start and manage other BeddCode sessions.
 import { createInterface } from 'node:readline'
 
+process.title = 'BeddCode Agent Tools'
+
 const url = process.env.BEDDCODE_TOOLS_URL
 const token = process.env.BEDDCODE_TOOLS_TOKEN
 const send = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n')

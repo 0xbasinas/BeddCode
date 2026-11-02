@@ -1,3 +1,5 @@
+import { UI_UX_CATALOG } from './uiUxCatalog.ts'
+
 /**
  * Guides an agent loads on demand with design_skill. They sit behind a tool, not in the always-on
  * instructions, so every agent harness can use them and the standing prompt stays short.
@@ -19,7 +21,7 @@ export const DESIGN_SKILLS: readonly DesignSkill[] = [
 4. Use auto layout on every row, list and stack (skill: auto-layout). Never hand-compute x/y inside them.
 5. Draw every icon with design_add_svg (skill: icons).
 6. Repeat rows with design_duplicate, then design_update the text of each copy.
-7. design_screenshot (scale 2 for detail). Compare with the reference or request; list each difference; fix with design_update; screenshot again. Two passes minimum.
+7. Run design_check_layout and fix unintended warnings. Screenshot the whole screen for composition, then screenshot a representative panel by element id at scale 2 to inspect text, icons and rows (large screenshots may be downscaled). Check actual pixel sizes with design_read. Fix specific issues and inspect again. Preserve intentional overlays and report checks that could not run.
 8. Name layers (Header, File row, Primary button) so the user can find them.
 
 Mistakes to avoid: letters or emoji as icons; text on a fill instead of textColor; giving children x/y inside an auto layout frame; one huge flat frame with absolute positions; forgetting corner radius and 1px borders; stopping after the first screenshot.`,
@@ -37,7 +39,7 @@ Text without a width hugs its content; with a width it wraps and grows taller.
 Patterns
 - Row: {type:"frame", name:"Row", width:260, height:32, fill:"transparent", autoLayout:{direction:"horizontal", gap:8, paddingLeft:12, paddingRight:12, alignItems:"center"}, children:[icon, {type:"text", textContent:"name", layoutSizingH:"fill"}, {type:"text", textContent:"+3"}]}
   The "fill" text pushes whatever follows to the right edge.
-- List: a vertical frame, width 260, primaryAxisSizing "hug", gap 0 or 2, whose children are rows with layoutSizingH "fill".
+- List: a vertical frame whose children are equal-width rows with layoutSizingH "fill". Choose row height and gap for the brief: compact tools and spacious learning dashboards need different density. Reuse a single row structure.
 - Button: horizontal frame, primaryAxisSizing "hug", counterAxisSizing "hug", padding 8 and 14, gap 6, alignItems "center", cornerRadius 8, a fill, a label text.
 - Card: vertical frame, padding 16, gap 12, cornerRadius 12, 1px stroke; header row, body text, footer row.
 - Toolbar or tab bar: horizontal frame, gap 4 to 8, alignItems "center"; tabs are buttons.
@@ -80,7 +82,7 @@ For logos or odd shapes, trace the reference as paths in a larger viewBox (e.g. 
     body: `Matching a reference image
 1. Size: make the outer frame the reference's pixel size (or exact aspect ratio at a round scale). Everything else is measured against it.
 2. Regions: name them (title bar, tabs, section header, rows, footer). Draw them top to bottom as nested frames.
-3. Measure, do not guess: row height, horizontal padding, gap between icon and text, icon size, font size of each text role. Rows in dense dev tools are 24 to 32 tall; body text 12 to 14; labels 11 to 12; titles 14 to 16.
+3. Measure row height, horizontal padding, icon size and text roles from the reference. Do not impose dense developer-tool sizes on a spacious product interface. If no reference gives sizes, use readable screen-scale body text and distinguish section headings, row titles and secondary descriptions; adjust to the intended device and density.
 4. Colours: pick them from the image and reuse. Dark UI typical: window #1a1a1a, panel #202020, raised row #2a2a2a, border #ffffff14 to #ffffff1f, text #e6e6e6, muted text #8a8a8a, accent from the image. Diff colours: add #4ade80 or #3fb950, remove #f87171 or #f85149, modified #fbbf24.
 5. Type: UI text "Inter"; code, paths, numbers "JetBrains Mono" when the reference is monospace. Weight 500 for emphasis rather than 700. Check letterSpacing on small caps labels.
 6. Details people notice: corner radius on the window and on selected rows, 1px borders, a subtle shadow on floating panels, selected-row background, count badges (a small rounded frame with text), the exact icon shapes.
@@ -95,7 +97,7 @@ For logos or odd shapes, trace the reference as paths in a larger viewBox (e.g. 
 - Panel / window: vertical frame, width 360 to 480, cornerRadius 12 to 16, fill surface, 1px border, padding 0. Children: title bar (horizontal, height 36 to 44, padding 12), content (vertical, layoutSizingV "fill"), footer if any.
 - Tabs: horizontal frame, gap 4. Each tab: horizontal, padding 6/10, cornerRadius 6, text 13. Active tab: raised fill and bright text; inactive: transparent and muted text. A count badge is a small frame (cornerRadius 8, padding 2/6, text 11).
 - Section header: horizontal, height 28, padding 12, gap 6, icon (chevron + folder), label, muted count or path suffix.
-- Selectable row: horizontal, height 28 to 32, padding 12, gap 8, alignItems "center": checkbox, name (fill), +added in green, -removed in red, status letter. Selected row: raised fill and cornerRadius 6.
+- Compact selectable row: horizontal, height 28 to 32, padding 12, gap 8, alignItems "center". For a spacious dashboard row, start around 48 to 64px and adjust to the reference. Use a fixed-size icon container and a vertical title/description stack with consistent gaps; center the group vertically and align every title and subtitle to the same edge. Fit long text and add selected or progress states only when appropriate.
 - Text input: horizontal frame, height 36, padding 10/12, gap 8, cornerRadius 8, 1px border, fill surface; icon and placeholder text in muted colour.
 - Button primary: accent fill, white text weight 500, cornerRadius 8. Secondary: raised fill or 1px border, normal text. Icon button: 28x28 frame, centred icon, cornerRadius 6.
 - Card: vertical, padding 16, gap 12, cornerRadius 12, border or soft shadow; title weight 600, body muted.
@@ -106,6 +108,46 @@ For logos or odd shapes, trace the reference as paths in a larger viewBox (e.g. 
 
 Repeat a row 5 times: build one, design_duplicate it, then design_update each copy's text. Keep the ids from the add result.`,
   },
+  {
+    name: 'design-quality',
+    summary: 'Canvas-adapted layout, typography, colour and visual review guidance from Interfaces and UI UX Pro Max.',
+    body: `Canvas design quality (adapted from Jakub Krehel's Interfaces skills and UI UX Pro Max)
+Start with the user's brief or reference and existing design. Use design_search_knowledge to explore product, style, color, typography, ux and interface guidance; treat results as starting points, not mandatory visual styles. Prefer the user's established style over a generic recommendation.
+Layout: use nested auto-layout rows and columns, shared alignment edges, consistent spacing and larger gaps between groups than within them. Set usable padding and reserve enough room for long labels. Keep important actions and text within the frame; avoid accidental clipping. Repeat components with consistent dimensions and internal alignment.
+Type: choose a small type scale with clear hierarchy, readable line height and restrained weights. Check text at its actual rendered size, including wrapping, overflow, contrast and dense labels. Use actual available fonts; do not promise a font that is unavailable.
+Color and surfaces: choose a cohesive, semantic palette and use accents consistently. Check foreground/background contrast for text and controls; never use color as the only indicator. Keep borders, radii, shadows and icon styles coherent. Match an existing reference when supplied.
+Interaction design: make the primary action apparent, label controls, distinguish interactive elements, and consider empty, loading and error states where relevant. A static canvas cannot prove keyboard behavior or runtime accessibility; describe those as requirements, not verified behavior.
+Review: call design_check_layout and design_screenshot after the editor has laid out the design. Inspect full frame edges, hierarchy, clipping, text and spacing at a useful scale. Fix unintended problems and inspect again. Do not claim checks that could not run. Use design_add and design_update for editable canvas elements, never generate a code file unless explicitly requested.`,
+  },
+
+  {
+    name: 'layout-review',
+    summary: 'Plan and review alignment, spacing, frame bounds, dense layouts and responsive variants.',
+    body: `Canvas layout review, adapted from Interfaces better-layout and UI UX Pro Max
+1. Identify the frame size, purpose, reading order, most important action and visible regions. Follow the user's reference and density before choosing a spacing scale.
+2. Create nested auto-layout frames for rows, sections and repeated items. Align shared edges, keep sibling gaps consistent, and use more space between distinct groups than inside them. Treat 8px and 16px as starting points, not rules that override the brief. Use fixed-width cells for repeated columns and fill-sized content where available space should flex.
+3. Fit content to the frame: account for padding, title lengths, metadata and icons. Preserve deliberate overlays with layoutPositioning absolute. For free-positioned siblings use design_arrange for alignment, distribution or snapping; do not snap or redistribute intentional compositions blindly.
+4. Call design_check_layout after layout settles, investigate overflow, overlaps and small gaps, and fix actual errors. Screenshot the complete frame and inspect all four edges and repeated rows. Compare to the brief, then correct and screenshot again. Warnings are evidence to inspect, not proof that every overlap is wrong.
+5. For responsive requests, create separate named frames at the requested sizes. Show how navigation, columns and controls adapt, keep actions visible and leave room for long labels. A static canvas does not verify scrolling, zoom or a live responsive implementation.`,
+  },
+  {
+    name: 'typography-review',
+    summary: 'Choose and check a coherent text hierarchy, wrapping, fit and font availability.',
+    body: `Canvas typography, adapted from Interfaces better-typography and UI UX Pro Max
+Respect the reference and existing fonts. Search design_search_knowledge with domain typography when choosing a new direction, but confirm fonts are available before relying on them. Build a small role-based scale for titles, section headings, body and secondary labels; keep weights and line heights consistent for each role.
+Give wrapping text a usable width, use grow sizing where height should follow text, and allow auto-layout containers room to expand. For short labels use hug sizing when appropriate. Avoid boxes that clip text or push neighboring controls outside the frame. Check full rendered strings at the actual size, including long names, numbers and line breaks. Inspect a representative panel at scale 2 as well as the whole frame; a full-page screenshot can be downscaled. Use design_read to verify font sizes and bounds rather than estimating them from a zoomed canvas. In dense tables align numbers consistently and avoid relying on decorative type for legibility.
+Use design_read and design_check_layout, then inspect a screenshot at useful resolution. Fix actual wrapping and hierarchy problems and inspect again. A screenshot does not prove screen-reader semantics, font loading in a future implementation, or accessibility compliance.`,
+  },
+  {
+    name: 'color-and-surfaces',
+    summary: 'Build coherent palettes, hierarchy and surface treatments and check contrast honestly.',
+    body: `Canvas color and surfaces, adapted from Interfaces better-colors and better-ui and UI UX Pro Max
+Start from the user's reference or existing palette. For new directions search design_search_knowledge in color and style. Choose a restrained set of roles: canvas background, raised surface, primary and secondary text, border, accent and only the statuses the design uses. Reuse each role consistently and keep a clear primary action.
+Distinguish text and controls from their actual backgrounds, including tinted cards and overlays. Verify contrast with a measurement tool if one is available; never assert a ratio or accessibility conformance based on appearance alone. For translucent colors, assess the composited result. Use text or icons alongside status colors.
+Use a consistent corner-radius family, borders where they convey structure, and shadows only where they explain elevation. Align nested rounded surfaces and check icons visually for optical balance. Keep all visual treatments subordinate to the requested style; do not force shadows, color or a specific radius on an existing design.
+Inspect a rendered screenshot, including muted labels, active states, repeated components and full frame edges. Correct inconsistent or unreadable details and inspect again. Document interaction and focus states as design intent; a static canvas cannot verify their behavior.`,
+  },
+
 ]
 
 export const DESIGN_SKILL_NAMES: readonly string[] = DESIGN_SKILLS.map((s) => s.name)
@@ -118,4 +160,23 @@ export function designSkill(name: unknown): unknown {
   const hit = DESIGN_SKILLS.find((s) => s.name === name)
   if (!hit) throw new Error(`No skill "${name}". Available: ${DESIGN_SKILL_NAMES.join(', ')}`)
   return hit.body
+}
+
+/** Search the bundled UI UX Pro Max catalog without shelling out or requiring Python. */
+export function searchDesignKnowledge(query: unknown, domain: unknown, limit: unknown) {
+  const text = typeof query === 'string' ? query.trim().toLowerCase() : ''
+  const terms = [...new Set(text.match(/[\p{L}\p{N}]+/gu)?.filter((term) => term.length > 1) ?? [])].slice(0, 20)
+  if (!terms.length) throw new Error('Provide a search query with at least one word of two or more characters.')
+  const selected = typeof domain === 'string' && domain ? domain : 'all'
+  if (selected !== 'all' && !(selected in UI_UX_CATALOG)) throw new Error('Unknown domain. Use product, style, color, typography, ux, interface, or all.')
+  const count = typeof limit === 'number' && Number.isFinite(limit) ? Math.max(1, Math.min(10, Math.floor(limit))) : 5
+  const matches = Object.entries(UI_UX_CATALOG).flatMap(([kind, rows]) => {
+    if (selected !== 'all' && kind !== selected) return []
+    return rows.map((entry) => {
+      const value = Object.values(entry).join(' ').toLowerCase()
+      const score = terms.reduce((sum, term) => sum + (value.includes(term) ? 1 : 0), 0)
+      return { domain: kind, score, entry }
+    }).filter((item) => item.score > 0)
+  }).sort((a, b) => b.score - a.score)
+  return { query: text, results: matches.slice(0, count), note: 'Recommendations are starting points. Follow the user brief, verify contrast and geometry, and use editable canvas tools.' }
 }

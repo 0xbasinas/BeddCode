@@ -104,7 +104,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
   let agentTools: AgentTools | undefined
   const sessions = new SessionManager({
     agentTerminals: new AgentTerminals(workspace.terminals),
-    agentToolServers: (sessionId) => agentTools?.serversFor(sessionId) ?? [],
+    agentToolServers: (sessionId, features) => agentTools?.serversFor(sessionId, features) ?? [],
     store,
     attachments,
     git,

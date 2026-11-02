@@ -61,6 +61,7 @@ try {
   } else if (command === 'uninstall-service' || hostAction === 'uninstall-service') {
     await uninstallService({ dryRun })
   } else if (command === 'serve') {
+    process.title = 'BeddCode Host'
     await runServer(parseServeArgs(serveArgs))
   } else {
     process.exitCode = await runHandler(command, args, parseServeArgs([]).port)

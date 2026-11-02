@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import type { DesignProject } from '@beddcode/contracts'
 import type { DesignStore } from './designStore.ts'
 import type { DesignLink } from './designLink.ts'
-import { DESIGN_SKILL_NAMES, designSkill } from './designSkills.ts'
+import { DESIGN_SKILL_NAMES, designSkill, searchDesignKnowledge } from './designSkills.ts'
 
 export const DESIGN_TOOL_NAMES = [
   'design_list',
@@ -17,7 +17,10 @@ export const DESIGN_TOOL_NAMES = [
   'design_add_svg',
   'design_duplicate',
   'design_move',
+  'design_arrange',
+  'design_check_layout',
   'design_skill',
+  'design_search_knowledge',
 ] as const
 export type DesignToolName = (typeof DESIGN_TOOL_NAMES)[number]
 export const isDesignToolName = (name: string): name is DesignToolName =>
@@ -89,6 +92,7 @@ const MUTATING: ReadonlySet<string> = new Set([
   'design_add_svg',
   'design_duplicate',
   'design_move',
+  'design_arrange',
 ])
 
 const ADD_TYPES = [
@@ -175,6 +179,7 @@ const elementProps = {
     description: 'Inside an auto-layout frame.',
   },
   layoutSizingV: { type: 'string', enum: ['fixed', 'hug', 'fill'] },
+  layoutPositioning: { type: 'string', enum: ['auto', 'absolute'], description: 'Use absolute for intentional overlays inside auto-layout frames.' },
   sides: { type: 'number', description: 'For polygon and star.' },
   autoLayout: {
     type: 'object',
@@ -277,7 +282,7 @@ export const DESIGN_TOOL_DEFINITIONS = [
   {
     name: 'design_screenshot',
     description:
-      'Draws a design (a page, or one element and what is inside it) to a picture and returns it, so you can see what you made: layout, overlaps, clipped text, colours. Needs the BeddCode desktop or web app open on this host. Look at it after drawing, compare it with what you were asked for (or with the reference image), write down every difference, fix them, and take it again: two rounds at least before you report you are done. If you did not, say so plainly. Scale 2 shows small details.',
+      'Draws a design (a page, or one element and what is inside it) to a picture and returns it, so you can see what you made: layout, overlaps, clipped text, colours. Needs the BeddCode desktop or web app open on this host. Look at it after drawing, compare it with what you were asked for (or with the reference image), write down every difference, fix them, and take it again: two rounds at least before you report you are done. If you did not, say so plainly. Images have a maximum side of 1600 pixels, so large pages may be downscaled even at scale 2. Use element to inspect a representative panel or row at scale 2, and design_read to verify its actual dimensions and text sizes.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -376,17 +381,47 @@ export const DESIGN_TOOL_DEFINITIONS = [
       required: ['id'],
     },
   },
+  {
+    name: 'design_arrange',
+    description: 'Align, distribute, or snap free-positioned sibling elements. Auto-layout children must be adjusted through their parent instead.',
+    inputSchema: { type: 'object', properties: {
+      design, page, ids: { type: 'array', items: { type: 'string' } },
+      operation: { type: 'string', enum: ['left', 'center-x', 'right', 'top', 'center-y', 'bottom', 'distribute-x', 'distribute-y', 'snap'] },
+      grid: { type: 'number', description: 'Grid spacing for snap, default 8 pixels.' },
+    }, required: ['ids', 'operation'] },
+  },
+  {
+    name: 'design_check_layout',
+    description: 'Check a page for possible overflow, overlapping siblings and small alignment or spacing inconsistencies. Review warnings: overlays can be intentional. Geometry reflects the last editor layout pass.',
+    inputSchema: { type: 'object', properties: { design, page } },
+  },
+
+  {
+    name: 'design_search_knowledge',
+    description: 'Search bundled UI UX Pro Max design references for product, visual style, palettes, typography, UX or app interface patterns. Apply useful results to editable canvas designs.',
+    inputSchema: { type: 'object', properties: {
+      query: { type: 'string', description: 'Product type and visual keywords, e.g. cybersecurity learning dashboard dark.' },
+      domain: { type: 'string', enum: ['all', 'product', 'style', 'color', 'typography', 'ux', 'interface'] },
+      limit: { type: 'number', description: 'Maximum results, 1 to 10 (default 5).' },
+    }, required: ['query'] },
+  },
+
 ] as const
 
-export const DESIGN_INSTRUCTIONS = `BeddCode design canvas. You can draw on the design canvases kept on this host; the user has the same canvas open in the Design screen and sees your changes as you make them.
+export const DESIGN_INSTRUCTIONS = `BeddCode design canvas. The user is asking you to create or edit an editable design on the open BeddCode canvas. Use the BeddCode design tools for the requested design, not HTML files or code, unless the user explicitly asks for code. If the design tools are unavailable, explain that; do not substitute a file. You can draw on the design canvases kept on this host; the user has the same canvas open in the Design screen and sees your changes as you make them.
+
+Essential layout guidance (loaded automatically): Build rows, cards, navigation and lists as nested auto-layout frames. Use consistent padding and gaps, fixed widths for aligned table columns, and fill for flexible content. Give wrapping text a width and enough height; use hug for content-sized containers. Use absolute positioning only for deliberate overlays. Never assume a fixed frame has enough room: check the laid-out boxes and rendered screenshot, including right and bottom edges, truncated text, spacing, and clipping. Match density to the brief: do not default a spacious dashboard to tiny developer-tool rows. Give repeated rows a shared height, icon container, text column and padding; vertically align icons with the title/description group. Check a whole-frame screenshot for composition and a panel screenshot for readable text and icon detail, since large screenshots can be downscaled. Correct problems, then inspect again. If layout or screenshot is unavailable, say so rather than claiming verification.
+
+For new UI designs, load design_skill('design-quality') and use design_search_knowledge with the product and style keywords before drawing. Load 'layout-review', 'typography-review' or 'color-and-surfaces' when the brief or visual review needs that detail. Use the guidance as inspiration and follow the user's brief.
 
 Skills: call design_skill (no name) to list how-to guides, and load 'workflow' before your first design. 'auto-layout', 'icons', 'reference-matching' and 'ui-patterns' hold ready-made structures and an SVG icon library; read them instead of improvising.
 
 Basics
 - design_read first when working on an existing design. Coordinates are in pixels, origin top-left; a child's x and y are relative to its frame or group.
 - Build in a few design_add calls: a frame per screen or card with its children inside. Give frames a fill and a size before filling them.
-- Text uses textContent, fontSize, fontWeight, textColor, lineHeight, letterSpacing and textAlign (not fill). Use "Inter" for UI text and a monospace family (e.g. "JetBrains Mono") for code, paths and numbers. Colours are CSS strings.
+- Text uses textContent, fontSize, fontWeight, textColor, lineHeight, letterSpacing and textAlign (not fill). Use an available UI font suited to the brief and a monospace family where useful for code or paths. Colours are CSS strings.
 - Use auto layout for every row, list, toolbar, card body and button: set autoLayout on the frame ({direction, gap, padding, alignItems, justifyContent}) and do not give its children x or y; they are placed for you. Children: layoutSizingH/V "fill" stretches along the frame, "hug" fits the content; a frame with primaryAxisSizing/counterAxisSizing "hug" grows to its children. Text without a width hugs its content. Example row: {type:"frame", name:"Row", width:260, height:32, fill:"transparent", autoLayout:{direction:"horizontal", gap:8, paddingLeft:12, paddingRight:12, alignItems:"center"}, children:[icon frame, {type:"text", textContent:"limits.ts", layoutSizingH:"fill"}, {type:"text", textContent:"+3 −1"}]}. Stack rows in a vertical auto layout frame. Positions you give are only for the top-level frames and for children you want absolutely placed (layoutPositioning:"absolute").
+- Use design_arrange for free-positioned siblings and design_check_layout before finishing. Review and fix unintended warnings, preserving intentional overlays.
 - After each edit the app works out auto layout and text sizes, so design_read and design_screenshot show the real result. Use design_duplicate for repeated rows.
 - Icons, logos and glyphs: always design_add_svg with real vector shapes. Never use letters or unicode symbols as icons.
 
@@ -593,6 +628,54 @@ function summarize(el: El, depth: number): Record<string, unknown> {
   return out
 }
 
+type LayoutIssue = { kind: string; parent: string; ids: string[]; detail: string }
+
+/** Conservative geometry warnings, not automatic edits: overlapping artwork can be intentional. */
+function checkLayout(page: Page): LayoutIssue[] {
+  const issues: LayoutIssue[] = []
+  const number = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? v : 0
+  const visit = (children: El[], parent?: El) => {
+    const visible = children.filter((e) => e.visible !== false && e.layoutPositioning !== 'absolute')
+    const parentId = parent?.id ?? page.id
+    if (parent && parent.type === 'frame') for (const e of visible) {
+      const x = number(e.x), y = number(e.y), w = number(e.width), h = number(e.height)
+      if (x < -1 || y < -1 || x + w > number(parent.width) + 1 || y + h > number(parent.height) + 1)
+        issues.push({ kind: 'overflow', parent: parentId, ids: [e.id], detail: 'Child extends outside its frame; check clipping or intentional bleed.' })
+    }
+    // Limit pair comparisons on very large sibling lists.
+    if (visible.length <= 200) for (let i = 0; i < visible.length; i++) for (let j = i + 1; j < visible.length; j++) {
+      const a = visible[i]!, b = visible[j]!
+      const ax = number(a.x), ay = number(a.y), bx = number(b.x), by = number(b.y)
+      const aw = number(a.width), ah = number(a.height), bw = number(b.width), bh = number(b.height)
+      const ox = Math.min(ax + aw, bx + bw) - Math.max(ax, bx)
+      const oy = Math.min(ay + ah, by + bh) - Math.max(ay, by)
+      if (ox > 1 && oy > 1 && aw > 0 && ah > 0 && bw > 0 && bh > 0)
+        issues.push({ kind: 'overlap', parent: parentId, ids: [a.id, b.id], detail: 'Sibling bounds overlap; check whether this is intentional.' })
+      else if (!parent?.autoLayout && ox <= 0 && oy > 0 && Math.abs(ay - by) > 0.5 && Math.abs(ay - by) <= 3)
+        issues.push({ kind: 'alignment', parent: parentId, ids: [a.id, b.id], detail: 'Top edges differ by at most 3px.' })
+      else if (!parent?.autoLayout && oy <= 0 && ox > 0 && Math.abs(ax - bx) > 0.5 && Math.abs(ax - bx) <= 3)
+        issues.push({ kind: 'alignment', parent: parentId, ids: [a.id, b.id], detail: 'Left edges differ by at most 3px.' })
+    }
+    if (!parent?.autoLayout && visible.length >= 3 && visible.length <= 200) {
+      for (const axis of ['x', 'y'] as const) {
+        const cross = axis === 'x' ? 'y' : 'x', size = axis === 'x' ? 'width' : 'height'
+        const sorted = [...visible].sort((a, b) => number(a[axis]) - number(b[axis]))
+        for (let i = 0; i + 2 < sorted.length; i++) {
+          const [a, b, c] = sorted.slice(i, i + 3) as [El, El, El]
+          if (Math.max(number(a[cross]), number(b[cross]), number(c[cross])) - Math.min(number(a[cross]), number(b[cross]), number(c[cross])) > 1) continue
+          const g1 = number(b[axis]) - number(a[axis]) - number(a[size])
+          const g2 = number(c[axis]) - number(b[axis]) - number(b[size])
+          if (g1 >= 0 && g2 >= 0 && Math.abs(g1 - g2) > 1 && Math.abs(g1 - g2) <= 4)
+            issues.push({ kind: 'spacing', parent: parentId, ids: [a.id, b.id, c.id], detail: 'Adjacent gaps differ by 2 to 4px.' })
+        }
+      }
+    }
+    for (const e of children) if (e.children?.length) visit(e.children, e)
+  }
+  visit(page.elements)
+  return issues
+}
+
 /** The design tools: they work on the host's designs directly, so no editor has to be open. */
 export class DesignTools {
   constructor(
@@ -620,17 +703,17 @@ export class DesignTools {
    * After an edit, a connected app works out auto layout and text sizes (it has the fonts and the
    * layout engine) and the result is saved, so design_read and the screenshots show real geometry.
    */
-  private async settleLayout(): Promise<void> {
+  private async settleLayout(): Promise<string | undefined> {
     const id = this.lastDesign
     const link = this.link
-    if (!id || !link) return
+    if (!id || !link) return 'No connected layout service; positions and text sizes have not been verified.'
     const before = this.designs.get(id)
     if (!before) return
     const result = await link.layout(id)
-    if (!result.ok) return
+    if (!result.ok) return `Layout was not computed: ${result.error}`
     const now = this.designs.get(id)
     // Someone else changed it meanwhile; their editor lays out its own edits.
-    if (!now || now.rev !== before.rev) return
+    if (!now || now.rev !== before.rev) return 'Design changed during layout; re-read and verify geometry.'
     const changed = pagesOf(now.project).some((pg) => {
       const got = result.pages.find((p) => p.id === pg.id)
       return got !== undefined && JSON.stringify(got.elements) !== JSON.stringify(pg.elements)
@@ -661,7 +744,19 @@ export class DesignTools {
     } catch (err) {
       return fail(err instanceof Error ? err.message : String(err))
     }
-    if (!result.isError && MUTATING.has(tool)) await this.settleLayout().catch(() => {})
+    if (!result.isError && MUTATING.has(tool)) {
+      const layoutStatus = await this.settleLayout().catch(() => 'Layout failed; geometry has not been verified.')
+      const current = this.lastDesign && this.designs.get(this.lastDesign)
+      if (current && result.content[0]?.type === 'text') {
+        const issues = checkLayout(pageOf(current.project, typeof args.page === 'string' ? args.page : undefined))
+        if (issues.length || layoutStatus) {
+          try {
+            const body = JSON.parse(result.content[0].text)
+            result.content[0].text = JSON.stringify({ ...body, ...(layoutStatus ? { layoutStatus } : {}), layoutWarnings: issues.slice(0, 20), layoutWarningCount: issues.length })
+          } catch { /* Preserve non-JSON results. */ }
+        }
+      }
+    }
     return result
   }
 
@@ -815,6 +910,50 @@ export class DesignTools {
         )
         return { design: id, moved: elId }
       }
+      case 'design_check_layout': {
+        const id = this.resolve(args)
+        const pg = pageOf(this.designs.get(id)!.project, typeof args.page === 'string' ? args.page : undefined)
+        const issues = checkLayout(pg)
+        return { design: id, page: pg.id, issues: issues.slice(0, 100), issueCount: issues.length, note: 'Warnings may be intentional; verify against the rendered design. Auto-layout and text geometry require a connected editor.' }
+      }
+      case 'design_arrange': {
+        const id = this.resolve(args)
+        const ids = Array.isArray(args.ids) ? [...new Set(args.ids.map(String))] : []
+        const operation = String(args.operation ?? '')
+        const allowed = ['left', 'center-x', 'right', 'top', 'center-y', 'bottom', 'distribute-x', 'distribute-y', 'snap']
+        if (!allowed.includes(operation) || ids.length < (operation.startsWith('distribute') ? 3 : operation === 'snap' ? 1 : 2)) throw new Error('Invalid operation or too few distinct element ids')
+        const grid = args.grid === undefined ? 8 : Number(args.grid)
+        if (operation === 'snap' && (!Number.isFinite(grid) || grid <= 0)) throw new Error('grid must be a positive number')
+        this.designs.mutate(id, (project) => {
+          const pg = pageOf(project, typeof args.page === 'string' ? args.page : undefined)
+          const hits = ids.map((elementId) => find(pg.elements, elementId))
+          if (hits.some((hit) => !hit)) throw new Error('All elements must exist on the selected page')
+          const siblings = hits[0]!.siblings
+          if (hits.some((hit) => hit!.siblings !== siblings)) throw new Error('Elements must share the same parent')
+          const parent = flatEls(pg.elements).find((el) => el.children === siblings)
+          if (parent?.autoLayout && hits.some((hit) => hit!.el.layoutPositioning !== 'absolute')) throw new Error('Arrange auto-layout children via their parent; only absolute children can be arranged')
+          const els = hits.map((hit) => hit!.el)
+          if (els.some((el) => el.locked || !['x', 'y', 'width', 'height'].every((key) => typeof el[key] === 'number' && Number.isFinite(el[key])))) throw new Error('Elements must be unlocked and have finite bounds')
+          const n = (el: El, key: string) => el[key] as number
+          if (operation === 'snap') for (const el of els) { el.x = Math.round(n(el, 'x') / grid) * grid; el.y = Math.round(n(el, 'y') / grid) * grid }
+          else if (operation.startsWith('distribute')) {
+            const axis = operation.endsWith('x') ? 'x' : 'y', size = axis === 'x' ? 'width' : 'height'
+            els.sort((a, b) => n(a, axis) - n(b, axis))
+            const first = n(els[0]!, axis), last = n(els[els.length - 1]!, axis) + n(els[els.length - 1]!, size)
+            const gap = (last - first - els.reduce((sum, el) => sum + n(el, size), 0)) / (els.length - 1)
+            let cursor = first
+            for (const el of els) { el[axis] = cursor; cursor += n(el, size) + gap }
+          } else {
+            const axis = ['left', 'center-x', 'right'].includes(operation) ? 'x' : 'y', size = axis === 'x' ? 'width' : 'height'
+            const factor = operation.startsWith('center') ? 0.5 : ['right', 'bottom'].includes(operation) ? 1 : 0
+            const anchor = n(els[0]!, axis) + n(els[0]!, size) * factor
+            for (const el of els.slice(1)) el[axis] = anchor - n(el, size) * factor
+          }
+        }, 'agent', ids)
+        return { design: id, arranged: ids, operation }
+      }
+      case 'design_search_knowledge':
+        return searchDesignKnowledge(args.query, args.domain, args.limit)
       case 'design_skill':
         return designSkill(args.name)
       case 'design_get_selection': {

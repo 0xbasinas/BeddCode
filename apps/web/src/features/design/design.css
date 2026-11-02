@@ -216,6 +216,15 @@
   outline: none;
 }
 
+/* The global `*:hover { scrollbar-color }` rule changes an inherited property each time the pointer
+   moves onto another shape, which restyles every descendant of the shapes it leaves and enters.
+   The scene has no scrollbars, so pin the value and keep hover from changing it. */
+.canvas-svg-export.canvas-svg-export,
+.canvas-svg-export.canvas-svg-export *,
+.canvas-svg-export.canvas-svg-export *:hover {
+  scrollbar-color: transparent transparent;
+}
+
 /* Hand tool cursor styles */
 .canvas-svg-export[style*='grab'] {
   cursor: grab !important;

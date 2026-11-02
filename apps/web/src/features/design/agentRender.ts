@@ -112,23 +112,32 @@ async function sizeText(el: DesignElement): Promise<DesignElement> {
 }
 
 /** Text boxes sized, then auto layout worked out from the inside out. */
-async function layoutTree(el: DesignElement): Promise<DesignElement> {
+export async function layoutTree(el: DesignElement): Promise<DesignElement> {
   const { computeAutoLayout } = await import('./lib/auto-layout')
   const sized = await sizeText(el)
   if (!sized.children?.length) return sized
   const kids = await Promise.all(sized.children.map(layoutTree))
   let cur: DesignElement = { ...sized, children: kids }
   if (cur.type !== 'frame' || !cur.autoLayout) return cur
-  const res = computeAutoLayout(cur)
-  // A parent can resize its children ("fill"); those with layouts of their own need another pass.
-  const placed = await Promise.all(
-    res.children.map((c, i) => {
-      const before = kids.find((k) => k.id === c.id) ?? kids[i]
-      const resized = before && (before.width !== c.width || before.height !== c.height)
-      return resized && c.children?.length ? layoutTree(c) : c
-    }),
-  )
-  cur = { ...cur, children: placed, width: res.width, height: res.height }
+  // Parent fill sizing can change text wrapping and nested layouts. Feed the
+  // resulting heights back into the parent so following siblings are placed
+  // after the reflowed content. Bound passes for conflicting sizing constraints.
+  for (let pass = 0; pass < 4; pass++) {
+    const res = computeAutoLayout(cur)
+    const placed = await Promise.all(res.children.map(async (child, i) => {
+      const before = cur.children?.find((k) => k.id === child.id) ?? cur.children?.[i]
+      const resized = before && (before.width !== child.width || before.height !== child.height)
+      if (!resized) return child
+      if (child.type === 'text' && child.textAutoResize === 'grow') return sizeText(child)
+      if (child.children?.length) return layoutTree(child)
+      return child
+    }))
+    const needsAnotherPass = placed.some((child, i) =>
+      child.width !== res.children[i]?.width || child.height !== res.children[i]?.height,
+    )
+    cur = { ...cur, children: placed, width: res.width, height: res.height }
+    if (!needsAnotherPass) break
+  }
   return cur
 }
 

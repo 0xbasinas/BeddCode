@@ -50,7 +50,7 @@ export interface SessionManagerDeps {
   /** Remembers what agents offer for new sessions (see `previewAgent`). */
   previews?: PreviewCache
   /** MCP servers to add to a session that may use BeddCode's agent tools. */
-  agentToolServers?: (sessionId: string) => SessionMcpServer[]
+  agentToolServers?: (sessionId: string, features?: { agentTools?: boolean; browserTools?: boolean; designTools?: boolean; computerTools?: boolean; linearTools?: boolean }) => SessionMcpServer[]
   /** Shows the commands agents run in the Terminal pane (and runs ACP agents' commands there). */
   agentTerminals?: AgentTerminals
   /**
@@ -383,6 +383,7 @@ export class SessionManager {
             params.computerTools ||
             params.linearTools,
           params.designTools,
+          params,
         ),
       })
     } catch (err) {
@@ -494,7 +495,7 @@ export class SessionManager {
     // otherwise keep it for after the turn.
     if (mode === 'auto' && live.session.steer && !afterStop) {
       try {
-        await live.session.steer(promptInput(text, attachments))
+        await live.session.steer(this.providerPrompt(sessionId, text, attachments))
         this.appendUserMessage(sessionId, text, attachments)
         return { state: 'steered' }
       } catch (err) {
@@ -572,7 +573,7 @@ export class SessionManager {
     } else if (live.session.steer) {
       this.dequeued(sessionId, queueId, 'steered')
       this.appendUserMessage(sessionId, item.text, item.attachments)
-      await live.session.steer(promptInput(item.text, item.attachments))
+      await live.session.steer(this.providerPrompt(sessionId, item.text, item.attachments))
     } else {
       // No way to talk into the running turn: stop it and send this next.
       turn.queue.unshift(item)
@@ -608,6 +609,16 @@ export class SessionManager {
     const { session } = this.requireLive(sessionId)
     if (!session.answerQuestion) throw new Error('This agent does not ask questions')
     await session.answerQuestion(requestId, answers)
+  }
+
+  /** Supply design-pane context in the provider prompt even if MCP server instructions are ignored. */
+  private providerPrompt(sessionId: string, text: string, attachments: { path: string }[]) {
+    const created = this.deps.store.readSession(sessionId).find(({ event }) => event.type === 'session.created')?.event
+    const design = created?.type === 'session.created' && created.designTools === true
+    const context = design
+      ? 'This message comes from the BeddCode Design canvas. For design requests, create or edit the editable canvas using the BeddCode design MCP tools (design_list, design_read, design_add and related tools). Load design_skill for guidance. Match the requested style and density; align repeated rows, icon containers, text columns, padding and spacing. Inspect the whole frame and a representative panel with design_screenshot, correct visible clipping, tiny text, inconsistent icons or alignment, and inspect again. Use design_read for actual sizes; large screenshots may be downscaled. Do not substitute an HTML file or code unless the user explicitly asks for code. If the design tools are unavailable, tell the user; do not silently create a file instead. The user request follows:\n\n'
+      : ''
+    return promptInput(context + text, attachments)
   }
 
   private appendUserMessage(
@@ -655,7 +666,7 @@ export class SessionManager {
         await turn.settling
         await turn.taking
         await this.checkpointBefore(sessionId, turn)
-        session.prompt(promptInput(text, attachments)).catch(failed)
+        session.prompt(this.providerPrompt(sessionId, text, attachments)).catch(failed)
       } catch (err) {
         failed(err)
       }
@@ -1150,7 +1161,7 @@ export class SessionManager {
         live.skipTurnStart = true
         this.appendUserMessage(saved.sessionId, saved.prompt.text, saved.prompt.attachments)
         await live.session
-          .prompt(promptInput(saved.prompt.text, saved.prompt.attachments))
+          .prompt(this.providerPrompt(saved.sessionId, saved.prompt.text, saved.prompt.attachments))
           .catch((err: unknown) => this.promptFailed(saved.sessionId, live.session, err))
       } catch (err) {
         this.deps.log.error(`could not resume ${saved.sessionId} after host restart`, err)
@@ -1342,10 +1353,10 @@ export class SessionManager {
     })
   }
 
-  private toolServersFor(sessionId: string, wanted: boolean | undefined, design?: boolean) {
+  private toolServersFor(sessionId: string, wanted: boolean | undefined, design?: boolean, features?: { agentTools?: boolean; browserTools?: boolean; designTools?: boolean; computerTools?: boolean; linearTools?: boolean }) {
     if (!wanted || !this.deps.agentToolServers) return undefined
     // Sessions that work on designs also get the logo lookup server.
-    return [...this.deps.agentToolServers(sessionId), ...(design ? designMcpServers() : [])]
+    return [...this.deps.agentToolServers(sessionId, features), ...(design ? designMcpServers() : [])]
   }
 
   /** A turn is running, or about to. */
@@ -1852,7 +1863,7 @@ export class SessionManager {
       if (resend) {
         this.touch(sessionId)
         session
-          .prompt(promptInput(resend.text, resend.attachments))
+          .prompt(this.providerPrompt(sessionId, resend.text, resend.attachments))
           .catch((err: unknown) => this.promptFailed(sessionId, session, err))
       }
     } catch (err) {

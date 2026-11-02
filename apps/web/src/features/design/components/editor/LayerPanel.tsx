@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useEditorStore, type DesignElement } from '../../store/editor-store'
 import { findElementInList, getAllElements } from '../../lib/element-utils'
 import {
@@ -317,50 +317,36 @@ function IndentLines({ depth }: { depth: number }) {
 
 /* ── LayerItem ────────────────────────────────────────────── */
 
-function LayerItem({
+/** Height of one layer row, in px: the list is windowed on it. */
+const ROW_HEIGHT = 28
+
+/**
+ * One row of the flattened layer tree. Memoized on plain values, so while an element is dragged
+ * only the rows of the elements that actually changed render again.
+ */
+const LayerItem = React.memo(function LayerItem({
   element,
-  depth = 0,
+  depth,
+  isSelected,
+  isHovered,
+  isExpanded,
+  onToggleExpand,
   onContextMenuAction,
-  searchQuery = '',
-  filterType = 'all',
-  hoveredLayerId,
   onHoverLayer,
 }: {
   element: DesignElement
-  depth?: number
+  depth: number
+  isSelected: boolean
+  isHovered: boolean
+  isExpanded: boolean
+  onToggleExpand: (id: string) => void
   onContextMenuAction: (action: string, elementId: string) => void
-  searchQuery?: string
-  filterType?: string
-  hoveredLayerId: string | null
   onHoverLayer: (id: string | null) => void
 }) {
-  const { selectedElementIds, setSelectedElementIds, updateElement } = useEditorStore(
-    useShallow((s) => ({
-      selectedElementIds: s.selectedElementIds,
-      setSelectedElementIds: s.setSelectedElementIds,
-      updateElement: s.updateElement,
-    })),
-  )
-  const isSelected = selectedElementIds.includes(element.id)
-  const [isExpanded, setIsExpanded] = useState(true)
+  const { updateElement, setSelectedElementIds } = useEditorStore.getState()
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(element.name)
   const [isDragOver, setIsDragOver] = useState(false)
-
-  // Filter check
-  if (filterType !== 'all' && element.type !== filterType) {
-    if (!element.children || !element.children.some((c) => c.type === filterType)) {
-      return null
-    }
-  }
-
-  // Search check
-  if (searchQuery && !element.name.toLowerCase().includes(searchQuery.toLowerCase())) {
-    const hasMatchingChild = element.children?.some((c) =>
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()),
-    )
-    if (!hasMatchingChild) return null
-  }
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -383,7 +369,7 @@ function LayerItem({
 
   const toggleExpand = (e: React.MouseEvent) => {
     e.stopPropagation()
-    setIsExpanded(!isExpanded)
+    onToggleExpand(element.id)
   }
 
   const handleRename = () => {
@@ -424,7 +410,6 @@ function LayerItem({
     }
   }
 
-  const isHovered = hoveredLayerId === element.id
   const hasChildren = element.children && element.children.length > 0
   const childCount = element.children?.length ?? 0
 
@@ -636,24 +621,9 @@ function LayerItem({
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
-
-      {hasChildren &&
-        isExpanded &&
-        element.children!.map((child) => (
-          <LayerItem
-            key={child.id}
-            element={child}
-            depth={depth + 1}
-            onContextMenuAction={onContextMenuAction}
-            searchQuery={searchQuery}
-            filterType={filterType}
-            hoveredLayerId={hoveredLayerId}
-            onHoverLayer={onHoverLayer}
-          />
-        ))}
     </>
   )
-}
+})
 
 /* ── LayerPanel ───────────────────────────────────────────── */
 
@@ -688,6 +658,67 @@ export function LayerPanel() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState('all')
   const [hoveredLayerId, setHoveredLayerId] = useState<string | null>(null)
+  const selectedElementIds = useEditorStore((s) => s.selectedElementIds)
+  const selectedSet = useMemo(() => new Set(selectedElementIds), [selectedElementIds])
+
+  // Groups start expanded, so only the collapsed ones are remembered.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
+  const toggleExpand = useCallback((id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
+  }, [])
+
+  // The tree as one list of visible rows, so only the rows in view have to exist in the DOM.
+  const rows = useMemo(() => {
+    const out: { element: DesignElement; depth: number }[] = []
+    const query = searchQuery.toLowerCase()
+    const visit = (el: DesignElement, depth: number) => {
+      if (
+        filterType !== 'all' &&
+        el.type !== filterType &&
+        !el.children?.some((c) => c.type === filterType)
+      )
+        return
+      if (
+        query &&
+        !el.name.toLowerCase().includes(query) &&
+        !el.children?.some((c) => c.name.toLowerCase().includes(query))
+      )
+        return
+      out.push({ element: el, depth })
+      if (el.children?.length && !collapsed.has(el.id))
+        for (const child of el.children) visit(child, depth + 1)
+    }
+    for (let i = elements.length - 1; i >= 0; i--) visit(elements[i]!, 0)
+    return out
+  }, [elements, collapsed, searchQuery, filterType])
+
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [view, setView] = useState({ top: 0, height: 600 })
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const read = () =>
+      setView((v) =>
+        v.top === el.scrollTop && v.height === el.clientHeight
+          ? v
+          : { top: el.scrollTop, height: el.clientHeight },
+      )
+    read()
+    el.addEventListener('scroll', read, { passive: true })
+    const resize = new ResizeObserver(read)
+    resize.observe(el)
+    return () => {
+      el.removeEventListener('scroll', read)
+      resize.disconnect()
+    }
+  }, [])
+  const OVERSCAN = 8
+  const firstRow = Math.max(0, Math.floor(view.top / ROW_HEIGHT) - OVERSCAN)
+  const lastRow = Math.min(rows.length, Math.ceil((view.top + view.height) / ROW_HEIGHT) + OVERSCAN)
 
   const handleContextMenuAction = useCallback(
     (action: string, elementId: string) => {
@@ -824,18 +855,32 @@ export function LayerPanel() {
           .layer-scroll::-webkit-scrollbar-thumb:hover { background: #555; }
           .layer-scroll::-webkit-scrollbar-corner { background: transparent; }
         `}</style>
-        <div className="layer-scroll h-full overflow-y-auto">
-          {[...elements].reverse().map((element) => (
-            <LayerItem
-              key={element.id}
-              element={element}
-              onContextMenuAction={handleContextMenuAction}
-              searchQuery={searchQuery}
-              filterType={filterType}
-              hoveredLayerId={hoveredLayerId}
-              onHoverLayer={setHoveredLayerId}
-            />
-          ))}
+        <div ref={scrollRef} className="layer-scroll h-full overflow-y-auto">
+          <div style={{ height: rows.length * ROW_HEIGHT, position: 'relative' }}>
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                transform: `translateY(${firstRow * ROW_HEIGHT}px)`,
+              }}
+            >
+              {rows.slice(firstRow, lastRow).map(({ element, depth }) => (
+                <LayerItem
+                  key={element.id}
+                  element={element}
+                  depth={depth}
+                  isSelected={selectedSet.has(element.id)}
+                  isHovered={hoveredLayerId === element.id}
+                  isExpanded={!collapsed.has(element.id)}
+                  onToggleExpand={toggleExpand}
+                  onContextMenuAction={handleContextMenuAction}
+                  onHoverLayer={setHoveredLayerId}
+                />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>

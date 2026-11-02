@@ -26,6 +26,7 @@ function resumableAdapter(opts: { resume: boolean; status?: ProviderInstance['st
   const starts: StartSessionInput[] = []
   const closed: string[] = []
   const interrupted: string[] = []
+  const prompts: { text: string }[] = []
   const instance: ProviderInstance = {
     id: 'stub',
     kind: 'acp',
@@ -50,7 +51,8 @@ function resumableAdapter(opts: { resume: boolean; status?: ProviderInstance['st
       const session: ProviderSession = {
         sessionId: input.sessionId,
         events: queue,
-        async prompt() {
+        async prompt(prompt) {
+          prompts.push(prompt)
           queue.push({
             type: 'turn.completed',
             sessionId: input.sessionId,
@@ -71,7 +73,7 @@ function resumableAdapter(opts: { resume: boolean; status?: ProviderInstance['st
       return session
     },
   }
-  return { adapter, starts, closed, interrupted }
+  return { adapter, starts, closed, interrupted, prompts }
 }
 
 function setup(opts: Parameters<typeof resumableAdapter>[0]) {
@@ -84,6 +86,7 @@ function setup(opts: Parameters<typeof resumableAdapter>[0]) {
     adapters: [stub.adapter],
     log: createLogger('test', 'error'),
     defaultCwd: os.tmpdir(),
+    agentToolServers: () => [],
   })
   return { store, manager, ...stub }
 }
@@ -91,6 +94,20 @@ function setup(opts: Parameters<typeof resumableAdapter>[0]) {
 const tick = () => new Promise((r) => setTimeout(r, 5))
 
 describe('SessionManager', () => {
+  it('directs design pane prompts to the canvas without changing the recorded message', async () => {
+    const { store, manager, prompts } = setup({ resume: true })
+    const design = await manager.create({ instanceId: 'stub', designTools: true })
+    await manager.prompt(design.sessionId, 'Make a dashboard')
+    await vi.waitFor(() => expect(prompts[0]).toBeDefined())
+    expect(prompts[0]?.text).toContain('editable canvas using the BeddCode design MCP tools')
+    expect(prompts[0]?.text).toContain('Make a dashboard')
+    expect(store.readSession(design.sessionId).map(({ event }) => event).find((event) => event.type === 'message.delta')).toMatchObject({ text: 'Make a dashboard' })
+    const normal = await manager.create({ instanceId: 'stub' })
+    await manager.prompt(normal.sessionId, 'Make a dashboard')
+    await vi.waitFor(() => expect(prompts[1]).toBeDefined())
+    expect(prompts[1]?.text).toBe('Make a dashboard')
+    await manager.close()
+  })
   it('persists a renamed title without needing a running provider and rejects unknown sessions', async () => {
     const { store, manager } = setup({ resume: true })
     const { sessionId } = await manager.create({ instanceId: 'stub' })

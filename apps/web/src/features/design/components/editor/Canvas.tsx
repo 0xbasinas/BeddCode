@@ -76,9 +76,42 @@ const OutlinesContext = React.createContext<OutlinesState>({
  */
 const defsCache = new WeakMap<DesignElement, React.ReactNode[]>()
 
+/**
+ * Moving an element replaces its object but leaves everything its defs depend on untouched, so
+ * the defs are also kept per id and reused while those inputs are the same objects.
+ */
+interface DefsEntry {
+  fills: DesignElement['fills']
+  shadows: DesignElement['shadows']
+  blurs: DesignElement['blurs']
+  clipContent: DesignElement['clipContent']
+  hasChildren: boolean
+  width: number
+  height: number
+  cornerRadius: DesignElement['cornerRadius']
+  defs: React.ReactNode[]
+}
+const defsById = new Map<string, DefsEntry>()
+
 function defsForElement(el: DesignElement): React.ReactNode[] {
   const cached = defsCache.get(el)
   if (cached) return cached
+  const hasChildren = !!el.children && el.children.length > 0
+  const prev = defsById.get(el.id)
+  if (
+    prev &&
+    prev.fills === el.fills &&
+    prev.shadows === el.shadows &&
+    prev.blurs === el.blurs &&
+    prev.clipContent === el.clipContent &&
+    prev.hasChildren === hasChildren &&
+    prev.width === el.width &&
+    prev.height === el.height &&
+    prev.cornerRadius === el.cornerRadius
+  ) {
+    defsCache.set(el, prev.defs)
+    return prev.defs
+  }
   const defs: React.ReactNode[] = []
 
   {
@@ -320,11 +353,29 @@ function defsForElement(el: DesignElement): React.ReactNode[] {
   }
 
   defsCache.set(el, defs)
+  defsById.set(el.id, {
+    fills: el.fills,
+    shadows: el.shadows,
+    blurs: el.blurs,
+    clipContent: el.clipContent,
+    hasChildren,
+    width: el.width,
+    height: el.height,
+    cornerRadius: el.cornerRadius,
+    defs,
+  })
   return defs
 }
 
 function generateSVGDefs(elements: DesignElement[]): React.ReactNode {
-  return <defs>{getAllElements(elements).flatMap(defsForElement)}</defs>
+  const all = getAllElements(elements)
+  const defs = all.flatMap(defsForElement)
+  // Forget deleted elements once they outnumber the live ones.
+  if (defsById.size > all.length * 2 + 64) {
+    const live = new Set(all.map((el) => el.id))
+    for (const id of defsById.keys()) if (!live.has(id)) defsById.delete(id)
+  }
+  return <defs>{defs}</defs>
 }
 
 function getFillForElement(el: DesignElement, zoom: number, fillIndex: number = 0): string {
@@ -1961,13 +2012,6 @@ export function Canvas() {
   // (at exactly 100% the vector render already equals the 1x raster)
   const pixelPreviewActive = pixelPreview && Math.abs(safeZoom - 1) > 1e-6
 
-  // Scene content version — bumps whenever the element tree changes so the
-  // pixel-preview raster re-renders (cheap JSON stamp; avoids deep compare)
-  const sceneVersion = useMemo(
-    () => (pixelPreview ? JSON.stringify(elements).length ^ Math.round(safeZoom * 100000) : 0),
-    [elements, safeZoom, pixelPreview],
-  )
-
   // Calculate viewport bounds for frustum culling
   const viewportBounds = useMemo(
     () => ({
@@ -3310,7 +3354,7 @@ export function Canvas() {
               centerY={centerY}
               width={containerSize.width || 0}
               height={containerSize.height || 0}
-              sceneVersion={sceneVersion}
+              sceneElements={elements}
             />
           </OutlinesContext.Provider>
         </div>

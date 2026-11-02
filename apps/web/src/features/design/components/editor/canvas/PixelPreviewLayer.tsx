@@ -41,8 +41,8 @@ interface PixelPreviewLayerProps {
   centerY: number
   width: number
   height: number
-  /** Version counter that bumps whenever the scene content changes. */
-  sceneVersion: number
+  /** Immutable scene tree; its identity changes when scene content changes. */
+  sceneElements: unknown
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -86,7 +86,7 @@ export function PixelPreviewLayer({
   centerY,
   width,
   height,
-  sceneVersion,
+  sceneElements,
 }: PixelPreviewLayerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rafRef = useRef<number | null>(null)
@@ -164,12 +164,13 @@ export function PixelPreviewLayer({
       void rasterize()
     })
     return () => {
+      tokenRef.current++
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current)
         rafRef.current = null
       }
     }
-  }, [active, retina, zoom, panX, panY, centerX, centerY, width, height, sceneVersion, svgRef])
+  }, [active, retina, zoom, panX, panY, centerX, centerY, width, height, sceneElements, svgRef])
 
   if (!active) return null
   return (

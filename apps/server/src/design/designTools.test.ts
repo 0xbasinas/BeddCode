@@ -43,6 +43,34 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('design tools', () => {
+  it('aligns and distributes siblings and reports layout problems', () => {
+    run('design_add', { elements: [{ type: 'frame', width: 100, height: 100, children: [
+      { type: 'rectangle', x: 0, y: 0, width: 10, height: 10 },
+      { type: 'rectangle', x: 22, y: 2, width: 10, height: 10 },
+      { type: 'rectangle', x: 50, y: 0, width: 10, height: 10 },
+      { type: 'rectangle', x: 95, y: 90, width: 10, height: 10 },
+    ] }] })
+    const children = run('design_read').json.elements[0].children
+    const ids = children.slice(0, 3).map((el: { id: string }) => el.id)
+    expect(run('design_check_layout').json.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'overflow' }), expect.objectContaining({ kind: 'alignment' }),
+    ]))
+    expect(run('design_arrange', { ids, operation: 'top' }).error).toBe(false)
+    expect(run('design_arrange', { ids, operation: 'distribute-x' }).error).toBe(false)
+    const after = run('design_read').json.elements[0].children
+    expect(after.slice(0, 3).map((el: { x: number, y: number }) => [el.x, el.y])).toEqual([[0, 0], [25, 0], [50, 0]])
+    expect(run('design_arrange', { ids: [ids[0], 'missing'], operation: 'left' }).error).toBe(true)
+  })
+
+  it('rejects arranging managed auto-layout children and detects overlaps', () => {
+    run('design_add', { elements: [{ type: 'frame', autoLayout: { direction: 'horizontal' }, children: [
+      { type: 'rectangle', x: 0, y: 0 }, { type: 'rectangle', x: 5, y: 5 },
+    ] }] })
+    const ids = run('design_read').json.elements[0].children.map((el: { id: string }) => el.id)
+    expect(run('design_check_layout').json.issues).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'overlap' })]))
+    expect(run('design_arrange', { ids, operation: 'left' }).text).toMatch(/auto-layout/)
+  })
+
   it('tells listeners which elements an agent touched', () => {
     run('design_add', { elements: [{ type: 'frame', children: [{ type: 'ellipse' }] }] })
     const added = changes.at(-1)!.touched!
@@ -68,9 +96,22 @@ describe('design tools', () => {
 
   it('serves how-to skills on demand', () => {
     const list = run('design_skill').json.skills.map((k: { name: string }) => k.name)
-    expect(list).toEqual(expect.arrayContaining(['workflow', 'auto-layout', 'icons']))
+    expect(list).toEqual(expect.arrayContaining(['workflow', 'auto-layout', 'icons', 'layout-review', 'typography-review', 'color-and-surfaces']))
+    expect(run('design_skill', { name: 'layout-review' }).text).toMatch(/design_check_layout/)
+    expect(run('design_skill', { name: 'typography-review' }).text).toMatch(/font/)
+    expect(run('design_skill', { name: 'color-and-surfaces' }).text).toMatch(/contrast/)
     expect(run('design_skill', { name: 'icons' }).text).toMatch(/git-branch/)
     expect(run('design_skill', { name: 'nope' }).text).toMatch(/Available/)
+  })
+
+  it('serves canvas design guidance and searches the bundled design catalog', () => {
+    expect(run('design_skill', { name: 'design-quality' }).text).toMatch(/shared alignment edges/)
+    const result = run('design_search_knowledge', { query: 'cybersecurity', domain: 'product' }).json
+    expect(result.results.length).toBeGreaterThan(0)
+    expect(result.results.every((item: { domain: string }) => item.domain === 'product')).toBe(true)
+    expect(run('design_search_knowledge', { query: 'dashboard', domain: 'style', limit: 2 }).json.results).toHaveLength(2)
+    expect(run('design_search_knowledge', { query: '', domain: 'style' }).error).toBe(true)
+    expect(run('design_search_knowledge', { query: 'dashboard', domain: 'bad' }).error).toBe(true)
   })
 
   it('nudges agents that draw icons from plain shapes', () => {
@@ -116,6 +157,14 @@ describe('design tools', () => {
     expect(run('design_move', { id: list!.id, parent: row!.id }).text).toMatch(/into itself/)
     expect(run('design_move', { id: row!.id, parent: 'page', index: 0 }).error).toBe(false)
     expect(run('design_read').json.elements[0].id).toBe(row!.id)
+  })
+
+  it('reports when layout could not be computed', async () => {
+    const result = await tools.callAsync('design_add', {
+      elements: [{ type: 'frame', autoLayout: { direction: 'vertical' }, children: [{ type: 'text' }] }],
+    })
+    expect(result.isError).not.toBe(true)
+    expect(JSON.parse((result.content[0] as { text: string }).text).layoutStatus).toMatch(/Layout was not computed/)
   })
 
   it('saves the auto layout a connected app works out after an edit', async () => {

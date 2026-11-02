@@ -8,30 +8,9 @@ import { MousePointer2, Zap, Copy, Check, ChevronDown, ChevronRight } from 'luci
 import { useShallow } from 'zustand/react/shallow'
 
 export function RightSidebar() {
-  const {
-    rightTab,
-    setRightTab,
-    elements,
-    selectedElementIds,
-    addComponent,
-    createInstance,
-    pushHistory,
-  } = useEditorStore(
-    useShallow((s) => ({
-      rightTab: s.rightTab,
-      setRightTab: s.setRightTab,
-      elements: s.elements,
-      selectedElementIds: s.selectedElementIds,
-      addComponent: s.addComponent,
-      createInstance: s.createInstance,
-      pushHistory: s.pushHistory,
-    })),
+  const { rightTab, setRightTab } = useEditorStore(
+    useShallow((s) => ({ rightTab: s.rightTab, setRightTab: s.setRightTab })),
   )
-  const selectedElement =
-    selectedElementIds.length === 1 ? findElementInList(elements, selectedElementIds[0]) : null
-
-  const frames = elements.filter((el) => el.type === 'frame')
-  const components = elements.filter((el) => el.isComponent)
 
   return (
     <div className="h-full bg-[color:var(--dc-panel)] flex flex-col border-l border-[color:var(--dc-border)] select-none">
@@ -69,20 +48,26 @@ export function RightSidebar() {
       {/* Inspect Tab */}
       {rightTab === 'inspect' && (
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-          {selectedElement ? (
-            <InspectPanel element={selectedElement} />
-          ) : (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center">
-                <MousePointer2 className="w-5 h-5 text-[color:var(--dc-faint)] mx-auto mb-1.5" />
-                <p className="text-[10px] text-[color:var(--dc-muted)]">
-                  Select an element to inspect
-                </p>
-              </div>
-            </div>
-          )}
+          <SelectedInspectPanel />
         </div>
       )}
+    </div>
+  )
+}
+
+function SelectedInspectPanel() {
+  const selectedElement = useEditorStore((s) =>
+    s.selectedElementIds.length === 1
+      ? findElementInList(s.elements, s.selectedElementIds[0])
+      : null,
+  )
+  if (selectedElement) return <InspectPanel element={selectedElement} />
+  return (
+    <div className="flex items-center justify-center h-full">
+      <div className="text-center">
+        <MousePointer2 className="w-5 h-5 text-[color:var(--dc-faint)] mx-auto mb-1.5" />
+        <p className="text-[10px] text-[color:var(--dc-muted)]">Select an element to inspect</p>
+      </div>
     </div>
   )
 }
