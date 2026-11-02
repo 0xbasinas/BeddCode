@@ -145,7 +145,7 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
             disabled={!online || busy}
             onClick={() => void refresh()}
           >
-            <RefreshCw size={13} />
+            <RefreshCw size={14} />
             {busy ? 'Refreshing…' : 'Refresh'}
           </Button>
           <Button
@@ -216,7 +216,7 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                   disabled={!online || busy}
                   onClick={() => setEditId(configured.id)}
                 >
-                  <Pencil size={15} />
+                  <Pencil size={14} />
                 </Button>
               )}
               {configured && (
@@ -227,7 +227,7 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
                   disabled={!online || busy}
                   onClick={() => setRemoveId(configured.id)}
                 >
-                  <Trash2 size={15} />
+                  <Trash2 size={14} />
                 </Button>
               )}
             </div>

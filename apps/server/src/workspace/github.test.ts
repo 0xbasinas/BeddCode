@@ -155,7 +155,7 @@ describe('GithubService.ciReport', () => {
     const report = await gh.ciReport('/r')
     expect(report.pr).toMatchObject({ number: 9 })
     expect(report.runs).toEqual([
-      expect.objectContaining({ id: 555, conclusion: 'failure', sha: 'abcdef1' }),
+      expect.objectContaining({ id: 555, conclusion: 'failure', sha: 'abcdef123456' }),
     ])
     expect(report.failures).toHaveLength(1)
     expect(report.failures[0]!.checks).toEqual(['Check (ubuntu)', 'Check (windows)'])

@@ -73,12 +73,12 @@ export function AgentMark({
   const kind = agentKind(agent, label)
   return (
     <span className={`avatar agent-mark ${className}`} data-agent={kind} aria-hidden>
-      {kind ? <AgentIcon agent={agent} label={label} size={11} /> : initialsOf(label)}
+      {kind ? <AgentIcon agent={agent} label={label} size={12} /> : initialsOf(label)}
     </span>
   )
 }
 
 /** Beside a model's name: the agent's mark, or a spark for an agent without one. */
 export function ModelIcon({ agent }: { agent?: string }) {
-  return agentKind(agent) ? <AgentIcon agent={agent} size={15} /> : <Sparkles size={15} />
+  return agentKind(agent) ? <AgentIcon agent={agent} size={14} /> : <Sparkles size={14} />
 }

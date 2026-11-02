@@ -41,10 +41,17 @@ export const MessageNav = memo(function MessageNav({
     const measure = () => {
       frame = 0
       const line = el.getBoundingClientRect().top + el.clientHeight * 0.35
+      // One pass over the drawn messages, not one subtree search per message of yours: that was
+      // messages x DOM size on every streamed frame, which blocked typing in long threads.
+      const drawn = new Map<string, Element>()
+      el.querySelectorAll('[data-msg-id]').forEach((node) => {
+        const id = node.getAttribute('data-msg-id')
+        if (id) drawn.set(id, node)
+      })
       let found = -1
       let firstDrawn = -1
       ids.current.forEach((id, index) => {
-        const node = el.querySelector(`[data-msg-id="${CSS.escape(id)}"]`)
+        const node = drawn.get(id)
         if (!node) return
         if (firstDrawn < 0) firstDrawn = index
         if (node.getBoundingClientRect().top <= line) found = index
@@ -54,23 +61,40 @@ export const MessageNav = memo(function MessageNav({
     const queue = () => {
       if (!frame) frame = requestAnimationFrame(measure)
     }
+    // Streaming changes the DOM constantly but rarely moves which message is being read, so DOM
+    // changes are measured at most a few times a second. Scrolling stays immediate.
+    let settle: ReturnType<typeof setTimeout> | undefined
+    const queueSoon = () => {
+      if (settle === undefined)
+        settle = setTimeout(() => {
+          settle = undefined
+          queue()
+        }, 250)
+    }
     queue()
     el.addEventListener('scroll', queue, { passive: true })
-    const observer = new MutationObserver(queue)
+    const observer = new MutationObserver(queueSoon)
     observer.observe(el, { childList: true, subtree: true })
     return () => {
       el.removeEventListener('scroll', queue)
       observer.disconnect()
       if (frame) cancelAnimationFrame(frame)
+      if (settle !== undefined) clearTimeout(settle)
     }
   }, [scroller, messages.length])
 
   const list = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
+  // Centre the message being read when the list opens. Only the list scrolls: scrollIntoView would
+  // also move the thread behind it. Not re-run while open, so clicking does not shift rows.
   useEffect(() => {
     if (!open) return
-    list.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' })
-  }, [open, active])
+    const box = list.current
+    const row = box?.querySelector<HTMLElement>('[data-active="true"]')
+    if (!box || !row) return
+    const offset = row.getBoundingClientRect().top - box.getBoundingClientRect().top
+    box.scrollTop += offset - (box.clientHeight - row.clientHeight) / 2
+  }, [open])
 
   if (messages.length < 2) return null
   const from = Math.max(
@@ -92,7 +116,11 @@ export const MessageNav = memo(function MessageNav({
             key={m.id}
             className="message-nav-row"
             data-active={index === active}
-            onClick={() => onJump(m.id)}
+            onClick={() => {
+              setActive(index)
+              setOpen(false)
+              onJump(m.id)
+            }}
             title={m.label}
           >
             <span className="message-nav-label">{m.label}</span>

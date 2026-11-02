@@ -73,7 +73,7 @@ function Lightbox({
                 setAnnotating(true)
               }}
             >
-              <PenLine size={15} /> Annotate
+              <PenLine size={14} /> Annotate
             </button>
           )}
         </>

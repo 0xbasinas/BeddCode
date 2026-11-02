@@ -128,6 +128,11 @@ export const SessionEvent = z.discriminatedUnion('type', [
   /** The provider's own session id, kept so a stopped session can be resumed later. */
   Base.extend({ type: z.literal('session.provider-session'), providerSessionId: z.string() }),
   Base.extend({ type: z.literal('session.renamed'), title: z.string().trim().min(1).max(120) }),
+  Base.extend({
+    type: z.literal('session.notes'),
+    text: z.string().max(100_000),
+    version: z.number().int().positive(),
+  }),
   /** The user moved the session to, or back out of, the sidebar's Done section. */
   Base.extend({ type: z.literal('session.done'), done: z.boolean() }),
   /** A session started by another agent says how its task ended (its report_result tool). */
@@ -269,6 +274,8 @@ export const SessionEvent = z.discriminatedUnion('type', [
     reason: z.enum(['sent', 'steered', 'cancelled']),
   }),
   /** The agent's own to-do list or plan; each event replaces the previous one. */
+  Base.extend({ type: z.literal('prompt.edited'), queueId: z.string(), text: z.string() }),
+  Base.extend({ type: z.literal('prompt.reordered'), queueIds: z.array(z.string()) }),
   Base.extend({
     type: z.literal('plan.updated'),
     steps: z.array(PlanStep),

@@ -148,7 +148,7 @@ export function HistoryDialog({
                       disabled={!!opening}
                       onClick={() => void open(entry)}
                     >
-                      <History size={15} />
+                      <History size={14} />
                       <span className="history-main">
                         <span className="history-title">{entry.title}</span>
                         <span className="muted">

@@ -115,7 +115,14 @@ export type PrCheckState = z.infer<typeof PrCheckState>
 
 /** What CI said about a branch: its recent Actions runs, and the logs of the checks that failed. */
 export const CiReport = z.object({
-  pr: z.object({ number: z.number().int(), title: z.string(), url: z.string() }).nullable(),
+  pr: z
+    .object({
+      number: z.number().int(),
+      title: z.string(),
+      url: z.string(),
+      headOid: z.string().optional(),
+    })
+    .nullable(),
   branch: z.string().optional(),
   runs: z.array(
     z.object({
@@ -156,6 +163,7 @@ export const PrCleanupResult = z.object({
 export type PrCleanupResult = z.infer<typeof PrCleanupResult>
 
 export const PullRequest = z.object({
+  headOid: z.string().optional(),
   number: z.number().int(),
   title: z.string(),
   url: z.string(),

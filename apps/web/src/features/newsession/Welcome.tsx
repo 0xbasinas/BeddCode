@@ -208,7 +208,7 @@ export function Welcome({ hostKey, onSkip }: { hostKey: string; onSkip(): void }
               disabled={!connected || picking}
               onClick={() => void chooseFolder(hostKey)}
             >
-              {picking ? <Loader2 size={22} className="fb-spin" /> : <FolderOpen size={22} />}
+              {picking ? <Loader2 size={24} className="fb-spin" /> : <FolderOpen size={24} />}
               <strong>
                 {picking && native ? 'Waiting for the folder picker…' : 'Choose a folder…'}
               </strong>

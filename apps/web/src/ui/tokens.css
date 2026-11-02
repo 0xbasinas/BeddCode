@@ -46,6 +46,40 @@
   --danger: #e0716c;
   --radius-panel: calc(10px * var(--ui-scale));
   --radius-control: calc(8px * var(--ui-scale));
+  /* Type scale. Every font-size in the app stylesheets is one of these (all follow --ui-scale);
+     15px and up are one-off headings and stay literal. */
+  --fs-micro: calc(10px * var(--ui-scale)); /* badges, counters, key hints */
+  --fs-caption: calc(11px * var(--ui-scale)); /* meta lines, timestamps, secondary labels */
+  --fs-small: calc(12px * var(--ui-scale)); /* controls, rows, most UI text */
+  --fs-body: calc(13px * var(--ui-scale)); /* primary row titles, inputs */
+  --fs-title: calc(14px * var(--ui-scale)); /* pane and dialog titles */
+  /* Corner scale. Components pick a step; nothing hard-codes a radius. */
+  --corner-xs: calc(4px * var(--ui-scale)); /* chips, checkboxes, inline code */
+  --corner-sm: calc(6px * var(--ui-scale)); /* small buttons, rows, menu items */
+  --corner-md: calc(8px * var(--ui-scale)); /* controls: inputs, buttons, selects */
+  --corner-lg: calc(10px * var(--ui-scale)); /* cards, popovers, panels */
+  --corner-xl: calc(12px * var(--ui-scale)); /* composer, dialogs, large surfaces */
+  --corner-2xl: calc(16px * var(--ui-scale)); /* composer, dialogs */
+  --corner-pill: 999px;
+  /* The one primary action button (commit, save, allow, get started, connect...). */
+  --btn-primary-bg: var(--text);
+  --btn-primary-bg-hover: var(--text-secondary);
+  --btn-primary-fg: var(--on-primary);
+  --disabled-opacity: 0.45;
+  --motion-fast: 120ms;
+  /* Elevation: menus and popovers, dialogs; and the scrim behind modal surfaces. */
+  --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.4);
+  --shadow-dialog: 0 18px 50px rgba(0, 0, 0, 0.5);
+  --scrim: rgba(0, 0, 0, 0.55);
+  /* Status washes behind chips, diff lines and banners; derived so they follow the theme. */
+  --tint-accent: color-mix(in srgb, var(--accent) 12%, transparent);
+  --tint-accent-strong: color-mix(in srgb, var(--accent) 18%, transparent);
+  --tint-success: color-mix(in srgb, var(--success) 12%, transparent);
+  --tint-success-strong: color-mix(in srgb, var(--success) 18%, transparent);
+  --tint-danger: color-mix(in srgb, var(--danger) 12%, transparent);
+  --tint-danger-strong: color-mix(in srgb, var(--danger) 18%, transparent);
+  --tint-violet: color-mix(in srgb, var(--violet) 12%, transparent);
+  --tint-violet-strong: color-mix(in srgb, var(--violet) 18%, transparent);
   --bg-input: #1f1f1f;
   --bg-code: #121212;
   --border-subtle: #242424;

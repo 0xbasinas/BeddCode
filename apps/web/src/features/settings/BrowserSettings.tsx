@@ -349,7 +349,7 @@ export function BrowserSettings() {
                     onChange={(event) => setProfileName(event.target.value)}
                   />
                   <Button type="submit" variant="outline" disabled={busy || !profileName.trim()}>
-                    <Plus size={15} /> Add profile
+                    <Plus size={14} /> Add profile
                   </Button>
                 </form>
               </div>
@@ -371,7 +371,7 @@ export function BrowserSettings() {
                     ))}
                   </Select>
                   <Button variant="outline" disabled={busy} onClick={() => void importExtensions()}>
-                    <Puzzle size={15} /> Import
+                    <Puzzle size={14} /> Import
                   </Button>
                 </div>
               </div>
@@ -400,7 +400,7 @@ export function BrowserSettings() {
                           disabled={busy}
                           onClick={() => void openExtensionSettings(extension)}
                         >
-                          <ExternalLink size={15} />
+                          <ExternalLink size={14} />
                         </Button>
                       )}
                       <Button
@@ -411,7 +411,7 @@ export function BrowserSettings() {
                         disabled={busy}
                         onClick={() => void removeExtension(extension)}
                       >
-                        <Trash2 size={15} />
+                        <Trash2 size={14} />
                       </Button>
                     </div>
                   ))

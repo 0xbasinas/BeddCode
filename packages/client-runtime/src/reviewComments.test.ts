@@ -4,6 +4,7 @@ import {
   createReviewComment,
   formatReview,
   numberPatch,
+  reviewPatchVersion,
   sortReviewComments,
   withoutSent,
 } from './reviewComments.ts'
@@ -139,5 +140,13 @@ describe('review comments', () => {
     expect(sortReviewComments(all).map((c) => c.id)).toEqual(['2', '1', '3'])
     const late = mk('4', 'c.ts', at('// end'))
     expect(withoutSent([...all, late], all).map((c) => c.id)).toEqual(['4'])
+    expect(withoutSent([{ ...all[0]!, body: 'Edited while sending' }], all)).toHaveLength(1)
+    expect(withoutSent([{ ...all[0]!, patchVersion: 'new' }], all)).toHaveLength(1)
+  })
+
+  it('detects same-length and newline-only diff changes', () => {
+    expect(reviewPatchVersion(PATCH)).toBe(reviewPatchVersion(PATCH))
+    expect(reviewPatchVersion(PATCH)).not.toBe(reviewPatchVersion(PATCH.replace('const', 'CONST')))
+    expect(reviewPatchVersion(PATCH)).not.toBe(reviewPatchVersion(PATCH + '\n'))
   })
 })

@@ -8,7 +8,7 @@
   padding: calc(14px * var(--ui-scale)) calc(6px * var(--ui-scale)) calc(6px * var(--ui-scale))
     calc(10px * var(--ui-scale));
   color: var(--text-faint);
-  font-size: calc(11.5px * var(--ui-scale));
+  font-size: var(--fs-caption);
   letter-spacing: 0.2px;
   text-transform: uppercase;
 }
@@ -26,9 +26,9 @@
   align-items: center;
   gap: calc(5px * var(--ui-scale));
   padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
-  border-radius: calc(7px * var(--ui-scale));
+  border-radius: var(--corner-sm);
   color: var(--text-muted);
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--fs-small);
   letter-spacing: 0;
   text-transform: none;
 }
@@ -44,11 +44,11 @@
   align-items: center;
   gap: calc(4px * var(--ui-scale));
   padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale));
-  border-radius: calc(6px * var(--ui-scale));
+  border-radius: var(--corner-sm);
   background: var(--bg-hover);
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--fs-caption);
   font-weight: 400;
   white-space: nowrap;
   flex: none;
@@ -68,9 +68,9 @@
   flex: none;
   padding: 0 calc(5px * var(--ui-scale));
   border: 1px solid rgba(233, 162, 59, 0.4);
-  border-radius: calc(5px * var(--ui-scale));
+  border-radius: var(--corner-xs);
   color: var(--accent);
-  font-size: calc(10.5px * var(--ui-scale));
+  font-size: var(--fs-micro);
   font-weight: 500;
 }
 
@@ -78,7 +78,7 @@
 .folder-group {
   margin: 1px 0;
   border: 1px solid transparent;
-  border-radius: calc(8px * var(--ui-scale));
+  border-radius: var(--corner-md);
   transition:
     background 0.3s,
     border-color 0.3s,
@@ -89,7 +89,7 @@
   border-color: var(--border);
 }
 .folder-group.flash {
-  background: rgba(233, 162, 59, 0.07);
+  background: var(--tint-accent);
   border-color: rgba(233, 162, 59, 0.55);
   box-shadow: 0 0 0 3px rgba(233, 162, 59, 0.1);
 }
@@ -99,7 +99,7 @@
   gap: calc(4px * var(--ui-scale));
   flex: none;
   color: var(--text-faint);
-  font-size: calc(11.5px * var(--ui-scale));
+  font-size: var(--fs-caption);
 }
 /* Project names can shorten while the host and new-session button stay visible. */
 .folder-group .group-title .group-name {
@@ -144,9 +144,9 @@
   margin: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(6px * var(--ui-scale));
   padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   border: 1px dashed var(--border);
-  border-radius: calc(8px * var(--ui-scale));
+  border-radius: var(--corner-md);
   color: var(--text-muted);
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--fs-small);
   white-space: nowrap;
 }
 .folder-empty:hover {
@@ -167,10 +167,10 @@
   align-items: center;
   gap: calc(5px * var(--ui-scale));
   padding: calc(3px * var(--ui-scale)) calc(7px * var(--ui-scale));
-  border-radius: calc(6px * var(--ui-scale));
+  border-radius: var(--corner-sm);
   background: var(--bg-hover);
   color: var(--text-secondary);
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--fs-small);
 }
 .add-folder-host:hover:not(:disabled) {
   background: var(--bg-active);
@@ -185,7 +185,7 @@
 .add-folder-keys kbd {
   padding: 0 calc(4px * var(--ui-scale));
   border: 1px solid var(--border-strong);
-  border-radius: calc(4px * var(--ui-scale));
+  border-radius: var(--corner-xs);
   color: var(--text-muted);
 }
 .add-folder-note {
@@ -206,7 +206,7 @@
   overflow: hidden;
   color: var(--text-faint);
   font-family: var(--font-mono);
-  font-size: calc(11.5px * var(--ui-scale));
+  font-size: var(--fs-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -223,7 +223,7 @@
   gap: calc(4px * var(--ui-scale));
   flex: none;
   color: var(--text-faint);
-  font-size: calc(11.5px * var(--ui-scale));
+  font-size: var(--fs-caption);
 }
 
 /* In-app folder browser */
@@ -235,8 +235,8 @@
   overflow: hidden;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: calc(12px * var(--ui-scale));
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.65);
+  border-radius: var(--corner-xl);
+  box-shadow: var(--shadow-dialog);
 }
 .fb-head {
   display: flex;
@@ -257,7 +257,7 @@
 .fb-head p {
   margin: 0;
   color: var(--text-muted);
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--fs-small);
   line-height: 1.4;
 }
 .fb-host-icon {
@@ -266,7 +266,7 @@
   flex: none;
   width: calc(28px * var(--ui-scale));
   height: calc(28px * var(--ui-scale));
-  border-radius: calc(8px * var(--ui-scale));
+  border-radius: var(--corner-md);
   background: var(--bg-active);
   color: var(--text-secondary);
 }
@@ -279,7 +279,7 @@
   border-top: 1px solid var(--border-subtle);
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-muted);
-  font-size: calc(12.5px * var(--ui-scale));
+  font-size: var(--fs-small);
 }
 .fb-crumb-wrap {
   display: flex;
@@ -294,7 +294,7 @@
   align-items: center;
   gap: calc(5px * var(--ui-scale));
   padding: calc(3px * var(--ui-scale)) calc(7px * var(--ui-scale));
-  border-radius: calc(6px * var(--ui-scale));
+  border-radius: var(--corner-sm);
   color: var(--text-muted);
 }
 .fb-crumb:hover {
@@ -331,8 +331,8 @@
   padding: calc(5px * var(--ui-scale)) calc(6px * var(--ui-scale)) calc(5px * var(--ui-scale))
     calc(10px * var(--ui-scale));
   min-height: calc(32px * var(--ui-scale));
-  border-radius: calc(7px * var(--ui-scale));
-  font-size: calc(13px * var(--ui-scale));
+  border-radius: var(--corner-sm);
+  font-size: var(--fs-body);
   text-align: left;
   cursor: pointer;
   outline: 0;
@@ -366,7 +366,7 @@
   flex: none;
   width: calc(62px * var(--ui-scale));
   color: var(--text-faint);
-  font-size: calc(11.5px * var(--ui-scale));
+  font-size: var(--fs-caption);
   text-align: right;
 }
 .fb-open {
@@ -375,7 +375,7 @@
 .fb-message {
   padding: calc(14px * var(--ui-scale)) calc(10px * var(--ui-scale));
   color: var(--text-muted);
-  font-size: calc(12.5px * var(--ui-scale));
+  font-size: var(--fs-small);
 }
 .fb-message.error {
   color: var(--danger);
@@ -394,7 +394,7 @@
   overflow: hidden;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: calc(11.5px * var(--ui-scale));
+  font-size: var(--fs-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -427,8 +427,8 @@
     calc(13px * var(--ui-scale));
   background: var(--bg-raised);
   border: 1px solid var(--border-strong);
-  border-radius: calc(10px * var(--ui-scale));
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+  border-radius: var(--corner-lg);
+  box-shadow: var(--shadow-pop);
   animation: folder-toast-in 0.18s ease-out;
 }
 @keyframes folder-toast-in {
@@ -456,7 +456,7 @@
   color: var(--text-secondary);
 }
 .folder-toast-icon.error {
-  background: rgba(224, 113, 108, 0.16);
+  background: var(--tint-danger-strong);
   color: var(--danger);
 }
 .folder-toast-text {
@@ -465,18 +465,18 @@
 }
 .folder-toast-text h4 {
   margin: 0 0 calc(3px * var(--ui-scale));
-  font-size: calc(13px * var(--ui-scale));
+  font-size: var(--fs-body);
   font-weight: 500;
 }
 .folder-toast-text p {
   margin: 0;
   color: var(--text-muted);
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--fs-small);
   line-height: 1.42;
   overflow-wrap: anywhere;
 }
 .folder-toast-text code {
-  font-size: calc(11.5px * var(--ui-scale));
+  font-size: var(--fs-caption);
 }
 .folder-toast-actions {
   display: flex;
@@ -493,7 +493,7 @@
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: rgba(0, 0, 0, 0.58);
+  background: var(--scrim);
 }
 .folder-picking-hint {
   position: absolute;
@@ -505,11 +505,11 @@
   gap: calc(10px * var(--ui-scale));
   padding: calc(8px * var(--ui-scale)) calc(16px * var(--ui-scale));
   border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  border-radius: var(--corner-pill);
   background: var(--bg-raised);
   color: var(--text-secondary);
-  font-size: calc(12.5px * var(--ui-scale));
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  font-size: var(--fs-small);
+  box-shadow: var(--shadow-pop);
 }
 
 /* Welcome checklist */
@@ -519,12 +519,12 @@
   gap: calc(6px * var(--ui-scale));
   margin-top: calc(5px * var(--ui-scale));
   color: var(--text-faint);
-  font-size: calc(11.5px * var(--ui-scale));
+  font-size: var(--fs-caption);
 }
 .setup-link {
   padding: 0;
   color: var(--text-muted);
-  font-size: calc(11.5px * var(--ui-scale));
+  font-size: var(--fs-caption);
   text-decoration: underline;
   text-decoration-color: var(--border-strong);
   text-underline-offset: 2px;

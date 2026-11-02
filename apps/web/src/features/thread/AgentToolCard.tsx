@@ -164,7 +164,7 @@ export function AgentRunCard({
         onClick={() => setOpen((o) => !o)}
       >
         <ChevronRight size={12} className="orch-chevron" />
-        {status.pending ? <Loader2 size={13} className="spin" /> : <Bot size={13} />}
+        {status.pending ? <Loader2 size={14} className="spin" /> : <Bot size={14} />}
         <span className="orch-title">
           {headline}
           <span className="orch-meta">
@@ -174,7 +174,7 @@ export function AgentRunCard({
         </span>
         {status.needsYou && (
           <span className="orch-chip needs">
-            <Hand size={11} /> Needs your approval
+            <Hand size={12} /> Needs your approval
           </span>
         )}
         {status.failed > 0 && <span className="orch-chip failed">{status.failed} failed</span>}
@@ -200,7 +200,7 @@ export function AgentRunCard({
                       label={agentDisplayName(step.child.agent, labels)}
                     />
                   ) : (
-                    <Bot size={13} className="orch-icon" />
+                    <Bot size={14} className="orch-icon" />
                   )}
                   <span className="orch-step-text">
                     <span className="agent-verb">{step.verb}</span>
@@ -263,7 +263,7 @@ export function StartedByBanner({ session, hostKey }: { session: SessionView; ho
       role="note"
       title="Its agent can read this conversation and send it messages; you answer its approvals here."
     >
-      <CornerLeftUp size={13} className="started-by-icon" />
+      <CornerLeftUp size={14} className="started-by-icon" />
       <span className="started-by-text">
         Started by
         {parent ? (
@@ -317,7 +317,7 @@ export function ChildAgentsBar({ sessionId, hostKey }: { sessionId: string; host
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
         >
-          <Bot size={13} />
+          <Bot size={14} />
           <span>
             {children.length} {children.length === 1 ? 'agent' : 'agents'} started here
             {working > 0 ? ` · ${working} working` : ' · all finished'}
@@ -334,7 +334,7 @@ export function ChildAgentsBar({ sessionId, hostKey }: { sessionId: string; host
             title="Stop this session and every agent it started"
             onClick={() => stop(sessionId)}
           >
-            <Square size={11} /> Stop everything
+            <Square size={12} /> Stop everything
           </button>
         )}
       </div>
@@ -395,7 +395,7 @@ export function ChildAgentsBar({ sessionId, hostKey }: { sessionId: string; host
                     title="Stop this agent and anything it started"
                     onClick={() => stop(c.id)}
                   >
-                    <Square size={11} />
+                    <Square size={12} />
                   </button>
                 )}
               </div>

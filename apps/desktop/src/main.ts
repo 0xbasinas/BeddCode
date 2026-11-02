@@ -418,6 +418,28 @@ ipcMain.handle('beddcode:window', (event, action: unknown) => {
   return runWindowAction(win, action)
 })
 
+// The count of sessions waiting for the user, shown on the app's icon: a badge on macOS and Linux,
+// an overlay on the Windows taskbar button (the page draws it, since the main process has no canvas).
+ipcMain.handle('beddcode:attention', (event, rawCount: unknown, overlay: unknown) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win || event.sender !== win.webContents) return false
+  const count =
+    typeof rawCount === 'number' && rawCount > 0 ? Math.min(Math.floor(rawCount), 99) : 0
+  if (process.platform === 'win32') {
+    const image =
+      count > 0 && typeof overlay === 'string' && overlay.startsWith('data:image/png;base64,')
+        ? nativeImage.createFromDataURL(overlay)
+        : null
+    win.setOverlayIcon(
+      image && !image.isEmpty() ? image : null,
+      count > 0 ? `${count} waiting for you` : '',
+    )
+  } else {
+    app.setBadgeCount(count)
+  }
+  return true
+})
+
 // The page's theme sets the colour shown behind it (while resizing, and before it paints).
 ipcMain.handle('beddcode:theme', (event, theme: unknown) => {
   const win = BrowserWindow.fromWebContents(event.sender)

@@ -51,19 +51,19 @@ function useNow(active: boolean): number {
 function StatusIcon({ phase }: { phase: ToolPhase }) {
   switch (phase) {
     case 'awaiting-approval':
-      return <Hand size={13} aria-label="Waiting for your approval" />
+      return <Hand size={14} aria-label="Waiting for your approval" />
     case 'approved':
-      return <Loader2 size={13} className="spin" aria-label="Approved, waiting for the agent" />
+      return <Loader2 size={14} className="spin" aria-label="Approved, waiting for the agent" />
     case 'denied':
-      return <X size={13} aria-label="Denied" />
+      return <X size={14} aria-label="Denied" />
     case 'running':
-      return <Loader2 size={13} className="spin" aria-label="Running" />
+      return <Loader2 size={14} className="spin" aria-label="Running" />
     case 'ok':
-      return <Check size={13} aria-label="Done" />
+      return <Check size={14} aria-label="Done" />
     case 'failed':
-      return <X size={13} aria-label="Failed" />
+      return <X size={14} aria-label="Failed" />
     case 'cancelled':
-      return <Ban size={13} aria-label="Stopped" />
+      return <Ban size={14} aria-label="Stopped" />
   }
 }
 
@@ -158,7 +158,7 @@ function ToolCall({ tool, now }: { tool: Tool; now: number }) {
       <span className="tcall-status">
         <StatusIcon phase={phase} />
       </span>
-      <ChevronRight size={13} className="tcall-chevron" aria-hidden />
+      <ChevronRight size={14} className="tcall-chevron" aria-hidden />
     </>
   )
 
@@ -189,7 +189,14 @@ export function ToolGroup({ tools }: { tools: Tool[] }) {
   const running = tools.filter((t) => t.status === 'running')
   const now = useNow(running.length > 0)
   const [choice, setChoice] = useState<boolean | undefined>(undefined)
-  const open = choice ?? defaultOpen(tools)
+  // A run that is still going stays folded: its header already names the running call and counts
+  // the finished ones, and opening on start then folding on finish made the thread jump twice per
+  // call. Failures and stopped calls still open it so they are not hidden.
+  const needsAttention = tools.some(
+    (t) => (t.status === 'failed' && !wasDenied(t)) || t.status === 'cancelled',
+  )
+  const open =
+    choice ?? (running.length > 0 ? tools.length <= 2 || needsAttention : defaultOpen(tools))
   const foldable = tools.length > 2
   const current = running.at(-1)
 
@@ -204,7 +211,7 @@ export function ToolGroup({ tools }: { tools: Tool[] }) {
       {foldable && (
         <button className="tgroup-head" aria-expanded={open} onClick={() => setChoice(!open)}>
           <ChevronRight size={14} className={`tgroup-chevron ${open ? 'open' : ''}`} />
-          {current ? <Loader2 size={13} className="spin" /> : null}
+          {current ? <Loader2 size={14} className="spin" /> : null}
           <span className="tgroup-summary">
             {current ? (
               <>

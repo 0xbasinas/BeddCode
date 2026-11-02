@@ -8,6 +8,8 @@ import {
   attachmentDraftKey,
   stageAttachment,
   useAttachments,
+  retryAttachment,
+  validateAttachmentDraft,
 } from './attachments.ts'
 
 const draft = attachmentDraftKey('remote', 'session')
@@ -17,6 +19,68 @@ beforeEach(() => {
 })
 
 describe('composer attachment drafts', () => {
+  it('verifies restored references on their host without reviving removed chips', async () => {
+    useAttachments.setState({
+      drafts: {
+        [draft]: [
+          { key: 100, id: 'exists', name: 'exists.txt', size: 1, status: 'checking' },
+          { key: 101, id: 'gone', name: 'gone.txt', size: 1, status: 'checking' },
+        ],
+      },
+    })
+    vi.mocked(hostRequest).mockResolvedValue([{ id: 'exists', name: 'exists.txt', size: 2 }, null])
+    await validateAttachmentDraft('remote', 'session')
+    expect(hostRequest).toHaveBeenCalledWith('remote', 'attachments.inspect', {
+      ids: ['exists', 'gone'],
+    })
+    expect(useAttachments.getState().drafts[draft]).toMatchObject([
+      { status: 'done', size: 2 },
+      { status: 'error' },
+    ])
+  })
+  it('retries a failed upload in place and rejects retries after removal', async () => {
+    const save = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Offline'))
+      .mockResolvedValueOnce({ id: 'saved', size: 3 })
+    expect(await stageAttachment('remote', 'session', 'retry.txt', 3, save)).toBe(false)
+    const key = useAttachments.getState().drafts[draft]![0]!.key
+    expect(await retryAttachment(draft, key)).toBe(true)
+    expect(useAttachments.getState().drafts[draft]).toMatchObject([
+      { key, id: 'saved', status: 'done' },
+    ])
+    useAttachments.getState().remove(draft, [key])
+    expect(await retryAttachment(draft, key)).toBe(false)
+    expect(save).toHaveBeenCalledTimes(2)
+  })
+
+  it('limits uploads per host and skips removed queued files', async () => {
+    const finish: (() => void)[] = []
+    const save = vi.fn(
+      () =>
+        new Promise<{ id: string; name: string; size: number }>((resolve) =>
+          finish.push(() => resolve({ id: 'saved', name: 'file.txt', size: 1 })),
+        ),
+    )
+    const jobs = Array.from({ length: 4 }, (_, n) =>
+      stageAttachment('remote', 'session', `${n}.txt`, 1, save),
+    )
+    expect(save).toHaveBeenCalledTimes(3)
+    const queued = useAttachments.getState().drafts[draft]![3]!
+    expect(queued.status).toBe('queued')
+    useAttachments.getState().remove(draft, [queued.key])
+    // A saturated remote host does not block a different host.
+    expect(
+      await stageAttachment('local', 'session', 'local.txt', 1, async () => ({
+        id: 'local',
+        name: 'local',
+        size: 1,
+      })),
+    ).toBe(true)
+    finish.forEach((resolve) => resolve())
+    expect(await Promise.all(jobs)).toEqual([true, true, true, false])
+    expect(save).toHaveBeenCalledTimes(3)
+  })
   it('keeps attachments separate by host and session, including late completions', async () => {
     let finish!: (value: { id: string; name: string; size: number }) => void
     const pending = stageAttachment(

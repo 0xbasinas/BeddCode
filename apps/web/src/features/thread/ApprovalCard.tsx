@@ -83,7 +83,7 @@ export function ApprovalCard({
             : (answered?.label ?? 'Answered')
     return (
       <div className={`apv done ${state}`}>
-        <Icon size={13} />
+        <Icon size={14} />
         <span className="apv-verdict">{verdict}</span>
         <span className="apv-what" title={item.detail ?? item.title}>
           {preview ? <code>{preview}</code> : title.replace(/\?$/, '')}

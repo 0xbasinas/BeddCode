@@ -99,6 +99,7 @@ export type TranscriptItem =
   | { kind: 'error'; id: string; message: string }
 
 export interface SessionView {
+  notes?: { text: string; version: number }
   id: string
   title: string
   cwd: string
@@ -194,6 +195,21 @@ export interface ReplicaState {
 export const emptyReplica = (): ReplicaState => ({ lastSeq: 0, order: [], sessions: {} })
 
 /** Fold a received burst, copying a streaming message's history only once per contiguous run. */
+/**
+ * Where a turn's changes card goes: after the turn's last item, which is before any message of a
+ * later turn that was sent while the snapshot was being taken. At the end when nothing follows.
+ */
+function changesPlace(items: TranscriptItem[], turnId: string | undefined): number {
+  if (turnId === undefined) return items.length
+  const last = items.findLastIndex((item) => item.kind === 'message' && item.turnId === turnId)
+  if (last < 0) return items.length
+  const later = items.findIndex(
+    (item, i) =>
+      i > last && item.kind === 'message' && item.role === 'user' && item.turnId !== turnId,
+  )
+  return later < 0 ? items.length : later
+}
+
 export function applyEvents(state: ReplicaState, events: readonly StoredEvent[]): ReplicaState {
   let next = state
   for (let i = 0; i < events.length; i++) {
@@ -315,6 +331,10 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     case 'session.renamed':
       next.title = e.title
       break
+    case 'session.notes':
+      next.notes = { text: e.text, version: e.version }
+      next.updatedAt = current.updatedAt
+      break
     case 'session.done':
       next.done = e.done || undefined
       // Filing a session away is not activity: it keeps its place in time.
@@ -331,23 +351,25 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       if (e.waiting) next.done = undefined
       next.updatedAt = current.updatedAt
       break
-    case 'turn.changes':
-      next.items = [
-        ...current.items,
-        {
-          kind: 'changes',
-          id,
-          turnId: e.turnId,
-          before: e.before,
-          after: e.after,
-          files: e.files,
-          truncated: e.truncated,
-        },
-      ]
+    case 'turn.changes': {
+      const card: TranscriptItem = {
+        kind: 'changes',
+        id,
+        turnId: e.turnId,
+        before: e.before,
+        after: e.after,
+        files: e.files,
+        truncated: e.truncated,
+      }
+      // The snapshot is taken after the turn ends and can land after a queued message has already
+      // started the next turn. The card belongs to the turn it describes: before that message.
+      const at = changesPlace(current.items, e.turnId)
+      next.items = [...current.items.slice(0, at), card, ...current.items.slice(at)]
       next.updatedAt = current.updatedAt
       // The host's snapshot is the full picture of the turn, commands included.
       Object.assign(next, sessionChanges(next.items))
       break
+    }
     case 'turn.reverted':
       next.items = current.items.map((item) =>
         item.kind === 'changes' && item.after === e.after ? { ...item, reverted: true } : item,
@@ -555,6 +577,16 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     case 'prompt.dequeued':
       next.queue = current.queue.filter((q) => q.queueId !== e.queueId)
       break
+    case 'prompt.edited':
+      next.queue = current.queue.map((q) => (q.queueId === e.queueId ? { ...q, text: e.text } : q))
+      break
+    case 'prompt.reordered': {
+      const rank = new Map(e.queueIds.map((id, i) => [id, i]))
+      next.queue = [...current.queue].sort(
+        (a, b) => (rank.get(a.queueId) ?? Infinity) - (rank.get(b.queueId) ?? Infinity),
+      )
+      break
+    }
     case 'plan.updated':
       next.plan = { steps: e.steps, explanation: e.explanation }
       break

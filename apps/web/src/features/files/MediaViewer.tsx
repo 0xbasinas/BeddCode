@@ -70,7 +70,7 @@ export function MediaViewer({
     return (
       <div className="pane-empty">
         <span className="empty-icon">
-          <FileVideo size={26} />
+          <FileVideo size={24} />
         </span>
         <h3>Can&apos;t show this file</h3>
         <p>{error}</p>

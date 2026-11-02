@@ -45,6 +45,15 @@ interface Stored {
   devices: PushRegistration[]
 }
 
+/** One line for a notification: whitespace collapsed, cut at a word with an ellipsis, never mid-word. */
+function brief(text: string, max = 160): string {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  if (flat.length <= max) return flat
+  const cut = flat.slice(0, max)
+  const space = cut.lastIndexOf(' ')
+  return `${(space > max / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:.-]+$/, '')}…`
+}
+
 /**
  * Decides when something deserves a phone alert (a turn finished or failed, an agent waits for
  * the user, a scheduled run ended) and sends it: Expo push to registered phones, and an ntfy topic
@@ -154,17 +163,17 @@ export class AlertService {
           : `Stopped with an error${event.message ? `: ${event.message}` : ''}`
     } else if (event.type === 'approval.requested') {
       kind = 'needsYou'
-      body = `Needs your approval: ${event.title}`
+      body = `Needs your approval: ${brief(event.title)}`
     } else if (event.type === 'question.requested') {
       kind = 'needsYou'
-      body = event.questions[0]?.question ?? 'Has a question for you'
+      body = brief(event.questions[0]?.question ?? 'Has a question for you')
     } else {
       return undefined
     }
     const d = digest(this.options.readSession(event.sessionId))
     // A child's finished turn is its parent agent's business; the user hears from the parent.
     if (kind === 'turnDone' && d?.parentSessionId) return undefined
-    if (kind === 'turnDone' && d?.lastReply) body = d.lastReply.replace(/\s+/g, ' ').slice(0, 160)
+    if (kind === 'turnDone' && d?.lastReply) body = brief(d.lastReply)
     // A child that needs the user or failed says whose helper it is, so the alert makes sense alone.
     const parent = d?.parentSessionId
       ? digest(this.options.readSession(d.parentSessionId))?.title
@@ -194,7 +203,9 @@ export class AlertService {
       title: `Scheduled: ${schedule.name}`,
       body:
         run.status === 'done'
-          ? (reply?.replace(/\s+/g, ' ').slice(0, 160) ?? 'Finished')
+          ? reply
+            ? brief(reply)
+            : 'Finished'
           : `Did not finish${run.note ? `: ${run.note}` : ''}`,
       sessionId: run.sessionId,
       hostId: this.options.hostId,

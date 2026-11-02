@@ -21,6 +21,19 @@ const created = {
   instanceId: 'fake',
 }
 
+it('replays host-backed notes and queued edits in their reordered positions', () => {
+  const state = fold([
+    created,
+    { type: 'prompt.queued', queueId: 'a', text: 'a' },
+    { type: 'prompt.queued', queueId: 'b', text: 'b' },
+    { type: 'prompt.edited', queueId: 'a', text: 'changed' },
+    { type: 'prompt.reordered', queueIds: ['b', 'a'] },
+    { type: 'session.notes', text: 'Shared note', version: 1 },
+  ])
+  expect(state.sessions.s1?.queue.map((q) => q.text)).toEqual(['b', 'changed'])
+  expect(state.sessions.s1?.notes).toEqual({ text: 'Shared note', version: 1 })
+})
+
 it('batch application matches individual events, including reconnect duplicates and tool boundaries', () => {
   const events: SessionEvent[] = [
     { ...base, ...created },
@@ -577,4 +590,28 @@ describe('replica: tool approvals', () => {
       output: '# b',
     })
   })
+})
+
+it('files a turn’s changes card before a message queued behind it, not after', () => {
+  const state = fold([
+    created,
+    { type: 'turn.started', turnId: 't1' },
+    { type: 'message.delta', role: 'user', text: 'first', turnId: 't1' },
+    { type: 'message.delta', role: 'assistant', text: 'done', turnId: 't1' },
+    // The next message starts its turn while the first turn's snapshot is still being taken.
+    { type: 'message.delta', role: 'user', text: 'second', turnId: 't2' },
+    {
+      type: 'turn.changes',
+      turnId: 't1',
+      before: 'a',
+      after: 'b',
+      files: [{ path: 'x.ts', status: 'modified', added: 1, removed: 0 }],
+    },
+  ] as Draft[])
+  expect(state.sessions.s1?.items.map((i) => (i.kind === 'message' ? i.text : i.kind))).toEqual([
+    'first',
+    'done',
+    'changes',
+    'second',
+  ])
 })

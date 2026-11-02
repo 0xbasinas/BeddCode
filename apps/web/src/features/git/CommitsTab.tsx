@@ -4,6 +4,7 @@ import { gitOperationKey, pushBranch, useGitOperations } from './operations.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
 import type { GitCommit, GitLog } from '@beddcode/contracts'
 import { agoLabel } from '../../ui/format.ts'
+import { DiffStat } from '../../ui/DiffStat.tsx'
 
 function initial(name: string) {
   return name.trim().slice(0, 1).toUpperCase() || '?'
@@ -19,10 +20,7 @@ function CommitRow({ commit }: { commit: GitCommit }) {
           <span className="commit-subject">{commit.subject}</span>
           <span className="commit-meta">
             <code>{commit.hash.slice(0, 7)}</code> {commit.author} · {agoLabel(commit.at)}{' '}
-            <span className="stat">
-              <span className="add">+{commit.added}</span>{' '}
-              <span className="del">−{commit.removed}</span>
-            </span>
+            <DiffStat added={commit.added} removed={commit.removed} />
           </span>
         </span>
       </button>
@@ -31,9 +29,7 @@ function CommitRow({ commit }: { commit: GitCommit }) {
           {commit.files.map((f) => (
             <div key={f.path} className="commit-file">
               <span className="file-path">{f.path}</span>
-              <span className="stat">
-                <span className="add">+{f.added}</span> <span className="del">−{f.removed}</span>
-              </span>
+              <DiffStat added={f.added} removed={f.removed} />
             </div>
           ))}
         </div>

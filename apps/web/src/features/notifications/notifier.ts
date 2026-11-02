@@ -2,6 +2,7 @@ import type { SessionStatus } from '@beddcode/client-runtime'
 import { useHostStore } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { useNotificationPrefs, type NotificationSound } from '../../stores/notificationPrefs.ts'
+import { desktopBridge } from '../../ui/desktop.ts'
 import { decide, sessionAlerts, type Alert } from './logic.ts'
 
 /** How long a remote host may be unreachable before it is worth saying so. */
@@ -83,6 +84,36 @@ export function showNotification(alert: Alert) {
   }
 }
 
+/** The taskbar overlay (Windows): a red dot with the count, as a PNG data URL. */
+function overlayIcon(count: number): string | null {
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 32
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.fillStyle = '#e0716c'
+    ctx.beginPath()
+    ctx.arc(16, 16, 15, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#ffffff'
+    ctx.font = `700 ${count > 9 ? 17 : 21}px sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(count > 99 ? '99' : String(count), 16, 17)
+    return canvas.toDataURL('image/png')
+  } catch {
+    return null
+  }
+}
+
+/** Puts the number of sessions waiting for the user on the app's icon; clears it at zero. */
+function showAttention(count: number) {
+  const bridge = desktopBridge()
+  if (!bridge?.setAttention) return
+  const overlay = count > 0 && bridge.platform === 'win32' ? overlayIcon(count) : null
+  void bridge.setAttention(count, overlay).catch(() => undefined)
+}
+
 /** Applies the user's choices to an alert, then shows it and plays its sound. */
 export function deliver(alert: Alert, now = new Date()) {
   const decision = decide(alert, useNotificationPrefs.getState().values, {
@@ -109,7 +140,9 @@ export function startNotifications(): () => void {
     ? window.requestIdleCallback(prepareSound, { timeout: 5_000 })
     : window.setTimeout(prepareSound, 2_000)
 
+  let shown = 0
   const unsubscribe = useHostStore.subscribe((state) => {
+    let waiting = 0
     for (const [hostKey, runtime] of Object.entries(state.runtimes)) {
       // Until the first replay is done every session looks new; take stock without telling.
       if (runtime.synced) {
@@ -117,6 +150,7 @@ export function startNotifications(): () => void {
           const key = `${hostKey}\u0000${session.id}`
           for (const alert of sessionAlerts(status.get(key), session, Date.now())) deliver(alert)
           status.set(key, session.status)
+          if (session.status === 'needs-you') waiting++
         }
       }
 
@@ -147,8 +181,14 @@ export function startNotifications(): () => void {
         timers.delete(hostKey)
       }
     }
+    // Only the sessions this window has caught up with count; a change is told to the icon once.
+    if (waiting !== shown) {
+      shown = waiting
+      showAttention(waiting)
+    }
   })
   return () => {
+    if (shown !== 0) showAttention(0)
     if (hasIdle) window.cancelIdleCallback(idle)
     else window.clearTimeout(idle)
     unsubscribe()

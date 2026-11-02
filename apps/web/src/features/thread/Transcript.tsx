@@ -1,5 +1,15 @@
 import { elapsedLabel } from '@beddcode/client-runtime'
-import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  memo,
+  startTransition,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import { createPortal } from 'react-dom'
 import { AttachmentImage, isImageName } from '../composer/AttachmentImage.tsx'
 import {
   ChevronDown,
@@ -11,6 +21,7 @@ import {
   GitFork,
   FoldVertical,
   LoaderCircle,
+  Quote,
 } from 'lucide-react'
 import type { TranscriptItem } from '@beddcode/client-runtime'
 import { Markdown } from '../../ui/Markdown.tsx'
@@ -26,12 +37,25 @@ import { isAgentTool, isBrowserTool } from '@beddcode/client-runtime'
 import { BrowserToolCard } from './BrowserToolCard.tsx'
 import { TurnChangesCard } from './TurnChanges.tsx'
 import { readingPosition, rememberReadingPosition } from './threadState.ts'
+import { captureReadingAnchor } from './scrollAnchor.ts'
+import { DiffStat } from '../../ui/DiffStat.tsx'
 
 type Item = TranscriptItem
 
 /** A long thread draws only its latest blocks at first; earlier ones are added on request. */
 const FIRST_BLOCKS = 80
+/** What a thread draws before its first paint; the rest of FIRST_BLOCKS follows as a low-priority update. */
+const QUICK_BLOCKS = 20
 const MORE_BLOCKS = 120
+/** The rest of the first window is drawn this many blocks at a time, this long apart. */
+const BACKFILL_STEP = 10
+const BACKFILL_DELAY_MS = 100
+/**
+ * Before the first step the thread must have been showing this long. Starting at once meant that
+ * cycling through sessions (Ctrl+Tab) kept inserting blocks above the viewport, each forcing style
+ * and layout, while the next keypress waited behind them. Leaving the thread cancels it.
+ */
+const BACKFILL_START_MS = 700
 
 export const Transcript = memo(function Transcript({
   items,
@@ -40,6 +64,7 @@ export const Transcript = memo(function Transcript({
   onAnswer,
   onOpenFile,
   onFork,
+  onQuote,
   completedTurns = 0,
   turnDurations,
   stoppedTurn,
@@ -62,6 +87,7 @@ export const Transcript = memo(function Transcript({
   onOpenFile?(path: string): void
   /** Starts a session that continues this one up to the end of the given turn. */
   onFork?(turnNo: number): void | Promise<void>
+  onQuote?(text: string, turnNo?: number): void
   /** Turns that have finished; a fork can only end after one of them. */
   completedTurns?: number
   /** How long each finished turn ran, in ms, by turn number. */
@@ -74,15 +100,23 @@ export const Transcript = memo(function Transcript({
   stoppedTurn?: number
 }) {
   const build = useMemo(() => createBlockBuilder(), [sessionId])
+  const earlierButton = useRef<HTMLButtonElement>(null)
+  const restoreAnchor = useRef<(() => void) | undefined>(undefined)
   const blocks = useMemo(() => build(items), [build, items])
   // Where drawing starts. It stays put as the thread grows, so rows already on screen keep their place.
-  const [view, setWindow] = useState(() => ({
-    id: sessionId,
-    from: Math.min(
-      readingPosition(readingKey)?.from ?? Math.max(0, blocks.length - FIRST_BLOCKS),
-      Math.max(0, blocks.length - FIRST_BLOCKS),
-    ),
-  }))
+  const [view, setWindow] = useState(() => {
+    const standard = Math.max(0, blocks.length - FIRST_BLOCKS)
+    const saved = readingPosition(readingKey)
+    // A reader who opened earlier blocks keeps them. Everyone else gets a quick first paint:
+    // drawing 80 markdown and tool blocks at once made switching sessions take hundreds of ms.
+    const from =
+      saved?.from !== undefined && saved.from < standard
+        ? saved.from
+        : saved?.following === false
+          ? standard
+          : Math.max(0, blocks.length - QUICK_BLOCKS)
+    return { id: sessionId, from }
+  })
   let from = view.from
   if (view.id !== sessionId) {
     from = Math.max(0, blocks.length - FIRST_BLOCKS)
@@ -98,9 +132,38 @@ export const Transcript = memo(function Transcript({
     }
   }
   useLayoutEffect(() => {
+    restoreAnchor.current?.()
+    restoreAnchor.current = undefined
     if (readingKey) rememberReadingPosition(readingKey, { from })
   }, [readingKey, from])
-  const showEarlier = () => setWindow({ id: sessionId, from: Math.max(0, from - MORE_BLOCKS) })
+  // After the quick first paint, fill in the rest of the standard window without blocking input.
+  const standardFrom = Math.max(0, blocks.length - FIRST_BLOCKS)
+  const quickStart = from > standardFrom
+  // Drawn a few blocks at a time: one update for all of them rendered markdown, tool runs and diffs
+  // in a single long task (over a second on a long thread). Each step re-arms this effect through `from`.
+  useEffect(() => {
+    if (!quickStart) return
+    const timer = setTimeout(
+      () => {
+        const scroller = earlierButton.current?.closest<HTMLElement>('.transcript')
+        if (scroller) restoreAnchor.current = captureReadingAnchor(scroller)
+        startTransition(() =>
+          setWindow((v) =>
+            v.id === sessionId && v.from > standardFrom
+              ? { id: sessionId, from: Math.max(standardFrom, v.from - BACKFILL_STEP) }
+              : v,
+          ),
+        )
+      },
+      from >= Math.max(0, blocks.length - QUICK_BLOCKS) ? BACKFILL_START_MS : BACKFILL_DELAY_MS,
+    )
+    return () => clearTimeout(timer)
+  }, [quickStart, standardFrom, sessionId, from])
+  const showEarlier = () => {
+    const scroller = earlierButton.current?.closest<HTMLElement>('.transcript')
+    if (scroller) restoreAnchor.current = captureReadingAnchor(scroller)
+    setWindow({ id: sessionId, from: Math.max(0, from - MORE_BLOCKS) })
+  }
   const latestChanges = items.findLast((i) => i.kind === 'changes')?.id
   // "Fork from here" goes at the end of each turn: after its last reply or, when the turn was
   // stopped mid-work, after the tool calls that ran before the stop.
@@ -141,7 +204,7 @@ export const Transcript = memo(function Transcript({
   return (
     <>
       {from > 0 && (
-        <button className="show-earlier" onClick={showEarlier}>
+        <button ref={earlierButton} className="show-earlier" onClick={showEarlier}>
           Show earlier ({from})
         </button>
       )}
@@ -241,6 +304,7 @@ export const Transcript = memo(function Transcript({
               hostKey={hostKey ?? changes?.hostKey}
               onApprove={onApprove}
               onAnswer={onAnswer}
+              onQuote={onQuote}
               live={live && block.item === items.at(-1)}
             />
             {canFork && forkButton(turnNo!)}
@@ -257,6 +321,8 @@ export const Transcript = memo(function Transcript({
 })
 
 const FOLD_LINES = 8
+/** Room the "Quote" pill needs, used to keep it inside its message. */
+const QUOTE_PILL_HEIGHT = 30
 
 /** A long message of yours starts folded to a few lines; a quiet button on hover opens it. */
 function UserText({ text }: { text: string }) {
@@ -270,7 +336,8 @@ function UserText({ text }: { text: string }) {
       const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 24
       setLong(el.scrollHeight > lineHeight * FOLD_LINES + 2)
     }
-    measure()
+    // No direct call first: the observer reports the initial size before the next paint, and an
+    // extra synchronous measure forced a layout for every message of yours on each thread mount.
     const observer = new ResizeObserver(measure)
     observer.observe(el)
     return () => observer.disconnect()
@@ -308,6 +375,7 @@ function ItemView({
   hostKey,
   onApprove,
   onAnswer,
+  onQuote,
   live,
 }: {
   item: Item
@@ -315,6 +383,7 @@ function ItemView({
   hostKey?: string
   onApprove(requestId: string, optionId: string): void | Promise<void>
   onAnswer?(requestId: string, answers?: Record<string, string[]>): void | Promise<void>
+  onQuote?(text: string, turnNo?: number): void
   live?: boolean
 }) {
   switch (item.kind) {
@@ -337,7 +406,7 @@ function ItemView({
           {item.text && <UserText text={item.text} />}
         </div>
       ) : (
-        <Markdown text={item.text} live={live} />
+        <ReplyText item={item} live={live} onQuote={onQuote} />
       )
     case 'tool':
       return <ToolGroup tools={[item]} />
@@ -361,6 +430,95 @@ function ItemView({
     case 'changes':
       return null // drawn by Transcript, which knows the host
   }
+}
+
+function ReplyText({
+  item,
+  live,
+  onQuote,
+}: {
+  item: Extract<Item, { kind: 'message' }>
+  live?: boolean
+  onQuote?(text: string, turnNo?: number): void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  // The selected words, and where on screen to offer quoting them.
+  const [picked, setPicked] = useState<{ text: string; x: number; y: number }>()
+
+  // The offer sits in the page, not in the thread: every message is painted clipped to its own box
+  // and the composer overlaps the bottom of the thread, so inside it the pill was cut off or covered.
+  const place = useCallback(() => {
+    const selection = window.getSelection()
+    const inside =
+      selection &&
+      !selection.isCollapsed &&
+      ref.current?.contains(selection.anchorNode) &&
+      ref.current.contains(selection.focusNode)
+    const rects = inside ? selection.getRangeAt(0).getClientRects() : undefined
+    if (!selection || !rects || rects.length === 0) return setPicked(undefined)
+    const start = rects[0]!
+    const end = rects[rects.length - 1]!
+    const room = window.innerHeight - end.bottom
+    setPicked({
+      text: selection.toString().trim(),
+      x: Math.min(Math.max(8, end.right - 60), window.innerWidth - 100),
+      // Under the selection; above its first line when the bottom of the window is too close.
+      y:
+        room > QUOTE_PILL_HEIGHT + 16
+          ? end.bottom + 6
+          : Math.max(8, start.top - 6 - QUOTE_PILL_HEIGHT),
+    })
+  }, [])
+
+  // Follows the selection while it exists: it goes away with it, and moves when the thread scrolls.
+  useEffect(() => {
+    if (!picked) return
+    let frame = 0
+    const onChange = () => {
+      const selection = window.getSelection()
+      if (!selection || selection.isCollapsed) setPicked(undefined)
+    }
+    const onMove = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(place)
+    }
+    document.addEventListener('selectionchange', onChange)
+    window.addEventListener('scroll', onMove, true)
+    window.addEventListener('resize', onMove)
+    return () => {
+      cancelAnimationFrame(frame)
+      document.removeEventListener('selectionchange', onChange)
+      window.removeEventListener('scroll', onMove, true)
+      window.removeEventListener('resize', onMove)
+    }
+  }, [picked !== undefined, place])
+
+  return (
+    <div data-msg-id={item.id}>
+      <div ref={ref} onMouseUp={place} onKeyUp={place}>
+        <Markdown text={item.text} live={live} />
+      </div>
+      {onQuote &&
+        picked &&
+        createPortal(
+          <button
+            className="quote-reply"
+            style={{ top: picked.y, left: picked.x }}
+            // Keep the selection while the button is pressed.
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              onQuote(picked.text, item.turnNo)
+              setPicked(undefined)
+              window.getSelection()?.removeAllRanges()
+            }}
+          >
+            <Quote size={13} aria-hidden />
+            Quote
+          </button>,
+          document.body,
+        )}
+    </div>
+  )
 }
 
 const tokens = (n: number) => (n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n))
@@ -387,9 +545,9 @@ function CompactionRow({ item }: { item: Extract<Item, { kind: 'compaction' }> }
       title={running ? 'Summarizing earlier messages to free up context' : undefined}
     >
       {running ? (
-        <LoaderCircle size={13} className="compaction-spin" />
+        <LoaderCircle size={14} className="compaction-spin" />
       ) : (
-        <FoldVertical size={13} />
+        <FoldVertical size={14} />
       )}
       <span>{label}</span>
     </div>
@@ -413,9 +571,7 @@ export function EditedFilesCard({
         <Pencil size={16} />
         <span>
           <strong>Edited {files.length === 1 ? '1 file' : `${files.length} files`}</strong>
-          <span className="stat">
-            <span className="add">+{added}</span> <span className="del">−{removed}</span>
-          </span>
+          <DiffStat added={added} removed={removed} />
         </span>
         {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
       </button>
@@ -458,9 +614,7 @@ function FileDiff({
         <button className="file-toggle" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
           <FileIcon name={file.path} size={15} />
           <span className="file-path">{displayPath(file.path, cwd) || folderName(file.path)}</span>
-          <span className="stat">
-            <span className="add">+{file.added}</span> <span className="del">−{file.removed}</span>
-          </span>
+          <DiffStat added={file.added} removed={file.removed} />
         </button>
         {onOpenFile && (
           <button
@@ -476,7 +630,7 @@ function FileDiff({
           aria-label={`${open ? 'Collapse' : 'Expand'} diff for ${displayPath(file.path, cwd)}`}
           onClick={() => setOpen((o) => !o)}
         >
-          {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+          {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </button>
       </div>
       {open && <PatchView patch={file.patch} limit={INLINE_PATCH_LINES} />}

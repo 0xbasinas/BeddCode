@@ -63,7 +63,7 @@ export function RenameSessionDialog({
             disabled={busy}
             onClick={onClose}
           >
-            <X size={17} />
+            <X size={18} />
           </Button>
         </header>
         <label htmlFor="session-title">Session name</label>

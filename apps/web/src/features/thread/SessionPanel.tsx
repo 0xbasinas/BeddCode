@@ -22,7 +22,9 @@ import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { usePane } from '../split/paneContext.ts'
 import { useUiStore } from '../../stores/ui.ts'
 import { folderName } from '../../ui/format.ts'
+import { SessionNotes } from './SessionNotes.tsx'
 import { environmentHint } from './environment.ts'
+import { DiffStat } from '../../ui/DiffStat.tsx'
 
 /** The agent's name under the composer. The Environment bar is always there; nothing here hides it. */
 /** Focuses the element `selector` names as soon as it exists (within ~10 frames), else `fallback`. */
@@ -65,14 +67,6 @@ export function EnvironmentButton({
   const [error, setError] = useState<string>()
   const [changing, setChanging] = useState(false)
   const [copied, setCopied] = useState(false)
-  const noteKey = `beddcode.session-notes:${hostKey}:${session.id}`
-  const [notes, setNotes] = useState(() => {
-    try {
-      return localStorage.getItem(noteKey) ?? ''
-    } catch {
-      return ''
-    }
-  })
   const toggle = (row: typeof expanded) =>
     setExpanded((current) => (current === row ? undefined : row))
 
@@ -124,7 +118,7 @@ export function EnvironmentButton({
         aria-controls={open ? cardId : undefined}
         onClick={() => setOpen(!open)}
       >
-        <Layers size={17} />
+        <Layers size={18} />
         {hint && <span className={`env-hint ${hint}`} aria-hidden="true" />}
       </button>
       {open && (
@@ -149,7 +143,7 @@ export function EnvironmentButton({
                   void navigate({ to: '/settings' })
                 }}
               >
-                <Settings size={13} />
+                <Settings size={14} />
               </Button>
               <Button
                 variant="app"
@@ -157,7 +151,7 @@ export function EnvironmentButton({
                 aria-label="Minimize"
                 onClick={() => close(true)}
               >
-                <Minus size={13} />
+                <Minus size={14} />
               </Button>
             </span>
           </div>
@@ -176,10 +170,7 @@ export function EnvironmentButton({
             >
               <FileDiff size={16} />
               <span className="menu-text menu-title">Changes</span>
-              <span className="stat">
-                <span className="add">+{stats.added}</span>{' '}
-                <span className="del">−{stats.removed}</span>
-              </span>
+              <DiffStat added={stats.added} removed={stats.removed} />
             </button>
             <button
               className="menu-row"
@@ -256,7 +247,7 @@ export function EnvironmentButton({
                       >
                         {option.label}
                         <span className="spacer" />
-                        {mode.id === option.id && <Check size={13} />}
+                        {mode.id === option.id && <Check size={14} />}
                       </button>
                     ))}
                   </div>
@@ -299,22 +290,7 @@ export function EnvironmentButton({
               </span>
             </button>
             <div className="session-panel-heading">Notes</div>
-            <div className="session-notes">
-              <textarea
-                aria-label="Session notes"
-                placeholder="Notes for this session…"
-                value={notes}
-                onChange={(event) => {
-                  const value = event.target.value
-                  setNotes(value)
-                  try {
-                    localStorage.setItem(noteKey, value)
-                  } catch {
-                    setError('Notes could not be saved in this browser.')
-                  }
-                }}
-              />
-            </div>
+            <SessionNotes key={`${hostKey}:${session.id}`} session={session} hostKey={hostKey} />
             {error && (
               <p className="composer-error menu-error" role="alert">
                 {error}

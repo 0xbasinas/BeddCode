@@ -197,6 +197,18 @@ export function createRpcRouter(
       accepted: access.telemetry?.report(p.platform, p.records) ?? false,
     }),
     'devices.list': async () => access.tokens.list(),
+    'attachments.read': (p) => attachments.read(p),
+    'files.saveCopy': async (p) => {
+      await files.saveCopy(p.cwd, p.path, p.content)
+      return {}
+    },
+    'sessions.notes.get': async (p) => sessions.notes(p.sessionId),
+    'sessions.notes.set': async (p) => sessions.setNotes(p.sessionId, p.text, p.expectedVersion),
+    'attachments.inspect': async (p) =>
+      p.ids.map((id) => {
+        const file = attachments.get(id)
+        return file ? { id: file.id, name: file.name, size: file.size } : null
+      }),
     'devices.revoke': async (p) => {
       alerts.forgetDevice(p.id)
       return { revoked: access.tokens.revoke(p.id) }
@@ -231,7 +243,21 @@ export function createRpcRouter(
     'git.ci.report': (p) => github.ciReport(p.cwd),
     'git.pr.cleanup': (p) =>
       cleanupAfterMerge(
-        { git, github, removeSessionWorktree: (id) => sessions.removeWorktree(id) },
+        {
+          git,
+          github,
+          removeSessionWorktree: (id) => {
+            const created = sessions.sessionInfo(id)
+            if (
+              created &&
+              terminals
+                .list(created.cwd)
+                .some((t) => t.exited === undefined && (!t.agent || t.agent.running))
+            )
+              throw new Error('Close running terminals before removing this worktree')
+            return sessions.removeWorktree(id)
+          },
+        },
         p,
       ),
     'git.gh.status': (p) => github.status(p.cwd),
@@ -297,7 +323,37 @@ export function createRpcRouter(
       return {}
     },
     'files.search': async (p) => ({ paths: await files.search(p.cwd, p.query) }),
-    'worktrees.remove': async (p) => ({ removed: await sessions.removeWorktree(p.sessionId) }),
+    'worktrees.preflight': async (p) => {
+      const created = sessions.sessionInfo(p.sessionId)
+      if (!created?.worktree) throw new Error('This session has no managed worktree')
+      const [status, info] = await Promise.all([git.status(created.cwd), git.info(created.cwd)])
+      if (!info.isWorktree) throw new Error('The managed worktree could not be verified')
+      const activeSessions = sessions.busySessionsIn(created.cwd)
+      const activeTerminals = terminals
+        .list(created.cwd)
+        .filter((t) => t.exited === undefined && (!t.agent || t.agent.running))
+        .map((t) => t.name ?? t.title ?? t.shell)
+      return {
+        path: created.cwd,
+        branch: info.branch,
+        files: status.files.map((f) => f.path),
+        ahead: info.ahead,
+        activeSessions,
+        activeTerminals,
+        canRemove: !status.files.length && !activeSessions.length && !activeTerminals.length,
+      }
+    },
+    'worktrees.remove': async (p) => {
+      const created = sessions.sessionInfo(p.sessionId)
+      if (
+        created &&
+        terminals
+          .list(created.cwd)
+          .some((t) => t.exited === undefined && (!t.agent || t.agent.running))
+      )
+        throw new Error('Close running terminals before removing this worktree')
+      return { removed: await sessions.removeWorktree(p.sessionId) }
+    },
     'sessions.create': async (p) => {
       const created = await sessions.create(p)
       runWorktreeSetup(sessions, workspace, p, created.sessionId)
@@ -329,6 +385,14 @@ export function createRpcRouter(
       sessions.prompt(p.sessionId, p.text, p.attachments, p.mode, p.clientMessageId),
     'sessions.dequeue': async (p) => {
       await sessions.dequeue(p.sessionId, p.queueId, p.action)
+      return {}
+    },
+    'sessions.queue.edit': async (p) => {
+      sessions.editQueued(p.sessionId, p.queueId, p.text, p.expectedText)
+      return {}
+    },
+    'sessions.queue.move': async (p) => {
+      sessions.moveQueued(p.sessionId, p.queueId, p.direction)
       return {}
     },
     'sessions.answer': async (p) => {

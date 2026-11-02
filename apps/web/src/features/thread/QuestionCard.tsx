@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { CircleHelp, CirclePause, Check } from 'lucide-react'
 import type { TranscriptItem } from '@beddcode/client-runtime'
 
@@ -37,11 +37,18 @@ export function QuestionCard({
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
+  const root = useRef<HTMLDivElement>(null)
   const open = !item.answers && !item.dismissed
 
   const patch = (id: string, change: (d: Draft) => Draft) =>
     setDrafts((all) => ({ ...all, [id]: change(all[id] ?? { picked: [], other: '' }) }))
   const answers = collectAnswers(item, drafts)
+  const unanswered = item.questions.findIndex(
+    (q) => !drafts[q.id]?.picked.length && !drafts[q.id]?.other.trim(),
+  )
+  const answeredCount = item.questions.filter(
+    (q) => drafts[q.id]?.picked.length || drafts[q.id]?.other.trim(),
+  ).length
 
   const submit = async (value: Record<string, string[]> | undefined) => {
     if (busy) return
@@ -58,18 +65,37 @@ export function QuestionCard({
 
   return (
     <div
+      ref={root}
       className={`approval question ${open ? 'pending' : item.dismissed ? 'cancelled' : 'allowed'}`}
     >
       <div className="approval-state">
         {open ? (
-          <CircleHelp size={15} />
+          <CircleHelp size={14} />
         ) : item.dismissed ? (
-          <CirclePause size={15} />
+          <CirclePause size={14} />
         ) : (
-          <Check size={15} />
+          <Check size={14} />
         )}
         {open ? 'The agent has a question' : item.dismissed ? 'Question dismissed' : 'Answered'}
       </div>
+
+      {open && item.questions.length > 1 && (
+        <div className="approval-state" role="status">
+          {answeredCount} of {item.questions.length} answered
+          {unanswered >= 0 && (
+            <button
+              onClick={() => {
+                const block =
+                  root.current?.querySelectorAll<HTMLElement>('.question-block')[unanswered]
+                block?.scrollIntoView({ block: 'nearest' })
+                block?.querySelector<HTMLElement>('input, button')?.focus()
+              }}
+            >
+              Next unanswered question
+            </button>
+          )}
+        </div>
+      )}
 
       {item.questions.map((q) => {
         const draft = drafts[q.id] ?? { picked: [], other: '' }

@@ -99,6 +99,33 @@ const events = (store: EventStore, sessionId: string) =>
   store.readSession(sessionId).map((e) => e.event)
 
 describe('SessionManager: composer features', () => {
+  it('persists notes with conflict detection and queued edits/order across manager restarts', async () => {
+    const { manager, make, store } = setup()
+    let next: SessionManager | undefined
+    try {
+      const { sessionId } = await manager.create({ instanceId: 'rec', projectless: true })
+      expect(manager.setNotes(sessionId, 'first', 0)).toEqual({ text: 'first', version: 1 })
+      expect(() => manager.setNotes(sessionId, 'stale overwrite', 0)).toThrow('another device')
+      for (const id of ['a', 'b'])
+        store.append({ type: 'prompt.queued', sessionId, at: Date.now(), queueId: id, text: id })
+      manager.editQueued(sessionId, 'a', 'edited', 'a')
+      expect(() => manager.editQueued(sessionId, 'a', 'stale', 'a')).toThrow('another device')
+      manager.moveQueued(sessionId, 'b', 'up')
+      await manager.close()
+      next = make()
+      expect(next.notes(sessionId)).toEqual({ text: 'first', version: 1 })
+      // The latest edited text must be reconstructed before another edit can succeed.
+      next.editQueued(sessionId, 'a', 'edited after restart', 'edited')
+      next.moveQueued(sessionId, 'a', 'up')
+      expect(events(store, sessionId).findLast((e) => e.type === 'prompt.reordered')).toMatchObject(
+        { queueIds: ['a', 'b'] },
+      )
+    } finally {
+      await manager.close()
+      await next?.close()
+      store.close()
+    }
+  })
   it('resumes a session without a project in its original persistent folder', async () => {
     const { manager, make, store, starts, prompts, attachments } = setup()
     let resumed: SessionManager | undefined

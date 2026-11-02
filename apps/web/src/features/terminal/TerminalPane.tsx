@@ -13,21 +13,46 @@ import { attachUpload } from '../composer/attachments.ts'
 import { terminalContext } from './context.ts'
 import { ProjectScripts } from './ProjectScripts.tsx'
 import { samePath } from '../folders/folderLogic.ts'
+import { confirmDialog } from '../../ui/confirm.tsx'
 
 /** Terminals of the folder selected in the composer or open conversation. */
 export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
+  const hostKey = useHostKey()
+  return (
+    <TerminalPaneContent key={JSON.stringify([hostKey, workspace.cwd])} workspace={workspace} />
+  )
+}
+
+function TerminalPaneContent({ workspace }: { workspace: PaneWorkspace }) {
   const cwd = workspace.cwd
   const hostKey = useHostKey()
-  const { epoch, projects } = useRuntime(hostKey)
+  const { epoch, projects, connection, host } = useRuntime(hostKey)
   const project = workspace.projectPath
     ? projects.find((p) => samePath(p.path, workspace.projectPath!))
     : undefined
   const [terminals, setTerminals] = useState<TerminalInfo[] | null>(null)
-  const [active, setActive] = useState<string>()
+  const terminalKey = `beddcode.active-terminal:${JSON.stringify([hostKey, cwd])}`
+  const [active, setActive] = useState<string | undefined>(() => {
+    try {
+      return localStorage.getItem(terminalKey) ?? undefined
+    } catch {
+      return undefined
+    }
+  })
+  const [recoveryNotice, setRecoveryNotice] = useState<string>()
+  const previousEpoch = useRef(epoch)
+  useEffect(() => {
+    try {
+      if (active) localStorage.setItem(terminalKey, active)
+    } catch {
+      /* Terminal still works for this window. */
+    }
+  }, [terminalKey, active])
   const [size, setSize] = useState<{ cols: number; rows: number }>()
   const [error, setError] = useState<string>()
   const [selection, setSelection] = useState({ terminalId: '', text: '' })
   const [renaming, setRenaming] = useState<string>()
+  const closing = useRef(new Set<string>())
 
   const rename = async (id: string, name: string) => {
     setRenaming(undefined)
@@ -50,7 +75,21 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
     hostRequest(hostKey, 'terminals.list', { cwd }).then(
       (list) => {
         if (cancelled) return
+        setError(undefined)
+        if (previousEpoch.current !== epoch) {
+          setRecoveryNotice(
+            (notice) =>
+              notice ??
+              'Reconnected. Available terminal history was reloaded; older output may no longer be retained by the host. Commands were not rerun.',
+          )
+          previousEpoch.current = epoch
+        }
         setTerminals(list)
+        const selected = activeRef.current
+        if (selected && !list.some((t) => t.id === selected))
+          setRecoveryNotice(
+            'The previously selected terminal is no longer available on this host. Start a new terminal to continue.',
+          )
         setActive((cur) => (cur && list.some((t) => t.id === cur) ? cur : list[0]?.id))
       },
       (err: unknown) => !cancelled && setError(err instanceof Error ? err.message : String(err)),
@@ -112,12 +151,38 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
   )
 
   const close = async (id: string) => {
-    await hostRequest(hostKey, 'terminals.close', { id }).catch(() => {})
-    setTerminals((list) => {
-      const next = (list ?? []).filter((t) => t.id !== id)
-      setActive((cur) => (cur === id ? next.at(-1)?.id : cur))
-      return next
-    })
+    if (closing.current.has(id)) return
+    const terminal = listRef.current?.find((t) => t.id === id)
+    if (!terminal) return
+    closing.current.add(id)
+    try {
+      if (
+        terminal.exited === undefined &&
+        !(await confirmDialog(
+          `Close ${tabLabel(terminal)}? This stops its process and clears its terminal history.`,
+          'Close terminal',
+        ))
+      )
+        return
+      setError(undefined)
+      await hostRequest(hostKey, 'terminals.close', { id })
+      try {
+        if (localStorage.getItem(terminalKey) === id) localStorage.removeItem(terminalKey)
+      } catch {
+        /* The terminal was closed even if browser storage is unavailable. */
+      }
+      setTerminals((list) => {
+        const next = (list ?? []).filter((t) => t.id !== id)
+        setActive((cur) => (cur === id ? next.at(-1)?.id : cur))
+        return next
+      })
+    } catch (err) {
+      setError(
+        `Could not close ${tabLabel(terminal)}: ${err instanceof Error ? err.message : String(err)}. Try closing it again.`,
+      )
+    } finally {
+      closing.current.delete(id)
+    }
   }
 
   const current = terminals?.find((t) => t.id === active)
@@ -149,7 +214,7 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
       <div className="pane-head">
         <h2>Terminal</h2>
         <span className="muted pane-project" title={shown.title}>
-          {shown.label}
+          {host?.name ?? hostKey} · {shown.label}
           {workspace.branch ? ` · ${workspace.branch}` : ''}
         </span>
         <span className="spacer" />
@@ -166,7 +231,7 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
           onMouseDown={(e) => e.preventDefault()}
           onClick={attachSelection}
         >
-          <Paperclip size={17} />
+          <Paperclip size={18} />
         </Button>
         <Button
           variant="app"
@@ -183,9 +248,46 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
           disabled={!current}
           onClick={() => current && void close(current.id)}
         >
-          <Trash2 size={17} />
+          <Trash2 size={18} />
         </Button>
       </div>
+      {connection !== 'connected' && (
+        <div className="banner" role="status">
+          Disconnected from host. Reconnecting will reattach to surviving terminals.
+        </div>
+      )}
+      {recoveryNotice && (
+        <div className="banner" role="status">
+          <span className="banner-text">{recoveryNotice}</span>
+          <Button
+            variant="app"
+            className="icon-btn"
+            aria-label="Dismiss notice"
+            title="Dismiss"
+            onClick={() => {
+              setRecoveryNotice(undefined)
+              if (!active) {
+                try {
+                  localStorage.removeItem(terminalKey)
+                } catch {
+                  /* Optional persistence. */
+                }
+              }
+            }}
+          >
+            <X size={14} />
+          </Button>
+        </div>
+      )}
+      {current && !current.agent && (
+        <div className="muted term-agent-bar" role="status">
+          {connection !== 'connected'
+            ? 'Disconnected'
+            : current.exited !== undefined
+              ? `Shell exited${current.exited === null ? '' : ` (${current.exited})`}`
+              : 'Shell running'}
+        </div>
+      )}
 
       {project && (
         <ProjectScripts
@@ -200,7 +302,7 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
       {terminals?.length === 0 && (
         <div className="pane-empty">
           <span className="empty-icon">
-            <SquareTerminal size={26} />
+            <SquareTerminal size={24} />
           </span>
           <h3>No terminal yet</h3>
           <p>Start a shell in {shown.label} to run commands.</p>
@@ -252,7 +354,7 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
                   >
                     {t.agent ? (
                       <span className="term-tab-agent">
-                        <AgentIcon agent={t.agent.instanceId} label={t.agent.label} size={13} />
+                        <AgentIcon agent={t.agent.instanceId} label={t.agent.label} size={14} />
                         {!agentKind(t.agent.instanceId, t.agent.label) && (
                           <SquareTerminal size={14} />
                         )}
@@ -268,7 +370,7 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
                   </button>
                 )}
                 <button aria-label={`Close ${tabLabel(t)}`} onClick={() => void close(t.id)}>
-                  <X size={13} />
+                  <X size={14} />
                 </button>
               </div>
             ))}

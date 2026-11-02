@@ -96,7 +96,7 @@ export function HostTarget({
 }) {
   return (
     <div className="hosts-target">
-      <Server size={22} aria-hidden="true" />
+      <Server size={24} aria-hidden="true" />
       <span className="hosts-machine">
         <strong>{name}</strong>
         <code>{address}</code>
@@ -142,7 +142,7 @@ export function HostList({ onAdd }: { onAdd(): void }) {
           : (activeRoute(entry.key) ?? entry.routes[0])?.replace(/^wss?:\/\/|\/ws$/g, '')
         return (
           <div className="hosts-saved-row" key={entry.key}>
-            {local ? <Monitor size={22} /> : <Server size={22} />}
+            {local ? <Monitor size={24} /> : <Server size={24} />}
             <span className="hosts-machine">
               <strong>{name}</strong>
               <code>{[os, address].filter(Boolean).join(' · ')}</code>

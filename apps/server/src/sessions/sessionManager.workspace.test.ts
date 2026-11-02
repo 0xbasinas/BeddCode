@@ -41,7 +41,7 @@ const caps: ProviderCapabilities = {
   permissionModes: [],
 }
 
-function setup(opts: { startFails?: boolean } = {}) {
+function setup(opts: { startFails?: boolean; closeFails?: boolean } = {}) {
   const starts: StartSessionInput[] = []
   const closed: string[] = []
   const instance: ProviderInstance = {
@@ -67,6 +67,7 @@ function setup(opts: { startFails?: boolean } = {}) {
         setPermissionMode: async () => {},
         respondToApproval: async () => {},
         async close() {
+          if (opts.closeFails) throw new Error('Agent is still using this folder')
           closed.push(input.sessionId)
           queue.close()
         },
@@ -223,5 +224,37 @@ describe('SessionManager: workspaces', () => {
     const { sessionId } = await manager.create({ instanceId: 'rec', cwd: dir })
     expect(await manager.removeWorktree(sessionId)).toBe(false)
     expect(existsSync(dir)).toBe(true)
+  })
+
+  it('keeps untracked work and the branch when cleanup is requested', async () => {
+    const { manager, closed, git } = setup()
+    const dir = repo()
+    const { sessionId } = await manager.create({
+      instanceId: 'rec',
+      cwd: dir,
+      workspace: { mode: 'worktree', branch: 'preserve' },
+    })
+    const cwd = path.join(dir, '.wt', 'preserve')
+    writeFileSync(path.join(cwd, 'untracked.txt'), 'keep this')
+    await expect(manager.removeWorktree(sessionId)).rejects.toThrow('uncommitted or untracked')
+    expect(existsSync(path.join(cwd, 'untracked.txt'))).toBe(true)
+    expect(closed).not.toContain(sessionId)
+    expect((await git.branches(dir)).some((b) => b.name === 'preserve')).toBe(true)
+  })
+  it('keeps the worktree when its agent cannot be closed', async () => {
+    const { manager } = setup({ closeFails: true })
+    const dir = repo()
+    const { sessionId } = await manager.create({
+      instanceId: 'rec',
+      cwd: dir,
+      workspace: { mode: 'worktree', branch: 'busy-agent' },
+    })
+    await expect(manager.removeWorktree(sessionId)).rejects.toThrow(
+      'Agent is still using this folder',
+    )
+    await expect(manager.removeWorktree(sessionId)).rejects.toThrow(
+      'Agent is still using this folder',
+    )
+    expect(existsSync(path.join(dir, '.wt', 'busy-agent'))).toBe(true)
   })
 })

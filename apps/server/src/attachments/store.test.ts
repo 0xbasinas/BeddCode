@@ -24,6 +24,19 @@ describe('safeFileName', () => {
 })
 
 describe('AttachmentStore', () => {
+  it('resolves upload ids after a restart and rejects deleted files and outside export paths', async () => {
+    const root = tmp()
+    const saved = await new AttachmentStore(root).save('notes.txt', Buffer.from('keep'))
+    const restarted = new AttachmentStore(root)
+    expect(restarted.get(saved.id)).toEqual(saved)
+    expect((await restarted.read({ path: saved.path })).dataBase64).toBe(
+      Buffer.from('keep').toString('base64'),
+    )
+    await expect(restarted.read({ path: path.join(root, '..', 'secret') })).rejects.toThrow()
+    expect(restarted.get('../'.repeat(12))).toBeUndefined()
+    rmSync(saved.path)
+    expect(restarted.get(saved.id)).toBeUndefined()
+  })
   it('saves each upload in its own directory and returns its path', async () => {
     const store = new AttachmentStore(tmp())
     const [a, b] = await Promise.all([

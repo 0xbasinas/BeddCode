@@ -62,14 +62,15 @@ import { useHostKey } from '../../stores/HostScope.tsx'
 import { useUiStore } from '../../stores/ui.ts'
 import { usePolled } from './usePolled.ts'
 import { GenerateGitText } from './GenerateGitText.tsx'
+import { DiffStat } from '../../ui/DiffStat.tsx'
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 const CHECK_ICON: Record<PrCheckState, React.ReactNode> = {
-  success: <CircleCheck size={15} className="ok" />,
-  failure: <CircleX size={15} className="bad" />,
-  pending: <CircleDot size={15} className="wait" />,
-  skipped: <MinusCircle size={15} className="muted" />,
+  success: <CircleCheck size={14} className="ok" />,
+  failure: <CircleX size={14} className="bad" />,
+  pending: <CircleDot size={14} className="wait" />,
+  skipped: <MinusCircle size={14} className="muted" />,
 }
 
 function PrStateIcon({ kind, size = 16 }: { kind: PrStateKind; size?: number }) {
@@ -216,7 +217,7 @@ function GithubProblem({
   const [copied, setCopied] = useState(false)
   return (
     <div className="git-empty gh-problem">
-      <BrandIcon brand="github" size={22} />
+      <BrandIcon brand="github" size={24} />
       <div className="gh-problem-title">{problem.title}</div>
       {problem.detail && <div className="muted">{problem.detail}</div>}
       {problem.command && (
@@ -232,14 +233,14 @@ function GithubProblem({
               setCopied(true)
             }}
           >
-            {copied ? <Check size={13} /> : <Copy size={13} />}
+            {copied ? <Check size={14} /> : <Copy size={14} />}
           </Button>
         </div>
       )}
       <div className="gh-problem-actions">
         {problem.link && (
           <a className="secondary as-button" href={problem.link} target="_blank" rel="noreferrer">
-            <BrandIcon brand="github" size={13} /> Get the GitHub CLI <ExternalLink size={12} />
+            <BrandIcon brand="github" size={14} /> Get the GitHub CLI <ExternalLink size={12} />
           </a>
         )}
         <Button variant="app" className="secondary" onClick={onRetry}>
@@ -302,7 +303,7 @@ function PrList({
           title="Refresh"
           onClick={() => setBump((b) => b + 1)}
         >
-          <RotateCw size={13} />
+          <RotateCw size={14} />
         </Button>
         <button
           className="pr-new"
@@ -316,7 +317,7 @@ function PrList({
                 : `New pull request from ${branch}`
           }
         >
-          <Plus size={13} /> New
+          <Plus size={14} /> New
         </button>
       </div>
       <div className="git-scroll pr-list">
@@ -333,7 +334,7 @@ function PrList({
           !onDefault &&
           !current.loading && (
             <div className="pr-cta">
-              <GitBranch size={15} />
+              <GitBranch size={14} />
               <span>
                 No pull request for <code>{branch}</code> yet
               </span>
@@ -367,7 +368,7 @@ function PrList({
       <div className="pr-foot muted">
         Signed in as <strong>{gh.login}</strong> ·{' '}
         <a href={`${gh.url}/pulls`} target="_blank" rel="noreferrer">
-          <BrandIcon brand="github" size={11} /> {gh.repo} <ExternalLink size={11} />
+          <BrandIcon brand="github" size={12} /> {gh.repo} <ExternalLink size={12} />
         </a>
       </div>
     </div>
@@ -416,7 +417,7 @@ function PrRow({
         </span>
         <span className="pr-row-branch">
           <code>{pr.headBranch}</code>
-          <ArrowRight size={11} />
+          <ArrowRight size={12} />
           <code>{pr.baseBranch}</code>
           {pr.fromFork && <span className="pr-fork">fork</span>}
         </span>
@@ -429,10 +430,7 @@ function PrRow({
         )}
         <ReviewBadge decision={pr.reviewDecision} />
         {(pr.added !== undefined || pr.removed !== undefined) && (
-          <span className="stat">
-            <span className="add">+{pr.added ?? 0}</span>{' '}
-            <span className="del">−{pr.removed ?? 0}</span>
-          </span>
+          <DiffStat added={pr.added ?? 0} removed={pr.removed ?? 0} />
         )}
       </span>
     </button>
@@ -458,11 +456,11 @@ function Readiness({
       {items.map((item, i) => (
         <li key={i} className={`pr-ready-item ${item.level}`}>
           {item.level === 'ok' ? (
-            <CircleCheck size={13} className="ok" />
+            <CircleCheck size={14} className="ok" />
           ) : item.level === 'bad' ? (
-            <CircleX size={13} className="bad" />
+            <CircleX size={14} className="bad" />
           ) : (
-            <CircleDot size={13} className="wait" />
+            <CircleDot size={14} className="wait" />
           )}
           <span>{item.text}</span>
           {item.fix === 'agent' && onAgent && (
@@ -567,7 +565,7 @@ function PrDetailView({
         title="Refresh"
         onClick={() => setBump((b) => b + 1)}
       >
-        <RotateCw size={13} />
+        <RotateCw size={14} />
       </Button>
       {pr.data && (
         <a
@@ -578,7 +576,7 @@ function PrDetailView({
           aria-label="Open on GitHub"
           title="Open on GitHub"
         >
-          <BrandIcon brand="github" size={13} />
+          <BrandIcon brand="github" size={14} />
         </a>
       )}
     </div>
@@ -650,7 +648,7 @@ function PrDetailView({
           {d.updatedAt ? ` · updated ${agoLabel(d.updatedAt)}` : ''}
         </div>
         <div className="branches">
-          <code>{d.headBranch}</code> <ArrowRight size={13} /> <code>{d.baseBranch}</code>
+          <code>{d.headBranch}</code> <ArrowRight size={14} /> <code>{d.baseBranch}</code>
           {d.fromFork && <span className="pr-fork">fork</span>}
         </div>
         {d.body.trim() ? (
@@ -741,10 +739,7 @@ function PrDetailView({
           <section className="pr-section">
             <div className="section-title">
               Files changed · {d.files.length}
-              <span className="stat">
-                <span className="add">+{filesAdded}</span>{' '}
-                <span className="del">−{filesRemoved}</span>
-              </span>
+              <DiffStat added={filesAdded} removed={filesRemoved} />
             </div>
             {d.files.map((f) => (
               <a
@@ -756,9 +751,7 @@ function PrDetailView({
                 title="See the diff on GitHub"
               >
                 <span className="file-path">{f.path}</span>
-                <span className="stat">
-                  <span className="add">+{f.added}</span> <span className="del">−{f.removed}</span>
-                </span>
+                <DiffStat added={f.added} removed={f.removed} />
               </a>
             ))}
           </section>
@@ -768,7 +761,7 @@ function PrDetailView({
       <div className="git-footer">
         {notice && (
           <div className="pr-notice" role="status">
-            <Check size={13} /> {notice.text}
+            <Check size={14} /> {notice.text}
             {notice.path && (
               <Button
                 variant="app"
@@ -941,12 +934,12 @@ function PrDetailView({
                   disabled={Boolean(busy) || Boolean(blocker) || gh.mergeMethods.length === 0}
                   onClick={() => setMerging(true)}
                 >
-                  <GitMerge size={13} /> Merge…
+                  <GitMerge size={14} /> Merge…
                 </Button>
               )}
               {d.state !== 'OPEN' && (
                 <a className="primary as-button" href={d.url} target="_blank" rel="noreferrer">
-                  <BrandIcon brand="github" size={13} /> Open on GitHub
+                  <BrandIcon brand="github" size={14} /> Open on GitHub
                 </a>
               )}
               <div className="pr-checkout">
@@ -1126,7 +1119,7 @@ function CreatePr({
       </div>
       <div className="git-scroll pr">
         <div className="branches">
-          <code>{branch ?? 'HEAD'}</code> <ArrowRight size={13} /> <code>{base || '…'}</code>
+          <code>{branch ?? 'HEAD'}</code> <ArrowRight size={14} /> <code>{base || '…'}</code>
         </div>
         {nothing ? (
           <div className="muted">Commit some changes on this branch first.</div>

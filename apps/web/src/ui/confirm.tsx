@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/alert-dialog'
 
 interface Pending {
+  container?: HTMLElement
   message: string
   confirmLabel: string
   resolve: (ok: boolean) => void
@@ -22,7 +23,9 @@ const usePending = create<{ pending: Pending | null }>(() => ({ pending: null })
 export function confirmDialog(message: string, confirmLabel = 'Continue'): Promise<boolean> {
   return new Promise((resolve) => {
     usePending.getState().pending?.resolve(false)
-    usePending.setState({ pending: { message, confirmLabel, resolve } })
+    // A native modal makes everything outside it inert, including portals into body.
+    const container = Array.from(document.querySelectorAll<HTMLElement>('dialog:modal')).at(-1)
+    usePending.setState({ pending: { message, confirmLabel, resolve, container } })
   })
 }
 
@@ -37,7 +40,7 @@ export function ConfirmHost() {
   const pending = usePending((s) => s.pending)
   return (
     <AlertDialog open={pending !== null} onOpenChange={(o) => !o && settle(false)}>
-      <AlertDialogContent>
+      <AlertDialogContent container={pending?.container}>
         <AlertDialogHeader>
           <AlertDialogTitle>Are you sure?</AlertDialogTitle>
           <AlertDialogDescription>{pending?.message}</AlertDialogDescription>

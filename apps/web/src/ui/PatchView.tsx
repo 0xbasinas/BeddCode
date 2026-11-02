@@ -4,6 +4,7 @@ import { MessageSquarePlus, Trash2 } from 'lucide-react'
 import {
   commentAnchor,
   createReviewComment,
+  reviewPatchVersion,
   numberPatch,
   type PatchLine,
   type ReviewComment,
@@ -91,7 +92,7 @@ function ReviewablePatch({ patch, review }: { patch: string; review: PatchReview
   }
   const save = (index: number) => {
     const comment = createReviewComment({ path: review.path, lines, index, body: draft })
-    if (comment) review.onAdd(comment)
+    if (comment) review.onAdd({ ...comment, patchVersion: reviewPatchVersion(patch) })
     setEditing(null)
     setDraft('')
   }

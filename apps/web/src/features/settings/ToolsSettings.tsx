@@ -124,7 +124,7 @@ export function ToolsSettings({ hostKey }: { hostKey: string }) {
                 disabled={!online || busy}
                 onClick={() => void load()}
               >
-                <RefreshCw size={13} /> Refresh
+                <RefreshCw size={14} /> Refresh
               </Button>
               <Button
                 variant="app"
@@ -191,7 +191,7 @@ export function ToolsSettings({ hostKey }: { hostKey: string }) {
                   disabled={!online || busy}
                   onClick={() => setRemoving(server)}
                 >
-                  <Trash2 size={15} />
+                  <Trash2 size={14} />
                 </Button>
               </div>
             ))}

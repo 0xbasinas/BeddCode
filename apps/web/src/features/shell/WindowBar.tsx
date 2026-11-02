@@ -1,6 +1,6 @@
 import { Copy, Minus, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { appWindowControls } from '../../ui/desktop.ts'
 
 /**
@@ -22,6 +22,13 @@ export function WindowBar() {
       live = false
       off()
     }
+  }, [controls])
+  // The stylesheet keys its window-controls layout on this attribute. It used to ask
+  // `:root:has(.window-island)`, which the browser re-checks whenever the DOM below changes.
+  useLayoutEffect(() => {
+    if (!controls) return
+    document.documentElement.setAttribute('data-window-island', '')
+    return () => document.documentElement.removeAttribute('data-window-island')
   }, [controls])
   if (!controls) return null
   return (

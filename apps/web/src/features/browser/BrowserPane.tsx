@@ -1,4 +1,5 @@
 import { createElement, useEffect, useRef, useState, type FormEvent } from 'react'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import {
   ArrowLeft,
@@ -465,11 +466,11 @@ export function BrowserPane({
               <button onClick={() => activate(t.id)} title={t.url}>
                 <TabIcon tab={t} page={pages[t.id]} /> {t.title || t.url}
                 {t.agent && (
-                  <Bot size={13} className="tab-agent" aria-label={`${t.agent.label}'s tab`} />
+                  <Bot size={14} className="tab-agent" aria-label={`${t.agent.label}'s tab`} />
                 )}
               </button>
               <button aria-label={`Close ${t.title}`} onClick={() => close(t.id)}>
-                <X size={13} />
+                <X size={14} />
               </button>
             </div>
           ))}
@@ -496,7 +497,7 @@ export function BrowserPane({
           disabled={!draftId || blank}
           onClick={() => void pick()}
         >
-          <MousePointer2 size={17} />
+          <MousePointer2 size={18} />
         </button>
         <Button
           variant="app"
@@ -506,7 +507,7 @@ export function BrowserPane({
           disabled={!page.back}
           onClick={() => current && void browserCommand({ op: 'back', tabId: current.id })}
         >
-          <ArrowLeft size={17} />
+          <ArrowLeft size={18} />
         </Button>
         <Button
           variant="app"
@@ -516,7 +517,7 @@ export function BrowserPane({
           disabled={!page.forward}
           onClick={() => current && void browserCommand({ op: 'forward', tabId: current.id })}
         >
-          <ArrowRight size={17} />
+          <ArrowRight size={18} />
         </Button>
         <Button
           variant="app"
@@ -529,7 +530,7 @@ export function BrowserPane({
           {page.loading ? <X size={16} /> : <RotateCw size={16} />}
         </Button>
         <div className="url-field">
-          <Globe size={15} />
+          <Globe size={14} />
           <input
             ref={addressInput}
             aria-label="Address"
@@ -641,7 +642,7 @@ export function BrowserPane({
       {blank && (
         <div className="pane-empty">
           <span className="empty-icon">
-            <Globe size={26} />
+            <Globe size={24} />
           </span>
           <h3>Nothing to preview</h3>
           <Button
@@ -699,7 +700,7 @@ function AgentBanner({ tab }: { tab: BrowserTab }) {
       className={`banner agent-banner ${paused ? 'paused' : working ? 'working' : ''}`}
       role="status"
     >
-      <Bot size={15} />
+      <Bot size={14} />
       <span className="agent-banner-text">
         {paused ? (
           <>You have control of this tab</>
@@ -713,12 +714,12 @@ function AgentBanner({ tab }: { tab: BrowserTab }) {
       </span>
       {paused ? (
         <button onClick={() => resumeAgent(agent.hostKey, agent.sessionId)}>
-          <Play size={13} /> Let {agent.label} continue
+          <Play size={14} /> Let {agent.label} continue
         </button>
       ) : (
         <>
           <button onClick={() => pauseAgent(agent.hostKey, agent.sessionId)}>
-            <Hand size={13} /> Take over
+            <Hand size={14} /> Take over
           </button>
           {working && (
             <button
@@ -832,9 +833,9 @@ function BrowserProfileMenu({
           title="Browser settings: profiles, extensions, and browsers"
           onClick={toggle}
         >
-          <Settings size={15} />
+          <Settings size={14} />
           <span>Settings</span>
-          <ChevronDown size={13} />
+          <ChevronDown size={14} />
         </button>
       )}
     >
@@ -852,15 +853,15 @@ function BrowserProfileMenu({
                 if (profile.id !== activeId) onSelect(profile.id)
               }}
             >
-              <Globe size={15} />
+              <Globe size={14} />
               <span className="menu-text">
                 <span className="menu-title">{profile.name}</span>
               </span>
-              {profile.id === activeId && <Check size={15} />}
+              {profile.id === activeId && <Check size={14} />}
             </button>
           ))}
           <MenuRow
-            icon={<Plus size={15} />}
+            icon={<Plus size={14} />}
             title="New profile…"
             onClick={() => {
               close()
@@ -878,11 +879,11 @@ function BrowserProfileMenu({
               onDefaultBrowser('system')
             }}
           >
-            <ExternalLink size={15} />
+            <ExternalLink size={14} />
             <span className="menu-text">
               <span className="menu-title">System default</span>
             </span>
-            {defaultBrowserId === 'system' && <Check size={15} />}
+            {defaultBrowserId === 'system' && <Check size={14} />}
           </button>
           {installedBrowsers.map((browser) => (
             <button
@@ -895,11 +896,11 @@ function BrowserProfileMenu({
                 onDefaultBrowser(browser.id)
               }}
             >
-              <ExternalLink size={15} />
+              <ExternalLink size={14} />
               <span className="menu-text">
                 <span className="menu-title">{browser.name}</span>
               </span>
-              {defaultBrowserId === browser.id && <Check size={15} />}
+              {defaultBrowserId === browser.id && <Check size={14} />}
             </button>
           ))}
           <div className="menu-sep" />
@@ -907,7 +908,7 @@ function BrowserProfileMenu({
           {installedBrowsers.map((browser) => (
             <MenuRow
               key={browser.id}
-              icon={<Puzzle size={15} />}
+              icon={<Puzzle size={14} />}
               title={`Import ${browser.id === 'firefox' ? 'active add-ons' : 'enabled extensions'} from ${browser.name}…`}
               onClick={() => {
                 close()
@@ -916,7 +917,7 @@ function BrowserProfileMenu({
             />
           ))}
           <MenuRow
-            icon={<Puzzle size={15} />}
+            icon={<Puzzle size={14} />}
             title="Load unpacked extension folder…"
             onClick={() => {
               close()
@@ -929,8 +930,7 @@ function BrowserProfileMenu({
           </p>
           {extensions.map((extension) => (
             <div className="profile-extension-row" key={extension.key}>
-              <input
-                type="checkbox"
+              <Checkbox
                 className="extension-enabled-toggle"
                 checked={extension.enabled !== false}
                 aria-label={`${extension.enabled === false ? 'Enable' : 'Disable'} ${extension.name}`}
@@ -939,7 +939,7 @@ function BrowserProfileMenu({
                     ? `Enable ${extension.name}`
                     : `Disable ${extension.name}`
                 }
-                onChange={(event) => onExtensionEnabled(extension.key, event.currentTarget.checked)}
+                onCheckedChange={(checked) => onExtensionEnabled(extension.key, checked === true)}
               />
               <span
                 className={extension.enabled === false ? 'extension-disabled' : ''}
@@ -973,7 +973,7 @@ function BrowserProfileMenu({
                     onOpenExtension(extension.key, 'settings')
                   }}
                 >
-                  <Settings size={13} />
+                  <Settings size={14} />
                 </button>
               )}
               <button
@@ -983,7 +983,7 @@ function BrowserProfileMenu({
                 title={`Remove ${extension.name}`}
                 onClick={() => onRemoveExtension(extension.key)}
               >
-                <X size={13} />
+                <X size={14} />
               </button>
             </div>
           ))}
@@ -992,11 +992,10 @@ function BrowserProfileMenu({
           </p>
           <div className="menu-sep" />
           <label className="profile-agent-access">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={Boolean(active?.agentsAllowed)}
               disabled={!active}
-              onChange={(event) => onAgentAccess(event.currentTarget.checked)}
+              onCheckedChange={(checked) => onAgentAccess(checked === true)}
             />
             <span>
               <strong>Allow agents to use this profile</strong>
@@ -1044,7 +1043,7 @@ function PageMenu({
           aria-label="Page menu"
           onClick={toggle}
         >
-          <MoreHorizontal size={17} />
+          <MoreHorizontal size={18} />
         </button>
       )}
     >
@@ -1060,7 +1059,7 @@ function PageMenu({
               disabled={blank}
               onClick={() => void browserCommand({ op: 'zoom', tabId: tab.id, direction: -1 })}
             >
-              <ZoomOut size={15} />
+              <ZoomOut size={14} />
             </Button>
             <button
               className="zoom-value"
@@ -1076,7 +1075,7 @@ function PageMenu({
               disabled={blank}
               onClick={() => void browserCommand({ op: 'zoom', tabId: tab.id, direction: 1 })}
             >
-              <ZoomIn size={15} />
+              <ZoomIn size={14} />
             </Button>
           </div>
           <div className="menu-sep" />
@@ -1217,7 +1216,7 @@ function FindBar({
         disabled={!text}
         onClick={() => find(false, true)}
       >
-        <ChevronUp size={15} />
+        <ChevronUp size={14} />
       </Button>
       <Button
         variant="app"
@@ -1227,7 +1226,7 @@ function FindBar({
         disabled={!text}
         onClick={() => find(true, true)}
       >
-        <ChevronDown size={15} />
+        <ChevronDown size={14} />
       </Button>
       <Button
         variant="app"
@@ -1236,7 +1235,7 @@ function FindBar({
         aria-label="Close find"
         onClick={onClose}
       >
-        <X size={15} />
+        <X size={14} />
       </Button>
     </form>
   )
@@ -1446,11 +1445,11 @@ function ConsoleDrawer({
           <div key={i} className={`console-row ${e.level}`}>
             <span className="console-level" aria-label={e.level}>
               {e.level === 'error' ? (
-                <CircleAlert size={13} />
+                <CircleAlert size={14} />
               ) : e.level === 'warning' ? (
-                <TriangleAlert size={13} />
+                <TriangleAlert size={14} />
               ) : (
-                <Info size={13} />
+                <Info size={14} />
               )}
             </span>
             <span className="console-msg">{e.message}</span>
@@ -1507,7 +1506,7 @@ function Downloads() {
             aria-label={`Dismiss ${d.filename}`}
             onClick={() => dismissDownload(d.id)}
           >
-            <X size={13} />
+            <X size={14} />
           </Button>
         </div>
       ))}

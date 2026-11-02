@@ -17,7 +17,7 @@
   flex: 1;
 }
 .desktop-state {
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--fs-small);
   color: var(--text-muted);
 }
 .desktop-state.active {
@@ -33,7 +33,7 @@
   align-items: center;
   gap: calc(5px * var(--ui-scale));
   padding: calc(4px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--fs-small);
   color: var(--text);
   background: var(--bg-raised);
   border: 1px solid var(--border);
@@ -44,7 +44,7 @@
   background: var(--bg-hover);
 }
 .desktop-btn:disabled {
-  opacity: 0.5;
+  opacity: var(--disabled-opacity);
   cursor: default;
 }
 .desktop-btn.danger {
@@ -52,7 +52,7 @@
 }
 .desktop-error {
   color: var(--danger);
-  font-size: calc(12px * var(--ui-scale));
+  font-size: var(--fs-small);
 }
 .desktop-shot {
   flex: 1;
@@ -71,7 +71,7 @@
   object-fit: contain;
 }
 .desktop-caption {
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--fs-caption);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -81,6 +81,6 @@
   max-height: calc(140px * var(--ui-scale));
   overflow-y: auto;
   font-family: var(--font-mono);
-  font-size: calc(11px * var(--ui-scale));
+  font-size: var(--fs-caption);
   color: var(--text-muted);
 }

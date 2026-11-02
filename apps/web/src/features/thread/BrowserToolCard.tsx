@@ -110,11 +110,11 @@ function Row({ tool, view, hostKey }: { tool: Tool; view: BrowserToolView; hostK
         onClick={() => setOpen((o) => !o)}
       >
         {running ? (
-          <Loader2 size={13} className="spin browser-row-icon" />
+          <Loader2 size={14} className="spin browser-row-icon" />
         ) : view.failed ? (
-          <AlertTriangle size={13} className="browser-row-icon danger" />
+          <AlertTriangle size={14} className="browser-row-icon danger" />
         ) : (
-          <Icon size={13} className="browser-row-icon" />
+          <Icon size={14} className="browser-row-icon" />
         )}
         <span className="browser-row-text">{view.summary}</span>
         {view.image && <Eye size={12} className="browser-row-pic" aria-label="has a picture" />}

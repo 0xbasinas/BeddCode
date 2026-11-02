@@ -99,6 +99,7 @@ import { AddFolderMenu } from '../folders/AddFolderMenu.tsx'
 import { Logo } from '../../ui/Logo.tsx'
 import { isFresh, useFolderFlow } from '../folders/folderFlow.ts'
 import { foldersWithoutSessions, samePath } from '../folders/folderLogic.ts'
+import { DiffStat } from '../../ui/DiffStat.tsx'
 
 type Filter = 'all' | 'needs-you' | 'done'
 
@@ -413,7 +414,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
         ) : s.status === 'running' ? (
           <LoaderCircle
             className="session-working"
-            size={13}
+            size={14}
             strokeWidth={2.5}
             role="img"
             aria-label="Working"
@@ -447,14 +448,14 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               {s.telegram && <span title="Started from Telegram">Telegram · </span>}
               {s.branch && (
                 <>
-                  <GitBranch size={11} /> <code>{s.branch}</code> ·{' '}
+                  <GitBranch size={12} /> <code>{s.branch}</code> ·{' '}
                 </>
               )}
               {s.schedule && (
-                <CalendarClock size={11} aria-label={`Scheduled: ${s.schedule.name}`} />
+                <CalendarClock size={12} aria-label={`Scheduled: ${s.schedule.name}`} />
               )}
-              {s.parent && <Bot size={11} aria-label="Started by another session" />}
-              <AgentIcon agent={s.instanceId} label={agentLabel(s)} size={11} />
+              {s.parent && <Bot size={12} aria-label="Started by another session" />}
+              <AgentIcon agent={s.instanceId} label={agentLabel(s)} size={12} />
               {agentLabel(s)}
             </span>
             {s.branch && !isFiledAway(s) && (
@@ -476,13 +477,9 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               </span>
             )}
             {s.pinned && !showPinned && (
-              <Pin className="session-pin" size={11} aria-label="Pinned" />
+              <Pin className="session-pin" size={12} aria-label="Pinned" />
             )}
-            {(s.added > 0 || s.removed > 0) && (
-              <span className="stat">
-                <span className="add">+{s.added}</span> <span className="del">−{s.removed}</span>
-              </span>
-            )}
+            {(s.added > 0 || s.removed > 0) && <DiffStat added={s.added} removed={s.removed} />}
           </span>
           {messageHits.get(s.id)?.snippet && (
             <span className="session-snippet" title={messageHits.get(s.id)?.snippet}>
@@ -518,7 +515,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               aria-expanded={open}
               onClick={() => toggleDone(groupKey)}
             >
-              <ChevronRight size={13} className={open ? 'open' : undefined} />
+              <ChevronRight size={14} className={open ? 'open' : undefined} />
               Done <span>{done.length}</span>
             </button>
             {open && rows(done)}
@@ -537,14 +534,14 @@ ${s.projectless ? 'no-project' : s.projectPath}`
             id: 'split',
             label: 'Close pane',
             hint: 'Stops showing it beside the others. The session keeps running.',
-            icon: <Columns2 size={15} />,
+            icon: <Columns2 size={14} />,
             onSelect: () => arrangePanes(shownPanes.filter((id) => id !== session.id)),
           }
         : {
             id: 'split',
             label: 'Open side by side',
             hint: 'Or drag the session beside the conversation.',
-            icon: <Columns2 size={15} />,
+            icon: <Columns2 size={14} />,
             disabled: shownPanes.length === 1 && shownPanes[0] === session.id,
             onSelect: () => openBeside(session.id),
           },
@@ -552,14 +549,14 @@ ${s.projectless ? 'no-project' : s.projectPath}`
         id: 'done',
         label: action.label,
         hint: action.hint,
-        icon: action.kind === 'restore' ? <Undo2 size={15} /> : <CheckCheck size={15} />,
+        icon: action.kind === 'restore' ? <Undo2 size={14} /> : <CheckCheck size={14} />,
         disabled: action.kind === 'busy',
         onSelect: () => void setSessionDone(session.id, action.kind === 'file'),
       },
       {
         id: 'waiting',
         label: session.waitingMark ? 'Clear waiting on you' : 'Mark as waiting on you',
-        icon: <BellRing size={15} />,
+        icon: <BellRing size={14} />,
         onSelect: () =>
           session.waitingMark
             ? void setSessionWaiting(session.id, false)
@@ -568,14 +565,14 @@ ${s.projectless ? 'no-project' : s.projectPath}`
       {
         id: 'pin',
         label: session.pinned ? 'Unpin' : 'Pin to top',
-        icon: session.pinned ? <PinOff size={15} /> : <Pin size={15} />,
+        icon: session.pinned ? <PinOff size={14} /> : <Pin size={14} />,
         onSelect: () => void setSessionPinned(session.id, !session.pinned),
       },
       {
         id: 'delete',
         label: 'Delete',
         hint: 'Removes the conversation. Your folder and files stay.',
-        icon: <Trash2 size={15} />,
+        icon: <Trash2 size={14} />,
         onSelect: async () => {
           if (!(await confirmDialog(`Delete "${session.title}"? This cannot be undone.`, 'Delete')))
             return
@@ -620,14 +617,14 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               aria-label="Hosts"
               aria-expanded={open}
             >
-              <Monitor size={13} />
+              <Monitor size={14} />
               <span>
                 {selectedHost === 'all'
                   ? 'All hosts'
                   : (runtimes[selectedHost]?.host?.name ??
                     entries.find((e) => e.key === selectedHost)?.name)}
               </span>
-              <ChevronDown size={10} />
+              <ChevronDown size={12} />
             </button>
           )}
         >
@@ -643,7 +640,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
                   close()
                 }}
               >
-                <Monitor size={15} />
+                <Monitor size={14} />
                 <span className="menu-text">All hosts</span>
                 {selectedHost === 'all' && <Check size={14} />}
               </button>
@@ -658,7 +655,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
                       close()
                     }}
                   >
-                    {entry.key === LOCAL_HOST_KEY ? <Monitor size={15} /> : <Server size={15} />}
+                    {entry.key === LOCAL_HOST_KEY ? <Monitor size={14} /> : <Server size={14} />}
                     <span className="menu-text">
                       {runtimes[entry.key]?.host?.name ?? entry.name}
                     </span>
@@ -689,7 +686,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
                   setHostsOpen(true)
                 }}
               >
-                <Server size={15} />
+                <Server size={14} />
                 Manage hosts
               </button>
             </>
@@ -870,7 +867,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
                 >
                   <ArrowDownWideNarrow size={12} />
                   <span>{SORTS.find((o) => o.value === sort)?.label}</span>
-                  <ChevronDown size={10} />
+                  <ChevronDown size={12} />
                 </button>
               )}
             >
@@ -906,7 +903,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               className="filter-chip active"
               onClick={() => setFilters({ ...filters, statuses: toggled(filters.statuses, st) })}
             >
-              {STATUS_LABELS[st]} <X size={10} />
+              {STATUS_LABELS[st]} <X size={12} />
             </button>
           ))}
           {filters.since !== 'any' && (
@@ -914,7 +911,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               className="filter-chip active"
               onClick={() => setFilters({ ...filters, since: 'any' })}
             >
-              {WINDOW_LABELS[filters.since]} <X size={10} />
+              {WINDOW_LABELS[filters.since]} <X size={12} />
             </button>
           )}
           {filters.pinnedOnly && (
@@ -922,7 +919,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               className="filter-chip active"
               onClick={() => setFilters({ ...filters, pinnedOnly: false })}
             >
-              Pinned <X size={10} />
+              Pinned <X size={12} />
             </button>
           )}
           {filters.worktreeOnly && (
@@ -930,7 +927,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               className="filter-chip active"
               onClick={() => setFilters({ ...filters, worktreeOnly: false })}
             >
-              In a worktree <X size={10} />
+              In a worktree <X size={12} />
             </button>
           )}
           {filters.projects.map((key) => (
@@ -939,7 +936,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               className="filter-chip active"
               onClick={() => setFilters({ ...filters, projects: toggled(filters.projects, key) })}
             >
-              {projectOptions.find(([k]) => k === key)?.[1] ?? 'Folder'} <X size={10} />
+              {projectOptions.find(([k]) => k === key)?.[1] ?? 'Folder'} <X size={12} />
             </button>
           ))}
           <button className="filter-clear" onClick={() => setFilters(NO_FILTERS)}>
@@ -952,7 +949,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
         {pinned.length > 0 && (
           <section className="pinned-group" aria-label="Pinned sessions">
             <div className="pinned-head">
-              <Pin size={13} /> Pinned
+              <Pin size={14} /> Pinned
             </div>
             {pinned.map((s) => sessionRow(s))}
           </section>
@@ -961,11 +958,11 @@ ${s.projectless ? 'no-project' : s.projectPath}`
           <div className="sidebar-empty">
             <span className="empty-icon">
               {(searchOpen && query) || filterCount > 0 ? (
-                <Search size={22} />
+                <Search size={24} />
               ) : all.length === 0 ? (
-                <Layers size={22} />
+                <Layers size={24} />
               ) : (
-                <Check size={22} />
+                <Check size={24} />
               )}
             </span>
             <h3>
@@ -1091,7 +1088,7 @@ function SessionPr({
         if (event.key === 'Enter') open(event)
       }}
     >
-      {kind === 'merged' ? <GitMerge size={11} /> : <GitPullRequest size={11} />}#{pr.number}
+      {kind === 'merged' ? <GitMerge size={12} /> : <GitPullRequest size={12} />}#{pr.number}
       {kind === 'merged' && <span className="session-pr-state">merged</span>}
       {kind === 'open' && pr.checks && pr.checks !== 'skipped' && (
         <span className={`pr-checks ${pr.checks}`} aria-hidden="true" />
@@ -1184,7 +1181,7 @@ function FolderGroup({
               aria-label={`${workingCount} ${workingCount === 1 ? 'session' : 'sessions'} working`}
               className="folder-working"
             >
-              <LoaderCircle size={11} />
+              <LoaderCircle size={12} />
             </span>
           )}
         </button>
@@ -1192,7 +1189,7 @@ function FolderGroup({
         <span className="spacer" />
         {hostName && (
           <span className="folder-host" title={hostName}>
-            {hostKey === LOCAL_HOST_KEY ? <Monitor size={11} /> : <Server size={11} />}
+            {hostKey === LOCAL_HOST_KEY ? <Monitor size={12} /> : <Server size={12} />}
             <span className="folder-host-name">{hostName}</span>
           </span>
         )}
@@ -1202,13 +1199,13 @@ function FolderGroup({
           aria-label={projectless ? 'New session without a project' : `New session in ${name}`}
           onClick={startHere}
         >
-          <Plus size={15} />
+          <Plus size={14} />
         </Button>
       </div>
       <div id={contentId} hidden={collapsed}>
         {children ?? (
           <button className="folder-empty" onClick={startHere}>
-            <Plus size={13} /> New session
+            <Plus size={14} /> New session
           </button>
         )}
       </div>
