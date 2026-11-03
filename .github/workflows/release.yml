@@ -2,8 +2,8 @@ name: Release
 
 # Pushing a tag such as v0.2.0 builds the installers on each operating system and attaches them to a
 # draft GitHub release, which the apps' updaters read once it is published. "Run workflow" builds the
-# same installers without publishing them to a version, and replaces the desktop-dev prerelease with
-# them, so the link to the latest build never changes.
+# same installers and headless host bundles without publishing them to a version, and replaces the
+# desktop-dev prerelease with them, so the link to the latest build never changes.
 on:
   push:
     tags: ['v*']
@@ -91,15 +91,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # A manual run replaces the desktop-dev prerelease, recreated so its tag moves to the built commit.
+  # The headless host bundles go on it too, so `install-host.sh --version desktop-dev` works without a tag.
   rolling:
     name: Publish desktop-dev
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    needs: installers
+    needs: [installers, host]
     steps:
       - uses: actions/download-artifact@v5
         with:
           pattern: installers-*
+          path: installers
+          merge-multiple: true
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: beddcode-host-*
           path: installers
           merge-multiple: true
       - env:
