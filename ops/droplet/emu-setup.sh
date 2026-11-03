@@ -41,6 +41,14 @@ fi
 }
 command -v sdkmanager >/dev/null || die "sdkmanager not on PATH; run bootstrap.sh first"
 
+# Even headless (-no-window), the emulator's graphics stack loads X11/xcb and a few desktop
+# libraries; Ubuntu Server has none of them, and without libX11-xcb it segfaults at start.
+log "Libraries the emulator loads (no desktop is installed)"
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q libx11-6 libx11-xcb1 libxcb1 libxext6 \
+  libxrender1 libxrandr2 libxfixes3 libxdamage1 libxcomposite1 libxcursor1 libxi6 libxtst6 \
+  libxkbfile1 libxkbcommon0 libxkbcommon-x11-0 libnss3 libpulse0 libgbm1 libdrm2 libgl1 libegl1 \
+  libdbus-1-3 libasound2t64 >/dev/null
+
 log "Checking that $EMULATOR_IMAGE is offered by sdkmanager"
 sdkmanager --list 2>/dev/null | grep -qF "$EMULATOR_IMAGE" \
   || die "$EMULATOR_IMAGE is not in 'sdkmanager --list'; pick a current one: sdkmanager --list | grep 'system-images;android-3'"
@@ -58,7 +66,13 @@ else
 fi
 cfg="$HOME/.android/avd/$AVD_NAME.avd/config.ini"
 set_cfg() { grep -q "^$1=" "$cfg" && sed -i "s|^$1=.*|$1=$2|" "$cfg" || echo "$1=$2" >> "$cfg"; }
-set_cfg hw.ramSize 2048
+# Software rendering under nested KVM is slow: 4 cores and a 720x1600 screen (about half the
+# pixels of a Pixel 7) keep System UI from stopping responding; 3 GB as API 36 asks for more than 2.
+set_cfg hw.ramSize 3072
+set_cfg hw.cpu.ncore 4
+set_cfg hw.lcd.width 720
+set_cfg hw.lcd.height 1600
+set_cfg hw.lcd.density 320
 set_cfg disk.dataPartition.size 4G
 set_cfg hw.keyboard yes
 set_cfg hw.audioInput no
