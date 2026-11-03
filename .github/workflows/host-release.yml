@@ -1,0 +1,69 @@
+name: Host release
+
+# Builds only the headless Linux host (beddcode-host-linux-x64.tar.gz, see scripts/install-host.sh),
+# without the desktop installers, and replaces the host-dev prerelease with it so the link never
+# changes:
+#   curl -fsSL https://raw.githubusercontent.com/0xbasinas/BeddCode/main/scripts/install-host.sh | sh -s -- --version host-dev
+# It runs by hand (Actions → Host release → Run workflow) and on every push to main that touches the
+# host, so a server can pick up a fix in a few minutes. Tagged releases still come from release.yml.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/server/**'
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'scripts/host-bundle/**'
+      - 'scripts/install-host.sh'
+      - 'apps/desktop/scripts/build-host.mjs'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/host-release.yml'
+
+permissions:
+  contents: write
+
+# A newer push replaces a build still running: only the latest one matters for host-dev.
+concurrency:
+  group: host-dev
+  cancel-in-progress: true
+
+jobs:
+  host:
+    name: Headless host (linux-x64)
+    # The same Ubuntu release as release.yml's Linux build: the terminal library is native, and a
+    # fixed release keeps the glibc it needs from changing under us.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @beddcode/web build
+      - run: node apps/desktop/scripts/build-host.mjs --out dist-host/beddcode-host
+      - run: |
+          cp scripts/host-bundle/beddcode dist-host/beddcode-host/beddcode
+          chmod +x dist-host/beddcode-host/beddcode
+          tar -czf dist-host/beddcode-host-linux-x64.tar.gz -C dist-host/beddcode-host .
+          (cd dist-host && sha256sum beddcode-host-linux-x64.tar.gz > beddcode-host-linux-x64.tar.gz.sha256)
+      # Smoke test: the unpacked host starts, reports its version and plans its service.
+      - run: |
+          mkdir smoke && tar -xzf dist-host/beddcode-host-linux-x64.tar.gz -C smoke
+          ./smoke/beddcode completion bash > /dev/null
+          ./smoke/beddcode config
+          ./smoke/beddcode host install --dry-run --port 3874 | grep 'ExecStart=' > /dev/null
+      - uses: actions/upload-artifact@v5
+        with:
+          name: beddcode-host-linux-x64
+          path: dist-host/beddcode-host-linux-x64.tar.gz*
+      # Recreated rather than edited, so the host-dev tag moves to the built commit.
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete host-dev --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true
+          gh release create host-dev dist-host/beddcode-host-linux-x64.tar.gz dist-host/beddcode-host-linux-x64.tar.gz.sha256 \
+            --repo "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" --title host-dev \
+            --notes "Headless Linux host built from $GITHUB_SHA by run $GITHUB_RUN_NUMBER. Install: install-host.sh --version host-dev. Replaced by the next build."

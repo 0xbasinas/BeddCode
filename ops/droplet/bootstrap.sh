@@ -231,13 +231,15 @@ EOF
 chown "$U:$U" "$H/.gradle/gradle.properties"
 
 log "BeddCode host (systemd user service, relay: $BEDDCODE_RELAY_URL)"
-# Prefer a release bundle: the latest release, else the desktop-dev prerelease (rebuilt by every
-# manual Release run). With neither, run the host from a source checkout (public repo, no login
-# needed) through a `beddcode` wrapper in ~/bin.
+# Prefer a release bundle: host-dev (rebuilt by host-release.yml on every host change to main),
+# else the latest release, else desktop-dev (manual Release runs). With none, run the host from a
+# source checkout (public repo, no login needed) through a `beddcode` wrapper in ~/bin.
 installer="curl -fsSL https://raw.githubusercontent.com/0xbasinas/BeddCode/main/scripts/install-host.sh | sh -s -- --own-node --at-boot"
 if [ -d "$H/projects/BeddCode/.git" ] && [ -x "$H/bin/beddcode" ]; then
   echo "  Host already runs from the source checkout; update it there (README step 4)"
-elif as_dev "$installer" || { echo "  Trying the desktop-dev prerelease"; as_dev "$installer --version desktop-dev"; }; then
+elif as_dev "$installer --version host-dev" \
+  || { echo "  Trying the latest release"; as_dev "$installer"; } \
+  || { echo "  Trying the desktop-dev prerelease"; as_dev "$installer --version desktop-dev"; }; then
   :
 else
   echo "  No release host bundle; installing the host from source in ~/projects/BeddCode"
