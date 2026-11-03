@@ -2,35 +2,36 @@
 
 These scripts set up a personal DigitalOcean droplet (Ubuntu 24.04, `s-4vcpu-8gb-intel`, fra1) that you create when you start working and delete when you stop. You set it up once and save a snapshot. Each session then restores that snapshot and snapshots again at the end. You drive the agents (Claude Code, Codex, Grok) on it through BeddCode over your relay. The host only dials out, so the droplet accepts inbound SSH and nothing else.
 
-| File | Where it runs | What it does |
-| --- | --- | --- |
-| `config.env.example` | – | Every setting. Copy it to `config.env`. No secrets. |
-| `up.sh` | your PC (Git Bash) | Creates the droplet from the newest snapshot, waits for it, and prints how to connect. `--fresh` creates it from plain Ubuntu, for the first time only. |
-| `down.sh` | your PC (Git Bash) | Checks for uncommitted work, stops services, shuts down, snapshots, deletes the droplet, and prunes old snapshots. |
-| `bootstrap.sh` | droplet, as root, once | Installs everything. Safe to run again. |
-| `build-apk.sh` | droplet | Builds a debug or release APK and prints its path, size and an `scp` command. |
-| `emu-setup.sh`, `emu-start.sh`, `emu-stop.sh`, `emu-shot.sh` | droplet | Headless Android emulator. It only works if `/dev/kvm` exists. |
+| File                                                         | Where it runs          | What it does                                                                                                                                            |
+| ------------------------------------------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `config.env.example`                                         | –                      | Every setting. Copy it to `config.env`. No secrets.                                                                                                     |
+| `up.sh`                                                      | your PC (Git Bash)     | Creates the droplet from the newest snapshot, waits for it, and prints how to connect. `--fresh` creates it from plain Ubuntu, for the first time only. |
+| `down.sh`                                                    | your PC (Git Bash)     | Checks for uncommitted work, stops services, shuts down, snapshots, deletes the droplet, and prunes old snapshots.                                      |
+| `bootstrap.sh`                                               | droplet, as root, once | Installs everything. Safe to run again.                                                                                                                 |
+| `build-apk.sh`                                               | droplet                | Builds a debug or release APK and prints its path, size and an `scp` command.                                                                           |
+| `emu-setup.sh`, `emu-start.sh`, `emu-stop.sh`, `emu-shot.sh` | droplet                | Headless Android emulator. It only works if `/dev/kvm` exists.                                                                                          |
 
 ## Versions and where they come from
 
-| Tool | Version / command | Source |
-| --- | --- | --- |
-| JDK | `openjdk-17-jdk-headless` (Ubuntu 24.04 apt) | Expo and React Native both recommend JDK 17; AGP 9.2 needs 17+. |
-| Android SDK | platforms 36 + 37, build-tools 36.0.0 + 37.0.0, NDK 27.1.12297006, CMake 3.22.1 | Your installed `react-native@0.88.0/gradle/libs.versions.toml` (compileSdk 37, targetSdk 36, buildTools 37.0.0, NDK 27.1.12297006, AGP 9.2.1). Expo's environment page asks for Platform 36. |
-| cmdline-tools | `commandlinetools-linux-15859902_latest.zip`, SHA-256 checked | developer.android.com/studio, "Command line tools only" |
-| Node | nvm v0.40.8, Node 22 | github.com/nvm-sh/nvm. React Native needs Node 22.11 or newer; BeddCode needs Node 22 or newer. |
-| pnpm | corepack (ships with Node 22), so pnpm 12 is picked up from `packageManager` | – |
-| Watchman | not installed | Expo docs: it is only needed for SDK 55 and earlier. |
-| Claude Code | `curl -fsSL https://claude.ai/install.sh \| bash`, installs to `~/.local/bin/claude` | code.claude.com/docs/en/setup |
-| Codex CLI | `npm install -g @openai/codex` | github.com/openai/codex |
-| Grok CLI | `curl -fsSL https://x.ai/cli/install.sh \| bash`, login with `grok login --device-auth` | x.ai/build (Grok Build). The community `grok-cli` projects are not used. |
-| gh | apt repo at `cli.github.com/packages` | github.com/cli/cli `docs/install_linux.md` |
-| EAS CLI | `npm install -g eas-cli` | Expo docs |
-| Maestro | `curl -fsSL https://get.maestro.mobile.dev \| bash` (needs Java 17+) | docs.maestro.dev |
-| BeddCode host | `scripts/install-host.sh --own-node --at-boot`. It tries the latest release first, then `--version desktop-dev`, which every manual run of **Actions → Release → Run workflow** rebuilds. If neither has a host bundle, it runs from a source checkout. | This repo's README |
-| doctl | `snapshot list --resource droplet`, `droplet create --wait`, `droplet-action shutdown/power-off/snapshot --wait`, `image delete --force`, `balance get` | docs.digitalocean.com doctl reference |
+| Tool          | Version / command                                                                                                                                                                                                                                       | Source                                                                                                                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| JDK           | `openjdk-17-jdk-headless` (Ubuntu 24.04 apt)                                                                                                                                                                                                            | Expo and React Native both recommend JDK 17; AGP 9.2 needs 17+.                                                                                                                              |
+| Android SDK   | platforms 36 + 37, build-tools 36.0.0 + 37.0.0, NDK 27.1.12297006, CMake 3.22.1                                                                                                                                                                         | Your installed `react-native@0.88.0/gradle/libs.versions.toml` (compileSdk 37, targetSdk 36, buildTools 37.0.0, NDK 27.1.12297006, AGP 9.2.1). Expo's environment page asks for Platform 36. |
+| cmdline-tools | `commandlinetools-linux-15859902_latest.zip`, SHA-256 checked                                                                                                                                                                                           | developer.android.com/studio, "Command line tools only"                                                                                                                                      |
+| Node          | nvm v0.40.8, Node 22                                                                                                                                                                                                                                    | github.com/nvm-sh/nvm. React Native needs Node 22.11 or newer; BeddCode needs Node 22 or newer.                                                                                              |
+| pnpm          | corepack (ships with Node 22), so pnpm 12 is picked up from `packageManager`                                                                                                                                                                            | –                                                                                                                                                                                            |
+| Watchman      | not installed                                                                                                                                                                                                                                           | Expo docs: it is only needed for SDK 55 and earlier.                                                                                                                                         |
+| Claude Code   | `curl -fsSL https://claude.ai/install.sh \| bash`, installs to `~/.local/bin/claude`                                                                                                                                                                    | code.claude.com/docs/en/setup                                                                                                                                                                |
+| Codex CLI     | `npm install -g @openai/codex`                                                                                                                                                                                                                          | github.com/openai/codex                                                                                                                                                                      |
+| Grok CLI      | `curl -fsSL https://x.ai/cli/install.sh \| bash`, login with `grok login --device-auth`                                                                                                                                                                 | x.ai/build (Grok Build). The community `grok-cli` projects are not used.                                                                                                                     |
+| gh            | apt repo at `cli.github.com/packages`                                                                                                                                                                                                                   | github.com/cli/cli `docs/install_linux.md`                                                                                                                                                   |
+| EAS CLI       | `npm install -g eas-cli`                                                                                                                                                                                                                                | Expo docs                                                                                                                                                                                    |
+| Maestro       | `curl -fsSL https://get.maestro.mobile.dev \| bash` (needs Java 17+)                                                                                                                                                                                    | docs.maestro.dev                                                                                                                                                                             |
+| BeddCode host | `scripts/install-host.sh --own-node --at-boot`. It tries the latest release first, then `--version desktop-dev`, which every manual run of **Actions → Release → Run workflow** rebuilds. If neither has a host bundle, it runs from a source checkout. | This repo's README                                                                                                                                                                           |
+| doctl         | `snapshot list --resource droplet`, `droplet create --wait`, `droplet-action shutdown/power-off/snapshot --wait`, `image delete --force`, `balance get`                                                                                                 | docs.digitalocean.com doctl reference                                                                                                                                                        |
 
 Deprecations to know about:
+
 - Google now marks `sdkmanager` and `emulator` as deprecated in favour of a new `android` CLI. Both still work; the scripts keep using them.
 - Maestro documented API 35/36 support as "arriving Q2 2026". If Maestro flows fail on the android-36 image, set `EMULATOR_IMAGE` to an `android-34` image and rerun `emu-setup.sh`.
 
@@ -80,6 +81,7 @@ scp dev@<ip>:apks/<file>.apk .                   # on your PC; or download it fr
 The IP changes every session. `up.sh` prints the new one and clears the stale `known_hosts` entry. The droplet's SSH host key is new each time, so the first connection accepts it automatically. The relay route and device pairings live in `~/.beddcode`, which is in the snapshot, so they don't change when the IP does.
 
 **Gradle settings.** These are in `~/.gradle/gradle.properties` and suit 8 GB of RAM:
+
 - Gradle heap is 3 GB, plus 1 GB metaspace; the Kotlin daemon gets 1.5 GB.
 - The daemon stays on, so rebuilds within a session are warm.
 - Parallel builds are on, with 2 workers. More workers tend to run out of memory on React Native's C++ steps.
@@ -90,6 +92,7 @@ The heap is enough for an Expo app, and ~3 GB stays free for Metro, the host and
 ## Resizing the droplet
 
 The snapshot's minimum disk size is what limits you. You can restore onto the same size or a bigger one, but not onto a smaller disk.
+
 - For a one-off bigger session, set `DROPLET_SIZE=s-8vcpu-16gb` in `config.env` and run `./up.sh`. For 16 GB of RAM you can also raise the Gradle heap to `-Xmx6g` and workers to 4.
 - To go back down, the disk size must stay 160 GB. Pick a size with the same disk, such as `s-4vcpu-8gb-intel`, or `s-4vcpu-8gb` if you can do without the emulator. Otherwise you have to bootstrap a fresh droplet.
 - `doctl compute size list` shows the slugs and prices.
