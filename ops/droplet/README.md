@@ -55,8 +55,9 @@ Deprecations to know about:
    codex login              # follow the URL it prints (or `codex login --device-auth` if your version offers it)
    grok login --device-auth
    beddcode config set relay-password '…'   # type it here; never put it in config.env
-   systemctl --user restart beddcode-server && beddcode pair   # pair the desktop app and phone once
+   systemctl --user restart beddcode-server && sleep 3 && beddcode pair
    ```
+   The droplet accepts nothing inbound except SSH, so pair through the relay. `beddcode pair` prints a pairing link and a QR code that carry the relay route. Scan the QR code with the phone app, and paste the link into **Add host** in the desktop app. The IP addresses it also lists only work on the same network or tailnet. Your host needs a build from after the relay-link change; on older builds, pair once through `ssh -N -L 3774:127.0.0.1:3773 dev@<ip>` and `127.0.0.1:3774`.
 4. Clone your projects into `~/projects` and run `pnpm install` in each. If the latest BeddCode release has no Linux host bundle, bootstrap has already cloned `~/projects/BeddCode` and runs the host from that checkout, through the `~/bin/beddcode` wrapper. Keep that checkout in place, and run `git pull && pnpm install && systemctl --user restart beddcode-server` there to update the host.
 5. Run the **test plan** below. Then take the first snapshot with `./down.sh`.
 

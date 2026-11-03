@@ -18,11 +18,11 @@
     "@beddcode/provider-core": "workspace:*",
     "@beddcode/provider-grok": "workspace:*",
     "@beddcode/provider-pi": "workspace:*",
-    "@beddcode/provider-acp": "workspace:*",
     "@beddcode/shared": "workspace:*",
     "@lydell/node-pty": "1.2.0-beta.15",
     "chokidar": "^6.0.0",
     "pngjs": "7.0.0",
+    "qrcode-generator": "^2.0.4",
     "ws": "^8.18.0"
   },
   "devDependencies": {

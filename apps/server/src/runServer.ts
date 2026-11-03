@@ -40,6 +40,7 @@ import { buildRelayRoute } from '@beddcode/client-runtime/relaySocket'
 import { findWebRoot } from './web/static.ts'
 import { TailscaleService } from './network/tailscale.ts'
 import { reachableRoutes } from './network/reachable.ts'
+import { extendUserPath } from './agents/userPath.ts'
 import { SessionManager } from './sessions/sessionManager.ts'
 import { recoverInterruptedTurns, takeInterruptedSessions } from './sessions/recovery.ts'
 import { openEventStore } from './store/eventStore.ts'
@@ -59,6 +60,9 @@ import { GatewayControl } from './mcpGateway/control.ts'
 /** Starts the host and keeps running until SIGINT/SIGTERM. */
 export async function runServer(config: ServerConfig): Promise<void> {
   const log = createLogger('server')
+  // Before any agent adapter copies process.env: a background host would otherwise miss CLIs
+  // installed for the user (see userPath.ts).
+  if (process.platform !== 'win32') process.env.PATH = extendUserPath(process.env.PATH)
   const home = dataHome()
   // One host per data folder; a second one says so instead of corrupting the first one's state.
   const lock = await acquireHostLock(home, config.port, { log })

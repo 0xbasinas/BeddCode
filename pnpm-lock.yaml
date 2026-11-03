@@ -411,6 +411,9 @@ importers:
       pngjs:
         specifier: 7.0.0
         version: 7.0.0
+      qrcode-generator:
+        specifier: ^2.0.4
+        version: 2.0.4
       ws:
         specifier: ^8.18.0
         version: 8.22.0

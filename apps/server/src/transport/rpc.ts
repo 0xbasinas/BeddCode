@@ -11,8 +11,7 @@ import {
   type RpcParams,
   type RpcResult,
 } from '@beddcode/contracts'
-import { buildPairLink } from '@beddcode/client-runtime/pairLink'
-import type { PairingManager } from '../auth/pairing.ts'
+import { createPairing, type PairingManager } from '../auth/pairing.ts'
 import type { PeerClass } from '../auth/guard.ts'
 import type { TokenStore } from '../auth/tokens.ts'
 import type { TailscaleService } from '../network/tailscale.ts'
@@ -162,21 +161,7 @@ export function createRpcRouter(
   const { git, github, projects, terminals, files } = workspace
   const { schedules, alerts, designs } = automation
   const handlers: Handlers = {
-    'host.pair': async () => {
-      const pair = access.pairing.create()
-      const where = await access.reachable?.().catch(() => undefined)
-      if (!where) return pair
-      return {
-        ...pair,
-        link: buildPairLink({
-          code: pair.code,
-          name: where.name,
-          hostId: where.hostId,
-          routes: where.routes,
-          relay: where.relay,
-        }),
-      }
-    },
+    'host.pair': () => createPairing(access.pairing, access.reachable),
     'host.relay.get': async () => {
       if (!access.relay) throw new Error('This host does not support relays')
       return access.relay.get()

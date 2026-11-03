@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto'
 import type { PairingCode } from '@beddcode/contracts'
+import { buildPairLink } from '@beddcode/client-runtime/pairLink'
 
 const CODE_TTL_MS = 10 * 60_000
 const MAX_FAILURES = 5
@@ -55,5 +56,37 @@ export class PairingManager {
   private prune() {
     const t = this.now()
     for (const [code, expires] of this.codes) if (expires <= t) this.codes.delete(code)
+  }
+}
+
+/** Where other devices can reach this host: what a pairing link carries. */
+export interface Reachability {
+  hostId: string
+  name: string
+  routes: string[]
+  relay?: string
+}
+
+/**
+ * A new code, with this host's addresses and relay route as a pairing link when they are known.
+ * Both the app's Share screen and `beddcode pair` use it, so a headless host can hand out the
+ * relay route too.
+ */
+export async function createPairing(
+  pairing: PairingManager,
+  reachable?: () => Promise<Reachability>,
+): Promise<PairingCode> {
+  const pair = pairing.create()
+  const where = await reachable?.().catch(() => undefined)
+  if (!where) return pair
+  return {
+    ...pair,
+    link: buildPairLink({
+      code: pair.code,
+      name: where.name,
+      hostId: where.hostId,
+      routes: where.routes,
+      relay: where.relay,
+    }),
   }
 }

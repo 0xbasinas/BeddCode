@@ -20,7 +20,7 @@ import {
   type GuardOptions,
   type PeerClass,
 } from '../auth/guard.ts'
-import type { PairingManager } from '../auth/pairing.ts'
+import { createPairing, type PairingManager } from '../auth/pairing.ts'
 import type { TokenStore } from '../auth/tokens.ts'
 import type { AgentTools } from '../automation/agentTools.ts'
 import type { BrowserBroker } from '../automation/browserUse.ts'
@@ -293,10 +293,11 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       return
     }
 
-    // For the CLI on this machine: `beddcode-server pair` asks for a code here.
+    // For the CLI on this machine: `beddcode-server pair` asks for a code here, with the same
+    // pairing link (addresses and relay route) the app's Share screen shows.
     if (url === '/admin/pair' && req.method === 'POST') {
       if (peer !== 'loopback' || origin !== undefined) return void res.writeHead(403).end()
-      reply(res, 200, options.pairing.create())
+      void createPairing(options.pairing, options.reachable).then((pair) => reply(res, 200, pair))
       return
     }
     // The web app itself, for the desktop app and for a browser on this machine or the tailnet.

@@ -1,6 +1,7 @@
 import os from 'node:os'
 import type { PairingCode } from '@beddcode/contracts'
 import { TailscaleService } from '../network/tailscale.ts'
+import { terminalQr } from './qr.ts'
 
 /** Pairing happens on the machine itself, through the running host. */
 export async function pair(port: number): Promise<number> {
@@ -26,7 +27,22 @@ export async function pair(port: number): Promise<number> {
   ].filter(Boolean)
   const minutes = Math.round((code.expiresAt - Date.now()) / 60_000)
   console.log(`Pairing code: ${code.code}   (valid for ${minutes} minutes, works once)`)
-  console.log(`Add this host in BeddCode with one of these addresses on port ${port}:`)
+  console.log(
+    `On the same network or tailnet, add this host in BeddCode with one of these addresses on port ${port}:`,
+  )
   addresses.forEach((a) => console.log(`  ${a}`))
+
+  // The link carries the relay route when one is set, so a device on any network can pair.
+  if (code.link && /[?&]y=/.test(code.link)) {
+    console.log(
+      '\nFrom any network, through your relay: scan this with the phone app, or paste the link into Add host.',
+    )
+    if (process.stdout.isTTY) console.log(`\n${terminalQr(code.link)}\n`)
+    console.log(code.link)
+  } else {
+    console.log(
+      '\nNo relay is set, so devices on other networks cannot reach this host. Set one with: beddcode config set relay-url https://…',
+    )
+  }
   return 0
 }
