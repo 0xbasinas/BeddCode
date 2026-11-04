@@ -104,7 +104,7 @@ export function createOpenCodeAdapter(options: OpenCodeAdapterOptions = {}): Pro
           .catch(() => {})
         const setup = approvalSetup(
           response.modes,
-          toConfigOptions(response.configOptions ?? announcedConfig),
+          toConfigOptions(announcedConfig ?? response.configOptions),
         )
         const commands = events.findLast((event) => event.type === 'session.commands')
         return {
@@ -125,7 +125,17 @@ export function createOpenCodeAdapter(options: OpenCodeAdapterOptions = {}): Pro
       const transport =
         options.createTransport?.(exe, ['acp'], input.cwd, { ...process.env }) ??
         spawnTransport(exe, ['acp'], { cwd: input.cwd, env: { ...process.env } }, log)
-      return new AcpSession(input, { transport, log, label: 'OpenCode' })
+      // ACP config options are applied in order, so select the model before its variant.
+      // Explicit config values take precedence over the legacy model/effort fields.
+      const config = {
+        ...(input.model ? { model: input.model } : {}),
+        ...(input.effort ? { effort: input.effort } : {}),
+        ...input.config,
+      }
+      return new AcpSession(
+        { ...input, model: undefined, config },
+        { transport, log, label: 'OpenCode' },
+      )
     },
     async listHistory(_id, cwd) {
       const { withAcpAgent, listAcpSessions } = await import('./history.ts')
@@ -190,6 +200,7 @@ export function createOpenCodeAdapter(options: OpenCodeAdapterOptions = {}): Pro
         sessionId: randomUUID(),
         cwd: input.cwd,
         model: input.model,
+        effort: input.effort,
         permissionMode: 'ask',
         textOnly: true,
       })
