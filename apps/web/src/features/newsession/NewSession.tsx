@@ -99,8 +99,15 @@ export function NewSession({
   useEffect(() => {
     let active = true
     setHostClaudeBackend('sdk')
-    if (connection === 'connected') hostRequest(hostKey, 'host.claudeBackend.get', {}).then((result) => { if (active) setHostClaudeBackend(result.claudeBackend) }).catch(() => {})
-    return () => { active = false }
+    if (connection === 'connected')
+      hostRequest(hostKey, 'host.claudeBackend.get', {})
+        .then((result) => {
+          if (active) setHostClaudeBackend(result.claudeBackend)
+        })
+        .catch(() => {})
+    return () => {
+      active = false
+    }
   }, [hostKey, connection])
   // The welcome checklist stays up until the first session, so adding a folder never jumps
   // straight into a composer; its last step starts the session.
@@ -453,7 +460,15 @@ export function NewSession({
           }
           footer={
             <div className="footer-bar">
-              <AgentChip agents={providers} current={agent} onPick={setInstanceId} claudeBackend={effectiveClaudeBackend(projects.find((p) => p.path === folder)?.claudeBackend, hostClaudeBackend)} />
+              <AgentChip
+                agents={providers}
+                current={agent}
+                onPick={setInstanceId}
+                claudeBackend={effectiveClaudeBackend(
+                  projects.find((p) => p.path === folder)?.claudeBackend,
+                  hostClaudeBackend,
+                )}
+              />
               <span className="sep" />
               <FolderChip
                 value={folder}
@@ -619,7 +634,8 @@ export function AgentChip({
   onPick(id: string): void
   claudeBackend?: 'sdk' | 'cli'
 }) {
-  const label = (agent: ProviderInstance) => agent.kind === 'claude' && claudeBackend === 'cli' ? 'Claude (CLI)' : agent.label
+  const label = (agent: ProviderInstance) =>
+    agent.kind === 'claude' && claudeBackend === 'cli' ? 'Claude (CLI)' : agent.label
   return (
     <Dropdown
       trigger={({ toggle }) => (

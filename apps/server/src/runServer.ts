@@ -115,7 +115,10 @@ export async function runServer(config: ServerConfig): Promise<void> {
     adapters,
     log,
     defaultCwd: process.cwd(),
-    claudeBackendFor: (folder) => (folder ? workspace.projects.backendFor(folder) : undefined) ?? readConfigFile().claudeBackend ?? 'sdk',
+    claudeBackendFor: (folder) =>
+      (folder ? workspace.projects.backendFor(folder) : undefined) ??
+      readConfigFile().claudeBackend ??
+      'sdk',
     sessionRoot: path.join(home, 'sessions'),
     previews: new PreviewCache(path.join(home, 'agent-previews.json')),
   })

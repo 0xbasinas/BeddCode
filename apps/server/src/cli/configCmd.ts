@@ -62,7 +62,8 @@ export function parseValue(key: keyof ConfigFile, raw: string): ConfigFile[keyof
       .map((v) => v.trim())
       .filter(Boolean)
   }
-  if (key === 'claudeBackend' && raw !== 'sdk' && raw !== 'cli') throw new Error('claudeBackend must be sdk or cli')
+  if (key === 'claudeBackend' && raw !== 'sdk' && raw !== 'cli')
+    throw new Error('claudeBackend must be sdk or cli')
   if (!raw) throw new Error(`${key} needs a value`)
   return key === 'relayUrl' ? normalizeRelayUrl(raw) : raw
 }

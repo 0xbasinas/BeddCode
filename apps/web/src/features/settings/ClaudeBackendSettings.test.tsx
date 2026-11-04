@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { ClaudeBackendSettings } from './ClaudeBackendSettings.tsx'
 import { AgentChip, effectiveClaudeBackend } from '../newsession/NewSession.tsx'
+import { sessionAgentLabel } from '../thread/ThreadView.tsx'
 import type { ProviderInstance } from '@beddcode/contracts'
 
-const claude = { id: 'claude', kind: 'claude', label: 'Claude', status: 'ready' } as ProviderInstance
+const claude = {
+  id: 'claude',
+  kind: 'claude',
+  label: 'Claude',
+  status: 'ready',
+} as ProviderInstance
 
 describe('Claude backend', () => {
   it('shows the project backend control', () => {
@@ -20,8 +26,15 @@ describe('Claude backend', () => {
     expect(effectiveClaudeBackend('sdk', 'cli')).toBe('sdk')
     expect(effectiveClaudeBackend('cli', 'sdk')).toBe('cli')
   })
+  it('labels the running session for its effective backend', () => {
+    expect(sessionAgentLabel(claude, 'cli')).toBe('Claude (CLI)')
+    expect(sessionAgentLabel(claude, 'sdk')).toBe('Claude')
+  })
   it('labels Claude when the effective backend uses CLI', () => {
-    const render = (backend: 'cli' | 'sdk') => renderToStaticMarkup(<AgentChip agents={[claude]} current={claude} claudeBackend={backend} onPick={() => {}} />)
+    const render = (backend: 'cli' | 'sdk') =>
+      renderToStaticMarkup(
+        <AgentChip agents={[claude]} current={claude} claudeBackend={backend} onPick={() => {}} />,
+      )
     expect(render('cli')).toContain('Claude (CLI)')
     expect(render('sdk')).not.toContain('Claude (CLI)')
   })

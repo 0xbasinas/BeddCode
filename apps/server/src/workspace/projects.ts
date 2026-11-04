@@ -14,10 +14,16 @@ export class ProjectStore {
     private readonly git: GitService,
   ) {}
 
-  private read(): { paths: string[]; scripts: Record<string, ProjectScript[]>; backends: Record<string, 'sdk' | 'cli'> } {
-    const read = readJsonFile<{ paths?: unknown; scripts?: Record<string, ProjectScript[]>; backends?: Record<string, unknown> }>(
-      this.file,
-    )
+  private read(): {
+    paths: string[]
+    scripts: Record<string, ProjectScript[]>
+    backends: Record<string, 'sdk' | 'cli'>
+  } {
+    const read = readJsonFile<{
+      paths?: unknown
+      scripts?: Record<string, ProjectScript[]>
+      backends?: Record<string, unknown>
+    }>(this.file)
     if (read.status === 'corrupt') {
       createLogger('projects').error(
         `${this.file} is damaged (${read.error}); starting with no projects.` +
@@ -32,7 +38,9 @@ export class ProjectStore {
         ? data.paths.filter((p): p is string => typeof p === 'string')
         : [],
       scripts: data.scripts && typeof data.scripts === 'object' ? data.scripts : {},
-      backends: Object.fromEntries(Object.entries(data.backends ?? {}).filter(([, v]) => v === 'sdk' || v === 'cli')) as Record<string, 'sdk' | 'cli'>,
+      backends: Object.fromEntries(
+        Object.entries(data.backends ?? {}).filter(([, v]) => v === 'sdk' || v === 'cli'),
+      ) as Record<string, 'sdk' | 'cli'>,
     }
   }
 
@@ -49,8 +57,17 @@ export class ProjectStore {
     )
     const data =
       Object.keys(kept).length > 0 ? { version: 1, paths, scripts: kept } : { version: 1, paths }
-    const keptBackends = Object.fromEntries(Object.entries(backends).filter(([p]) => paths.some((folder) => samePath(folder, p))))
-    writeFileAtomic(this.file, JSON.stringify({ ...data, ...(Object.keys(keptBackends).length ? { backends: keptBackends } : {}) }, null, 2))
+    const keptBackends = Object.fromEntries(
+      Object.entries(backends).filter(([p]) => paths.some((folder) => samePath(folder, p))),
+    )
+    writeFileAtomic(
+      this.file,
+      JSON.stringify(
+        { ...data, ...(Object.keys(keptBackends).length ? { backends: keptBackends } : {}) },
+        null,
+        2,
+      ),
+    )
   }
 
   /** The saved commands of a folder (of the repository a worktree belongs to, for a worktree). */

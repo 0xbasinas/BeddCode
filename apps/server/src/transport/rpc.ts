@@ -162,7 +162,9 @@ export function createRpcRouter(
   const { git, github, projects, terminals, files } = workspace
   const { schedules, alerts, designs } = automation
   const handlers: Handlers = {
-    'host.claudeBackend.get': async () => ({ claudeBackend: readConfigFile().claudeBackend ?? 'sdk' }),
+    'host.claudeBackend.get': async () => ({
+      claudeBackend: readConfigFile().claudeBackend ?? 'sdk',
+    }),
     'host.claudeBackend.set': async (p) => {
       writeConfigFile({ ...readConfigFile(), claudeBackend: p.claudeBackend })
       return { claudeBackend: p.claudeBackend }

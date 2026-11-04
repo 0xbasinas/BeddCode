@@ -19,7 +19,11 @@ describe('Claude backend', () => {
     ['sdk', 'cli', ClaudeCliSession],
   ] as const)('selects host %s and project %s', async (backend, override, expected) => {
     const adapter = createClaudeAdapter({ backend, log: createLogger('test') })
-    const session = await adapter.startSession('claude', { sessionId: 's', cwd: '/tmp', claudeBackend: override })
+    const session = await adapter.startSession('claude', {
+      sessionId: 's',
+      cwd: '/tmp',
+      claudeBackend: override,
+    })
     expect(session).toBeInstanceOf(expected)
   })
   it.each([

@@ -89,7 +89,12 @@ export function sanitizeConfig(raw: unknown, warn: (message: string) => void): C
   if (config.relayPassword !== undefined && typeof config.relayPassword !== 'string') {
     drop('relayPassword', 'not text')
   }
-  if (config.claudeBackend !== undefined && config.claudeBackend !== 'sdk' && config.claudeBackend !== 'cli') drop('claudeBackend', 'expected sdk or cli')
+  if (
+    config.claudeBackend !== undefined &&
+    config.claudeBackend !== 'sdk' &&
+    config.claudeBackend !== 'cli'
+  )
+    drop('claudeBackend', 'expected sdk or cli')
   return config as ConfigFile
 }
 

@@ -177,8 +177,14 @@ export const RpcMethods = {
     params: z.object({ query: z.string().optional() }),
     result: z.array(RegistryEntry),
   },
-  'host.claudeBackend.get': { params: z.object({}), result: z.object({ claudeBackend: z.enum(['sdk', 'cli']) }) },
-  'host.claudeBackend.set': { params: z.object({ claudeBackend: z.enum(['sdk', 'cli']) }), result: z.object({ claudeBackend: z.enum(['sdk', 'cli']) }) },
+  'host.claudeBackend.get': {
+    params: z.object({}),
+    result: z.object({ claudeBackend: z.enum(['sdk', 'cli']) }),
+  },
+  'host.claudeBackend.set': {
+    params: z.object({ claudeBackend: z.enum(['sdk', 'cli']) }),
+    result: z.object({ claudeBackend: z.enum(['sdk', 'cli']) }),
+  },
   'projects.list': {
     params: z.object({}),
     result: z.array(Project),

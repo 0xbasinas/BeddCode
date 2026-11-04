@@ -19,5 +19,7 @@ it('migrates old project storage and preserves overrides across other writes', a
     expect(JSON.parse(readFileSync(file, 'utf8')).backends[dir]).toBe('cli')
     await store.setClaudeBackend(dir, null)
     expect(store.backendFor(dir)).toBeUndefined()
-  } finally { rmSync(dir, { recursive: true, force: true }) }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

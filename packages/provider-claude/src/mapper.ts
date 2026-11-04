@@ -207,7 +207,10 @@ export class ClaudeEventMapper {
         if (msg.subtype === 'init') {
           out.push({ type: 'session.provider-session', providerSessionId: msg.session_id })
         } else if (msg.subtype === 'permission_denied') {
-          out.push({ type: 'error', message: msg.message || `Permission denied for ${msg.tool_name}` })
+          out.push({
+            type: 'error',
+            message: msg.message || `Permission denied for ${msg.tool_name}`,
+          })
         } else if (msg.subtype === 'status') {
           if (msg.status === 'compacting')
             out.push({ type: 'session.compaction', state: 'started' })

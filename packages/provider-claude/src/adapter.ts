@@ -98,7 +98,12 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
       capabilities: claudeCapabilities,
     }
     const exe = executable()
-    if (!exe) return { ...base, status: 'not-installed', ...(options.backend === 'cli' ? { reason: 'Claude CLI not found' } : {}) }
+    if (!exe)
+      return {
+        ...base,
+        status: 'not-installed',
+        ...(options.backend === 'cli' ? { reason: 'Claude CLI not found' } : {}),
+      }
 
     const runEnv = { ...process.env, ...env }
     let version: string | undefined
@@ -106,10 +111,16 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
     try {
       const v = await runCommand(exe, ['--version'], { env: runEnv })
       version = /\d+\.\d+\.\d+/.exec(v.stdout)?.[0]
-      if (v.code !== 0 && options.backend === 'cli') return { ...base, status: 'not-installed', reason: 'Claude CLI not found' }
+      if (v.code !== 0 && options.backend === 'cli')
+        return { ...base, status: 'not-installed', reason: 'Claude CLI not found' }
       // `auth status` only reads local credentials; it does not start a session.
-      let auth = await runCommand(exe, options.backend === 'cli' ? ['auth', 'status', '--json'] : ['auth', 'status'], { env: runEnv })
-      if (options.backend === 'cli' && auth.code !== 0 && !safeJson(auth.stdout)) auth = await runCommand(exe, ['auth', 'status'], { env: runEnv })
+      let auth = await runCommand(
+        exe,
+        options.backend === 'cli' ? ['auth', 'status', '--json'] : ['auth', 'status'],
+        { env: runEnv },
+      )
+      if (options.backend === 'cli' && auth.code !== 0 && !safeJson(auth.stdout))
+        auth = await runCommand(exe, ['auth', 'status'], { env: runEnv })
       if (!isClaudeSignedIn(auth.stdout, auth.code)) status = 'needs-sign-in'
     } catch (err) {
       log.warn('claude detection failed', err)
@@ -125,7 +136,14 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
         log.warn('Claude model discovery failed; using unversioned CLI aliases', err)
       }
     }
-    const reason = options.backend === 'cli' ? status === 'not-installed' ? 'Claude CLI not found' : status === 'needs-sign-in' ? 'Claude CLI not signed in' : undefined : undefined
+    const reason =
+      options.backend === 'cli'
+        ? status === 'not-installed'
+          ? 'Claude CLI not found'
+          : status === 'needs-sign-in'
+            ? 'Claude CLI not signed in'
+            : undefined
+        : undefined
     return { ...base, capabilities, status, version, reason }
   }
 
@@ -155,7 +173,13 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
     async startSession(_instanceId, input) {
       const exe = executable()
       if (!exe) throw new Error('Claude Code is not installed on this host')
-      if ((input.claudeBackend ?? options.backend ?? 'sdk') === 'cli') return new ClaudeCliSession(input, { log, executablePath: exe, env, modes: claudeCapabilities.permissionModes })
+      if ((input.claudeBackend ?? options.backend ?? 'sdk') === 'cli')
+        return new ClaudeCliSession(input, {
+          log,
+          executablePath: exe,
+          env,
+          modes: claudeCapabilities.permissionModes,
+        })
       return new ClaudeSession(input, {
         queryFn,
         log,
