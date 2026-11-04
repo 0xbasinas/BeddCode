@@ -739,6 +739,32 @@ export const RpcMethods = {
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
   },
+  'mcp.overview': {
+    params: z.object({ cwd: z.string().optional() }),
+    result: z.object({
+      servers: z.array(
+        z.object({
+          name: z.string(),
+          mismatch: z.boolean(),
+          agents: z.array(
+            z.object({ instanceId: z.string(), label: z.string(), server: McpServer }),
+          ),
+        }),
+      ),
+      errors: z.array(z.object({ instanceId: z.string(), label: z.string(), error: z.string() })),
+    }),
+  },
+  'mcp.copy': {
+    params: z.object({ instanceId: z.string(), name: z.string(), cwd: z.string().optional() }),
+    result: z.array(
+      z.object({
+        instanceId: z.string(),
+        label: z.string(),
+        status: z.enum(['copied', 'skipped', 'failed']),
+        error: z.string().optional(),
+      }),
+    ),
+  },
   'mcp.add': {
     params: z.object({
       instanceId: z.string(),

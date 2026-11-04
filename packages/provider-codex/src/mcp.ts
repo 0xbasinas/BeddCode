@@ -82,6 +82,22 @@ export function createCodexMcp(
     async list(_instanceId, cwd) {
       return parseMcpJson((await must(['mcp', 'list', '--json'], cwd)).stdout)
     },
+    async get(_instanceId, name, cwd) {
+      const data = JSON.parse((await must(['mcp', 'get', name, '--json'], cwd)).stdout) as {
+        transport: {
+          type: string
+          command?: string
+          args?: string[]
+          env?: Record<string, string>
+          url?: string
+        }
+      }
+      const t = data.transport
+      if (t.type === 'stdio' && t.command)
+        return { name, transport: 'stdio', command: t.command, args: t.args, env: t.env }
+      if (t.type === 'streamable_http' && t.url) return { name, transport: 'http', url: t.url }
+      throw new Error('This server configuration cannot be copied')
+    },
     async add(_instanceId, server, cwd) {
       await must(addArgs(server), cwd)
       if (server.headers && Object.keys(server.headers).length) {

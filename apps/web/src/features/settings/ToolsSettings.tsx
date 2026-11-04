@@ -6,6 +6,7 @@ import { Select } from '../../ui/Select.tsx'
 import { hostRequest, useRuntime } from '../../stores/host.ts'
 import { emptyMcpForm, mcpInputFromForm, type McpForm } from './mcpForm.ts'
 import { AddMcpDialog } from './AddMcpDialog.tsx'
+import { AllMcpServers } from './AllMcpServers.tsx'
 
 const STATUS: Record<McpServer['status'], string> = {
   connected: 'Connected',
@@ -92,6 +93,7 @@ export function ToolsSettings({ hostKey }: { hostKey: string }) {
       )}
       {agents.length > 0 && (
         <>
+          <AllMcpServers hostKey={hostKey} online={online} />
           <div className="settings-card">
             <div className="setting-row">
               <div className="setting-label">

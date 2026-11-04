@@ -1,4 +1,7 @@
-import type { McpServer, McpServerInput } from '@beddcode/contracts'
+import { readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { McpServerInput, type McpServer } from '@beddcode/contracts'
 import type { ProviderMcp } from '@beddcode/provider-core'
 import { runCommand, type RunResult } from '@beddcode/shared'
 
@@ -44,11 +47,11 @@ export function parseMcpList(output: string): McpServer[] {
 export function addArgs(server: McpServerInput): string[] {
   const args = ['mcp', 'add', '--scope', server.scope ?? 'user']
   if (server.transport !== 'stdio') args.push('--transport', server.transport)
-  for (const [key, value] of Object.entries(server.env ?? {})) args.push('-e', `${key}=${value}`)
   for (const [key, value] of Object.entries(server.headers ?? {}))
     args.push('--header', `${key}: ${value}`)
   if (server.bearerToken) args.push('--header', `Authorization: Bearer ${server.bearerToken}`)
   args.push(server.name)
+  for (const [key, value] of Object.entries(server.env ?? {})) args.push('-e', `${key}=${value}`)
   if (server.transport === 'stdio') {
     if (!server.command) throw new Error('A command is needed for a local MCP server')
     args.push('--', server.command, ...(server.args ?? []))
@@ -81,6 +84,30 @@ export function createClaudeMcp(
     async list(_instanceId, cwd) {
       // The listing connects to every server to report its health, so it can take a few seconds.
       return parseMcpList((await must(['mcp', 'list'], cwd)).stdout)
+    },
+    async get(_instanceId, name, cwd) {
+      const read = async (path: string): Promise<Record<string, any>> => {
+        try {
+          return JSON.parse(await readFile(path, 'utf8'))
+        } catch {
+          return {}
+        }
+      }
+      const home = env?.HOME ?? homedir()
+      const config = await read(join(home, '.claude.json'))
+      const project = cwd ? await read(join(cwd, '.mcp.json')) : {}
+      const value =
+        (cwd && config.projects?.[resolve(cwd)]?.mcpServers?.[name]) ??
+        project.mcpServers?.[name] ??
+        config.mcpServers?.[name]
+      const parsed = McpServerInput.safeParse({ ...value, name, transport: value?.type ?? 'stdio' })
+      if (
+        !value ||
+        !parsed.success ||
+        (parsed.data.transport === 'stdio' ? !parsed.data.command : !parsed.data.url)
+      )
+        throw new Error('This server configuration cannot be copied')
+      return parsed.data
     },
     async add(_instanceId, server, cwd) {
       await must(addArgs(server), cwd)
