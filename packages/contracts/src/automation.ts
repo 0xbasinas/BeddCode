@@ -159,6 +159,7 @@ export const OrchestrationLimits = z.object({
   maxMessagesPerMinute: z.number().int().min(0).max(10000),
   maxMessages: z.number().int().min(0).max(10000),
   approval: z.enum(['off', 'approve-spawns', 'approve-spawns-and-messages']),
+  onWorkerFailure: z.enum(['none', 'retry-once', 'handoff']).optional(),
 })
 export type OrchestrationLimits = z.infer<typeof OrchestrationLimits>
 export const OrchestrationSettings = z.object({

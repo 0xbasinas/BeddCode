@@ -26,6 +26,14 @@ export interface SessionDigest {
 
 type Created = Extract<SessionEvent, { type: 'session.created' }>
 
+/** The latest outcome reported for an assignment survives later conversational turns. */
+export function reportedResult(events: StoredEvent[]): SessionDigest['result'] {
+  const event = events.findLast(({ event }) => event.type === 'session.result')?.event
+  return event?.type === 'session.result'
+    ? { status: event.status, summary: event.summary }
+    : undefined
+}
+
 export function digest(events: StoredEvent[]): SessionDigest | undefined {
   let created: Created | undefined
   let title = ''

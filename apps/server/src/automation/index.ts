@@ -22,6 +22,7 @@ import { TelegramBridge } from '../telegram/bridge.ts'
 import { OrchestrationSettingsService } from './orchestrationSettings.ts'
 import { deliverPeer, recoverPeerDeliveries } from './peerDelivery.ts'
 import type { PeerDelivery } from '../store/eventStore.ts'
+import { diffStat, OrchestrationFinish } from './orchestrationFinish.ts'
 
 /** The Desktop pane's view of a session's computer use. */
 export interface ComputerPane {
@@ -159,8 +160,33 @@ export function createAutomation(deps: AutomationDeps) {
     computer,
     new LinearTools(linearKey),
   )
+  const finish = new OrchestrationFinish({
+    read: readSession,
+    children: (id) => store.childrenOf(id),
+    append: (event) => void store.append(event),
+    providers: () => sessions.listProviders(),
+    limits: (project) => orchestration.forProject(project),
+    start: (parent, args) => agentTools.call(parent, 'start_session', args),
+    diff: diffStat,
+    deliver: (parent, planId, text) => {
+      const messageId = `orchestration-summary:${parent}:${planId}`
+      if (store.peerDeliveries().some((entry) => entry.messageId === messageId)) return
+      const message: PeerDelivery = {
+        messageId,
+        threadId: messageId,
+        senderId: parent,
+        recipientId: parent,
+        text,
+        prompt: text,
+        at: Date.now(),
+      }
+      store.enqueuePeerDelivery(message)
+      deliverPeer(store, message, wakePeer)
+    },
+  })
   // Defer recovery until the host has installed the agent tool server on the session manager.
   queueMicrotask(() => {
+    for (const { id } of store.listSessionIds(undefined, 10000)) finish.reconcile(id)
     recoverPeerDeliveries(store, wakePeer, (err) =>
       createLogger('agent-messaging').error('Could not recover peer message', err),
     )
@@ -185,6 +211,7 @@ export function createAutomation(deps: AutomationDeps) {
   })
   const stopAlerts = store.subscribe((stored) => {
     alerts.onEvent(stored)
+    finish.onEvent(stored.event)
     if (stored.event.type === 'session.deleted') agentTools.forget(stored.event.sessionId)
     // A turn that ends frees the desktop for other sessions; a stopped one also loses its access.
     if (stored.event.type === 'turn.started') computer.resume(stored.event.sessionId)

@@ -355,7 +355,7 @@ export class EventStore {
         ) === 1
       if (inserted) {
         const { prompt, ...event } = message
-        for (const sessionId of [message.senderId, message.recipientId])
+        for (const sessionId of new Set([message.senderId, message.recipientId]))
           this.writeEvent(SessionEvent.parse({ type: 'agent.message', sessionId, ...event }))
         this.writeEvent(
           SessionEvent.parse({
