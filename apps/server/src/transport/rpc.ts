@@ -27,6 +27,7 @@ import { detectEditors, launchEditor, type DetectedEditor } from '../workspace/e
 import type { FileService } from '../files/files.ts'
 import { mediaType } from '../files/media.ts'
 import type { TerminalManager } from '../terminals/manager.ts'
+import type { OrchestrationSettingsService } from '../automation/orchestrationSettings.ts'
 import type { AlertService } from '../automation/alerts.ts'
 import type { TelegramBridge } from '../telegram/bridge.ts'
 import type { ComputerPane } from '../automation/index.ts'
@@ -41,6 +42,7 @@ type Handlers = {
 /** Schedules, alerts and the agent tools. */
 export interface AutomationServices {
   schedules: ScheduleService
+  orchestration: OrchestrationSettingsService
   alerts: AlertService
   designs: DesignStore
   computer: ComputerPane
@@ -161,6 +163,12 @@ export function createRpcRouter(
   const { git, github, projects, terminals, files } = workspace
   const { schedules, alerts, designs } = automation
   const handlers: Handlers = {
+    'orchestration.settings.get': async () => automation.orchestration.get(),
+    'orchestration.settings.set': async (p) => automation.orchestration.set(p),
+    'orchestration.approvals.list': async () => automation.orchestration.list(),
+    'orchestration.approvals.approve': async (p) =>
+      automation.orchestration.resolve(p.id, 'approved'),
+    'orchestration.approvals.deny': async (p) => automation.orchestration.resolve(p.id, 'denied'),
     'host.pair': () => createPairing(access.pairing, access.reachable),
     'host.relay.get': async () => {
       if (!access.relay) throw new Error('This host does not support relays')

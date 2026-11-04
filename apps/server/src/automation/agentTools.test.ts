@@ -158,6 +158,43 @@ const call = async (t: AgentTools, session: string, name: string, args: object) 
 afterEach(() => vi.useRealTimers())
 
 describe('AgentTools', () => {
+  it('enforces project-specific depth, worker and message limits', async () => {
+    const { host, append } = fakeHost()
+    const limits = {
+      maxDepth: 0,
+      maxWorkers: 1,
+      maxTotalWorkers: 10,
+      maxMessagesPerMinute: 1,
+      maxMessages: 50,
+      approval: 'off' as const,
+    }
+    host.limits = (project) =>
+      project === '/p' ? limits : { ...limits, maxDepth: 2, maxMessages: 10 }
+    const t = tools(host)
+    await expect(
+      call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'x' }),
+    ).rejects.toThrow('nest 0')
+    limits.maxDepth = 2
+    await call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'x' })
+    await expect(
+      call(t, 'parent', 'start_session', { agent: 'codex', prompt: 'x' }),
+    ).rejects.toThrow('still working')
+    append({
+      type: 'session.created',
+      sessionId: 'peer',
+      at: 0,
+      title: 'Peer',
+      cwd: '/p',
+      projectPath: '/p',
+      instanceId: 'codex',
+      agentTools: true,
+    })
+    await call(t, 'parent', 'send_peer_message', { session_id: 'peer', text: 'one' })
+    await expect(
+      call(t, 'parent', 'send_peer_message', { session_id: 'peer', text: 'two' }),
+    ).rejects.toThrow('Project message limit')
+  })
+
   it('persists named peer groups for broadcasts and supports removal', async () => {
     const { host, append, prompts } = fakeHost()
     append({

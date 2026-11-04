@@ -19,6 +19,7 @@ import { LinearSync } from '../linear/linearSync.ts'
 import { LinearKeyStore, LinearTools } from '../linear/linearTools.ts'
 import { ScheduleService } from './schedules.ts'
 import { TelegramBridge } from '../telegram/bridge.ts'
+import { OrchestrationSettingsService } from './orchestrationSettings.ts'
 import { deliverPeer, recoverPeerDeliveries } from './peerDelivery.ts'
 import type { PeerDelivery } from '../store/eventStore.ts'
 
@@ -116,6 +117,7 @@ export function createAutomation(deps: AutomationDeps) {
       .wakePeerMessage(message.recipientId, message.messageId, message.prompt)
       .catch((err) => createLogger('agent-messaging').error('Could not wake recipient', err))
   }
+  const orchestration = new OrchestrationSettingsService(path.join(home, 'orchestration.json'))
   const agentTools = new AgentTools(
     {
       create,
@@ -131,9 +133,12 @@ export function createAutomation(deps: AutomationDeps) {
         deliverPeer(store, message, wakePeer)
         return { state: 'queued' }
       },
-      reservePeerSend: (project, now) => store.reservePeerSend(project, now),
-      reservePeerThreadSend: (threadId, messageId) =>
-        store.reservePeerThreadSend(threadId, messageId),
+      reservePeerSend: (project, now, limit) => store.reservePeerSend(project, now, limit),
+      limits: (project) => orchestration.forProject(project),
+      approve: (sessionId, project, kind, details) =>
+        orchestration.request(sessionId, project, kind, details),
+      reservePeerThreadSend: (threadId, messageId, limit) =>
+        store.reservePeerThreadSend(threadId, messageId, limit),
       recordPlan: (plan) => void store.append(plan),
       recordGroup: (group) => void store.append(group),
       childrenOf: (id) => store.childrenOf(id),
@@ -200,6 +205,7 @@ export function createAutomation(deps: AutomationDeps) {
   }
   return {
     computerPane,
+    orchestration,
     schedules,
     alerts,
     agentTools,
@@ -215,6 +221,7 @@ export function createAutomation(deps: AutomationDeps) {
       setSync: (settings: { fileFailedRuns: boolean; teamId?: string }) => sync.set(settings),
     },
     stop() {
+      orchestration.stop()
       schedules.stop()
       telegram.stop()
       stopAlerts()

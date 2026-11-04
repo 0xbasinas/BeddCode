@@ -31,6 +31,8 @@ import { FileContent, FileEntry, FileMedia, FolderListing, TerminalInfo } from '
 import { Design, DesignProject, DesignSummary } from './design.ts'
 import { UsageLimits, UsageSummary } from './usage.ts'
 import {
+  OrchestrationSettings,
+  OrchestrationApproval,
   AlertEvents,
   AlertSettings,
   TelegramStatus,
@@ -123,6 +125,17 @@ export type McpServerInput = z.infer<typeof McpServerInput>
 
 /** Request/response methods carried in `req`/`res` frames. */
 export const RpcMethods = {
+  'orchestration.settings.get': { params: z.object({}), result: OrchestrationSettings },
+  'orchestration.settings.set': { params: OrchestrationSettings, result: OrchestrationSettings },
+  'orchestration.approvals.list': { params: z.object({}), result: z.array(OrchestrationApproval) },
+  'orchestration.approvals.approve': {
+    params: z.object({ id: z.string() }),
+    result: OrchestrationApproval,
+  },
+  'orchestration.approvals.deny': {
+    params: z.object({ id: z.string() }),
+    result: OrchestrationApproval,
+  },
   'providers.list': {
     params: z.object({}),
     result: z.array(ProviderInstance),

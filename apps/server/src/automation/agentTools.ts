@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import path from 'node:path'
 import {
   isBrowserToolName,
+  type OrchestrationLimits,
   type PermissionModeOption,
   type ProviderInstance,
   type RpcParams,
@@ -69,8 +70,15 @@ export interface AgentToolsHost {
   recentSessionIds?(limit: number): string[]
   deliverPeer?(message: PeerDelivery): Promise<unknown>
   promptPeer?(sessionId: string, text: string): Promise<unknown>
-  reservePeerSend?(project: string, now: number): boolean
-  reservePeerThreadSend?(threadId: string, messageId: string): boolean
+  reservePeerSend?(project: string, now: number, limit: number): boolean
+  limits?(project?: string): OrchestrationLimits
+  approve?(
+    sessionId: string,
+    project: string | undefined,
+    kind: 'spawn' | 'message',
+    details: string,
+  ): Promise<void>
+  reservePeerThreadSend?(threadId: string, messageId: string, limit: number): boolean
   recordPeerMessage?(message: {
     messageId: string
     threadId: string
@@ -462,6 +470,26 @@ export class AgentTools {
     }
   }
 
+  private project(sessionId: string): string | undefined {
+    const event = this.host
+      .readSession(sessionId)
+      .find((e) => e.event.type === 'session.created')?.event
+    return event?.type === 'session.created' ? event.projectPath : undefined
+  }
+
+  private limits(sessionId: string): OrchestrationLimits {
+    return (
+      this.host.limits?.(this.project(sessionId)) ?? {
+        maxDepth: MAX_DEPTH,
+        maxWorkers: MAX_ACTIVE_CHILDREN,
+        maxTotalWorkers: MAX_TOTAL_CHILDREN,
+        maxMessagesPerMinute: 10,
+        maxMessages: 50,
+        approval: 'off',
+      }
+    )
+  }
+
   /** The MCP server to give a session that may use the tools. */
   serversFor(sessionId: string, features?: AgentToolFeatures): SessionMcpServer[] {
     if (features) this.startingFeatures.set(sessionId, features)
@@ -509,7 +537,7 @@ export class AgentTools {
     if (method === 'tools/list') {
       const d = has.agents ? digest(this.host.readSession(sessionId)) : undefined
       // A session at the deepest level cannot start others; it can only report back.
-      const spawns = has.agents && (d?.depth ?? 0) < MAX_DEPTH
+      const spawns = has.agents && (d?.depth ?? 0) < this.limits(sessionId).maxDepth
       return {
         tools: [
           ...(spawns ? TOOL_DEFINITIONS : []),
@@ -625,10 +653,10 @@ export class AgentTools {
           goal.length > 4000 ||
           !Array.isArray(args.tasks) ||
           !args.tasks.length ||
-          args.tasks.length > MAX_TOTAL_CHILDREN
+          args.tasks.length > this.limits(sessionId).maxTotalWorkers
         )
           throw new Error(
-            `Provide a goal of at most 4000 characters and 1 to ${MAX_TOTAL_CHILDREN} tasks`,
+            `Provide a goal of at most 4000 characters and 1 to ${this.limits(sessionId).maxTotalWorkers} tasks`,
           )
         const tasks = args.tasks.map((value) => {
           if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -754,7 +782,14 @@ export class AgentTools {
         return this.serially(sessionId, () => this.start(sessionId, args))
       case 'send_message': {
         const child = this.child(sessionId, args)
-        const state = await this.host.prompt(child.sessionId, str(args, 'text', true)!)
+        const text = str(args, 'text', true)!
+        await this.host.approve?.(
+          sessionId,
+          this.project(sessionId),
+          'message',
+          JSON.stringify({ recipientId: child.sessionId, text }),
+        )
+        const state = await this.host.prompt(child.sessionId, text)
         this.watch(child.sessionId, idleMinutes(args))
         return { session_id: child.sessionId, ...(state as object) }
       }
@@ -883,21 +918,32 @@ export class AgentTools {
       )
     )
       throw new Error('Thread does not include this recipient')
-    if (history.length >= 50) throw new Error('Thread message limit reached')
+    if (history.length >= this.limits(sessionId).maxMessages)
+      throw new Error('Thread message limit reached')
     if (!this.host.deliverPeer && !this.host.promptPeer)
       throw new Error('Peer messaging is unavailable')
+    await this.host.approve?.(
+      sessionId,
+      project,
+      'message',
+      JSON.stringify({ recipientId: target, text: body, threadId }),
+    )
     const now = Date.now()
+    const limit = this.limits(sessionId).maxMessagesPerMinute
     const messageId = randomUUID()
     if (this.host.reservePeerSend) {
-      if (!this.host.reservePeerSend(project, now))
+      if (!this.host.reservePeerSend(project, now, limit))
         throw new Error('Project message limit reached; try again later')
     } else {
       const recent = (this.peerSends.get(project) ?? []).filter((time) => now - time < 60_000)
-      if (recent.length >= 10) throw new Error('Project message limit reached; try again later')
+      if (recent.length >= limit) throw new Error('Project message limit reached; try again later')
       recent.push(now)
       this.peerSends.set(project, recent)
     }
-    if (this.host.reservePeerThreadSend && !this.host.reservePeerThreadSend(threadId, messageId))
+    if (
+      this.host.reservePeerThreadSend &&
+      !this.host.reservePeerThreadSend(threadId, messageId, this.limits(sessionId).maxMessages)
+    )
       throw new Error('Thread message limit reached')
     const sender = this.self(sessionId)
     const message: PeerDelivery = {
@@ -1001,8 +1047,9 @@ export class AgentTools {
   private async start(parentId: string, args: Args) {
     const parent = this.self(parentId)
     const depth = parent.depth + 1
-    if (depth > MAX_DEPTH)
-      throw new Error(`Sessions can nest ${MAX_DEPTH} deep; this one cannot start more`)
+    const limits = this.limits(parentId)
+    if (depth > limits.maxDepth)
+      throw new Error(`Sessions can nest ${limits.maxDepth} deep; this one cannot start more`)
     const children = this.host.childrenOf(parentId)
 
     // The same request again is the same session, not a second one.
@@ -1020,16 +1067,14 @@ export class AgentTools {
           next: 'Call wait_for with this session_id to get its answer.',
         }
     }
-    if (children.length >= MAX_TOTAL_CHILDREN)
-      throw new Error(`A session can start at most ${MAX_TOTAL_CHILDREN} others`)
+    if (children.length >= limits.maxTotalWorkers)
+      throw new Error(`A session can start at most ${limits.maxTotalWorkers} others`)
     const active = children.filter((id) => {
       const d = digest(this.host.readSession(id))
       return this.host.isBusy(id) || d?.status === 'running' || d?.status === 'needs-you'
     })
-    if (active.length >= MAX_ACTIVE_CHILDREN)
-      throw new Error(
-        `${MAX_ACTIVE_CHILDREN} of your sessions are still working; wait for one first`,
-      )
+    if (active.length >= limits.maxWorkers)
+      throw new Error(`${limits.maxWorkers} of your sessions are still working; wait for one first`)
 
     const agentId = str(args, 'agent', true)!
     const providers = await this.host.providers()
@@ -1063,6 +1108,12 @@ export class AgentTools {
     )
       throw new Error(`${agent.label} has no model "${model}" (see list_agents)`)
 
+    await this.host.approve?.(
+      parentId,
+      parentProject,
+      'spawn',
+      JSON.stringify({ agent: agent.id, prompt: str(args, 'prompt', true), folder, worktree }),
+    )
     const { sessionId } = await this.host.create(
       {
         instanceId: agent.id,

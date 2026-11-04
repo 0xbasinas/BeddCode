@@ -309,14 +309,14 @@ export class EventStore {
   }
 
   /** Reserve a project send before delivery, including across host restarts. */
-  reservePeerSend(project: string, now: number): boolean {
+  reservePeerSend(project: string, now: number, limit = 10): boolean {
     this.db.exec('BEGIN IMMEDIATE')
     try {
       this.db.prepare('DELETE FROM peer_sends WHERE at <= ?').run(now - 60_000)
       const row = this.db
         .prepare('SELECT COUNT(*) AS count FROM peer_sends WHERE project = ?')
         .get(project) as { count: number }
-      if (row.count >= 10) {
+      if (row.count >= limit) {
         this.db.exec('COMMIT')
         return false
       }
@@ -330,13 +330,13 @@ export class EventStore {
   }
 
   /** Count attempted deliveries durably, even if a session is subsequently purged. */
-  reservePeerThreadSend(threadId: string, messageId: string): boolean {
+  reservePeerThreadSend(threadId: string, messageId: string, limit = 50): boolean {
     this.db.exec('BEGIN IMMEDIATE')
     try {
       const { count } = this.db
         .prepare('SELECT COUNT(*) AS count FROM peer_thread_sends WHERE thread_id = ?')
         .get(threadId) as { count: number }
-      if (count >= 50) {
+      if (count >= limit) {
         this.db.exec('COMMIT')
         return false
       }

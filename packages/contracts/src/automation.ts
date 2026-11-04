@@ -150,3 +150,30 @@ export const SentAlert = AlertPayload.extend({
   deliveries: z.array(z.object({ to: z.string(), ok: z.boolean(), error: z.string().optional() })),
 })
 export type SentAlert = z.infer<typeof SentAlert>
+
+/** Limits on agent orchestration, peer messages per thread and per project per minute. */
+export const OrchestrationLimits = z.object({
+  maxDepth: z.number().int().min(0).max(100),
+  maxWorkers: z.number().int().min(0).max(1000),
+  maxTotalWorkers: z.number().int().min(0).max(10000),
+  maxMessagesPerMinute: z.number().int().min(0).max(10000),
+  maxMessages: z.number().int().min(0).max(10000),
+  approval: z.enum(['off', 'approve-spawns', 'approve-spawns-and-messages']),
+})
+export type OrchestrationLimits = z.infer<typeof OrchestrationLimits>
+export const OrchestrationSettings = z.object({
+  global: OrchestrationLimits,
+  projects: z.record(z.string(), OrchestrationLimits.partial()),
+})
+export type OrchestrationSettings = z.infer<typeof OrchestrationSettings>
+export const OrchestrationApproval = z.object({
+  id: z.string(),
+  sessionId: z.string(),
+  project: z.string().optional(),
+  kind: z.enum(['spawn', 'message']),
+  details: z.string(),
+  status: z.enum(['pending', 'approved', 'denied', 'expired']),
+  createdAt: z.number(),
+  expiresAt: z.number(),
+})
+export type OrchestrationApproval = z.infer<typeof OrchestrationApproval>
