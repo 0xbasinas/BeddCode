@@ -18,12 +18,16 @@ import {
   type Deferred,
   type Logger,
 } from '@beddcode/shared'
+import { claudeProcessEnv } from './env.ts'
 import { ClaudeEventMapper, toolKind, toolTitle } from './mapper.ts'
 
 export type QueryFn = (params: {
   prompt: AsyncIterable<SDKUserMessage>
   options?: Options
 }) => Query
+
+/** How long a started turn may stay silent before we tell the user we are still waiting. */
+export const STALL_NOTICE_MS = 30_000
 
 export interface ClaudeSessionDeps {
   queryFn: QueryFn
@@ -33,6 +37,8 @@ export interface ClaudeSessionDeps {
   env?: Record<string, string | undefined>
   /** The permission modes to announce when plan approval changes the mode. */
   modes?: PermissionModeOption[]
+  /** Overrides {@link STALL_NOTICE_MS}; for tests. */
+  stallNoticeMs?: number
 }
 
 type Draft<E = SessionEvent> = E extends unknown ? Omit<E, 'sessionId' | 'at' | 'turnId'> : never
@@ -76,6 +82,7 @@ export class ClaudeSession implements ProviderSession {
   private readonly pending = new Map<string, PendingApproval>()
   private readonly questions = new Map<string, PendingQuestion>()
   private turnActive = false
+  private stallTimer: ReturnType<typeof setTimeout> | undefined
   private readonly abort = new AbortController()
   private turnCount = 0
   private approvalCount = 0
@@ -114,7 +121,7 @@ export class ClaudeSession implements ProviderSession {
         // Honour the user's own Claude settings, CLAUDE.md and permission rules.
         settingSources: ['user', 'project', 'local'],
         pathToClaudeCodeExecutable: deps.executablePath,
-        env: { ...process.env, ...deps.env },
+        env: claudeProcessEnv(process.env, deps.env),
         abortController: this.abort,
         spawnClaudeCodeProcess: (options) => this.spawnClaude(options),
         canUseTool: this.canUseTool,
@@ -208,6 +215,7 @@ export class ClaudeSession implements ProviderSession {
     const done = deferred<void>()
     this.turnWaiters.push(done)
     this.emit({ type: 'turn.started' }, turnId)
+    this.armStallNotice()
     this.prompts.push({
       type: 'user',
       message: { role: 'user', content: input.text },
@@ -459,6 +467,24 @@ export class ClaudeSession implements ProviderSession {
     return tail && !message.includes(tail) ? `${message}: ${tail.slice(0, 500)}` : message
   }
 
+  /** (Re)starts the silence timer; it fires at most once per quiet stretch of a running turn. */
+  private armStallNotice() {
+    this.clearStallNotice()
+    this.stallTimer = setTimeout(() => {
+      this.stallTimer = undefined
+      if (this.closed || !this.turnActive) return
+      this.emit(
+        { type: 'session.notice', message: 'Still waiting for Claude…' },
+        this.currentTurn(),
+      )
+    }, this.deps.stallNoticeMs ?? STALL_NOTICE_MS)
+  }
+
+  private clearStallNotice() {
+    if (this.stallTimer) clearTimeout(this.stallTimer)
+    this.stallTimer = undefined
+  }
+
   private failTurns(error: Error) {
     for (const w of this.turnWaiters.splice(0)) w.reject(error)
   }
@@ -466,10 +492,12 @@ export class ClaudeSession implements ProviderSession {
   private async pump() {
     try {
       for await (const msg of this.query) {
+        if (this.turnActive) this.armStallNotice()
         for (const event of this.mapper.map(msg)) {
           this.queue.push(event)
           if (event.type === 'turn.completed') {
             this.turnActive = false
+            this.clearStallNotice()
             this.turnWaiters.shift()?.resolve()
           }
         }
@@ -482,6 +510,7 @@ export class ClaudeSession implements ProviderSession {
         for (const w of this.turnWaiters.splice(0)) w.resolve()
       }
     } finally {
+      this.clearStallNotice()
       // Process exited: unblock any caller still waiting on a turn.
       this.failTurns(new Error('Claude process ended'))
       if (!this.closed) {
