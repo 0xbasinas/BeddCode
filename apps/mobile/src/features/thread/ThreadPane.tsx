@@ -1,4 +1,10 @@
-import { doneMenuAction, effortLabel, endedByDecline, folderName } from '@beddcode/client-runtime'
+import {
+  doneMenuAction,
+  effortLabel,
+  endedByDecline,
+  folderName,
+  switchTargets,
+} from '@beddcode/client-runtime'
 import { Checks, DotsThree, Stop as StopIcon, ArrowUUpLeft } from 'phosphor-react-native'
 import { now } from '@beddcode/client-runtime'
 import { useRef, useState } from 'react'
@@ -353,9 +359,15 @@ export function ThreadPane({
                   else void perform(false)
                 },
               }))
-            : (providers ?? [])
-                .filter((p) => p.status === 'ready' && p.id !== session.instanceId)
-                .map((p) => ({ id: p.id, label: p.label, onSelect: () => setSwitchTarget(p.id) }))
+            : switchTargets(providers ?? [], session.instanceId).map(
+                ({ provider: p, ready, reason }) => ({
+                  id: p.id,
+                  label: p.label,
+                  hint: reason,
+                  disabled: !ready,
+                  onSelect: () => setSwitchTarget(p.id),
+                }),
+              )
         }
       />
       <MenuSheet

@@ -36,3 +36,4 @@ export * from './textLinks.ts'
 export * from './messageIds.ts'
 
 export * from './autoHandoff.ts'
+export * from './switchTargets.ts'

@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
-import { handoffPrompt, type SessionView } from '@beddcode/client-runtime'
+import {
+  defaultSwitchTarget,
+  findSwitchTarget,
+  handoffPrompt,
+  switchTargets,
+  type SessionView,
+} from '@beddcode/client-runtime'
 import type { ProviderInstance } from '@beddcode/contracts'
 import { hostRequest } from '../../stores/host.ts'
 
@@ -14,7 +20,8 @@ export function SwitchAgent({
   providers: ProviderInstance[]
   pendingMessage(): string
 }) {
-  const ready = providers.filter((p) => p.status === 'ready' && p.id !== session.instanceId)
+  const targets = switchTargets(providers, session.instanceId)
+  const fallback = defaultSwitchTarget(providers, session.instanceId)
   const [open, setOpen] = useState(false)
   const [target, setTarget] = useState('')
   const [model, setModel] = useState('')
@@ -28,19 +35,18 @@ export function SwitchAgent({
   const [loadingPreview, setLoadingPreview] = useState(false)
   const [completion, setCompletion] = useState<{ resolve(): void; reject(error: Error): void }>()
   const busy = session.status === 'running' || session.status === 'needs-you'
-  const selected = ready.find((p) => p.id === target)
+  const selected = targets.find((t) => t.ready && t.provider.id === target)?.provider
   const show = (agent?: string, callbacks?: { resolve(): void; reject(error: Error): void }) => {
-    const match = agent
-      ? ready.find(
-          (p) =>
-            p.id.toLowerCase() === agent.toLowerCase() ||
-            p.label.toLowerCase() === agent.toLowerCase(),
-        )
-      : ready[0]
-    if (!match) {
-      callbacks?.reject(new Error('No ready agent matches that name'))
+    const found = agent
+      ? findSwitchTarget(providers, session.instanceId, agent)
+      : fallback
+        ? { provider: fallback }
+        : { error: 'No other agent is ready' }
+    if ('error' in found) {
+      callbacks?.reject(new Error(found.error))
       return
     }
+    const match = found.provider
     setTarget(match.id)
     setModel('')
     setStop(false)
@@ -117,7 +123,7 @@ export function SwitchAgent({
   }
   return (
     <>
-      <button className="chip-lite" onClick={() => show()} disabled={!ready.length}>
+      <button className="chip-lite" onClick={() => show()} disabled={!fallback}>
         Switch agent
       </button>
       {open && (
@@ -144,9 +150,9 @@ export function SwitchAgent({
                 setModel('')
               }}
             >
-              {ready.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
+              {targets.map(({ provider: p, ready, reason }) => (
+                <option key={p.id} value={p.id} disabled={!ready}>
+                  {ready ? p.label : `${p.label} (${reason})`}
                 </option>
               ))}
             </select>
