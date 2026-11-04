@@ -17,11 +17,16 @@ export function AgentInbox({ session, hostKey }: { session: SessionView; hostKey
     <section className="orchestration-panel">
       <button
         type="button"
-        className="child-bar-head"
+        className="orch-head"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
-        Agent inbox · {threads.length} {threads.length === 1 ? 'thread' : 'threads'}
+        <span className="orch-title">
+          Agent inbox · {threads.length} {threads.length === 1 ? 'thread' : 'threads'}
+        </span>
+        <span className="orch-chevron" aria-hidden="true">
+          ›
+        </span>
       </button>
       {open && (
         <div className="orchestration-content">
