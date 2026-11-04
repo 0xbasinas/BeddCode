@@ -469,6 +469,7 @@ export function createRpcRouter(
     'schedules.remove': async (p) => ({ removed: schedules.remove(p.id) }),
     'schedules.setPaused': async (p) => schedules.setPaused(p.id, p.paused),
     'schedules.runNow': (p) => schedules.runNow(p.id),
+    'schedules.skipNext': async (p) => schedules.skipNext(p.id),
     'schedules.preview': async (p) => previewTrigger(p.trigger, Date.now(), p.count ?? 3),
     'alerts.settings': async () => alerts.view(),
     'alerts.setSettings': async (p) => alerts.setSettings(p),

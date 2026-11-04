@@ -350,6 +350,9 @@ export function SchedulesSettings({
             onRunNow={() =>
               run(() => hostRequest(hostKey, 'schedules.runNow', { id: selected.id }))
             }
+            onSkipNext={() =>
+              run(() => hostRequest(hostKey, 'schedules.skipNext', { id: selected.id }))
+            }
           />
         )}
       </div>
@@ -378,6 +381,7 @@ function ScheduleDetail({
   disabled,
   onEdit,
   onRunNow,
+  onSkipNext,
 }: {
   schedule: Schedule
   runs: ScheduleRun[]
@@ -385,8 +389,9 @@ function ScheduleDetail({
   disabled: boolean
   onEdit(): void
   onRunNow(): void
+  onSkipNext(): void
 }) {
-  const recent = [...runs].sort((a, b) => b.startedAt - a.startedAt).slice(0, 5)
+  const recent = [...runs].sort((a, b) => b.startedAt - a.startedAt)
   const failed = health === 'failed' ? recent.find((r) => r.status === 'error') : undefined
   return (
     <aside className="sch-detail" aria-label={`${s.name} details`}>
@@ -461,7 +466,8 @@ function ScheduleDetail({
           <dd>{s.paused ? 'Paused' : s.nextRunAt ? when(s.nextRunAt) : 'Never'}</dd>
         </div>
       </dl>
-      <h4 className="sch-section">Recent runs</h4>
+      <h4 className="sch-section">Run history</h4>
+      <p className="sch-muted">Test runs do not change the next scheduled run.</p>
       {recent.length === 0 ? (
         <p className="sch-muted">No runs yet.</p>
       ) : (
@@ -474,7 +480,10 @@ function ScheduleDetail({
               <span>{when(r.startedAt)}</span>
               <span className="sch-muted" title={r.note}>
                 {runLabel(r)}
-                {r.manual ? ' · by hand' : ''}
+                {r.manual ? ' · test run' : ''}
+                {r.endedAt !== undefined
+                  ? ` · ${Math.max(0, Math.round((r.endedAt - r.startedAt) / 1000))}s`
+                  : ''}
               </span>
               {r.sessionId && (
                 <Link to="/session/$sessionId" params={{ sessionId: r.sessionId }}>
@@ -492,7 +501,15 @@ function ScheduleDetail({
           disabled={disabled}
           onClick={onRunNow}
         >
-          <Play size={13} /> Run now
+          <Play size={13} /> Run test now
+        </Button>
+        <Button
+          variant="app"
+          className="settings-button"
+          disabled={disabled || s.paused || !s.nextRunAt}
+          onClick={onSkipNext}
+        >
+          Skip next run
         </Button>
         <Button variant="app" className="settings-button" disabled={disabled} onClick={onEdit}>
           <Pencil size={13} /> Edit
