@@ -11,6 +11,7 @@ import type {
 
 export interface StartSessionInput {
   sessionId: string
+  claudeBackend?: 'sdk' | 'cli'
   /** Absolute path on the host the agent works in (project folder or worktree). */
   cwd: string
   model?: string

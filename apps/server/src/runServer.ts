@@ -84,7 +84,11 @@ export async function runServer(
   const mcpEnv: Record<string, string> = {}
   const codex = createCodexAdapter({ log: createLogger('codex'), mcpEnv })
   const adapters: ProviderAdapter[] = [
-    createClaudeAdapter({ log: createLogger('claude'), mcpEnv }),
+    createClaudeAdapter({
+      log: createLogger('claude'),
+      mcpEnv,
+      backend: config.claudeBackend ?? 'sdk',
+    }),
     codex,
     createGrokAdapter({ log: createLogger('grok') }),
     createPiAdapter({ log: createLogger('pi'), sessionDir: path.join(home, 'sessions', 'pi') }),
@@ -133,6 +137,10 @@ export async function runServer(
     adapters,
     log,
     defaultCwd: process.cwd(),
+    claudeBackendFor: (folder) =>
+      (folder ? workspace.projects.backendFor(folder) : undefined) ??
+      readConfigFile().claudeBackend ??
+      'sdk',
     sessionRoot: path.join(home, 'sessions'),
     previews: new PreviewCache(path.join(home, 'agent-previews.json')),
     warmPool: options.warmPool ?? hostPool?.pool,

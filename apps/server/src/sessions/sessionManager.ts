@@ -68,6 +68,7 @@ export interface SessionManagerDeps {
   adapters: ProviderAdapter[]
   log: Logger
   /** Used when a client does not pick a folder. */
+  claudeBackendFor?: (folder?: string) => 'sdk' | 'cli' | undefined
   defaultCwd: string
   /** Persistent working folders for sessions without a project. */
   sessionRoot?: string
@@ -456,6 +457,9 @@ export class SessionManager {
       const input: StartSessionInput = {
         sessionId,
         cwd,
+        claudeBackend: this.deps.claudeBackendFor?.(
+          params.projectless ? undefined : (info?.mainRoot ?? info?.root ?? folder),
+        ),
         terminalHost: this.agentTerminal(sessionId, cwd, adapter, instance, params.title),
         additionalDirectories: [this.deps.attachments.root],
         permissionMode: params.permissionMode,
@@ -1965,6 +1969,7 @@ export class SessionManager {
     const input = {
       sessionId,
       cwd: created.event.cwd,
+      claudeBackend: this.deps.claudeBackendFor?.(created.event.projectPath ?? created.event.cwd),
       terminalHost: this.agentTerminal(
         sessionId,
         created.event.cwd,

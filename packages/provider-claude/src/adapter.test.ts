@@ -92,3 +92,22 @@ describe('Claude adapter model capabilities', () => {
 it('marks warm preparation unsupported', () => {
   expect(createClaudeAdapter().warmPool).toEqual({ supported: false })
 })
+
+describe('CLI readiness', () => {
+  it('reports missing CLI and signed-out text', async () => {
+    const adapter = createClaudeAdapter({ backend: 'cli', log })
+    vi.mocked(resolveExecutable).mockReturnValueOnce(null)
+    expect((await adapter.detect())[0]).toMatchObject({
+      status: 'not-installed',
+      reason: 'Claude CLI not found',
+    })
+    vi.mocked(runCommand)
+      .mockResolvedValueOnce({ code: 0, stdout: '2.1.0', stderr: '' })
+      .mockResolvedValueOnce({ code: 1, stdout: '', stderr: 'unknown option' })
+      .mockResolvedValueOnce({ code: 1, stdout: 'Not signed in', stderr: '' })
+    expect((await adapter.detect())[0]).toMatchObject({
+      status: 'needs-sign-in',
+      reason: 'Claude CLI not signed in',
+    })
+  })
+})

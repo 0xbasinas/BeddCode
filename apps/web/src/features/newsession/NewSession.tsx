@@ -95,6 +95,20 @@ export function NewSession({
     return entries.some((e) => e.key === preferred) ? preferred : LOCAL_HOST_KEY
   })
   const { providers, connection, host, replica, projects, synced, loadError } = useRuntime(hostKey)
+  const [hostClaudeBackend, setHostClaudeBackend] = useState<'sdk' | 'cli'>('sdk')
+  useEffect(() => {
+    let active = true
+    setHostClaudeBackend('sdk')
+    if (connection === 'connected')
+      hostRequest(hostKey, 'host.claudeBackend.get', {})
+        .then((result) => {
+          if (active) setHostClaudeBackend(result.claudeBackend)
+        })
+        .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [hostKey, connection])
   // The welcome checklist stays up until the first session, so adding a folder never jumps
   // straight into a composer; its last step starts the session.
   const hasSessions = useHostStore((s) =>
@@ -458,7 +472,15 @@ export function NewSession({
           }
           footer={
             <div className="footer-bar">
-              <AgentChip agents={providers} current={agent} onPick={setInstanceId} />
+              <AgentChip
+                agents={providers}
+                current={agent}
+                onPick={setInstanceId}
+                claudeBackend={effectiveClaudeBackend(
+                  projects.find((p) => p.path === folder)?.claudeBackend,
+                  hostClaudeBackend,
+                )}
+              />
               <span className="sep" />
               {!handoff && (
                 <>
@@ -621,17 +643,21 @@ export function AgentChip({
   agents,
   current,
   onPick,
+  claudeBackend,
 }: {
   agents: ProviderInstance[]
   current: ProviderInstance | undefined
   onPick(id: string): void
+  claudeBackend?: 'sdk' | 'cli'
 }) {
+  const label = (agent: ProviderInstance) =>
+    agent.kind === 'claude' && claudeBackend === 'cli' ? 'Claude (CLI)' : agent.label
   return (
     <Dropdown
       trigger={({ toggle }) => (
         <button className="chip-lite" onClick={toggle} aria-label="Agent">
           <AgentMark agent={current?.id} label={current?.label ?? '–'} />
-          <span className="chip-text">{current?.label ?? 'No agent'}</span>{' '}
+          <span className="chip-text">{current ? label(current) : 'No agent'}</span>{' '}
           <ChevronDown size={14} />
         </button>
       )}
@@ -651,7 +677,7 @@ export function AgentChip({
             >
               <AgentMark agent={a.id} label={a.label} />
               <span className="menu-text">
-                <span className="menu-title">{a.label}</span>
+                <span className="menu-title">{label(a)}</span>
                 {a.status !== 'ready' && <span className="menu-desc">{statusText[a.status]}</span>}
               </span>
               {a.status !== 'ready' && <span className="dot warn" />}
@@ -905,4 +931,8 @@ function WorkspaceChip({
       )}
     </Dropdown>
   )
+}
+
+export function effectiveClaudeBackend(project: 'sdk' | 'cli' | undefined, host: 'sdk' | 'cli') {
+  return project ?? host
 }

@@ -1,5 +1,6 @@
 import type { EventStore } from '../store/eventStore.ts'
 import { probeMcp } from '../mcpProbe.ts'
+import { readConfigFile, writeConfigFile } from '../config.ts'
 import { existsSync, statSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -193,6 +194,13 @@ export function createRpcRouter(
     'orchestration.approvals.approve': async (p) =>
       automation.orchestration.resolve(p.id, 'approved'),
     'orchestration.approvals.deny': async (p) => automation.orchestration.resolve(p.id, 'denied'),
+    'host.claudeBackend.get': async () => ({
+      claudeBackend: readConfigFile().claudeBackend ?? 'sdk',
+    }),
+    'host.claudeBackend.set': async (p) => {
+      writeConfigFile({ ...readConfigFile(), claudeBackend: p.claudeBackend })
+      return { claudeBackend: p.claudeBackend }
+    },
     'host.pair': () => createPairing(access.pairing, access.reachable),
     'host.relay.get': async () => {
       if (!access.relay) throw new Error('This host does not support relays')
@@ -256,6 +264,7 @@ export function createRpcRouter(
     'projects.remove': async (p) => ({ removed: projects.remove(p.path) }),
     'projects.initGit': (p) => projects.initGit(p.path),
     'projects.setInstructions': (p) => projects.setInstructions(p.path, p.instructions),
+    'projects.setClaudeBackend': (p) => projects.setClaudeBackend(p.path, p.claudeBackend),
     'projects.setScripts': (p) => projects.setScripts(p.path, p.scripts),
     'folders.browse': (p) => browseFolders(p.path, { showHidden: p.showHidden }),
     'git.info': (p) => git.info(p.cwd),

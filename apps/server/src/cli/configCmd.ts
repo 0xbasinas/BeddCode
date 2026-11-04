@@ -13,6 +13,7 @@ type Kind = 'number' | 'string' | 'boolean' | 'list'
 
 /** What can be set, and what each setting does. */
 export const SETTINGS: Record<SettingKey, { kind: Kind; help: string }> = {
+  claudeBackend: { kind: 'string', help: 'Claude backend: sdk (default) or cli' },
   port: { kind: 'number', help: 'Port the host listens on (default 3773)' },
   host: {
     kind: 'string',
@@ -63,6 +64,8 @@ export function parseValue(key: SettingKey, raw: string): ConfigFile[keyof Confi
       .map((v) => v.trim())
       .filter(Boolean)
   }
+  if (key === 'claudeBackend' && raw !== 'sdk' && raw !== 'cli')
+    throw new Error('claudeBackend must be sdk or cli')
   if (!raw) throw new Error(`${key} needs a value`)
   return key === 'relayUrl' ? normalizeRelayUrl(raw) : raw
 }

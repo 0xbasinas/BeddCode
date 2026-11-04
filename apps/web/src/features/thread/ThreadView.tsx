@@ -91,7 +91,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
   const pane = usePane()
   const paneActive = pane?.active ?? true
   const hostKey = useSessionHostKey(sessionId) ?? LOCAL_HOST_KEY
-  const { providers, host, streamState, replica } = useRuntime(hostKey)
+  const { providers, host, streamState, replica, projects, connection } = useRuntime(hostKey)
   const sideThreads = useMemo(
     () =>
       replica.order
@@ -99,6 +99,19 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
         .filter((s) => s.sideThread && s.forkedFrom?.sessionId === sessionId),
     [replica, sessionId],
   )
+  const [claudeBackend, setClaudeBackend] = useState<'sdk' | 'cli'>('sdk')
+  useEffect(() => {
+    let active = true
+    if (connection === 'connected')
+      void hostRequest(hostKey, 'host.claudeBackend.get', {})
+        .then((result) => {
+          if (active) setClaudeBackend(result.claudeBackend)
+        })
+        .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [connection, hostKey])
   const multiHost = useHostStore((s) => s.entries.length > 1)
   const hostName = multiHost ? (host?.name ?? hostKey) : undefined
   // Still waiting on a host that has not replied yet, or one that is away.
@@ -730,7 +743,10 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             session={session}
             hostKey={hostKey}
             hostName={hostName}
-            agent={provider?.label}
+            agent={sessionAgentLabel(
+              provider,
+              projects.find((p) => p.path === session.projectPath)?.claudeBackend ?? claudeBackend,
+            )}
             stats={stats}
           />
         }
@@ -744,6 +760,13 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
       )}
     </main>
   )
+}
+
+export function sessionAgentLabel(
+  provider: { kind: string; label: string } | undefined,
+  backend: 'sdk' | 'cli',
+) {
+  return provider?.kind === 'claude' && backend === 'cli' ? 'Claude (CLI)' : provider?.label
 }
 
 /** A pane in a split: show its session alone, or close the pane. */
