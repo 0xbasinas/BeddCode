@@ -179,7 +179,11 @@ const elementProps = {
     description: 'Inside an auto-layout frame.',
   },
   layoutSizingV: { type: 'string', enum: ['fixed', 'hug', 'fill'] },
-  layoutPositioning: { type: 'string', enum: ['auto', 'absolute'], description: 'Use absolute for intentional overlays inside auto-layout frames.' },
+  layoutPositioning: {
+    type: 'string',
+    enum: ['auto', 'absolute'],
+    description: 'Use absolute for intentional overlays inside auto-layout frames.',
+  },
   sides: { type: 'number', description: 'For polygon and star.' },
   autoLayout: {
     type: 'object',
@@ -383,29 +387,61 @@ export const DESIGN_TOOL_DEFINITIONS = [
   },
   {
     name: 'design_arrange',
-    description: 'Align, distribute, or snap free-positioned sibling elements. Auto-layout children must be adjusted through their parent instead.',
-    inputSchema: { type: 'object', properties: {
-      design, page, ids: { type: 'array', items: { type: 'string' } },
-      operation: { type: 'string', enum: ['left', 'center-x', 'right', 'top', 'center-y', 'bottom', 'distribute-x', 'distribute-y', 'snap'] },
-      grid: { type: 'number', description: 'Grid spacing for snap, default 8 pixels.' },
-    }, required: ['ids', 'operation'] },
+    description:
+      'Align, distribute, or snap free-positioned sibling elements. Auto-layout children must be adjusted through their parent instead.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        design,
+        page,
+        ids: { type: 'array', items: { type: 'string' } },
+        operation: {
+          type: 'string',
+          enum: [
+            'left',
+            'center-x',
+            'right',
+            'top',
+            'center-y',
+            'bottom',
+            'distribute-x',
+            'distribute-y',
+            'snap',
+          ],
+        },
+        grid: { type: 'number', description: 'Grid spacing for snap, default 8 pixels.' },
+      },
+      required: ['ids', 'operation'],
+    },
   },
   {
     name: 'design_check_layout',
-    description: 'Check a page for possible overflow, overlapping siblings and small alignment or spacing inconsistencies. Review warnings: overlays can be intentional. Geometry reflects the last editor layout pass.',
+    description:
+      'Check a page for possible overflow, overlapping siblings and small alignment or spacing inconsistencies. Review warnings: overlays can be intentional. Geometry reflects the last editor layout pass.',
     inputSchema: { type: 'object', properties: { design, page } },
   },
 
   {
     name: 'design_search_knowledge',
-    description: 'Search bundled UI UX Pro Max design references for product, visual style, palettes, typography, UX or app interface patterns. Apply useful results to editable canvas designs.',
-    inputSchema: { type: 'object', properties: {
-      query: { type: 'string', description: 'Product type and visual keywords, e.g. cybersecurity learning dashboard dark.' },
-      domain: { type: 'string', enum: ['all', 'product', 'style', 'color', 'typography', 'ux', 'interface'] },
-      limit: { type: 'number', description: 'Maximum results, 1 to 10 (default 5).' },
-    }, required: ['query'] },
+    description:
+      'Search bundled UI UX Pro Max design references for product, visual style, palettes, typography, UX or app interface patterns. Apply useful results to editable canvas designs.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description:
+            'Product type and visual keywords, e.g. cybersecurity learning dashboard dark.',
+        },
+        domain: {
+          type: 'string',
+          enum: ['all', 'product', 'style', 'color', 'typography', 'ux', 'interface'],
+        },
+        limit: { type: 'number', description: 'Maximum results, 1 to 10 (default 5).' },
+      },
+      required: ['query'],
+    },
   },
-
 ] as const
 
 export const DESIGN_INSTRUCTIONS = `BeddCode design canvas. The user is asking you to create or edit an editable design on the open BeddCode canvas. Use the BeddCode design tools for the requested design, not HTML files or code, unless the user explicitly asks for code. If the design tools are unavailable, explain that; do not substitute a file. You can draw on the design canvases kept on this host; the user has the same canvas open in the Design screen and sees your changes as you make them.
@@ -633,40 +669,103 @@ type LayoutIssue = { kind: string; parent: string; ids: string[]; detail: string
 /** Conservative geometry warnings, not automatic edits: overlapping artwork can be intentional. */
 function checkLayout(page: Page): LayoutIssue[] {
   const issues: LayoutIssue[] = []
-  const number = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? v : 0
+  const number = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
   const visit = (children: El[], parent?: El) => {
-    const visible = children.filter((e) => e.visible !== false && e.layoutPositioning !== 'absolute')
+    const visible = children.filter(
+      (e) => e.visible !== false && e.layoutPositioning !== 'absolute',
+    )
     const parentId = parent?.id ?? page.id
-    if (parent && parent.type === 'frame') for (const e of visible) {
-      const x = number(e.x), y = number(e.y), w = number(e.width), h = number(e.height)
-      if (x < -1 || y < -1 || x + w > number(parent.width) + 1 || y + h > number(parent.height) + 1)
-        issues.push({ kind: 'overflow', parent: parentId, ids: [e.id], detail: 'Child extends outside its frame; check clipping or intentional bleed.' })
-    }
+    if (parent && parent.type === 'frame')
+      for (const e of visible) {
+        const x = number(e.x),
+          y = number(e.y),
+          w = number(e.width),
+          h = number(e.height)
+        if (
+          x < -1 ||
+          y < -1 ||
+          x + w > number(parent.width) + 1 ||
+          y + h > number(parent.height) + 1
+        )
+          issues.push({
+            kind: 'overflow',
+            parent: parentId,
+            ids: [e.id],
+            detail: 'Child extends outside its frame; check clipping or intentional bleed.',
+          })
+      }
     // Limit pair comparisons on very large sibling lists.
-    if (visible.length <= 200) for (let i = 0; i < visible.length; i++) for (let j = i + 1; j < visible.length; j++) {
-      const a = visible[i]!, b = visible[j]!
-      const ax = number(a.x), ay = number(a.y), bx = number(b.x), by = number(b.y)
-      const aw = number(a.width), ah = number(a.height), bw = number(b.width), bh = number(b.height)
-      const ox = Math.min(ax + aw, bx + bw) - Math.max(ax, bx)
-      const oy = Math.min(ay + ah, by + bh) - Math.max(ay, by)
-      if (ox > 1 && oy > 1 && aw > 0 && ah > 0 && bw > 0 && bh > 0)
-        issues.push({ kind: 'overlap', parent: parentId, ids: [a.id, b.id], detail: 'Sibling bounds overlap; check whether this is intentional.' })
-      else if (!parent?.autoLayout && ox <= 0 && oy > 0 && Math.abs(ay - by) > 0.5 && Math.abs(ay - by) <= 3)
-        issues.push({ kind: 'alignment', parent: parentId, ids: [a.id, b.id], detail: 'Top edges differ by at most 3px.' })
-      else if (!parent?.autoLayout && oy <= 0 && ox > 0 && Math.abs(ax - bx) > 0.5 && Math.abs(ax - bx) <= 3)
-        issues.push({ kind: 'alignment', parent: parentId, ids: [a.id, b.id], detail: 'Left edges differ by at most 3px.' })
-    }
+    if (visible.length <= 200)
+      for (let i = 0; i < visible.length; i++)
+        for (let j = i + 1; j < visible.length; j++) {
+          const a = visible[i]!,
+            b = visible[j]!
+          const ax = number(a.x),
+            ay = number(a.y),
+            bx = number(b.x),
+            by = number(b.y)
+          const aw = number(a.width),
+            ah = number(a.height),
+            bw = number(b.width),
+            bh = number(b.height)
+          const ox = Math.min(ax + aw, bx + bw) - Math.max(ax, bx)
+          const oy = Math.min(ay + ah, by + bh) - Math.max(ay, by)
+          if (ox > 1 && oy > 1 && aw > 0 && ah > 0 && bw > 0 && bh > 0)
+            issues.push({
+              kind: 'overlap',
+              parent: parentId,
+              ids: [a.id, b.id],
+              detail: 'Sibling bounds overlap; check whether this is intentional.',
+            })
+          else if (
+            !parent?.autoLayout &&
+            ox <= 0 &&
+            oy > 0 &&
+            Math.abs(ay - by) > 0.5 &&
+            Math.abs(ay - by) <= 3
+          )
+            issues.push({
+              kind: 'alignment',
+              parent: parentId,
+              ids: [a.id, b.id],
+              detail: 'Top edges differ by at most 3px.',
+            })
+          else if (
+            !parent?.autoLayout &&
+            oy <= 0 &&
+            ox > 0 &&
+            Math.abs(ax - bx) > 0.5 &&
+            Math.abs(ax - bx) <= 3
+          )
+            issues.push({
+              kind: 'alignment',
+              parent: parentId,
+              ids: [a.id, b.id],
+              detail: 'Left edges differ by at most 3px.',
+            })
+        }
     if (!parent?.autoLayout && visible.length >= 3 && visible.length <= 200) {
       for (const axis of ['x', 'y'] as const) {
-        const cross = axis === 'x' ? 'y' : 'x', size = axis === 'x' ? 'width' : 'height'
+        const cross = axis === 'x' ? 'y' : 'x',
+          size = axis === 'x' ? 'width' : 'height'
         const sorted = [...visible].sort((a, b) => number(a[axis]) - number(b[axis]))
         for (let i = 0; i + 2 < sorted.length; i++) {
           const [a, b, c] = sorted.slice(i, i + 3) as [El, El, El]
-          if (Math.max(number(a[cross]), number(b[cross]), number(c[cross])) - Math.min(number(a[cross]), number(b[cross]), number(c[cross])) > 1) continue
+          if (
+            Math.max(number(a[cross]), number(b[cross]), number(c[cross])) -
+              Math.min(number(a[cross]), number(b[cross]), number(c[cross])) >
+            1
+          )
+            continue
           const g1 = number(b[axis]) - number(a[axis]) - number(a[size])
           const g2 = number(c[axis]) - number(b[axis]) - number(b[size])
           if (g1 >= 0 && g2 >= 0 && Math.abs(g1 - g2) > 1 && Math.abs(g1 - g2) <= 4)
-            issues.push({ kind: 'spacing', parent: parentId, ids: [a.id, b.id, c.id], detail: 'Adjacent gaps differ by 2 to 4px.' })
+            issues.push({
+              kind: 'spacing',
+              parent: parentId,
+              ids: [a.id, b.id, c.id],
+              detail: 'Adjacent gaps differ by 2 to 4px.',
+            })
         }
       }
     }
@@ -706,14 +805,16 @@ export class DesignTools {
   private async settleLayout(): Promise<string | undefined> {
     const id = this.lastDesign
     const link = this.link
-    if (!id || !link) return 'No connected layout service; positions and text sizes have not been verified.'
+    if (!id || !link)
+      return 'No connected layout service; positions and text sizes have not been verified.'
     const before = this.designs.get(id)
     if (!before) return
     const result = await link.layout(id)
     if (!result.ok) return `Layout was not computed: ${result.error}`
     const now = this.designs.get(id)
     // Someone else changed it meanwhile; their editor lays out its own edits.
-    if (!now || now.rev !== before.rev) return 'Design changed during layout; re-read and verify geometry.'
+    if (!now || now.rev !== before.rev)
+      return 'Design changed during layout; re-read and verify geometry.'
     const changed = pagesOf(now.project).some((pg) => {
       const got = result.pages.find((p) => p.id === pg.id)
       return got !== undefined && JSON.stringify(got.elements) !== JSON.stringify(pg.elements)
@@ -745,15 +846,26 @@ export class DesignTools {
       return fail(err instanceof Error ? err.message : String(err))
     }
     if (!result.isError && MUTATING.has(tool)) {
-      const layoutStatus = await this.settleLayout().catch(() => 'Layout failed; geometry has not been verified.')
+      const layoutStatus = await this.settleLayout().catch(
+        () => 'Layout failed; geometry has not been verified.',
+      )
       const current = this.lastDesign && this.designs.get(this.lastDesign)
       if (current && result.content[0]?.type === 'text') {
-        const issues = checkLayout(pageOf(current.project, typeof args.page === 'string' ? args.page : undefined))
+        const issues = checkLayout(
+          pageOf(current.project, typeof args.page === 'string' ? args.page : undefined),
+        )
         if (issues.length || layoutStatus) {
           try {
             const body = JSON.parse(result.content[0].text)
-            result.content[0].text = JSON.stringify({ ...body, ...(layoutStatus ? { layoutStatus } : {}), layoutWarnings: issues.slice(0, 20), layoutWarningCount: issues.length })
-          } catch { /* Preserve non-JSON results. */ }
+            result.content[0].text = JSON.stringify({
+              ...body,
+              ...(layoutStatus ? { layoutStatus } : {}),
+              layoutWarnings: issues.slice(0, 20),
+              layoutWarningCount: issues.length,
+            })
+          } catch {
+            /* Preserve non-JSON results. */
+          }
         }
       }
     }
@@ -912,44 +1024,102 @@ export class DesignTools {
       }
       case 'design_check_layout': {
         const id = this.resolve(args)
-        const pg = pageOf(this.designs.get(id)!.project, typeof args.page === 'string' ? args.page : undefined)
+        const pg = pageOf(
+          this.designs.get(id)!.project,
+          typeof args.page === 'string' ? args.page : undefined,
+        )
         const issues = checkLayout(pg)
-        return { design: id, page: pg.id, issues: issues.slice(0, 100), issueCount: issues.length, note: 'Warnings may be intentional; verify against the rendered design. Auto-layout and text geometry require a connected editor.' }
+        return {
+          design: id,
+          page: pg.id,
+          issues: issues.slice(0, 100),
+          issueCount: issues.length,
+          note: 'Warnings may be intentional; verify against the rendered design. Auto-layout and text geometry require a connected editor.',
+        }
       }
       case 'design_arrange': {
         const id = this.resolve(args)
         const ids = Array.isArray(args.ids) ? [...new Set(args.ids.map(String))] : []
         const operation = String(args.operation ?? '')
-        const allowed = ['left', 'center-x', 'right', 'top', 'center-y', 'bottom', 'distribute-x', 'distribute-y', 'snap']
-        if (!allowed.includes(operation) || ids.length < (operation.startsWith('distribute') ? 3 : operation === 'snap' ? 1 : 2)) throw new Error('Invalid operation or too few distinct element ids')
+        const allowed = [
+          'left',
+          'center-x',
+          'right',
+          'top',
+          'center-y',
+          'bottom',
+          'distribute-x',
+          'distribute-y',
+          'snap',
+        ]
+        if (
+          !allowed.includes(operation) ||
+          ids.length < (operation.startsWith('distribute') ? 3 : operation === 'snap' ? 1 : 2)
+        )
+          throw new Error('Invalid operation or too few distinct element ids')
         const grid = args.grid === undefined ? 8 : Number(args.grid)
-        if (operation === 'snap' && (!Number.isFinite(grid) || grid <= 0)) throw new Error('grid must be a positive number')
-        this.designs.mutate(id, (project) => {
-          const pg = pageOf(project, typeof args.page === 'string' ? args.page : undefined)
-          const hits = ids.map((elementId) => find(pg.elements, elementId))
-          if (hits.some((hit) => !hit)) throw new Error('All elements must exist on the selected page')
-          const siblings = hits[0]!.siblings
-          if (hits.some((hit) => hit!.siblings !== siblings)) throw new Error('Elements must share the same parent')
-          const parent = flatEls(pg.elements).find((el) => el.children === siblings)
-          if (parent?.autoLayout && hits.some((hit) => hit!.el.layoutPositioning !== 'absolute')) throw new Error('Arrange auto-layout children via their parent; only absolute children can be arranged')
-          const els = hits.map((hit) => hit!.el)
-          if (els.some((el) => el.locked || !['x', 'y', 'width', 'height'].every((key) => typeof el[key] === 'number' && Number.isFinite(el[key])))) throw new Error('Elements must be unlocked and have finite bounds')
-          const n = (el: El, key: string) => el[key] as number
-          if (operation === 'snap') for (const el of els) { el.x = Math.round(n(el, 'x') / grid) * grid; el.y = Math.round(n(el, 'y') / grid) * grid }
-          else if (operation.startsWith('distribute')) {
-            const axis = operation.endsWith('x') ? 'x' : 'y', size = axis === 'x' ? 'width' : 'height'
-            els.sort((a, b) => n(a, axis) - n(b, axis))
-            const first = n(els[0]!, axis), last = n(els[els.length - 1]!, axis) + n(els[els.length - 1]!, size)
-            const gap = (last - first - els.reduce((sum, el) => sum + n(el, size), 0)) / (els.length - 1)
-            let cursor = first
-            for (const el of els) { el[axis] = cursor; cursor += n(el, size) + gap }
-          } else {
-            const axis = ['left', 'center-x', 'right'].includes(operation) ? 'x' : 'y', size = axis === 'x' ? 'width' : 'height'
-            const factor = operation.startsWith('center') ? 0.5 : ['right', 'bottom'].includes(operation) ? 1 : 0
-            const anchor = n(els[0]!, axis) + n(els[0]!, size) * factor
-            for (const el of els.slice(1)) el[axis] = anchor - n(el, size) * factor
-          }
-        }, 'agent', ids)
+        if (operation === 'snap' && (!Number.isFinite(grid) || grid <= 0))
+          throw new Error('grid must be a positive number')
+        this.designs.mutate(
+          id,
+          (project) => {
+            const pg = pageOf(project, typeof args.page === 'string' ? args.page : undefined)
+            const hits = ids.map((elementId) => find(pg.elements, elementId))
+            if (hits.some((hit) => !hit))
+              throw new Error('All elements must exist on the selected page')
+            const siblings = hits[0]!.siblings
+            if (hits.some((hit) => hit!.siblings !== siblings))
+              throw new Error('Elements must share the same parent')
+            const parent = flatEls(pg.elements).find((el) => el.children === siblings)
+            if (parent?.autoLayout && hits.some((hit) => hit!.el.layoutPositioning !== 'absolute'))
+              throw new Error(
+                'Arrange auto-layout children via their parent; only absolute children can be arranged',
+              )
+            const els = hits.map((hit) => hit!.el)
+            if (
+              els.some(
+                (el) =>
+                  el.locked ||
+                  !['x', 'y', 'width', 'height'].every(
+                    (key) => typeof el[key] === 'number' && Number.isFinite(el[key]),
+                  ),
+              )
+            )
+              throw new Error('Elements must be unlocked and have finite bounds')
+            const n = (el: El, key: string) => el[key] as number
+            if (operation === 'snap')
+              for (const el of els) {
+                el.x = Math.round(n(el, 'x') / grid) * grid
+                el.y = Math.round(n(el, 'y') / grid) * grid
+              }
+            else if (operation.startsWith('distribute')) {
+              const axis = operation.endsWith('x') ? 'x' : 'y',
+                size = axis === 'x' ? 'width' : 'height'
+              els.sort((a, b) => n(a, axis) - n(b, axis))
+              const first = n(els[0]!, axis),
+                last = n(els[els.length - 1]!, axis) + n(els[els.length - 1]!, size)
+              const gap =
+                (last - first - els.reduce((sum, el) => sum + n(el, size), 0)) / (els.length - 1)
+              let cursor = first
+              for (const el of els) {
+                el[axis] = cursor
+                cursor += n(el, size) + gap
+              }
+            } else {
+              const axis = ['left', 'center-x', 'right'].includes(operation) ? 'x' : 'y',
+                size = axis === 'x' ? 'width' : 'height'
+              const factor = operation.startsWith('center')
+                ? 0.5
+                : ['right', 'bottom'].includes(operation)
+                  ? 1
+                  : 0
+              const anchor = n(els[0]!, axis) + n(els[0]!, size) * factor
+              for (const el of els.slice(1)) el[axis] = anchor - n(el, size) * factor
+            }
+          },
+          'agent',
+          ids,
+        )
         return { design: id, arranged: ids, operation }
       }
       case 'design_search_knowledge':

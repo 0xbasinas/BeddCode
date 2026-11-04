@@ -33,7 +33,12 @@ describe('readProcessMemory', () => {
     expect(await readProcessMemory(10, linux)).toBe((2048 + 1000 + 500) * 1024)
   })
   it('measures the process alone when children cannot be listed', async () => {
-    expect(await readProcessMemory(10, { ...linux, readdir: async () => Promise.reject(new Error('x')) })).toBe(2048 * 1024)
+    expect(
+      await readProcessMemory(10, {
+        ...linux,
+        readdir: async () => Promise.reject(new Error('x')),
+      }),
+    ).toBe(2048 * 1024)
   })
   it('returns null when the process is gone or has no VmRSS', async () => {
     expect(await readProcessMemory(99, linux)).toBeNull()
@@ -51,12 +56,17 @@ describe('readProcessMemory', () => {
     }
     expect(await readProcessMemory(42, deps)).toBe(123_456 * 1024)
     expect(args).toEqual(['/FI', 'PID eq 42', '/FO', 'CSV', '/NH'])
-    const none = { platform: 'win32', run: ok('INFO: No tasks are running which match the specified criteria.\r\n') } as const
+    const none = {
+      platform: 'win32',
+      run: ok('INFO: No tasks are running which match the specified criteria.\r\n'),
+    } as const
     expect(await readProcessMemory(42, none)).toBeNull()
   })
 
   it('parses ps output on macOS', async () => {
-    expect(await readProcessMemory(7, { platform: 'darwin', run: ok('  4096\n') })).toBe(4096 * 1024)
+    expect(await readProcessMemory(7, { platform: 'darwin', run: ok('  4096\n') })).toBe(
+      4096 * 1024,
+    )
     expect(await readProcessMemory(7, { platform: 'darwin', run: ok('') })).toBeNull()
     expect(await readProcessMemory(7, { platform: 'darwin', run: ok('garbage') })).toBeNull()
   })
@@ -65,14 +75,19 @@ describe('readProcessMemory', () => {
     const failed = async () => ({ code: 1, stdout: '', stderr: 'no' })
     expect(await readProcessMemory(7, { platform: 'darwin', run: failed })).toBeNull()
     expect(
-      await readProcessMemory(7, { platform: 'win32', run: async () => Promise.reject(new Error('timeout')) }),
+      await readProcessMemory(7, {
+        platform: 'win32',
+        run: async () => Promise.reject(new Error('timeout')),
+      }),
     ).toBeNull()
     expect(await readProcessMemory(undefined, linux)).toBeNull()
     expect(await readProcessMemory(-1, linux)).toBeNull()
   })
 
   it('falls back to the estimate when measuring fails', async () => {
-    expect(await measureProcessMemory(7, { platform: 'darwin', run: ok('') })).toBe(ESTIMATED_PROCESS_BYTES)
+    expect(await measureProcessMemory(7, { platform: 'darwin', run: ok('') })).toBe(
+      ESTIMATED_PROCESS_BYTES,
+    )
     expect(await measureProcessMemory(7, { platform: 'darwin', run: ok('10') })).toBe(10 * 1024)
   })
 })

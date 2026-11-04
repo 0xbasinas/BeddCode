@@ -110,9 +110,8 @@ describe('WarmPool', () => {
     })
     const first = measured(1)
     const second = measured(2)
-    const pool = new WarmPool(
-      { ...options, memoryCapBytes: 1000 * 1024 },
-      async (key) => (key === 'a' ? first : second),
+    const pool = new WarmPool({ ...options, memoryCapBytes: 1000 * 1024 }, async (key) =>
+      key === 'a' ? first : second,
     )
     pool.refill('a')
     await settle()
