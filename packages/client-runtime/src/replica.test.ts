@@ -632,9 +632,16 @@ it('shows the target agent model and effort after a switch, and restores them on
     { type: 'session.model', model: 'a-model', effort: 'high' },
     { type: 'session.switched', instanceId: 'other', handoff: 'h' },
     { type: 'session.model', model: 'b-model', effort: 'low' },
-    { type: 'session.switched', instanceId: 'fake', model: 'a-model', effort: 'high', handoff: 'h' },
+    {
+      type: 'session.switched',
+      instanceId: 'fake',
+      model: 'a-model',
+      effort: 'high',
+      handoff: 'h',
+    },
   ])
   expect(state.sessions.s1).toMatchObject({ instanceId: 'fake', model: 'a-model', effort: 'high' })
-  expect(fold([created, { type: 'session.switched', instanceId: 'other', handoff: 'h' }]).sessions.s1)
-    .toMatchObject({ instanceId: 'other', model: undefined, effort: undefined })
+  expect(
+    fold([created, { type: 'session.switched', instanceId: 'other', handoff: 'h' }]).sessions.s1,
+  ).toMatchObject({ instanceId: 'other', model: undefined, effort: undefined })
 })

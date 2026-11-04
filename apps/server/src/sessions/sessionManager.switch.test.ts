@@ -193,8 +193,7 @@ it('previews without switching and sends the edited handoff', async () => {
 
 it('resets model and effort to the target agent last-used choice, else its default', async () => {
   const { manager, store, sessionId, starts } = await setup()
-  const view = () =>
-    applyEvents(emptyReplica(), store.readSession(sessionId)).sessions[sessionId]
+  const view = () => applyEvents(emptyReplica(), store.readSession(sessionId)).sessions[sessionId]
   const choose = (model: string, effort: string) =>
     store.append({ type: 'session.model', sessionId, at: Date.now(), model, effort })
   choose('a-model', 'high')

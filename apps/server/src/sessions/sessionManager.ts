@@ -1,4 +1,4 @@
-import { applyEvents, emptyReplica } from '@beddcode/client-runtime/replica'
+import { applyEvents, emptyReplica, type SessionView } from '@beddcode/client-runtime/replica'
 import { handoffPrompt } from '@beddcode/client-runtime/handoff'
 import { lastUsedModel } from '@beddcode/contracts'
 import { randomUUID } from 'node:crypto'
@@ -556,6 +556,23 @@ export class SessionManager {
     }
   }
 
+  /** The working-tree diff for a handoff, capped; the files are read in parallel. */
+  private async workingDiff(cwd: string): Promise<string> {
+    try {
+      const status = await this.deps.git.status(cwd)
+      const parts = await Promise.all(
+        status.files.slice(0, 30).map((file) => this.deps.git.diff(cwd, file.path)),
+      )
+      return parts
+        .map((part) => `\n${part.path}\n${part.patch}`)
+        .join('')
+        .slice(0, 6000)
+    } catch {
+      /* Non-repositories have no git diff. */
+      return ''
+    }
+  }
+
   async switchAgent(
     params: RpcParams<'session.switchAgent'>,
   ): Promise<RpcResult<'session.switchAgent'>> {
@@ -564,6 +581,7 @@ export class SessionManager {
       return { ok: false, draft: '', error: 'Session is busy starting another operation' }
     this.switching.add(sessionId)
     let draft = ''
+    let switchTimer = 0
     let old: LiveSession | undefined
     let stopped = false
     let replacement: ProviderSession | undefined
@@ -576,23 +594,20 @@ export class SessionManager {
         sessionId
       ]
       if (!view) throw new Error('Cannot build session handoff')
-      let diff = ''
-      try {
-        const status = await this.deps.git.status(created.cwd)
-        for (const file of status.files.slice(0, 30)) {
-          const part = await this.deps.git.diff(created.cwd, file.path)
-          diff += `\n${part.path}\n${part.patch}`
-          if (diff.length >= 6000) break
-        }
-      } catch {
-        /* Non-repositories have no git diff. */
+      const pendingMessage = params.pendingMessage ?? turn.queue.map((q) => q.text).join('\n')
+      const buildDraft = async (from: SessionView, agentLabel?: string) =>
+        handoffPrompt(from, {
+          agentLabel,
+          pendingMessage,
+          diff: await this.workingDiff(created.cwd),
+        })
+      // Only a preview (or a failure before the agent stops) needs this early; a real switch builds
+      // the handoff once, after the old agent has stopped writing.
+      if (params.preview) {
+        draft = await buildDraft(view, this.live.get(sessionId)?.label)
+        return { ok: true, draft }
       }
-      draft = handoffPrompt(view, {
-        agentLabel: this.live.get(sessionId)?.label,
-        pendingMessage: params.pendingMessage ?? turn.queue.map((q) => q.text).join('\n'),
-        diff,
-      })
-      if (params.preview) return { ok: true, draft }
+      switchTimer = performance.now()
       const target = await this.findInstance(instanceId)
       if (turn.busy && !params.stop) throw new Error('A turn is running; stop it before switching')
       const pending = new Map<string, Extract<SessionEvent, { type: 'approval.requested' }>>()
@@ -648,24 +663,7 @@ export class SessionManager {
       // Capture anything the interrupted provider wrote while it was stopping.
       const finalView = applyEvents(emptyReplica(), this.deps.store.readSession(sessionId))
         .sessions[sessionId]
-      if (finalView) {
-        let finalDiff = ''
-        try {
-          const status = await this.deps.git.status(created.cwd)
-          for (const file of status.files.slice(0, 30)) {
-            const part = await this.deps.git.diff(created.cwd, file.path)
-            finalDiff += `\n${part.path}\n${part.patch}`
-            if (finalDiff.length >= 6000) break
-          }
-        } catch {
-          /* Non-repositories have no git diff. */
-        }
-        draft = handoffPrompt(finalView, {
-          agentLabel: old.label,
-          pendingMessage: params.pendingMessage ?? turn.queue.map((q) => q.text).join('\n'),
-          diff: finalDiff,
-        })
-      }
+      draft = await buildDraft(finalView ?? view, old.label)
       const fullDraft = draft
       const events = this.deps.store.readSession(sessionId)
       const segments = this.deps.store.sessionSegments(sessionId)
@@ -759,6 +757,9 @@ export class SessionManager {
         this.deps.log.warn(`Could not announce modes for ${sessionId}`, err)
       }
       void this.pump(sessionId, replacement)
+      this.deps.log.debug(
+        `switched ${sessionId} to ${instanceId} in ${Math.round(performance.now() - switchTimer)}ms (resume: ${resumeId ? 'yes' : 'no'}, handoff: ${draft.length} chars)`,
+      )
       return { ok: true, draft }
     } catch (err) {
       if (replacement) await replacement.close().catch(() => undefined)
@@ -785,6 +786,20 @@ export class SessionManager {
             this.deps.log.error(`Could not restore ${sessionId}`, restoreError)
           }
         }
+      }
+      if (!draft) {
+        const view = applyEvents(emptyReplica(), this.deps.store.readSession(sessionId)).sessions[
+          sessionId
+        ]
+        if (view)
+          draft = handoffPrompt(view, {
+            agentLabel: old?.label,
+            pendingMessage:
+              params.pendingMessage ??
+              this.turnState(sessionId)
+                .queue.map((q) => q.text)
+                .join('\n'),
+          })
       }
       return {
         ok: false,
