@@ -4,6 +4,7 @@ import { ReplayCompactor } from '../store/compact.ts'
 
 const READ_BATCH = 1000
 const FRAME_BATCH = 100
+const FRAME_BYTES = 256 * 1024
 const HIGH_WATER = 512 * 1024
 const MAX_PENDING = 10_000
 const STALL_MS = 15_000
@@ -27,7 +28,7 @@ export function replaySubscription(options: {
     : undefined
   let cursor = options.afterSeq
   let pending: StoredEvent[] = []
-  let pendingChars = 0
+  let pendingBytes = 0
   let replaying = true
   let disposed = false
   let count = 0
@@ -39,15 +40,15 @@ export function replaySubscription(options: {
   const stop = store.subscribe((stored) => {
     if (!replaying) return options.live(stored)
     pending.push(stored)
-    pendingChars += JSON.stringify(stored).length
-    if (pending.length > MAX_PENDING || pendingChars > 16 * 1024 * 1024) fail()
+    pendingBytes += Buffer.byteLength(JSON.stringify(stored))
+    if (pending.length > MAX_PENDING || pendingBytes > 16 * 1024 * 1024) fail()
   })
   const dispose = () => {
     disposed = true
     if (timer) clearTimeout(timer)
     stop()
     pending = []
-    pendingChars = 0
+    pendingBytes = 0
     ready = []
   }
   function fail() {
@@ -67,7 +68,15 @@ export function replaySubscription(options: {
     }
     blockedAt = 0
     if (offset < ready.length) {
-      const end = Math.min(offset + FRAME_BATCH, ready.length)
+      let end = offset
+      // One stored event can exceed the budget; send it intact so its sequence remains resumable.
+      let bytes = Buffer.byteLength('{"t":"events","events":[]}')
+      while (end < ready.length && end - offset < FRAME_BATCH) {
+        const next = Buffer.byteLength(JSON.stringify(ready[end])) + (end > offset ? 1 : 0)
+        if (end > offset && bytes + next > FRAME_BYTES) break
+        bytes += next
+        end++
+      }
       if (options.batch) options.send({ t: 'events', events: ready.slice(offset, end) })
       else {
         while (offset < end && !disposed && options.backlog() <= HIGH_WATER)
@@ -93,7 +102,7 @@ export function replaySubscription(options: {
       options.live(stored)
     }
     pending = []
-    pendingChars = 0
+    pendingBytes = 0
     ready = []
     options.caughtUp(count)
   }
