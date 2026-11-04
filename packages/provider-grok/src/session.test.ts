@@ -215,7 +215,9 @@ describe('GrokSession', () => {
     process.finish(1)
     await turn
     await tick()
-    expect(events).toContainEqual(expect.objectContaining({ type: 'session.usage', inputTokens: 42, outputTokens: 3 }))
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'session.usage', inputTokens: 42, outputTokens: 3 }),
+    )
     expect(events.at(-1)).toMatchObject({ type: 'turn.completed', reason: 'error' })
     await session.close()
   })

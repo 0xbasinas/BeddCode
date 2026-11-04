@@ -79,7 +79,9 @@ describe('createGrokAdapter', () => {
         executablePath: process.execPath,
         grokHome: '/custom/grok',
         run: (async (_f: string, args: string[]) => ({
-          code: 0, stdout: args[0] === '--version' ? '1.0.70' : 'You are not logged in', stderr: '',
+          code: 0,
+          stdout: args[0] === '--version' ? '1.0.70' : 'You are not logged in',
+          stderr: '',
         })) as never,
       })
       expect((await adapter.detect())[0]).toMatchObject({ status: 'needs-sign-in' })
