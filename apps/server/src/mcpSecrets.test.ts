@@ -37,7 +37,9 @@ it('stores secrets privately, passes references and redacts listings and errors'
     expect(passed.headers.Authorization).toMatch(/^\$\{BEDDCODE_MCP_/)
     expect(JSON.stringify(passed)).not.toContain('secret')
     expect(Object.values(env)).toContain('secret')
-    expect((await stat(join(home, 'mcp-secrets.json'))).mode & 0o777).toBe(0o600)
+    // Windows has no POSIX file modes; the private mode only applies elsewhere.
+    if (process.platform !== 'win32')
+      expect((await stat(join(home, 'mcp-secrets.json'))).mode & 0o777).toBe(0o600)
     expect(await readFile(join(home, 'mcp-secrets.json'), 'utf8')).toContain('secret')
     expect(await adapter.mcp!.list('id')).toMatchObject([
       { target: 'Authorization: ••••', error: '••••' },
