@@ -138,7 +138,7 @@ export const SessionEvent = z.discriminatedUnion('type', [
   /** A session started by another agent says how its task ended (its report_result tool). */
   Base.extend({
     type: z.literal('session.result'),
-    status: z.enum(['done', 'blocked', 'failed']),
+    status: z.enum(['done', 'blocked', 'failed', 'stopped']),
     summary: z.string(),
   }),
   /** The user deleted the session; devices drop it. Its earlier events are removed from the log. */
@@ -207,7 +207,15 @@ export const SessionEvent = z.discriminatedUnion('type', [
     planId: z.string(),
     goal: z.string(),
     tasks: z.array(
-      z.object({ id: z.string(), agent: z.string(), prompt: z.string(), worktree: z.boolean() }),
+      z.object({
+        id: z.string(),
+        agent: z.string(),
+        prompt: z.string(),
+        worktree: z.boolean(),
+        model: z.string().optional(),
+        turnCap: z.number().optional(),
+        timeBudgetSeconds: z.number().optional(),
+      }),
     ),
   }),
   Base.extend({

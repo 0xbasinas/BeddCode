@@ -184,3 +184,39 @@ it('orchestrates workers, approvals and durable messages across a host restart',
     rmSync(root, { recursive: true, force: true })
   }
 }, 30_000)
+
+it('starts a template through the plan runner with the fake provider', async () => {
+  const root = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'template-test-')))
+  const host = boot(root, root)
+  try {
+    host.automation.orchestration.saveTemplate({
+      id: 'test-template',
+      name: 'Test',
+      kind: 'plan-implement-review',
+      planner: { agent: 'fake' },
+      implementer: { agent: 'fake' },
+      reviewer: { agent: 'fake' },
+    })
+    const { sessionId } = await host.sessions.create(
+      { instanceId: 'fake', cwd: root, permissionMode: 'full', agentTools: true },
+      {},
+    )
+    const plan = await call(host, sessionId, 'start_template', {
+      template_id: 'test-template',
+      tasks: ['Make a change'],
+    })
+    expect(plan.tasks).toHaveLength(3)
+    expect(plan.tasks[0].session_id).toBeTruthy()
+    expect(plan.tasks[1]).toMatchObject({
+      status: 'pending',
+      prompt: expect.stringContaining('planner'),
+    })
+    expect(plan.tasks[2]).toMatchObject({
+      status: 'pending',
+      prompt: expect.stringContaining('implementer'),
+    })
+  } finally {
+    await host.close()
+    rmSync(root, { recursive: true, force: true })
+  }
+})

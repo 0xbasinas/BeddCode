@@ -5,6 +5,7 @@ import { createLogger } from '@beddcode/shared'
 import type { SessionManager, SessionOrigin } from '../sessions/sessionManager.ts'
 import type { EventStore } from '../store/eventStore.ts'
 import { runWorktreeSetup, type WorkspaceServices } from '../transport/rpc.ts'
+import { TemplateBudgetWatcher } from './templateBudget.ts'
 import { AgentTools, modeLevel } from './agentTools.ts'
 import { AlertService } from './alerts.ts'
 import { writeBridge } from './bridge.ts'
@@ -118,10 +119,24 @@ export function createAutomation(deps: AutomationDeps) {
       .catch((err) => createLogger('agent-messaging').error('Could not wake recipient', err))
   }
   const orchestration = new OrchestrationSettingsService(path.join(home, 'orchestration.json'))
+  const budgetWatcher = new TemplateBudgetWatcher({
+    subscribe,
+    interrupt: (id) => sessions.interrupt(id),
+    report: (id) =>
+      void store.append({
+        type: 'session.result',
+        sessionId: id,
+        at: Date.now(),
+        status: 'stopped',
+        summary: 'budget',
+      }),
+  })
   const agentTools = new AgentTools(
     {
       create,
       prompt,
+      templates: () => orchestration.listTemplates(),
+      watchBudget: (id, budget) => budgetWatcher.watch(id, budget),
       interrupt: (id) => sessions.interrupt(id),
       isBusy,
       currentMode: (id) => sessions.currentMode(id),
@@ -221,6 +236,7 @@ export function createAutomation(deps: AutomationDeps) {
       setSync: (settings: { fileFailedRuns: boolean; teamId?: string }) => sync.set(settings),
     },
     stop() {
+      budgetWatcher.stop()
       orchestration.stop()
       schedules.stop()
       telegram.stop()

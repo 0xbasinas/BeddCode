@@ -177,3 +177,36 @@ export const OrchestrationApproval = z.object({
   expiresAt: z.number(),
 })
 export type OrchestrationApproval = z.infer<typeof OrchestrationApproval>
+
+/** Reusable worker configuration. Tasks are supplied at launch, not stored in host settings. */
+export const OrchestrationTemplateWorker = z
+  .object({
+    agent: z.string().trim().min(1).max(200),
+    model: z.string().trim().min(1).max(200).optional(),
+    turnCap: z.number().int().min(1).max(1000).optional(),
+    timeBudgetSeconds: z.number().int().min(1).max(86400).optional(),
+  })
+  .strict()
+export type OrchestrationTemplateWorker = z.infer<typeof OrchestrationTemplateWorker>
+export const OrchestrationTemplate = z.discriminatedUnion('kind', [
+  z
+    .object({
+      id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,79}$/),
+      name: z.string().trim().min(1).max(80),
+      kind: z.literal('plan-implement-review'),
+      planner: OrchestrationTemplateWorker,
+      implementer: OrchestrationTemplateWorker,
+      reviewer: OrchestrationTemplateWorker,
+    })
+    .strict(),
+  z
+    .object({
+      id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,79}$/),
+      name: z.string().trim().min(1).max(80),
+      kind: z.literal('parallel-fix-and-test'),
+      workers: z.array(OrchestrationTemplateWorker).min(1).max(100),
+      tester: OrchestrationTemplateWorker,
+    })
+    .strict(),
+])
+export type OrchestrationTemplate = z.infer<typeof OrchestrationTemplate>

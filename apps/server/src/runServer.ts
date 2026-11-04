@@ -241,6 +241,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
       automation: {
         schedules,
         orchestration: automation.orchestration,
+        agentTools: automation.agentTools,
         alerts,
         designs,
         computer: automation.computerPane,

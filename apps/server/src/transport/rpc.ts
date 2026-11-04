@@ -41,6 +41,7 @@ type Handlers = {
 
 /** Schedules, alerts and the agent tools. */
 export interface AutomationServices {
+  agentTools: import('../automation/agentTools.ts').AgentTools
   schedules: ScheduleService
   orchestration: OrchestrationSettingsService
   alerts: AlertService
@@ -163,6 +164,17 @@ export function createRpcRouter(
   const { git, github, projects, terminals, files } = workspace
   const { schedules, alerts, designs } = automation
   const handlers: Handlers = {
+    'orchestration.templates.start': async (p) =>
+      automation.agentTools.call(p.sessionId, 'start_template', {
+        template_id: p.templateId,
+        tasks: p.tasks,
+      }),
+    'orchestration.templates.list': async () => automation.orchestration.listTemplates(),
+    'orchestration.templates.save': async (p) => automation.orchestration.saveTemplate(p),
+    'orchestration.templates.delete': async (p) => {
+      automation.orchestration.deleteTemplate(p.id)
+      return {}
+    },
     'orchestration.settings.get': async () => automation.orchestration.get(),
     'orchestration.settings.set': async (p) => automation.orchestration.set(p),
     'orchestration.approvals.list': async () => automation.orchestration.list(),

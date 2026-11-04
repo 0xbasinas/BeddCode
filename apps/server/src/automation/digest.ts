@@ -19,7 +19,7 @@ export interface SessionDigest {
   parentSessionId?: string
   depth: number
   /** How the session said its task ended, if it has since the last message it was sent. */
-  result?: { status: 'done' | 'blocked' | 'failed'; summary: string }
+  result?: { status: 'done' | 'blocked' | 'failed' | 'stopped'; summary: string }
   /** Why the latest turn was cancelled, when the host said (a restart, say). */
   cancelledBecause?: string
 }
