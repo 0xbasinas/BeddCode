@@ -188,4 +188,45 @@ describe('session start with a warm pool', () => {
       store.close()
     }
   })
+
+  it('measures the start until the agent is ready, not until the object exists', async () => {
+    const fake = createFakeAdapter()
+    const adapter = {
+      ...fake,
+      startSession: async (id: string, input: StartSessionInput) => {
+        const session = await fake.startSession(id, input)
+        return {
+          ...session,
+          events: session.events,
+          prompt: session.prompt.bind(session),
+          interrupt: session.interrupt.bind(session),
+          setPermissionMode: session.setPermissionMode.bind(session),
+          respondToApproval: session.respondToApproval.bind(session),
+          close: session.close.bind(session),
+          started: () => new Promise<void>((resolve) => setTimeout(resolve, 80)),
+        }
+      },
+    }
+    const store = new EventStore(':memory:')
+    const manager = new SessionManager({
+      store,
+      attachments,
+      git: new GitService(),
+      adapters: [adapter],
+      log: createLogger('test', 'error'),
+      defaultCwd: cwd,
+    })
+    try {
+      const created = await manager.create({ instanceId: 'fake' })
+      const event = store
+        .readSession(created.sessionId)
+        .map(({ event }) => event)
+        .find((event) => event.type === 'session.created')
+      expect(event).toMatchObject({ start: { warm: false } })
+      expect(event?.type === 'session.created' && event.start?.ms).toBeGreaterThanOrEqual(70)
+    } finally {
+      await manager.close()
+      store.close()
+    }
+  })
 })

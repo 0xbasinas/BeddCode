@@ -415,6 +415,14 @@ export class SessionManager {
       const reused = await this.takeWarmSession(instance, input)
       warm = reused !== null
       session = reused ?? (await adapter.startSession(instance.id, input))
+      // Starting is async inside the provider; a failure is reported through its events.
+      // Wait at most 20 s so a stuck start never blocks creating the session.
+      const ready = session.started?.().catch(() => {})
+      if (ready) {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        await Promise.race([ready, new Promise((r) => (timer = setTimeout(r, 20_000)))])
+        clearTimeout(timer)
+      }
     } catch (err) {
       // Do not leave an unused worktree behind when the agent could not start.
       if (worktree) await this.deps.git.removeWorktree(cwd).catch(() => false)

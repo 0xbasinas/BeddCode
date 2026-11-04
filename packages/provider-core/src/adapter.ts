@@ -81,6 +81,8 @@ export interface ProviderSession {
   readonly sessionId: string
   /** Normalized events for the whole session lifetime. */
   readonly events: AsyncIterable<SessionEvent>
+  /** Settles when the agent finished starting up; absent when the session is ready on return. */
+  started?(): Promise<void>
   prompt(input: PromptInput, signal?: AbortSignal): Promise<void>
   /**
    * Adds a message to the turn that is running, so the agent sees it at its next step. Only

@@ -94,6 +94,10 @@ export class CodexSession implements ProviderSession {
     return this.queue
   }
 
+  started() {
+    return this.ready
+  }
+
   private emit(draft: Draft, turnId?: string) {
     this.queue.push({ ...draft, sessionId: this.sessionId, turnId, at: Date.now() } as SessionEvent)
   }
