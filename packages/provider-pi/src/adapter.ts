@@ -99,7 +99,10 @@ export function parsePiModelList(output: string): ModelOption[] {
   const headerIndex = lines.findIndex(
     (line) => /provider/i.test(line) && /model/i.test(line) && /context/i.test(line),
   )
-  const rows = headerIndex >= 0 ? lines.slice(headerIndex + 1) : lines
+  if (headerIndex < 0) return []
+  const headers = lines[headerIndex]!.split(/\s+/)
+  const thinkingIndex = headers.findIndex((column) => /^(thinking|reasoning)$/i.test(column))
+  const rows = lines.slice(headerIndex + 1)
   const models: ModelOption[] = []
   for (const line of rows) {
     const columns = line.split(/\s+/)
@@ -107,7 +110,7 @@ export function parsePiModelList(output: string): ModelOption[] {
     const [provider, modelId] = columns
     if (!provider || !modelId || /^(context|model)$/i.test(modelId) || !/^[\w.-]+$/.test(provider))
       continue
-    const reasoning = columns.some((column) => /^yes$/i.test(column))
+    const reasoning = thinkingIndex >= 0 && /^yes$/i.test(columns[thinkingIndex] ?? '')
     const id = `${provider}/${modelId}`
     models.push({ id, label: modelId, efforts: reasoning ? LEVELS : ['off'] })
   }
@@ -132,12 +135,15 @@ export function createPiAdapter(options: PiAdapterOptions = {}): ProviderAdapter
       if (v.code !== 0) throw new Error(v.stderr || v.stdout || 'Pi version check failed')
       version = /\d+\.\d+\.\d+/.exec(v.stdout)?.[0]
       const listed = await run(exe, ['--list-models'], { env: process.env, timeoutMs: 20_000 })
+      if (listed.code !== 0) throw new Error('Pi model discovery failed')
       if (listed.code === 0) {
         const models = parsePiModelList(listed.stdout)
         capabilities = { ...piCapabilities, models: models.length ? models : undefined }
         if (
           !models.length &&
-          /sign.?in|auth|credential|api key/i.test(`${listed.stdout}\n${listed.stderr}`)
+          /no models available|sign.?in|auth|credential|api key/i.test(
+            `${listed.stdout}\n${listed.stderr}`,
+          )
         )
           status = 'needs-sign-in'
       }
@@ -486,6 +492,8 @@ class PiSession implements ProviderSession {
         )
       }
       const last = messages.filter(isObj).at(-1)
+      if (last?.stopReason === 'error')
+        this.emit({ type: 'error', message: str(last.errorMessage) ?? 'Pi request failed' }, turnId)
       this.emit(
         {
           type: 'turn.completed',
@@ -583,6 +591,13 @@ class PiSession implements ProviderSession {
       p.reject(error)
     }
     this.pending.clear()
+    if (this.running && !this.closed) {
+      this.running = false
+      for (const event of this.mapper.abandonTools()) this.queue.push(event)
+      const turnId = `turn-${this.turn}`
+      this.emit({ type: 'error', message: error.message }, turnId)
+      this.emit({ type: 'turn.completed', reason: 'error' }, turnId)
+    }
   }
   private async announceCommands() {
     try {

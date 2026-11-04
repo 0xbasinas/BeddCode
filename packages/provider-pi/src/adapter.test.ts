@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it } from 'vitest'
 import { createLogger } from '@beddcode/shared'
-import { createPiAdapter, parsePiModels, type PiSpawn } from './adapter.ts'
+import { createPiAdapter, parsePiModelList, parsePiModels, type PiSpawn } from './adapter.ts'
 
 function fakeChild() {
   const child = new EventEmitter() as EventEmitter & {
@@ -51,6 +51,70 @@ describe('Pi adapter', () => {
   it('detects a missing Pi installation', async () => {
     const [instance] = await createPiAdapter({ executablePath: 'C:/missing/pi' }).detect()
     expect(instance).toMatchObject({ kind: 'pi', status: 'not-installed' })
+  })
+  it('parses the thinking column and ignores model discovery guidance', () => {
+    expect(parsePiModelList('No models available. Set an API key or use /login.')).toEqual([])
+    expect(
+      parsePiModelList(
+        'provider model context max-out thinking images\nopenai vision 128K 16K no yes',
+      ),
+    ).toEqual([{ id: 'openai/vision', label: 'vision', efforts: ['off'] }])
+  })
+  it('reports unavailable models and failed discovery accurately', async () => {
+    const run = async (_file: string, args: string[]) => ({
+      code: args[0] === '--version' ? 0 : 0,
+      stdout: args[0] === '--version' ? '1.2.3' : 'No models available. Set an API key.',
+      stderr: '',
+    })
+    const adapter = createPiAdapter({ executablePath: process.execPath, run: run as never })
+    expect((await adapter.detect())[0]).toMatchObject({ status: 'needs-sign-in' })
+    const failed = createPiAdapter({
+      executablePath: process.execPath,
+      log: createLogger('test', 'error'),
+      run: (async (_file: string, args: string[]) => ({
+        code: args[0] === '--version' ? 0 : 1,
+        stdout: '',
+        stderr: '',
+      })) as never,
+    })
+    expect((await failed.detect())[0]).toMatchObject({ status: 'error' })
+  })
+  it('surfaces provider errors and closes turns when the process exits', async () => {
+    const child = fakeChild()
+    const adapter = createPiAdapter({
+      executablePath: process.execPath,
+      sessionDir: '/tmp/bedd-pi',
+      spawnFn: () => child as never,
+    })
+    const session = await adapter.startSession('pi', { sessionId: 's', cwd: '/work' })
+    const events: any[] = []
+    const consume = (async () => {
+      for await (const event of session.events) events.push(event)
+    })()
+    await session.prompt({ text: 'hello' })
+    child.stdout.write(`${JSON.stringify({ type: 'agent_start' })}\n`)
+    child.stdout.write(
+      `${JSON.stringify({ type: 'agent_end', messages: [{ role: 'assistant', stopReason: 'error', errorMessage: '429 rate limit' }] })}\n`,
+    )
+    child.stdout.write(`${JSON.stringify({ type: 'agent_start' })}\n`)
+    child.stdout.write(
+      `${JSON.stringify({ type: 'tool_execution_start', toolCallId: 't', toolName: 'bash', args: {} })}\n`,
+    )
+    child.emit('close', 1)
+    await session.close()
+    await consume
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'error', message: '429 rate limit', turnId: 'turn-1' }),
+        expect.objectContaining({ type: 'tool.completed', toolId: 't', ok: false }),
+        expect.objectContaining({
+          type: 'error',
+          message: 'Pi exited with code 1',
+          turnId: 'turn-2',
+        }),
+        expect.objectContaining({ type: 'turn.completed', reason: 'error', turnId: 'turn-2' }),
+      ]),
+    )
   })
   it('uses RPC, reports provider session, config, tools and turn completion', async () => {
     const child = fakeChild()
