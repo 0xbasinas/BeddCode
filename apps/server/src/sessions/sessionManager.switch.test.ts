@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import { applyEvents, emptyReplica } from '@beddcode/client-runtime/replica'
+import type { PermissionModeOption } from '@beddcode/contracts'
 import { createFakeAdapter, type ProviderAdapter } from '@beddcode/provider-core'
 import { createLogger } from '@beddcode/shared'
 import { AttachmentStore } from '../attachments/store.ts'
@@ -15,11 +16,21 @@ afterEach(async () => {
   for (const fn of clean.splice(0)) await fn()
 })
 
-async function setup(fail = false, resumeBehavior: 'normal' | 'unsupported' | 'lost' = 'normal') {
+async function setup(
+  fail = false,
+  resumeBehavior: 'normal' | 'unsupported' | 'lost' = 'normal',
+  opts: { permissionMode?: string; targetModes?: PermissionModeOption[] } = {},
+) {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'switch-test-'))
   const store = new EventStore(':memory:')
   const fake = createFakeAdapter({ delayMs: 0, advanced: true })
-  const starts: { id: string; resumeId?: string; model?: string; effort?: string }[] = []
+  const starts: {
+    id: string
+    resumeId?: string
+    model?: string
+    effort?: string
+    permissionMode?: string
+  }[] = []
   const originalStart = fake.startSession.bind(fake)
   const originalCapabilities = fake.capabilities.bind(fake)
   fake.capabilities = (id) => ({
@@ -27,7 +38,13 @@ async function setup(fail = false, resumeBehavior: 'normal' | 'unsupported' | 'l
     resume: resumeBehavior !== 'unsupported',
   })
   fake.startSession = async (id, input) => {
-    starts.push({ id, resumeId: input.resumeId, model: input.model, effort: input.effort })
+    starts.push({
+      id,
+      resumeId: input.resumeId,
+      model: input.model,
+      effort: input.effort,
+      permissionMode: input.permissionMode,
+    })
     if (input.resumeId && resumeBehavior === 'lost') throw new Error('session not found')
     const session = await originalStart(id, input)
     const prompt = session.prompt.bind(session)
@@ -40,9 +57,19 @@ async function setup(fail = false, resumeBehavior: 'normal' | 'unsupported' | 'l
   const prompts: string[] = []
   const target: ProviderAdapter = {
     ...fake,
+    capabilities: (id) => ({
+      ...fake.capabilities(id),
+      ...(opts.targetModes ? { permissionModes: opts.targetModes } : {}),
+    }),
     detect: async () => (await fake.detect()).map((i) => ({ ...i, id: 'target', label: 'Target' })),
     startSession: async (id, input) => {
-      starts.push({ id, resumeId: input.resumeId, model: input.model, effort: input.effort })
+      starts.push({
+        id,
+        resumeId: input.resumeId,
+        model: input.model,
+        effort: input.effort,
+        permissionMode: input.permissionMode,
+      })
       if (fail) throw new Error('target failed')
       const session = await fake.startSession(id, input)
       const prompt = session.prompt.bind(session)
@@ -66,7 +93,12 @@ async function setup(fail = false, resumeBehavior: 'normal' | 'unsupported' | 'l
     store.close()
     rmSync(dir, { recursive: true, force: true })
   })
-  const { sessionId } = await manager.create({ instanceId: 'fake', cwd: dir, title: 'Goal' })
+  const { sessionId } = await manager.create({
+    instanceId: 'fake',
+    cwd: dir,
+    title: 'Goal',
+    permissionMode: opts.permissionMode,
+  })
   return { manager, store, sessionId, prompts, starts }
 }
 
@@ -211,4 +243,43 @@ it('resets model and effort to the target agent last-used choice, else its defau
   expect((await manager.switchAgent({ sessionId, instanceId: 'target' })).ok).toBe(true)
   expect(starts.at(-1)).toMatchObject({ id: 'target', model: 'b-model', effort: 'low' })
   expect(view()).toMatchObject({ instanceId: 'target', model: 'b-model', effort: 'low' })
+})
+
+it('starts the target in the same permission level and records it on the event', async () => {
+  const { manager, store, sessionId, starts } = await setup(false, 'normal', {
+    permissionMode: 'full',
+  })
+  expect((await manager.switchAgent({ sessionId, instanceId: 'target' })).ok).toBe(true)
+  expect(starts.at(-1)).toMatchObject({ id: 'target', permissionMode: 'full' })
+  const switched = store
+    .readSession(sessionId)
+    .find(({ event }) => event.type === 'session.switched')
+  expect(switched?.event).toMatchObject({
+    permissionMode: 'full',
+    permissionLabel: 'Full access',
+  })
+  expect(switched?.event).not.toHaveProperty('permissionNote')
+  expect(manager.currentMode(sessionId)).toBe('full')
+  const view = applyEvents(emptyReplica(), store.readSession(sessionId)).sessions[sessionId]
+  expect(view?.currentModeId).toBe('full')
+})
+
+it('falls back to the closest safer mode when the target lacks the level', async () => {
+  const { manager, store, sessionId, starts } = await setup(false, 'normal', {
+    permissionMode: 'full',
+    targetModes: [
+      { id: 'ask', label: 'Ask before tools' },
+      { id: 'edits', label: 'Auto-accept edits' },
+    ],
+  })
+  expect((await manager.switchAgent({ sessionId, instanceId: 'target' })).ok).toBe(true)
+  expect(starts.at(-1)?.permissionMode).toBe('edits')
+  const switched = store
+    .readSession(sessionId)
+    .find(({ event }) => event.type === 'session.switched')
+  expect(switched?.event).toMatchObject({
+    permissionMode: 'edits',
+    permissionNote: "Full access isn't available in Target; using Accept edits.",
+  })
+  expect(manager.currentMode(sessionId)).toBe('edits')
 })

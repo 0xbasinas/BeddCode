@@ -20,7 +20,13 @@ export function SwitchMarkerView({
   item,
   providers,
 }: {
-  item: { from: string; to: string; handoff: string }
+  item: {
+    from: string
+    to: string
+    handoff: string
+    permissionLabel?: string
+    permissionNote?: string
+  }
   providers?: ProviderInstance[]
 }) {
   return (
@@ -28,6 +34,11 @@ export function SwitchMarkerView({
       <summary>
         Switched from {agentLabel(providers, item.from)} to {agentLabel(providers, item.to)}
       </summary>
+      {item.permissionNote ? (
+        <p className="handoff-permissions">{item.permissionNote}</p>
+      ) : item.permissionLabel ? (
+        <p className="handoff-permissions">Permissions: {item.permissionLabel}</p>
+      ) : null}
       <HandoffNote note={item.handoff} />
     </details>
   )

@@ -98,7 +98,15 @@ export type TranscriptItem =
       tokensAfter?: number
     }
   | { kind: 'notice'; id: string; message: string; transient?: boolean; key?: string }
-  | { kind: 'switch'; id: string; from: string; to: string; handoff: string }
+  | {
+      kind: 'switch'
+      id: string
+      from: string
+      to: string
+      handoff: string
+      permissionLabel?: string
+      permissionNote?: string
+    }
   | { kind: 'error'; id: string; message: string }
 
 export interface SessionView {
@@ -457,7 +465,15 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.segments = projectSegmentEvent(segments, e)
       next.items = [
         ...current.items,
-        { kind: 'switch', id, from: current.instanceId, to: e.instanceId, handoff: e.handoff },
+        {
+          kind: 'switch',
+          id,
+          from: current.instanceId,
+          to: e.instanceId,
+          handoff: e.handoff,
+          permissionLabel: e.permissionLabel,
+          permissionNote: e.permissionNote,
+        },
       ]
       next.instanceId = e.instanceId
       next.model = e.model
@@ -466,7 +482,8 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       // its own, and until then the composer must not show the old agent's.
       next.config = []
       next.modes = []
-      next.currentModeId = undefined
+      // The mode carried over is shown until the new agent announces its own list.
+      next.currentModeId = e.permissionMode
       next.commands = []
       break
     }

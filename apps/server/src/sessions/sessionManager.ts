@@ -1,6 +1,6 @@
 import { applyEvents, emptyReplica, type SessionView } from '@beddcode/client-runtime/replica'
 import { handoffPrompt, type HandoffFile } from '@beddcode/client-runtime/handoff'
-import { lastUsedModel } from '@beddcode/contracts'
+import { carryPermissionMode, lastUsedModel } from '@beddcode/contracts'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { performance } from 'node:perf_hooks'
@@ -15,6 +15,7 @@ import type {
   HistoryEntry,
   McpServer,
   McpServerInput,
+  PermissionModeOption,
   ProviderInstance,
   RpcParams,
   RpcResult,
@@ -709,11 +710,20 @@ export class SessionManager {
       const last = lastUsedModel(segments, instanceId)
       const model = params.model ?? last?.model
       const effort = !params.model || params.model === last?.model ? last?.effort : undefined
+      // The approval level goes with the session: the closest equal-or-safer mode the target has.
+      const currentModeId = this.currentMode(sessionId)
+      const currentMode = this.currentModes(sessionId).find((m) => m.id === currentModeId)
+      const carried = carryPermissionMode(
+        currentMode ?? currentModeId,
+        target.adapter.capabilities(instanceId).permissionModes,
+        target.instance.label,
+      )
       const input: StartSessionInput = {
         sessionId,
         cwd: created.cwd,
         model,
         effort,
+        permissionMode: carried.modeId,
         additionalDirectories: [this.deps.attachments.root],
         terminalHost: this.agentTerminal(
           sessionId,
@@ -748,6 +758,9 @@ export class SessionManager {
         model,
         effort,
         handoff: draft,
+        permissionMode: carried.modeId,
+        permissionLabel: carried.label,
+        permissionNote: carried.note,
       })
       if (resumeId)
         this.deps.store.append({
@@ -766,7 +779,7 @@ export class SessionManager {
       })
       this.preambles.set(sessionId, draft)
       try {
-        this.announceModes(sessionId, target.adapter, instanceId, undefined)
+        this.announceModes(sessionId, target.adapter, instanceId, carried.modeId)
       } catch (err) {
         this.deps.log.warn(`Could not announce modes for ${sessionId}`, err)
       }
@@ -1767,6 +1780,14 @@ export class SessionManager {
   /** A turn is running, or about to. */
   isBusy(sessionId: string): boolean {
     return this.turns.get(sessionId)?.busy ?? false
+  }
+
+  /** The modes the session's agent last announced. */
+  private currentModes(sessionId: string): PermissionModeOption[] {
+    let modes: PermissionModeOption[] = []
+    for (const { event } of this.deps.store.readSession(sessionId))
+      if (event.type === 'session.modes') modes = event.modes
+    return modes
   }
 
   /** The permission mode the session is in now, and the modes it could be in. */

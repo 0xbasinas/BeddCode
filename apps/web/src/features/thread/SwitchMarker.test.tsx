@@ -35,4 +35,31 @@ describe('switch marker', () => {
     )
     expect(bare).toContain('Switched from a to b')
   })
+
+  it('shows the carried permission mode in the expanded marker', () => {
+    const carried = renderToStaticMarkup(
+      <SwitchMarkerView
+        item={{ from: 'claude-1', to: 'grok-1', handoff: note, permissionLabel: 'Full access' }}
+        providers={providers}
+      />,
+    )
+    expect(carried).toContain('Permissions: Full access')
+  })
+
+  it('shows the downgrade note instead when the mode could not be carried', () => {
+    const downgraded = renderToStaticMarkup(
+      <SwitchMarkerView
+        item={{
+          from: 'claude-1',
+          to: 'grok-1',
+          handoff: note,
+          permissionLabel: 'Accept edits',
+          permissionNote: "Full access isn't available in Grok; using Accept edits.",
+        }}
+        providers={providers}
+      />,
+    )
+    expect(downgraded).toContain('Full access isn&#x27;t available in Grok; using Accept edits.')
+    expect(downgraded).not.toContain('Permissions:')
+  })
 })

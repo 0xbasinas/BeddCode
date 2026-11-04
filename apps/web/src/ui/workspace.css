@@ -204,6 +204,9 @@ a {
 .handoff-marker summary {
   cursor: pointer;
 }
+.handoff-permissions {
+  margin: calc(8px * var(--ui-scale)) 0 0;
+}
 .handoff-note {
   display: flex;
   flex-direction: column;

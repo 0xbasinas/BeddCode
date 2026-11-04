@@ -163,6 +163,12 @@ export const SessionEvent = z.discriminatedUnion('type', [
     model: z.string().optional(),
     effort: z.string().optional(),
     handoff: z.string().max(100_000),
+    /** The permission mode the new agent started in, carried over from the old one. */
+    permissionMode: z.string().optional(),
+    /** Its display name ("Full access"). */
+    permissionLabel: z.string().optional(),
+    /** Set when the mode could not be carried over exactly. */
+    permissionNote: z.string().optional(),
   }),
   Base.extend({ type: z.literal('session.renamed'), title: z.string().trim().min(1).max(120) }),
   Base.extend({

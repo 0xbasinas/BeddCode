@@ -603,7 +603,13 @@ function SwitchMarker({
   item,
   hostKey,
 }: {
-  item: { from: string; to: string; handoff: string }
+  item: {
+    from: string
+    to: string
+    handoff: string
+    permissionLabel?: string
+    permissionNote?: string
+  }
   hostKey?: string
 }) {
   const [open, setOpen] = useState(false)
@@ -617,6 +623,11 @@ function SwitchMarker({
       <Muted size={12.5} style={{ textAlign: 'center' }}>
         Switched from {agentLabel(providers, item.from)} to {agentLabel(providers, item.to)}
       </Muted>
+      {open && (item.permissionNote || item.permissionLabel) ? (
+        <Muted size={12} style={{ marginTop: 8 }}>
+          {item.permissionNote ?? `Permissions: ${item.permissionLabel}`}
+        </Muted>
+      ) : null}
       {open
         ? parseHandoffNote(item.handoff).map((part, i) => (
             <View key={i} style={{ marginTop: 8 }}>
