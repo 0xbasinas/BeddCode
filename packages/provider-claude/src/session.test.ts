@@ -122,6 +122,22 @@ const start = (
 }
 
 describe('ClaudeSession', () => {
+  it('rejects unknown approval options without resolving the pending request', async () => {
+    const h = fakeSdk()
+    const session = start(h)
+    const turn = session.prompt({ text: 'run tests' })
+    const events = await collectUntil(session, (e) => e.type === 'approval.requested')
+    const request = events.find((e) => e.type === 'approval.requested')!
+    if (request.type !== 'approval.requested') throw new Error('missing approval')
+    await expect(session.respondToApproval(request.requestId, 'unknown')).rejects.toThrow(
+      'Invalid approval option',
+    )
+    expect(h.decisions).toEqual([])
+    await session.respondToApproval(request.requestId, 'deny')
+    await turn
+    expect(h.decisions[0]?.behavior).toBe('deny')
+    await session.close()
+  })
   it('uses an ephemeral tool-free configuration for metadata generation', async () => {
     const h = fakeSdk()
     const session = new ClaudeSession(

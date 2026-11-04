@@ -307,6 +307,21 @@ export class ClaudeEventMapper {
         break
       }
 
+      case 'rate_limit_event': {
+        const info = msg.rate_limit_info
+        if (info.status === 'rejected') {
+          const window = info.rateLimitType?.replace(/_/g, ' ')
+          const date = info.resetsAt === undefined ? undefined : new Date(info.resetsAt * 1000)
+          const reset =
+            date && Number.isFinite(date.getTime()) ? ` Resets at ${date.toISOString()}.` : ''
+          out.push({
+            type: 'error',
+            message: `Claude rate limit reached${window ? ` (${window})` : ''}.${reset}`,
+          })
+        }
+        break
+      }
+
       case 'result': {
         const failed = msg.is_error || msg.subtype !== 'success'
         if (this.interrupted) {

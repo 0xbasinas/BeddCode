@@ -43,6 +43,7 @@ interface PendingApproval {
   suggestions: PermissionResultSuggestions
   /** The request is ExitPlanMode: approving it leaves plan mode. */
   plan?: boolean
+  canRemember: boolean
 }
 
 interface PendingQuestion {
@@ -256,6 +257,12 @@ export class ClaudeSession implements ProviderSession {
   async respondToApproval(requestId: string, optionId: string) {
     const waiting = this.pending.get(requestId)
     if (!waiting) throw new Error(`No pending approval ${requestId}`)
+    const valid =
+      optionId === ALLOW ||
+      optionId === DENY ||
+      (optionId === ALLOW_EDITS && waiting.plan) ||
+      (optionId === ALLOW_SESSION && !waiting.plan && waiting.canRemember)
+    if (!valid) throw new Error(`Invalid approval option ${optionId}`)
     this.pending.delete(requestId)
 
     if (optionId === DENY) {
@@ -345,6 +352,7 @@ export class ClaudeSession implements ProviderSession {
         input,
         suggestions: options.suggestions,
         plan: plan !== undefined,
+        canRemember,
       })
       options.signal.addEventListener(
         'abort',

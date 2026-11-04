@@ -78,4 +78,13 @@ describe('Claude adapter model capabilities', () => {
     expect((await adapter.detect())[0]?.status).toBe('needs-sign-in')
     expect(queryFn).not.toHaveBeenCalled()
   })
+
+  it('reports a broken executable as an error without checking authentication', async () => {
+    vi.mocked(runCommand).mockResolvedValueOnce({ code: 1, stdout: '', stderr: 'failed' })
+    const queryFn = vi.fn()
+    const [instance] = await createClaudeAdapter({ queryFn, log }).detect()
+    expect(instance?.status).toBe('error')
+    expect(runCommand).toHaveBeenCalledTimes(1)
+    expect(queryFn).not.toHaveBeenCalled()
+  })
 })
