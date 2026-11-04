@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { SessionEvent, projectSessionSegments, type StoredEvent } from '@beddcode/contracts'
 import { createLogger, type Logger } from '@beddcode/shared'
 import { migrations } from './migrations.ts'
+import { DurableJobs } from './jobs.ts'
 import { SUPERSEDED_TYPES } from './compact.ts'
 import { isSnapshot, snapshotKey } from './snapshots.ts'
 
@@ -57,6 +58,7 @@ export class EventStore {
   private readonly lastSnapshotStmt
   private readonly listeners = new Set<EventListener>()
   private notificationBatch: StoredEvent[] | null = null
+  readonly jobs: DurableJobs
   /** Identifies this log; a new database has a new one. Devices check it before trusting a saved copy. */
   readonly logId: string
   /** The latest commands/config/modes event per session and type, to skip unchanged repeats. */
@@ -85,6 +87,7 @@ export class EventStore {
       this.db.close()
       throw err
     }
+    this.jobs = new DurableJobs(this.db)
     this.logId = (
       this.db.prepare("SELECT value FROM meta WHERE key = 'logId'").get() as { value: string }
     ).value

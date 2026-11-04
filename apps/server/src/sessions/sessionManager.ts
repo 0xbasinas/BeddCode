@@ -885,8 +885,6 @@ export class SessionManager {
       }
     }
     const queueId = randomUUID()
-    if (afterStop && turn.queue.length === 0) turn.sendAfterInterrupt = queueId
-    turn.queue.push({ queueId, text, attachments })
     this.deps.store.append({
       type: 'prompt.queued',
       sessionId,
@@ -895,6 +893,8 @@ export class SessionManager {
       text,
       attachments: attachments.length > 0 ? attachments : undefined,
     })
+    if (afterStop && turn.queue.length === 0) turn.sendAfterInterrupt = queueId
+    turn.queue.push({ queueId, text, attachments })
     return { state: 'queued', queueId }
   }
 
@@ -1638,6 +1638,32 @@ export class SessionManager {
     }
     await this.close()
     return resumable
+  }
+
+  /** Start messages left waiting when the host stopped. A failed resume leaves them queued. */
+  async resumeQueuedAfterRestart() {
+    const ids = new Set<string>()
+    let cursor = 0
+    for (;;) {
+      const events = this.deps.store.readAfter(cursor, 5000)
+      if (!events.length) break
+      for (const { event } of events) {
+        if (event.type === 'prompt.queued') ids.add(event.sessionId)
+        else if (event.type === 'session.deleted') ids.delete(event.sessionId)
+      }
+      cursor = events.at(-1)!.seq
+    }
+    for (const sessionId of ids) {
+      const turn = this.turnState(sessionId)
+      if (turn.busy || !turn.queue.length) continue
+      try {
+        await this.ensureLive(sessionId)
+        // Another request may have started a turn while the provider was opening.
+        if (!turn.busy) this.onTurnEnded(sessionId, 'done')
+      } catch (err) {
+        this.deps.log.error(`could not resume queued messages for ${sessionId}`, err)
+      }
+    }
   }
 
   /** Restores active turns from the saved host-upgrade marker and resends their last user prompt. */

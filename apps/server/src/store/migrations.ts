@@ -62,4 +62,14 @@ export const migrations: (string | ((db: DatabaseSync) => void))[] = [
   );
   CREATE TABLE peer_receipts (message_id TEXT PRIMARY KEY);
   `,
+  // Generic jobs live alongside session events and survive event compaction.
+  `
+  CREATE TABLE jobs (
+    id TEXT PRIMARY KEY, kind TEXT NOT NULL, project TEXT, payload TEXT NOT NULL,
+    state TEXT NOT NULL, position INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+    lease_token TEXT, lease_until INTEGER, error TEXT
+  );
+  CREATE INDEX jobs_state_position ON jobs (state, position);
+  `,
 ]
