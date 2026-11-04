@@ -41,7 +41,7 @@ import { findWebRoot } from './web/static.ts'
 import { TailscaleService } from './network/tailscale.ts'
 import { reachableRoutes } from './network/reachable.ts'
 import { extendUserPath } from './agents/userPath.ts'
-import { SessionManager } from './sessions/sessionManager.ts'
+import { SessionManager, type SessionManagerDeps } from './sessions/sessionManager.ts'
 import { recoverInterruptedTurns, takeInterruptedSessions } from './sessions/recovery.ts'
 import { openEventStore } from './store/eventStore.ts'
 import { startServer } from './transport/server.ts'
@@ -58,7 +58,10 @@ import { createAutomation } from './automation/index.ts'
 import { GatewayControl } from './mcpGateway/control.ts'
 
 /** Starts the host and keeps running until SIGINT/SIGTERM. */
-export async function runServer(config: ServerConfig): Promise<void> {
+export async function runServer(
+  config: ServerConfig,
+  options: { warmPool?: SessionManagerDeps['warmPool'] } = {},
+): Promise<void> {
   const log = createLogger('server')
   // Before any agent adapter copies process.env: a background host would otherwise miss CLIs
   // installed for the user (see userPath.ts).
@@ -117,6 +120,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     defaultCwd: process.cwd(),
     sessionRoot: path.join(home, 'sessions'),
     previews: new PreviewCache(path.join(home, 'agent-previews.json')),
+    warmPool: options.warmPool,
   })
   const agents = new AgentCatalog(
     acpStore,
