@@ -213,6 +213,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       telemetry: options.telemetry,
     },
     options.automation,
+    store,
   )
 
   const http = createServer((req, res) => {
@@ -569,6 +570,11 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
             store,
             afterSeq,
             sessionId: frame.sessionId,
+            sessionCursors:
+              frame.sessionId === undefined &&
+              (frame.logId === undefined || frame.logId === store.logId)
+                ? frame.sessionCursors
+                : undefined,
             reset:
               frame.sessionId !== undefined &&
               frame.afterSeq !== undefined &&

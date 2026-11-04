@@ -260,6 +260,20 @@ export class EventStore {
     return this.parseRows(rows)
   }
 
+  pageSession(sessionId: string, beforeSeq: number | undefined, limit: number) {
+    const rows = this.db
+      .prepare(
+        'SELECT seq, session_seq, payload FROM events WHERE session_id = ? AND session_seq < ? ORDER BY session_seq DESC LIMIT ?',
+      )
+      .all(sessionId, beforeSeq ?? Number.MAX_SAFE_INTEGER, limit + 1) as {
+      seq: number
+      session_seq: number
+      payload: string
+    }[]
+    const events = this.parseRows(rows)
+    return { events: events.slice(0, limit).reverse(), hasMore: rows.length > limit }
+  }
+
   sessionLastSeq(sessionId: string): number {
     return (
       (
@@ -313,6 +327,7 @@ export class EventStore {
   /** Removes a session's events before `beforeSeq`; the log keeps its numbers, with a gap. */
   purgeSession(sessionId: string, beforeSeq: number): void {
     this.db.prepare('DELETE FROM events WHERE session_id = ? AND seq < ?').run(sessionId, beforeSeq)
+    this.recent.delete(sessionId)
     for (const slot of [...this.snapshots.keys()]) {
       if (
         slot.startsWith(`${sessionId}

@@ -51,6 +51,7 @@ export const ClientFrame = z.discriminatedUnion('t', [
     afterSeq: z.number().int().nonnegative().optional(),
     /** Scope the cursor and event stream to one session. */
     sessionId: z.string().optional(),
+    sessionCursors: z.record(z.string(), z.number().int().nonnegative()).optional(),
     /**
      * The client understands a compact replay: streamed text joined into one event and superseded
      * state left out. The state it builds is the same; far fewer frames cross the wire.
@@ -176,6 +177,7 @@ export const ServerFrame = z.discriminatedUnion('t', [
     sessionId: z.string().optional(),
     /** The requested session cursor cannot be replayed; discard the cached session. */
     truncated: z.boolean().optional(),
+    latestSeq: z.number().int().nonnegative().optional(),
   }),
   /** An agent's browser tool call for this client to run (only sent to clients that offered). */
   /** A design canvas was saved or changed (by a client or an agent); fetch it with `design.get`. */

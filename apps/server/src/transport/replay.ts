@@ -14,6 +14,7 @@ export function replaySubscription(options: {
   store: EventStore
   afterSeq: number
   sessionId?: string
+  sessionCursors?: Record<string, number>
   reset?: boolean
   compact?: boolean
   batch?: boolean
@@ -31,11 +32,17 @@ export function replaySubscription(options: {
   const gap =
     options.sessionId !== undefined &&
     (options.reset || !store.sessionReplayAvailable(options.sessionId, options.afterSeq, through))
+  const cursors = options.sessionId === undefined ? options.sessionCursors : undefined
+  const gaps = new Map<string, number>()
+  for (const [id, after] of Object.entries(cursors ?? {})) {
+    const latest = store.sessionLastSeq(id)
+    if (!store.sessionReplayAvailable(id, after, latest)) gaps.set(id, latest)
+  }
   const compactor =
-    options.compact && options.sessionId === undefined
+    options.compact && options.sessionId === undefined && !Object.keys(cursors ?? {}).length
       ? new ReplayCompactor(store.latestStateSeqs(options.afterSeq, through))
       : undefined
-  let cursor = options.afterSeq
+  let cursor = cursors && Object.keys(cursors).length ? 0 : options.afterSeq
   let pending: StoredEvent[] = []
   let pendingBytes = 0
   let replaying = true
@@ -100,7 +107,15 @@ export function replaySubscription(options: {
         options.sessionId === undefined
           ? store.readAfter(cursor, READ_BATCH, through)
           : store.readSessionAfter(options.sessionId, cursor, through, READ_BATCH)
-      ready = compactor ? compactor.compact(rows) : rows
+      const selected = cursors
+        ? rows.filter((row) => {
+            const id = row.event.sessionId
+            return Object.hasOwn(cursors, id)
+              ? !gaps.has(id) && (row.sessionSeq ?? 0) > cursors[id]!
+              : row.seq > options.afterSeq
+          })
+        : rows
+      ready = compactor ? compactor.compact(selected) : selected
       offset = 0
       cursor =
         (options.sessionId === undefined ? rows.at(-1)?.seq : rows.at(-1)?.sessionSeq) ?? cursor
@@ -108,6 +123,8 @@ export function replaySubscription(options: {
       count += ready.length
       return schedule()
     }
+    for (const [sessionId, latestSeq] of gaps)
+      options.send({ t: 'caught-up', seq: latestSeq, sessionId, latestSeq, truncated: true })
     options.send({
       t: 'caught-up',
       seq: through,

@@ -625,6 +625,40 @@ describe('server', () => {
     expect(legacy.events()).toHaveLength(4)
   })
 
+  it('replays host-wide session cursors and pages retained events', async () => {
+    const { server, store } = await boot()
+    for (const id of ['s', 'other', 's', 'other', 's'])
+      store.append({ type: 'error', sessionId: id, at: 1, message: id })
+    store.purgeSession('other', 4)
+    const client = await Client.connect(server.port)
+    client.send({ t: 'subscribe', afterSeq: 4, sessionCursors: { s: 1, other: 0 }, batch: true })
+    await client.until((fs) => fs.some((f) => f.t === 'caught-up' && f.sessionId === undefined))
+    expect(
+      client.frames.flatMap((f) => (f.t === 'events' ? f.events.map((e) => e.sessionSeq) : [])),
+    ).toEqual([2, 3])
+    expect(client.frames).toContainEqual({
+      t: 'caught-up',
+      sessionId: 'other',
+      seq: 2,
+      latestSeq: 2,
+      truncated: true,
+    })
+    const page = await client.rpc('session.events.page', { sessionId: 's', limit: 2 })
+    expect(page).toMatchObject({
+      ok: true,
+      result: { events: [{ sessionSeq: 2 }, { sessionSeq: 3 }], hasMore: true },
+    })
+    const older = await client.rpc('session.events.page', {
+      sessionId: 's',
+      beforeSeq: 2,
+      limit: 2,
+    })
+    expect(older).toMatchObject({
+      ok: true,
+      result: { events: [{ sessionSeq: 1 }], hasMore: false },
+    })
+  })
+
   it('signals a gap when the ring and the retained log cannot cover a cursor', async () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'bc-resume-gap-'))
     cleanup.push(() => removeDir(dir))

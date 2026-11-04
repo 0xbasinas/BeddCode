@@ -20,6 +20,9 @@ import { RelaySocket, isRelayRoute } from './relaySocket.ts'
 export type ConnectionState =
   'connecting' | 'connected' | 'reconnecting' | 'incompatible' | 'stopped' | 'denied'
 
+/** Whether the event stream is disconnected, replaying, or ready for live updates. */
+export type StreamState = 'reconnecting' | 'catching-up' | 'live'
+
 /** How long an incompatible host waits between tries: someone has to update one side first. */
 const INCOMPATIBLE_RETRY_MS = 60_000
 
@@ -42,6 +45,11 @@ export interface HostClientOptions {
   onReset?(): void
   onEvent(stored: StoredEvent): void
   onCaughtUp?(seq: number): void
+  /** Replace a session's history after a replay gap. */
+  onSessionReload?(sessionId: string, page: RpcResult<'session.events.page'>): void
+  onSessionReloadError?(sessionId: string, error: unknown): void
+  sessionPageSize?: number
+  onStreamState?(state: StreamState): void
   /** Terminal output and file-change notifications: live data that is not part of the event log. */
   onFrame?(
     frame: Extract<
@@ -103,9 +111,13 @@ interface Pending {
 export class HostClient {
   private ws: WebSocket | null = null
   private state: ConnectionState = 'connecting'
+  private stream: StreamState = 'reconnecting'
   /** Routes whose host answered with another protocol version on the last try. */
   private readonly mismatched = new Set<number>()
   private lastSeq: number
+  private readonly sessionCursors = new Map<string, number>()
+  private readonly oldestSessionSeq = new Map<string, number>()
+  private readonly reloading = new Map<string, StoredEvent[]>()
   /** The log being followed; learned at the first welcome, or given by a restored copy. */
   private logId: string | undefined
   /** True until the first replay ends, when the history held at the start came from disk. */
@@ -161,6 +173,10 @@ export class HostClient {
     return this.state
   }
 
+  get streamState(): StreamState {
+    return this.stream
+  }
+
   get seq(): number {
     return this.lastSeq
   }
@@ -172,6 +188,7 @@ export class HostClient {
   }
 
   stop() {
+    this.setStreamState('reconnecting')
     this.setState('stopped')
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
@@ -209,6 +226,55 @@ export class HostClient {
       this.open()
     }
     // Otherwise a connection attempt is already under way.
+  }
+
+  /** Read the next older page, before the earliest event already loaded for this session. */
+  async loadOlder(sessionId: string): Promise<RpcResult<'session.events.page'>> {
+    const page = await this.request('session.events.page', {
+      sessionId,
+      beforeSeq: this.oldestSessionSeq.get(sessionId),
+      limit: this.options.sessionPageSize ?? 200,
+    })
+    this.rememberPage(sessionId, page.events)
+    return page
+  }
+
+  private rememberPage(sessionId: string, events: StoredEvent[]) {
+    for (const stored of events) {
+      if (stored.sessionSeq === undefined) continue
+      this.oldestSessionSeq.set(
+        sessionId,
+        Math.min(this.oldestSessionSeq.get(sessionId) ?? Infinity, stored.sessionSeq),
+      )
+    }
+  }
+
+  private async reloadSession(sessionId: string) {
+    if (this.reloading.has(sessionId)) return
+    const pending: StoredEvent[] = []
+    this.reloading.set(sessionId, pending)
+    try {
+      const page = await this.request('session.events.page', {
+        sessionId,
+        limit: this.options.sessionPageSize ?? 200,
+      })
+      this.oldestSessionSeq.delete(sessionId)
+      this.rememberPage(sessionId, page.events)
+      this.sessionCursors.delete(sessionId)
+      for (const stored of page.events)
+        if (stored.sessionSeq !== undefined)
+          this.sessionCursors.set(
+            sessionId,
+            Math.max(this.sessionCursors.get(sessionId) ?? 0, stored.sessionSeq),
+          )
+      this.options.onSessionReload?.(sessionId, page)
+      this.reloading.delete(sessionId)
+      for (const stored of pending) this.take(stored)
+    } catch (error) {
+      this.reloading.delete(sessionId)
+      for (const stored of pending) this.take(stored)
+      this.options.onSessionReloadError?.(sessionId, error)
+    }
   }
 
   request<M extends RpcMethodName>(method: M, params: RpcParams<M>): Promise<RpcResult<M>> {
@@ -329,6 +395,7 @@ export class HostClient {
     const route = this.route
     const disconnected = () => {
       if (this.ws !== ws) return
+      this.setStreamState('reconnecting')
       // Another version on one saved address may be an old host there; only when every route
       // says so is it this host that cannot be talked to.
       if (mismatch) this.mismatched.add(route)
@@ -367,6 +434,7 @@ export class HostClient {
         JSON.stringify({
           t: 'subscribe',
           afterSeq: this.lastSeq,
+          sessionCursors: Object.fromEntries(this.sessionCursors),
           compact: true,
           batch: true,
           logId: this.logId,
@@ -396,6 +464,8 @@ export class HostClient {
         // A host whose database was replaced has a different log; what we hold is not part of it.
         if (this.logId !== undefined && frame.host.logId !== this.logId) {
           this.lastSeq = 0
+          this.sessionCursors.clear()
+          this.oldestSessionSeq.clear()
           this.restored = false
           this.options.onReset?.()
         }
@@ -428,6 +498,7 @@ export class HostClient {
     switch (frame.t) {
       case 'welcome':
         this.attempt = 0
+        this.setStreamState('catching-up')
         this.setState('connected', frame.host)
         {
           const route = isRelayRoute(this.activeUrl) ? 'relay' : 'direct'
@@ -463,6 +534,10 @@ export class HostClient {
         for (const stored of frame.events) this.take(stored)
         break
       case 'caught-up':
+        if (frame.sessionId !== undefined) {
+          if (frame.truncated) void this.reloadSession(frame.sessionId)
+          break
+        }
         if (this.replay) {
           const { start, events, bytes, resume } = this.replay
           const tags = { route: isRelayRoute(this.activeUrl) ? 'relay' : 'direct', resume }
@@ -475,6 +550,7 @@ export class HostClient {
         // The replay may have joined its last events into earlier ones; this is where it really ended.
         if (frame.seq > this.lastSeq) this.lastSeq = frame.seq
         this.options.onCaughtUp?.(frame.seq)
+        this.setStreamState('live')
         break
       case 'term.out':
       case 'term.exit':
@@ -510,10 +586,19 @@ export class HostClient {
   /** One event from the host: counted, and passed on unless it is one we already hold. */
   private take(stored: StoredEvent) {
     if (this.replay) this.replay.events++
-    if (stored.seq > this.lastSeq) {
-      this.lastSeq = stored.seq
-      this.options.onEvent(stored)
+    const id = stored.event.sessionId
+    const pending = this.reloading.get(id)
+    if (pending) {
+      pending.push(stored)
+      return
     }
+    if (stored.sessionSeq !== undefined) {
+      if (stored.sessionSeq <= (this.sessionCursors.get(id) ?? 0)) return
+      this.sessionCursors.set(id, stored.sessionSeq)
+      this.rememberPage(id, [stored])
+    } else if (stored.seq <= this.lastSeq) return
+    this.lastSeq = Math.max(this.lastSeq, stored.seq)
+    this.options.onEvent(stored)
   }
 
   private scheduleReconnect(incompatible = false) {
@@ -551,5 +636,11 @@ export class HostClient {
   private setState(state: ConnectionState, host?: HostInfo) {
     this.state = state
     this.options.onState?.(state, host)
+  }
+
+  private setStreamState(state: StreamState) {
+    if (this.stream === state) return
+    this.stream = state
+    this.options.onStreamState?.(state)
   }
 }
