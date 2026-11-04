@@ -90,7 +90,8 @@ export function AppShell() {
   // Design is a screen of its own: the whole window, no sessions list or side panes.
   // Scheduled tasks and Linear are the same: a screen of their own, without the sessions list.
   const design = useLocation({
-    select: (location) => ['/design', '/schedules', '/linear'].includes(location.pathname),
+    select: (location) =>
+      ['/design', '/schedules', '/linear', '/board'].includes(location.pathname),
   })
   const navigate = useNavigate()
   useEffect(() => {

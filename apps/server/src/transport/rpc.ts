@@ -445,6 +445,10 @@ export function createRpcRouter(
     },
     'sessions.turnDiff': (p) => sessions.turnDiff(p.sessionId, p.after, p.path),
     'sessions.undoTurn': (p) => sessions.undoTurn(p.sessionId, p.after),
+    'sessions.setBoardStage': async (p) => {
+      sessions.setBoardStage(p.sessionId, p.stage)
+      return {}
+    },
     'sessions.setDone': async (p) => {
       sessions.setDone(p.sessionId, p.done)
       return {}

@@ -224,6 +224,23 @@ describe('SessionManager', () => {
     })
     expect(() => manager.rename('missing', 'No session')).toThrow('Unknown session')
   })
+  it('records board stages without starting a provider or changing earlier events', async () => {
+    const { store, manager } = setup({ resume: true })
+    const { sessionId } = await manager.create({ instanceId: 'stub' })
+    await manager.close()
+    const before = store.readSession(sessionId)
+    manager.setBoardStage(sessionId, 'pending')
+    manager.setBoardStage(sessionId, 'review')
+    manager.setBoardStage(sessionId, 'done')
+    const after = store.readSession(sessionId)
+    expect(after.slice(0, before.length)).toEqual(before)
+    expect(after.slice(before.length).map(({ event }) => event)).toMatchObject([
+      { type: 'session.board-stage', stage: 'pending' },
+      { type: 'session.board-stage', stage: 'review' },
+      { type: 'session.board-stage', stage: 'done' },
+    ])
+    expect(() => manager.setBoardStage('missing', 'pending')).toThrow('Unknown session')
+  })
   it('files a session as done and back, and rejects unknown sessions', async () => {
     const { store, manager } = setup({ resume: true })
     const { sessionId } = await manager.create({ instanceId: 'stub' })

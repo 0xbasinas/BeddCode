@@ -782,6 +782,13 @@ export const RpcMethods = {
     }),
     result: z.object({ text: z.string(), version: z.number().int() }),
   },
+  'sessions.setBoardStage': {
+    params: z.object({
+      sessionId: z.string(),
+      stage: z.enum(['pending', 'in-progress', 'review', 'done']),
+    }),
+    result: z.object({}),
+  },
   /** Moves a session into the sidebar's Done section, or back out of it. */
   'sessions.setDone': {
     params: z.object({ sessionId: z.string(), done: z.boolean() }),

@@ -163,6 +163,45 @@ describe('replica', () => {
     expect(fold([created]).sessions.s1!.projectless).toBeUndefined()
   })
 
+  it('replays board decisions without changing execution history or treating a new turn as done', () => {
+    const finished = fold([
+      { ...created },
+      { type: 'turn.started', turnId: 't1' },
+      { type: 'turn.completed', reason: 'done', turnId: 't1' },
+    ])
+    const before = finished.sessions.s1!
+    const review = applyEvent(finished, {
+      seq: 99,
+      event: { sessionId: 's1', at: 500, type: 'session.board-stage', stage: 'review' },
+    })
+    const done = applyEvent(review, {
+      seq: 100,
+      event: { sessionId: 's1', at: 600, type: 'session.board-stage', stage: 'done' },
+    })
+    expect(done.sessions.s1).toMatchObject({
+      boardStage: 'done',
+      status: before.status,
+      turns: before.turns,
+      completedTurns: before.completedTurns,
+      updatedAt: before.updatedAt,
+    })
+    expect(done.sessions.s1!.items).toEqual(before.items)
+    const restarted = fold([
+      { ...created },
+      { type: 'turn.started', turnId: 't1' },
+      { type: 'turn.completed', reason: 'done', turnId: 't1' },
+      { type: 'session.board-stage', stage: 'review' },
+      { type: 'session.board-stage', stage: 'done' },
+    ])
+    expect(restarted.sessions.s1!.boardStage).toBe('done')
+    const failed = fold([
+      { ...created },
+      { type: 'turn.started', turnId: 't1' },
+      { type: 'turn.completed', reason: 'error', turnId: 't1' },
+    ])
+    expect(failed.sessions.s1!.boardStage).toBeUndefined()
+  })
+
   it('files a session as done without counting it as activity, and a new turn takes it back out', () => {
     const filed = fold([
       { ...created },
