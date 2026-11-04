@@ -5469,14 +5469,15 @@ button.tcall-row:hover .tcall-chevron,
 }
 .child-bar-top {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 0 4px;
 }
 .child-bar-head {
   display: flex;
   align-items: center;
   gap: 7px;
-  flex: 1;
+  flex: 1 1 12rem;
   min-width: 0;
   padding: 5px 10px;
   border-radius: var(--corner-md);
@@ -5489,6 +5490,14 @@ button.tcall-row:hover .tcall-chevron,
 .child-bar-head > span {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.child-bar-head > svg {
+  flex: none;
 }
 .child-bar-head .spin {
   color: var(--accent);
@@ -5545,7 +5554,11 @@ button.tcall-row:hover .tcall-chevron,
   font-size: var(--fs-caption);
 }
 .child-bar-stop-all {
-  margin-right: 6px;
+  margin: 0 6px 0 auto;
+  white-space: nowrap;
+}
+.child-bar-stop {
+  white-space: nowrap;
 }
 .child-bar-stop:hover,
 .child-bar-stop-all:hover {

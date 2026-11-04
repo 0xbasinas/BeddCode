@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { type SessionView } from '@beddcode/client-runtime'
+import { agentDisplayName, type SessionView } from '@beddcode/client-runtime'
 import type { OrchestrationApproval } from '@beddcode/contracts'
 import {
   isActive,
@@ -8,6 +8,7 @@ import {
   touchedFiles,
   WORKER_STATE_LABEL,
   workerActivity,
+  workerModel,
   workerState,
 } from './orchestrationModel.ts'
 import { hostRequest, useHostStore, useRuntime } from '../../stores/host.ts'
@@ -44,11 +45,14 @@ function WorkerCard({
   const files = touchedFiles(worker)
   const shown = filesOpen ? files : files.slice(0, FILES_SHOWN)
   const activity = workerActivity(worker)
+  const model = workerModel(worker)
+  const added = files.reduce((n, f) => n + f.added, 0)
+  const removed = files.reduce((n, f) => n + f.removed, 0)
   const head = (
     <>
       <span className={`orch-dot ${state}`} aria-hidden="true" />
       <span className="orch-agent">{agent}</span>
-      {worker?.model && <span className="orch-model">{worker.model}</span>}
+      {model && <span className="orch-model">{model}</span>}
       <span className="orch-state">{WORKER_STATE_LABEL[state]}</span>
     </>
   )
@@ -75,10 +79,15 @@ function WorkerCard({
           <span>
             {files.length} {files.length === 1 ? 'file' : 'files'} touched
           </span>
+          {(added > 0 || removed > 0) && (
+            <span className="orch-diff">
+              <span className="add">+{added}</span> <span className="del">−{removed}</span>
+            </span>
+          )}
           <ul>
             {shown.map((f) => (
-              <li key={f} title={f}>
-                {f.split('/').slice(-2).join('/')}
+              <li key={f.path} title={f.path}>
+                {f.path.split('/').slice(-2).join('/')}
               </li>
             ))}
           </ul>
@@ -119,6 +128,7 @@ export function OrchestrationPanel({
 }) {
   const sessions = useHostStore((s) => s.runtimes[hostKey]?.replica.sessions ?? emptySessions)
   const { connection, epoch } = useRuntime(hostKey)
+  const providers = useHostStore((s) => s.runtimes[hostKey]?.providers)
   const [approvals, setApprovals] = useState<OrchestrationApproval[]>([])
   const [error, setError] = useState<string>()
   const [busy, setBusy] = useState<string>()
@@ -173,6 +183,8 @@ export function OrchestrationPanel({
       }),
     )
   }
+  const labels: Record<string, string> = {}
+  for (const p of providers ?? []) labels[p.id] = p.label
   const plans = session.orchestrationPlans ?? []
   if (!plans.length && !approvals.length && !error) return null
   const workerFor = (planId: string, taskId: string) =>
@@ -249,7 +261,7 @@ export function OrchestrationPanel({
                   return (
                     <WorkerCard
                       key={task.id}
-                      agent={task.agent}
+                      agent={agentDisplayName(worker?.instanceId ?? task.agent, labels)}
                       prompt={task.prompt}
                       worker={worker}
                       busy={!!busy}

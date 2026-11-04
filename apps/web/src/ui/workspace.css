@@ -1035,6 +1035,8 @@ a {
   overflow: hidden;
   font-size: var(--fs-small);
   color: var(--text-secondary);
+  container-type: inline-size;
+  container-name: orch;
 }
 .orch-head {
   display: flex;
@@ -1072,8 +1074,9 @@ a {
   flex-direction: column;
   gap: 10px;
   padding: 4px 10px 10px;
-  max-height: 40vh;
+  max-height: 45vh;
   overflow: auto;
+  overscroll-behavior: contain;
   overflow-wrap: anywhere;
 }
 .orchestration-content h3 {
@@ -1134,13 +1137,19 @@ a.orch-card-head:hover .orch-agent {
 .orch-agent {
   color: var(--text);
   font-weight: 500;
+  white-space: nowrap;
 }
 .orch-model {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-faint);
   font-size: var(--fs-caption);
 }
 .orch-state {
   margin-left: auto;
+  white-space: nowrap;
   color: var(--text-muted);
   font-size: var(--fs-caption);
 }
@@ -1197,7 +1206,13 @@ a.orch-card-head:hover .orch-agent {
   font-family: var(--font-mono, monospace);
   font-size: var(--fs-caption);
 }
+.orch-diff {
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .orch-link {
+  white-space: nowrap;
   color: var(--text-muted);
   font-size: var(--fs-caption);
   text-decoration: underline;
@@ -1217,6 +1232,8 @@ a.orch-card-head:hover .orch-agent {
   margin-top: 4px;
 }
 .orch-actions button {
+  flex: none;
+  white-space: nowrap;
   padding: 3px 10px;
   border: 1px solid var(--border);
   border-radius: var(--corner-sm);
@@ -1230,13 +1247,17 @@ a.orch-card-head:hover .orch-agent {
 .orch-actions button:disabled {
   opacity: var(--disabled-opacity);
 }
-@media (max-width: 640px) {
+/* Layout follows the thread column, not the viewport. */
+@container orch (max-width: 460px) {
   .orchestration-content {
-    max-height: 35vh;
     padding: 4px 8px 8px;
   }
+  .orch-state {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
   .orch-actions button {
-    flex: 1;
+    flex: 1 0 auto;
     padding: 6px 10px;
   }
 }

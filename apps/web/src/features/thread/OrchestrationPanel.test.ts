@@ -3,6 +3,7 @@ import type { SessionView } from '@beddcode/client-runtime'
 import {
   progressSummary,
   touchedFiles,
+  workerModel,
   WORKER_STATE_LABEL,
   workerState,
 } from './orchestrationModel.ts'
@@ -60,14 +61,60 @@ describe('progress summary', () => {
 })
 
 describe('touched files', () => {
-  it('lists changed files once, skipping reverted ones', () => {
+  it('lists changed files once with their lines, skipping reverted ones', () => {
     const w = worker({
       items: [
-        { kind: 'changes', id: '1', files: [{ path: 'a.ts' }, { path: 'b.ts' }] },
-        { kind: 'changes', id: '2', files: [{ path: 'a.ts' }] },
-        { kind: 'changes', id: '3', reverted: true, files: [{ path: 'c.ts' }] },
+        {
+          kind: 'changes',
+          id: '1',
+          files: [
+            { path: 'a.ts', added: 2, removed: 1 },
+            { path: 'b.ts', added: 1, removed: 0 },
+          ],
+        },
+        { kind: 'changes', id: '2', files: [{ path: 'a.ts', added: 1, removed: 0 }] },
+        {
+          kind: 'changes',
+          id: '3',
+          reverted: true,
+          files: [{ path: 'c.ts', added: 5, removed: 5 }],
+        },
       ] as unknown as SessionView['items'],
     })
-    expect(touchedFiles(w)).toEqual(['a.ts', 'b.ts'])
+    expect(touchedFiles(w)).toEqual([
+      { path: 'a.ts', added: 3, removed: 1 },
+      { path: 'b.ts', added: 1, removed: 0 },
+    ])
+  })
+  it('falls back to the agent’s own diffs when the host recorded no changes', () => {
+    const w = worker({
+      items: [
+        { kind: 'diff', id: 'd', path: 'src/x.ts', added: 4, removed: 1, patch: '' },
+      ] as unknown as SessionView['items'],
+    })
+    expect(touchedFiles(w)).toEqual([{ path: 'src/x.ts', added: 4, removed: 1 }])
+  })
+})
+
+describe('worker model', () => {
+  it('prefers the chosen model, then the agent’s model setting', () => {
+    expect(workerModel(worker({ model: 'opus' }))).toBe('opus')
+    expect(
+      workerModel(
+        worker({
+          config: [
+            {
+              id: 'm',
+              name: 'Model',
+              category: 'model',
+              type: 'select',
+              value: 'x1',
+              choices: [{ value: 'x1', name: 'Grok 4' }],
+            },
+          ],
+        }),
+      ),
+    ).toBe('Grok 4')
+    expect(workerModel(worker({}))).toBeUndefined()
   })
 })

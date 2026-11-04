@@ -1,4 +1,5 @@
 import {
+  buildBlocks,
   childActivity,
   childPhase,
   latestReply,
@@ -50,12 +51,41 @@ export function workerActivity(worker?: SessionView): string | undefined {
   return preview(worker.result?.summary ?? latestReply(worker), 120)
 }
 
-/** Files the worker's turns changed and did not undo. */
-export function touchedFiles(worker?: SessionView): string[] {
+export interface TouchedFile {
+  path: string
+  added: number
+  removed: number
+}
+
+/**
+ * Files the worker changed: what the host recorded per turn, else the agent's own diffs (the same
+ * data the thread list's +/- comes from), minus changes that were undone.
+ */
+export function touchedFiles(worker?: SessionView): TouchedFile[] {
   if (!worker) return []
-  const files = new Set<string>()
-  for (const item of worker.items) {
-    if (item.kind === 'changes' && !item.reverted) for (const f of item.files) files.add(f.path)
+  const files = new Map<string, TouchedFile>()
+  const add = (path: string, added = 0, removed = 0) => {
+    const key = path.replace(/\\/g, '/')
+    const file = files.get(key) ?? { path, added: 0, removed: 0 }
+    file.added += added
+    file.removed += removed
+    files.set(key, file)
   }
-  return [...files]
+  for (const block of buildBlocks(worker.items)) {
+    if (block.kind === 'edits') for (const f of block.files) add(f.path, f.added, f.removed)
+  }
+  for (const item of worker.items) {
+    if (item.kind === 'changes' && !item.reverted) {
+      for (const f of item.files) add(f.path, f.added, f.removed)
+    }
+  }
+  return [...files.values()]
+}
+
+/** The model a worker runs on: what it was started with, else the model its agent reports. */
+export function workerModel(worker?: SessionView): string | undefined {
+  if (!worker) return undefined
+  if (worker.model) return worker.model
+  const option = worker.config.find((o) => o.category === 'model' && typeof o.value === 'string')
+  return option?.choices?.find((c) => c.value === option.value)?.name ?? (option?.value as string)
 }
