@@ -104,7 +104,11 @@ describe('SessionManager: composer features', () => {
     let next: SessionManager | undefined
     try {
       const { sessionId } = await manager.create({ instanceId: 'rec', projectless: true })
-      expect(manager.setNotes(sessionId, 'first', 0)).toEqual({ text: 'first', version: 1 })
+      const operationId = '9de2e768-2e0d-4b84-a49f-cc0726f59d55'
+      expect(manager.setNotes(sessionId, 'first', 0, operationId)).toEqual({ text: 'first', version: 1 })
+      expect(manager.setNotes(sessionId, 'first', 0, operationId)).toEqual({ text: 'first', version: 1 })
+      expect(() => manager.setNotes(sessionId, 'different', 0, operationId)).toThrow('Operation ID')
+      expect(manager.notesReceipt(sessionId, 'missing')).toBeNull()
       expect(() => manager.setNotes(sessionId, 'stale overwrite', 0)).toThrow('another device')
       for (const id of ['a', 'b'])
         store.append({ type: 'prompt.queued', sessionId, at: Date.now(), queueId: id, text: id })
@@ -114,6 +118,7 @@ describe('SessionManager: composer features', () => {
       await manager.close()
       next = make()
       expect(next.notes(sessionId)).toEqual({ text: 'first', version: 1 })
+      expect(next.notesReceipt(sessionId, operationId)).toEqual({ text: 'first', version: 1 })
       // The latest edited text must be reconstructed before another edit can succeed.
       next.editQueued(sessionId, 'a', 'edited after restart', 'edited')
       next.moveQueued(sessionId, 'a', 'up')

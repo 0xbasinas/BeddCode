@@ -132,6 +132,7 @@ export const SessionEvent = z.discriminatedUnion('type', [
     type: z.literal('session.notes'),
     text: z.string().max(100_000),
     version: z.number().int().positive(),
+    operationId: z.string().uuid().optional(),
   }),
   /** The user moved the session to, or back out of, the sidebar's Done section. */
   Base.extend({ type: z.literal('session.done'), done: z.boolean() }),

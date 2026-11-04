@@ -1390,14 +1390,28 @@ export class SessionManager {
       : { text: '', version: 0 }
   }
 
-  setNotes(sessionId: string, text: string, expectedVersion: number) {
+  notesReceipt(sessionId: string, operationId: string) {
+    const event = this.deps.store.readSession(sessionId).map((s) => s.event)
+      .find((e) => e.type === 'session.notes' && e.operationId === operationId)
+    return event?.type === 'session.notes' ? { text: event.text, version: event.version } : null
+  }
+
+  setNotes(sessionId: string, text: string, expectedVersion: number, operationId?: string) {
+    if (operationId) {
+      const saved = this.notesReceipt(sessionId, operationId)
+      if (saved) {
+        if (saved.text !== text || saved.version !== expectedVersion + 1)
+          throw new Error('Operation ID already used for different notes')
+        return saved
+      }
+    }
     const current = this.notes(sessionId)
     if (current.version !== expectedVersion)
       throw new Error(
         'Notes changed on another device. Compare with the latest version before saving.',
       )
     const version = current.version + 1
-    this.deps.store.append({ type: 'session.notes', sessionId, at: Date.now(), text, version })
+    this.deps.store.append({ type: 'session.notes', sessionId, at: Date.now(), text, version, operationId })
     return { text, version }
   }
 

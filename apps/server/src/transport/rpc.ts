@@ -188,7 +188,8 @@ export function createRpcRouter(
       return {}
     },
     'sessions.notes.get': async (p) => sessions.notes(p.sessionId),
-    'sessions.notes.set': async (p) => sessions.setNotes(p.sessionId, p.text, p.expectedVersion),
+    'sessions.notes.set': async (p) => sessions.setNotes(p.sessionId, p.text, p.expectedVersion, p.operationId),
+    'sessions.notes.receipt': async (p) => ({ saved: sessions.notesReceipt(p.sessionId, p.operationId) }),
     'attachments.inspect': async (p) =>
       p.ids.map((id) => {
         const file = attachments.get(id)

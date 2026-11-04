@@ -32,7 +32,7 @@ export function GitOperationStatus({
         <div className="git-operation-message">
           {operation.pending ? pendingText : (operation.error ?? completeText)}
         </div>
-        {!operation.pending && operation.error && (operation.hash || operation.kind === 'push') && (
+        {!operation.pending && operation.error && !operation.unknown && (operation.hash || operation.kind === 'push') && (
           <Button
             variant="app"
             className="link-btn"
