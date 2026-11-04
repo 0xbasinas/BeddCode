@@ -325,6 +325,20 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                 </Link>
               </>
             )}
+            {session.handoffsTo?.map((handoff) => (
+              <span key={handoff.sessionId}>
+                {' '}
+                ·{' '}
+                <Link
+                  to="/session/$sessionId"
+                  params={{ sessionId: handoff.sessionId }}
+                  className="thread-fork-link"
+                >
+                  Handed off to {handoff.agent}
+                  {handoff.reason ? ` because ${handoff.reason}` : ''}
+                </Link>
+              </span>
+            ))}
             {session.imported ? ' · Imported' : ''}
           </div>
         </div>

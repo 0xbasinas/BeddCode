@@ -472,6 +472,7 @@ export const RpcMethods = {
       instanceId: z.string(),
       /** Continue in the exact working directory of an existing session. */
       handoffFrom: z.string().optional(),
+      handoffReason: z.string().max(1000).optional(),
       /** Defaults to the server's working directory for older clients. */
       cwd: z.string().optional(),
       /** Use a persistent session folder managed by the host, without joining a project. */

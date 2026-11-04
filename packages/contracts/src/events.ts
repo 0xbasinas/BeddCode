@@ -127,6 +127,12 @@ export const SessionEvent = z.discriminatedUnion('type', [
     /** Set when the user started this session from the Telegram bot. */
     telegram: z.boolean().optional(),
   }),
+  Base.extend({
+    type: z.literal('session.handed-off'),
+    targetSessionId: z.string(),
+    agent: z.string(),
+    reason: z.string().optional(),
+  }),
   /** The provider's own session id, kept so a stopped session can be resumed later. */
   Base.extend({ type: z.literal('session.provider-session'), providerSessionId: z.string() }),
   Base.extend({ type: z.literal('session.renamed'), title: z.string().trim().min(1).max(120) }),

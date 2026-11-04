@@ -172,6 +172,7 @@ export interface SessionView {
   /** The session this one continues, when it was forked. */
   forkedFrom?: { sessionId: string; title?: string }
   handoffFrom?: { sessionId: string; title?: string }
+  handoffsTo?: { sessionId: string; agent: string; reason?: string; at: number }[]
   /** Started outside BeddCode and brought in. */
   imported?: boolean
   /** Modes reported by the agent for this session, when it reports any. */
@@ -622,6 +623,12 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
           : current.status
       break
     }
+    case 'session.handed-off':
+      next.handoffsTo = [
+        ...(current.handoffsTo ?? []),
+        { sessionId: e.targetSessionId, agent: e.agent, reason: e.reason, at: e.at },
+      ]
+      break
     case 'turn.completed':
       next.completedTurns = current.completedTurns + 1
       if (current.turnStartedAt !== undefined) {

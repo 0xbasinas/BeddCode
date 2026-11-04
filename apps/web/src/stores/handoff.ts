@@ -23,7 +23,12 @@ export function clearHandoff() {
 }
 
 /** Capture the current working tree, including staged and untracked files, for review. */
-export async function prepareHandoff(hostKey: string, session: SessionView, agentLabel?: string) {
+export async function prepareHandoff(
+  hostKey: string,
+  session: SessionView,
+  agentLabel?: string,
+  savePending = true,
+) {
   let changes = ''
   try {
     const status = await hostRequest(hostKey, 'git.status', { cwd: session.cwd })
@@ -47,10 +52,13 @@ export async function prepareHandoff(hostKey: string, session: SessionView, agen
   } catch {
     changes = '\n\nCurrent uncommitted changes: unavailable; inspect the working tree.'
   }
-  setHandoff(hostKey, handoffPrompt(session, { agentLabel }) + changes, {
-    sessionId: session.id,
-    cwd: session.cwd,
-    instanceId: session.instanceId,
-    active: session.status === 'running' || session.status === 'needs-you',
-  })
+  const text = handoffPrompt(session, { agentLabel }) + changes
+  if (savePending)
+    setHandoff(hostKey, text, {
+      sessionId: session.id,
+      cwd: session.cwd,
+      instanceId: session.instanceId,
+      active: session.status === 'running' || session.status === 'needs-you',
+    })
+  return text
 }

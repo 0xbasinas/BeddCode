@@ -1,3 +1,4 @@
+import { AutoHandoffSettings } from './AutoHandoffSettings.tsx'
 import { AgentIcon, agentKind } from '../../ui/AgentMark.tsx'
 import { Button } from '@/components/ui/button'
 import { useEffect, useState } from 'react'
@@ -126,6 +127,7 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
 
   return (
     <>
+      <AutoHandoffSettings hostKey={hostKey} />
       {!online && (
         <p className="settings-notice" role="status">
           This host is offline. Reconnect to manage its agents.

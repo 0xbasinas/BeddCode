@@ -2,6 +2,7 @@ import { doneMenuAction, effortLabel, endedByDecline, folderName } from '@beddco
 import { Checks, DotsThree, Stop as StopIcon, ArrowUUpLeft } from 'phosphor-react-native'
 import { now } from '@beddcode/client-runtime'
 import { useRef, useState } from 'react'
+import { router } from 'expo-router'
 import { Pressable, StyleSheet, View } from 'react-native'
 
 import { Composer } from '@/features/composer/Composer'
@@ -183,6 +184,35 @@ export function ThreadPane({
                 })}
                 {session.worktree ? ` · worktree from ${session.worktree.baseBranch}` : ''}
               </Faint>
+              {session.handoffFrom && (
+                <Pressable
+                  accessibilityRole="link"
+                  onPress={() =>
+                    router.push({
+                      pathname: '/session/[id]',
+                      params: { id: session.handoffFrom!.sessionId },
+                    })
+                  }
+                >
+                  <Faint size={12}>
+                    Continued from {session.handoffFrom.title ?? 'another session'}
+                  </Faint>
+                </Pressable>
+              )}
+              {session.handoffsTo?.map((handoff) => (
+                <Pressable
+                  key={handoff.sessionId}
+                  accessibilityRole="link"
+                  onPress={() =>
+                    router.push({ pathname: '/session/[id]', params: { id: handoff.sessionId } })
+                  }
+                >
+                  <Faint size={12}>
+                    Handed off to {handoff.agent}
+                    {handoff.reason ? ` because ${handoff.reason}` : ''}
+                  </Faint>
+                </Pressable>
+              ))}
               {session.parent ? (
                 <View style={{ alignSelf: 'stretch' }}>
                   <StartedByBanner session={session} hostKey={hostKey} />

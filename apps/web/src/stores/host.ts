@@ -521,6 +521,7 @@ export async function prompt(
   text: string,
   attachmentIds?: string[],
   mode?: 'auto' | 'queue',
+  idempotencyKey?: string,
 ) {
   const started = now()
   // Sending the same message again after a failure reuses its id, so a message that did reach
@@ -531,7 +532,7 @@ export async function prompt(
     text,
     attachments: attachmentIds && attachmentIds.length > 0 ? attachmentIds : undefined,
     mode,
-    clientMessageId: attempt.id,
+    clientMessageId: idempotencyKey ?? attempt.id,
   })
   attempt.done()
   // Enter to the host having the message: the part of sending that is not the agent's thinking.

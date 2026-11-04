@@ -34,3 +34,5 @@ export * from './commandRanking.ts'
 export * from './reviewComments.ts'
 export * from './textLinks.ts'
 export * from './messageIds.ts'
+
+export * from './autoHandoff.ts'
