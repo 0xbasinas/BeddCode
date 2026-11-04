@@ -19,9 +19,11 @@ export function handoffPrompt(
     view.projectless ? undefined : `Folder: ${view.cwd}`,
     view.branch ? `Branch: ${view.branch}` : undefined,
   ].filter(Boolean)
+  const original = view.items.find((item) => item.kind === 'message' && item.role === 'user')
   const head = [
     `I am continuing work that was started with ${options.agentLabel ?? 'another agent'} in "${view.title}".`,
     ...where,
+    `Original goal: ${compact(original?.kind === 'message' ? original.text : view.title, 500)}`,
     'Here is what happened so far (oldest first):',
   ].join('\n')
 

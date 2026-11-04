@@ -82,6 +82,7 @@ describe('handoffPrompt', () => {
   it('summarizes messages, commands and changed files with the folder and branch', () => {
     const text = handoffPrompt(view(), { agentLabel: 'Claude' })
     expect(text).toContain('started with Claude in "Rate limiter"')
+    expect(text).toContain('Original goal: Fix the rate limiter')
     expect(text).toContain('Folder: /work/s1')
     expect(text).toContain('Branch: topic')
     expect(text).toContain('- I asked: Fix the rate limiter')
@@ -89,6 +90,13 @@ describe('handoffPrompt', () => {
     expect(text).toContain('- Ran: pnpm test')
     expect(text).toContain('Files changed so far: src/a.ts')
     expect(text.trimEnd().endsWith('Next:')).toBe(true)
+  })
+
+  it('retains the continuation link in the replica', () => {
+    const state = fold([
+      { ...session('s2', 'Continued'), handoffFrom: { sessionId: 's1', title: 'Original' } },
+    ])
+    expect(state.sessions.s2?.handoffFrom).toEqual({ sessionId: 's1', title: 'Original' })
   })
 
   it('keeps the latest context when it has to cut', () => {
@@ -105,7 +113,8 @@ describe('handoffPrompt', () => {
     expect(text.length).toBeLessThanOrEqual(1_500)
     expect(text).toContain('(earlier messages left out)')
     expect(text).toContain('message number 59')
-    expect(text).not.toContain('message number 0 ')
+    expect(text).toContain('Original goal: message number 0')
+    expect(text).not.toContain('- I asked: message number 0 ')
   })
 })
 

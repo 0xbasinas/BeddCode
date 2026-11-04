@@ -24,7 +24,9 @@ import {
   CircleStop,
   Files,
   BellRing,
+  ArrowRightLeft,
 } from 'lucide-react'
+import { prepareHandoff } from '../../stores/handoff.ts'
 import { openWaitingDialog } from '../shell/WaitingMarkDialog.tsx'
 import { rankCommands } from '@beddcode/client-runtime'
 import {
@@ -225,6 +227,26 @@ function PaletteDialog() {
           group: 'This session',
           icon: <Pin size={14} />,
           run: () => void setSessionPinned(sessionId, !session.pinned),
+        },
+        {
+          id: 'handoff',
+          label: 'Hand off to another agent…',
+          group: 'This session',
+          icon: <ArrowRightLeft size={14} />,
+          keywords: ['continue', 'handoff', 'agent'],
+          run: () => {
+            const label = runtimes[hostKey]?.providers.find(
+              (p) => p.id === session.instanceId,
+            )?.label
+            void prepareHandoff(hostKey, session, label).then(() =>
+              navigate({
+                to: '/',
+                search: session.projectless
+                  ? { host: hostKey, compose: true }
+                  : { host: hostKey, project: session.projectPath },
+              }),
+            )
+          },
         },
         {
           id: 'new-here',
