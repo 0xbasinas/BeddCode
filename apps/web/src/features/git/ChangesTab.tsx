@@ -172,7 +172,7 @@ export function ChangesTab({
                         onClick={() => setOpen((o) => ({ ...o, [file.path]: !o[file.path] }))}
                         title={file.path}
                       >
-                        {file.name}
+                        {file.oldPath ? `${file.oldPath} → ${file.path}` : file.name}
                       </button>
                       <DiffStat added={file.added} removed={file.removed} />
                       <span className="status-letter" style={{ color: STATUS_COLOR[file.status] }}>
@@ -275,6 +275,8 @@ function FileDiffView({
     try {
       await useFiles.getState().open(folderId(hostKey, cwd), path)
       useUiStore.getState().openPane('files')
+      const error = useFiles.getState().byCwd[folderId(hostKey, cwd)]?.docs[path]?.error
+      if (error) setOpenError(error)
     } catch (err) {
       setOpenError(err instanceof Error ? err.message : String(err))
     }
@@ -283,18 +285,32 @@ function FileDiffView({
   // that keeps the line counts the same still shows up.
   const diff = usePolled(() => hostRequest(hostKey, 'git.diff', { cwd, path }), refreshKey)
   if (diff.loading) return <div className="muted diff-note">Loading…</div>
-  if (diff.error) return <div className="composer-error diff-note">{diff.error}</div>
-  if (!diff.data) return <div className="muted diff-note">No diff available.</div>
+  if (diff.error || !diff.data)
+    return (
+      <div className="composer-error diff-note" role="status">
+        Diff for {path} is unavailable{diff.error ? `: ${diff.error}` : '.'} Review is incomplete.
+        {!deleted && (
+          <Button variant="app" className="secondary" onClick={() => void openFile()}>
+            Open current file
+          </Button>
+        )}
+        {openError && <div role="alert">{openError}</div>}
+      </div>
+    )
   const incomplete = diff.data.truncated
   return (
     <>
       {incomplete && (
         <div className="muted diff-note" role="status">
-          {diff.data.patch
-            ? 'Partial diff: some changes are omitted.'
-            : 'Binary or oversized file: changes cannot be previewed.'}{' '}
+          {diff.data.reason === 'submodule'
+            ? 'Submodule contents are not shown; the diff only shows the recorded revision or dirty state.'
+            : diff.data.reason === 'binary'
+              ? 'Binary content cannot be previewed.'
+              : diff.data.patch
+                ? 'The diff exceeds the display limit; some changes are omitted.'
+                : 'This file cannot be fully previewed (binary, oversized, or unavailable).'}{' '}
           Review of {path} is incomplete.
-          {!deleted && (
+          {!deleted && diff.data.reason !== 'submodule' && (
             <Button variant="app" className="secondary" onClick={() => void openFile()}>
               Open current file
             </Button>
