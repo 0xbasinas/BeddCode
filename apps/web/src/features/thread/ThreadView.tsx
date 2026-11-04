@@ -30,6 +30,7 @@ import { Composer } from '../composer/Composer.tsx'
 import { ModelBadge, ModelMenu } from '../composer/Menus.tsx'
 import { ConfigMenu } from '../composer/ConfigMenu.tsx'
 import { PlanCard } from './PlanCard.tsx'
+import { AgentInbox } from './AgentInbox.tsx'
 import { OrchestrationPanel } from './OrchestrationPanel.tsx'
 import { QueueList } from './QueueList.tsx'
 import { Dropdown } from '../../ui/Dropdown.tsx'
@@ -551,6 +552,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
         commands={session.commands}
         above={
           <>
+            <AgentInbox session={session} hostKey={hostKey} />
             {session.agentTools && <OrchestrationPanel session={session} hostKey={hostKey} />}
             {session.agentTools && <ChildAgentsBar sessionId={sessionId} hostKey={hostKey} />}
             {session.plan && <PlanCard plan={session.plan} />}

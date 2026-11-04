@@ -15,6 +15,7 @@ export type TranscriptItem =
       kind: 'agent-message'
       id: string
       threadId: string
+      messageId?: string
       senderId: string
       recipientId: string
       text: string
@@ -433,6 +434,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
           kind: 'agent-message',
           id,
           threadId: e.threadId,
+          messageId: e.messageId,
           senderId: e.senderId,
           recipientId: e.recipientId,
           text: e.text,

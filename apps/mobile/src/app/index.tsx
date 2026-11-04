@@ -22,6 +22,7 @@ import {
   FolderSimple,
   FolderSimplePlus,
   Gear,
+  Tray,
   GitBranch,
   MagnifyingGlass,
   Monitor,
@@ -289,6 +290,13 @@ export default function SessionsScreen() {
           <Text size={14}>New session</Text>
         </Pressable>
         <View style={{ flexDirection: 'row', gap: 18 }}>
+          <Pressable
+            hitSlop={8}
+            onPress={() => router.push('/inbox' as '/new')}
+            accessibilityLabel="Agent inbox"
+          >
+            <Icon icon={Tray} size={20} />
+          </Pressable>
           <Pressable
             hitSlop={8}
             onPress={() => setSearching((v) => !v)}
