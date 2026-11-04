@@ -205,7 +205,26 @@ a {
   font-size: var(--fs-small);
 }
 .handoff-marker summary {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
   cursor: pointer;
+  list-style: none;
+}
+.handoff-marker summary::-webkit-details-marker {
+  display: none;
+}
+.handoff-marker summary span {
+  flex: 1;
+}
+.handoff-marker summary svg {
+  margin-top: 0;
+}
+.handoff-chevron {
+  transition: transform 150ms ease;
+}
+.handoff-marker[open] .handoff-chevron {
+  transform: rotate(180deg);
 }
 .handoff-marker[open] summary {
   padding-bottom: calc(10px * var(--ui-scale));
@@ -213,6 +232,7 @@ a {
 }
 .handoff-permissions {
   margin: calc(8px * var(--ui-scale)) 0 0;
+  color: var(--text-muted);
 }
 .handoff-note {
   display: flex;
@@ -222,12 +242,13 @@ a {
 }
 .handoff-note h4 {
   margin: 0 0 calc(2px * var(--ui-scale));
-  color: var(--text);
+  color: var(--text-muted);
   font-size: var(--fs-small);
   font-weight: 600;
 }
 .handoff-note p {
   margin: 0;
+  color: var(--text-secondary);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

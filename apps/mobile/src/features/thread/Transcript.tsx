@@ -22,6 +22,7 @@ import {
   Check,
   CaretDown,
   CaretRight,
+  ArrowsLeftRight,
   FileText,
   Hand,
   MagnifyingGlass,
@@ -597,6 +598,21 @@ const styles = StyleSheet.create({
     borderRadius: radius.control,
     padding: 10,
   },
+  switchMarker: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.control,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  switchContent: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    marginTop: 10,
+    paddingTop: 10,
+    gap: 10,
+  },
 })
 
 function SwitchMarker({
@@ -615,33 +631,38 @@ function SwitchMarker({
   const [open, setOpen] = useState(false)
   const providers = useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.providers : undefined))
   return (
-    <Pressable
-      onPress={() => setOpen(!open)}
-      accessibilityRole="button"
-      accessibilityState={{ expanded: open }}
-    >
-      <Muted size={12.5} style={{ textAlign: 'center' }}>
-        Switched from {agentLabel(providers, item.from)} to {agentLabel(providers, item.to)}
-      </Muted>
-      {open && (item.permissionNote || item.permissionLabel) ? (
-        <Muted size={12} style={{ marginTop: 8 }}>
-          {item.permissionNote ?? `Permissions: ${item.permissionLabel}`}
+    <View style={styles.switchMarker}>
+      <Pressable
+        onPress={() => setOpen(!open)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        style={styles.switchRow}
+      >
+        <Icon icon={ArrowsLeftRight} size={14} color={colors.faint} />
+        <Muted size={12.5} style={{ flex: 1 }}>
+          Switched from {agentLabel(providers, item.from)} to {agentLabel(providers, item.to)}
         </Muted>
-      ) : null}
-      {open
-        ? parseHandoffNote(item.handoff).map((part, i) => (
-            <View key={i} style={{ marginTop: 8 }}>
+        <Icon icon={open ? CaretDown : CaretRight} size={14} color={colors.faint} />
+      </Pressable>
+      {open && (
+        <View style={styles.switchContent}>
+          {item.permissionNote || item.permissionLabel ? (
+            <Muted size={12}>{item.permissionNote ?? `Permissions: ${item.permissionLabel}`}</Muted>
+          ) : null}
+          {parseHandoffNote(item.handoff).map((part, i) => (
+            <View key={i}>
               {part.title ? (
                 <Muted size={12} style={{ fontWeight: '600' }}>
                   {part.title}
                 </Muted>
               ) : null}
-              <Text size={12} selectable>
+              <Text size={12} color={colors.textSecondary} selectable>
                 {part.body}
               </Text>
             </View>
-          ))
-        : null}
-    </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
   )
 }

@@ -1,5 +1,6 @@
 import { agentLabel, parseHandoffNote } from '@beddcode/client-runtime'
 import type { ProviderInstance } from '@beddcode/contracts'
+import { ArrowRightLeft, ChevronDown } from 'lucide-react'
 
 /** The note that was sent on a switch, one labelled block per section. */
 export function HandoffNote({ note }: { note: string }) {
@@ -32,7 +33,11 @@ export function SwitchMarkerView({
   return (
     <details className="turn-notice handoff-marker">
       <summary>
-        Switched from {agentLabel(providers, item.from)} to {agentLabel(providers, item.to)}
+        <ArrowRightLeft size={14} aria-hidden="true" />
+        <span>
+          Switched from {agentLabel(providers, item.from)} to {agentLabel(providers, item.to)}
+        </span>
+        <ChevronDown className="handoff-chevron" size={14} aria-hidden="true" />
       </summary>
       {item.permissionNote ? (
         <p className="handoff-permissions">{item.permissionNote}</p>

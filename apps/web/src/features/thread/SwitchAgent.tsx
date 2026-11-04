@@ -8,6 +8,7 @@ import {
 } from '@beddcode/client-runtime'
 import type { ProviderInstance } from '@beddcode/contracts'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { hostRequest } from '../../stores/host.ts'
@@ -234,10 +235,9 @@ export function SwitchAgent({
               <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
                 <p>A turn is running. Wait for it to finish, or stop it to switch.</p>
                 <label className="flex items-center gap-2 text-foreground">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={stop}
-                    onChange={(e) => setStop(e.target.checked)}
+                    onCheckedChange={(checked) => setStop(checked === true)}
                   />{' '}
                   Stop the turn
                 </label>
@@ -247,12 +247,11 @@ export function SwitchAgent({
               <>
                 <div className="flex flex-col gap-1.5">
                   <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={review}
-                      onChange={(e) => {
-                        setReview(e.target.checked)
-                        localStorage.setItem('review-switch-handoff', String(e.target.checked))
+                      onCheckedChange={(checked) => {
+                        setReview(checked === true)
+                        localStorage.setItem('review-switch-handoff', String(checked === true))
                       }}
                     />{' '}
                     Review handoff before sending
