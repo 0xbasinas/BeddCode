@@ -81,6 +81,8 @@
           if (message.type === 'write') {
             // History replaces whatever is on screen so a re-attach never shows things twice.
             if (message.reset) term.reset()
+            if (message.truncated)
+              term.write('\x1b[90m[Earlier terminal output is unavailable]\x1b[0m\r\n')
             term.write(message.data)
           } else if (message.type === 'exit') {
             term.write(

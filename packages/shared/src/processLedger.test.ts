@@ -103,28 +103,35 @@ describe('child ledger', { timeout: process.platform === 'win32' ? 60_000 : 5_00
     reusedPid.child.kill()
   })
 
-  it('tells a process from another that later got its id', async () => {
-    const { child, startedAt } = sleeper()
-    await new Promise((r) => setTimeout(r, 100))
-    if (!(await startTimesReadable(child.pid!))) {
-      expect(await isSameProcess(child.pid!, startedAt, node)).toBe(false)
-      const byName = { ifUnknown: (program: string) => /node/i.test(program) }
-      expect(await isSameProcess(child.pid!, startedAt, node, byName)).toBe(true)
-      child.kill()
-      return
-    }
-    // Independent look-ups, run together: on Windows each starts PowerShell, and one after the
-    // other they can add up to more than the test timeout on a slow machine.
-    const [sameProgram, otherProgram, otherStart] = await Promise.all([
-      isSameProcess(child.pid!, startedAt, node),
-      isSameProcess(child.pid!, startedAt, '/usr/bin/some-other-agent'),
-      isSameProcess(child.pid!, startedAt - 600_000, node),
-    ])
-    expect(sameProgram).toBe(true)
-    expect(otherProgram).toBe(false)
-    expect(otherStart).toBe(false)
-    child.kill()
-  })
+  it(
+    'tells a process from another that later got its id',
+    async () => {
+      const { child, exited, startedAt } = sleeper()
+      try {
+        await new Promise((r) => setTimeout(r, 100))
+        if (!(await startTimesReadable(child.pid!))) {
+          expect(await isSameProcess(child.pid!, startedAt, node)).toBe(false)
+          const byName = { ifUnknown: (program: string) => /node/i.test(program) }
+          expect(await isSameProcess(child.pid!, startedAt, node, byName)).toBe(true)
+          return
+        }
+        // Independent look-ups, run together: on Windows each starts PowerShell, and one after the
+        // other they can add up to more than the test timeout on a slow machine.
+        const [sameProgram, otherProgram, otherStart] = await Promise.all([
+          isSameProcess(child.pid!, startedAt, node),
+          isSameProcess(child.pid!, startedAt, '/usr/bin/some-other-agent'),
+          isSameProcess(child.pid!, startedAt - 600_000, node),
+        ])
+        expect(sameProgram).toBe(true)
+        expect(otherProgram).toBe(false)
+        expect(otherStart).toBe(false)
+      } finally {
+        child.kill()
+        await exited
+      }
+    },
+    process.platform === 'win32' ? 150_000 : 5_000,
+  )
 
   it('looks up several processes at once, leaving out ones that are gone', async () => {
     const a = sleeper()

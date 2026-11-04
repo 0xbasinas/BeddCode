@@ -32,7 +32,7 @@ export interface ShellSpec {
 }
 
 export type TerminalFrame =
-  | { t: 'term.out'; id: string; data: string; replay?: boolean }
+  | { t: 'term.out'; id: string; data: string; replay?: boolean; seq?: number; truncated?: boolean }
   | { t: 'term.exit'; id: string; code: number | null }
 
 /** One connected client's view of a terminal. */
@@ -96,6 +96,7 @@ interface Terminal {
   info: TerminalInfo
   pty: PtyProcess
   buffer: string
+  seq: number
   pending: string
   timer: ReturnType<typeof setTimeout> | null
   subscribers: Set<TerminalSubscriber>
@@ -229,6 +230,7 @@ export class TerminalManager {
       },
       pty,
       buffer: '',
+      seq: 0,
       pending: '',
       timer: null,
       subscribers: new Set(),
@@ -290,6 +292,7 @@ export class TerminalManager {
       },
       pty: channel,
       buffer: '',
+      seq: 0,
       pending: '',
       timer: null,
       subscribers: new Set(),
@@ -398,12 +401,28 @@ export class TerminalManager {
   }
 
   /** Sends the buffered history, then live output. Returns a function that detaches. */
-  attach(id: string, subscriber: TerminalSubscriber): () => void {
+  attach(id: string, subscriber: TerminalSubscriber, afterSeq?: number): () => void {
     const term = this.require(id)
     // Current subscribers get what is waiting in the batch now; the new one receives it below as
     // part of the history, so nobody sees it twice or misses it.
     this.flush(term)
-    if (term.buffer) subscriber.send({ t: 'term.out', id, data: term.buffer, replay: true })
+    const start = term.seq - term.buffer.length
+    const covered = afterSeq !== undefined && afterSeq >= start && afterSeq <= term.seq
+    if (covered) {
+      const data = term.buffer.slice(afterSeq - start)
+      if (data) subscriber.send({ t: 'term.out', id, data, seq: term.seq })
+    } else {
+      subscriber.send({
+        t: 'term.out',
+        id,
+        data: term.buffer,
+        replay: true,
+        seq: term.seq,
+        ...(start > 0 || (afterSeq !== undefined && afterSeq > term.seq)
+          ? { truncated: true }
+          : {}),
+      })
+    }
     if (term.info.exited !== undefined) {
       subscriber.send({ t: 'term.exit', id, code: term.info.exited })
     }
@@ -455,8 +474,16 @@ export class TerminalManager {
   }
 
   private onData(term: Terminal, data: string) {
+    term.seq += data.length
     term.buffer += data
-    if (term.buffer.length > BUFFER_CHARS) term.buffer = term.buffer.slice(-BUFFER_CHARS)
+    if (term.buffer.length > BUFFER_CHARS) {
+      let start = term.buffer.length - BUFFER_CHARS
+      // Do not retain only the second half of a Unicode character.
+      const code = term.buffer.charCodeAt(start)
+      const previous = term.buffer.charCodeAt(start - 1)
+      if (code >= 0xdc00 && code <= 0xdfff && previous >= 0xd800 && previous <= 0xdbff) start++
+      term.buffer = term.buffer.slice(start)
+    }
     term.pending += data
     if (term.pending.length >= FLUSH_CHARS) this.flush(term)
     else term.timer ??= setTimeout(() => this.flush(term), FLUSH_MS)
@@ -469,7 +496,8 @@ export class TerminalManager {
     const data = term.pending
     term.pending = ''
     if (!data) return
-    for (const s of term.subscribers) s.send({ t: 'term.out', id: term.info.id, data })
+    for (const s of term.subscribers)
+      s.send({ t: 'term.out', id: term.info.id, data, seq: term.seq })
     this.applyBackpressure(term)
   }
 

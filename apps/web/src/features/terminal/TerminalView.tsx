@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal, type ILink } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { findTextLinks } from '@beddcode/client-runtime'
+import { findTextLinks, TerminalCursor } from '@beddcode/client-runtime'
 import { hostRequest, onHostFrame, sendHostFrame, useRuntime } from '../../stores/host.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
 import { openLocated, openUrl, wantsOutside } from '../links/links.tsx'
@@ -54,6 +54,7 @@ export function TerminalView({
   const cwdRef = useRef(cwd)
   cwdRef.current = cwd
   const termRef = useRef<Terminal | null>(null)
+  const reconnectRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     const el = container.current
@@ -76,6 +77,8 @@ export function TerminalView({
       attributeFilter: ['data-theme'],
     })
     termRef.current = term
+    const cursor = new TerminalCursor()
+    let exited = false
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(el)
@@ -92,10 +95,21 @@ export function TerminalView({
 
     const stopFrames = onHostFrame(hostKey, (frame) => {
       if (frame.t === 'term.out' && frame.id === id) {
-        // History replaces whatever is on screen so a re-attach never shows things twice.
-        if (frame.replay) term.reset()
-        term.write(frame.data)
+        const result = cursor.take(frame)
+        if (result === 'gap') {
+          sendHostFrame(hostKey, cursor.attach(id))
+        } else {
+          if (result.reset) {
+            term.reset()
+            exited = false
+            if (result.truncated)
+              term.write('\x1b[90m[Earlier terminal output is unavailable]\x1b[0m\r\n')
+          }
+          if (result.data) term.write(result.data)
+        }
       } else if (frame.t === 'term.exit' && frame.id === id) {
+        if (exited) return
+        exited = true
         const how = frame.code === null ? '' : ` with code ${frame.code}`
         term.write(`\r\n\x1b[90m[process exited${how}]\x1b[0m\r\n`)
       }
@@ -113,8 +127,10 @@ export function TerminalView({
     )
     onSelectionRef.current?.('')
 
-    sendHostFrame(hostKey, { t: 'term.attach', id })
-    reportSize()
+    reconnectRef.current = () => {
+      sendHostFrame(hostKey, cursor.attach(id))
+      reportSize()
+    }
     term.focus()
 
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -132,10 +148,15 @@ export function TerminalView({
       stopInput.dispose()
       stopLinks.dispose()
       termRef.current = null
+      reconnectRef.current = null
       stopSelection.dispose()
       themeWatch.disconnect()
       term.dispose()
     }
+  }, [hostKey, id])
+
+  useEffect(() => {
+    reconnectRef.current?.()
   }, [hostKey, id, epoch])
 
   useEffect(() => {

@@ -417,10 +417,12 @@ describe('server', () => {
     c.send({ t: 'term.attach', id: info.id })
     const out = () => c.frames.flatMap((f) => (f.t === 'term.out' ? [f.data] : [])).join('')
     await c.until(() => out().includes('ready'))
+    const ready = c.frames.find((f) => f.t === 'term.out' && f.data.includes('ready'))
+    if (!ready || ready.t !== 'term.out' || ready.seq === undefined)
+      throw new Error('missing cursor')
 
     c.send({ t: 'term.input', id: info.id, data: 'hello\r\n' })
     await c.until(() => out().includes('ECHO:HELLO'))
-    c.send({ t: 'term.resize', id: info.id, cols: 120, rows: 40 })
 
     // A second connection attaching later gets the history.
     const other = await Client.connect(server.port)
@@ -428,7 +430,18 @@ describe('server', () => {
     await other.until((fs) =>
       fs.some((f) => f.t === 'term.out' && f.replay === true && f.data.includes('ECHO:HELLO')),
     )
+    const resumed = await Client.connect(server.port)
+    resumed.send({ t: 'term.attach', id: info.id, afterSeq: ready.seq })
+    await resumed.until((fs) => fs.some((f) => f.t === 'term.out' && f.data.includes('ECHO:HELLO')))
+    const missed = resumed.frames.find((f) => f.t === 'term.out')
+    expect(missed?.t).toBe('term.out')
+    if (missed?.t === 'term.out') {
+      expect(missed.replay).toBeUndefined()
+      expect(missed.data).not.toContain('ready')
+    }
 
+    // ConPTY may redraw the screen on resize, including text before the cursor.
+    c.send({ t: 'term.resize', id: info.id, cols: 120, rows: 40 })
     expect((await c.rpc('terminals.close', { id: info.id })).ok).toBe(true)
     await c.until((fs) => fs.some((f) => f.t === 'term.exit'))
     expect(((await c.rpc('terminals.list', {})).result as unknown[]).length).toBe(0)

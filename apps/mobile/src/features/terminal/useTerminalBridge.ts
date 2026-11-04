@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
+import { TerminalCursor } from '@beddcode/client-runtime'
 
 import { onHostFrame, sendHostFrame, useRuntime } from '@/host/store'
 
@@ -11,7 +12,7 @@ type PageMessage =
 
 /** A message to the xterm page. */
 export type ToPage =
-  | { type: 'write'; data: string; reset?: boolean }
+  | { type: 'write'; data: string; reset?: boolean; truncated?: boolean }
   | { type: 'exit'; code: number | null }
   | { type: 'focus' }
   | { type: 'clearSelection' }
@@ -41,20 +42,34 @@ export function useTerminalBridge({
   const { epoch } = useRuntime(hostKey)
   const ready = useRef(false)
   const size = useRef<{ cols: number; rows: number } | undefined>(undefined)
+  const cursor = useRef(new TerminalCursor())
+  const exited = useRef(false)
+  const identity = useRef({ hostKey, id })
+  if (identity.current.hostKey !== hostKey || identity.current.id !== id) {
+    identity.current = { hostKey, id }
+    cursor.current = new TerminalCursor()
+    exited.current = false
+  }
   const postRef = useRef(post)
   postRef.current = post
 
   const attach = useCallback(() => {
-    sendHostFrame(hostKey, { t: 'term.attach', id })
+    sendHostFrame(hostKey, cursor.current.attach(id))
     if (size.current) sendHostFrame(hostKey, { t: 'term.resize', id, ...size.current })
   }, [hostKey, id])
 
   useEffect(() => {
     const stop = onHostFrame(hostKey, (frame) => {
       if (frame.t === 'term.out' && frame.id === id) {
-        postRef.current({ type: 'write', data: frame.data, reset: frame.replay })
+        const result = cursor.current.take(frame)
+        if (result === 'gap') attach()
+        else {
+          if (result.reset) exited.current = false
+          if (result.data || result.reset) postRef.current({ type: 'write', ...result })
+        }
       } else if (frame.t === 'term.exit' && frame.id === id) {
-        postRef.current({ type: 'exit', code: frame.code })
+        if (!exited.current) postRef.current({ type: 'exit', code: frame.code })
+        exited.current = true
       }
     })
     if (ready.current) attach()
@@ -74,6 +89,9 @@ export function useTerminalBridge({
       }
       switch (message.type) {
         case 'ready':
+          // A reloaded WebView has lost the terminal it displayed.
+          cursor.current = new TerminalCursor()
+          exited.current = false
           ready.current = true
           attach()
           break

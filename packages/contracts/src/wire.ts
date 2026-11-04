@@ -29,7 +29,11 @@ export const ClientFrame = z.discriminatedUnion('t', [
     rid: z.string().max(64).optional(),
   }),
   /** Start receiving a terminal's output; the server replays what it has buffered first. */
-  z.object({ t: z.literal('term.attach'), id: z.string() }),
+  z.object({
+    t: z.literal('term.attach'),
+    id: z.string(),
+    afterSeq: z.number().int().nonnegative().optional(),
+  }),
   z.object({ t: z.literal('term.detach'), id: z.string() }),
   z.object({ t: z.literal('term.input'), id: z.string(), data: z.string() }),
   z.object({
@@ -148,6 +152,10 @@ export const ServerFrame = z.discriminatedUnion('t', [
     id: z.string(),
     data: z.string(),
     replay: z.boolean().optional(),
+    /** UTF-16 output offset at the end of this frame. */
+    seq: z.number().int().nonnegative().optional(),
+    /** The replay cannot include all earlier terminal output. */
+    truncated: z.boolean().optional(),
   }),
   z.object({ t: z.literal('term.exit'), id: z.string(), code: z.number().int().nullable() }),
   /** A terminal appeared, changed (an agent started or finished a command) or was closed. */
