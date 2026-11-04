@@ -7,10 +7,12 @@ import {
 } from '../config.ts'
 import type { Io } from './io.ts'
 
+type SettingKey = Exclude<keyof ConfigFile, 'warmPool'>
+
 type Kind = 'number' | 'string' | 'boolean' | 'list'
 
 /** What can be set, and what each setting does. */
-export const SETTINGS: Record<keyof ConfigFile, { kind: Kind; help: string }> = {
+export const SETTINGS: Record<SettingKey, { kind: Kind; help: string }> = {
   port: { kind: 'number', help: 'Port the host listens on (default 3773)' },
   host: {
     kind: 'string',
@@ -33,17 +35,17 @@ export const SETTINGS: Record<keyof ConfigFile, { kind: Kind; help: string }> = 
   },
 }
 
-const KEYS = Object.keys(SETTINGS) as (keyof ConfigFile)[]
+const KEYS = Object.keys(SETTINGS) as SettingKey[]
 
 /** Accepts `allow-lan` as well as `allowLan`. */
-export function settingKey(name: string): keyof ConfigFile {
+export function settingKey(name: string): SettingKey {
   const camel = name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())
   const key = KEYS.find((k) => k.toLowerCase() === camel.toLowerCase())
   if (!key) throw new Error(`Unknown setting "${name}". Settings: ${KEYS.join(', ')}`)
   return key
 }
 
-export function parseValue(key: keyof ConfigFile, raw: string): ConfigFile[keyof ConfigFile] {
+export function parseValue(key: SettingKey, raw: string): ConfigFile[keyof ConfigFile] {
   const { kind } = SETTINGS[key]
   if (kind === 'number') {
     const n = Number(raw)

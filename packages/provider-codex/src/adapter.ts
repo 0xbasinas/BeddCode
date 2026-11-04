@@ -9,7 +9,7 @@ import {
   type Transport,
 } from '@beddcode/shared'
 import { codexModes } from './modes.ts'
-import { CodexSession } from './session.ts'
+import { CodexSession, prepareCodexProcess } from './session.ts'
 import { discoverCodexModels } from './models.ts'
 import { createCodexHistory, createWithAppServer, listCodexSkills } from './history.ts'
 import { createCodexMcp } from './mcp.ts'
@@ -52,7 +52,20 @@ export interface CodexAdapterOptions {
   createTransport?: (cwd: string) => Transport
 }
 
-export function createCodexAdapter(options: CodexAdapterOptions = {}): ProviderAdapter {
+export interface CodexWarmSession {
+  healthy(): Promise<boolean>
+  memoryBytes(): Promise<number | null>
+  activate(
+    input: import('@beddcode/provider-core').StartSessionInput,
+  ): Promise<import('@beddcode/provider-core').ProviderSession>
+  close(): Promise<void>
+}
+
+export interface CodexAdapter extends ProviderAdapter {
+  prepareSession(cwd: string): Promise<CodexWarmSession>
+}
+
+export function createCodexAdapter(options: CodexAdapterOptions = {}): CodexAdapter {
   const instanceId = options.instanceId ?? CODEX_INSTANCE_ID
   const log = options.log ?? createLogger('codex')
   const env = { ...process.env, ...(options.codexHome ? { CODEX_HOME: options.codexHome } : {}) }
@@ -106,6 +119,53 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): ProviderA
   }
 
   return {
+    async prepareSession(cwd) {
+      const exe = executable()
+      if (!exe) throw new Error('Codex is not installed on this host')
+      const transport =
+        options.createTransport?.(cwd) ?? spawnTransport(exe, ['app-server'], { env, cwd }, log)
+      const prepared = await prepareCodexProcess({ transport, log })
+      return {
+        healthy: async () => prepared.healthy(),
+        memoryBytes: async () => {
+          if (!transport.pid) return null
+          try {
+            const result =
+              process.platform === 'win32'
+                ? await runCommand('powershell.exe', [
+                    '-NoProfile',
+                    '-NonInteractive',
+                    '-Command',
+                    "Get-CimInstance Win32_Process | ForEach-Object { '{0} {1} {2}' -f $_.ProcessId, $_.ParentProcessId, [math]::Floor($_.WorkingSetSize / 1024) }",
+                  ])
+                : await runCommand('ps', ['-A', '-o', 'pid=,ppid=,rss='])
+            if (result.code !== 0) return null
+            const rows = result.stdout
+              .trim()
+              .split('\n')
+              .map((line) => line.trim().split(/\s+/).map(Number))
+            const pids = new Set([transport.pid])
+            let previous = 0
+            while (previous !== pids.size) {
+              previous = pids.size
+              for (const [pid, parent] of rows) if (pid && parent && pids.has(parent)) pids.add(pid)
+            }
+            const matched = rows.filter(([pid]) => pid && pids.has(pid))
+            return matched.length && matched.every((row) => Number.isFinite(row[2]) && row[2]! >= 0)
+              ? matched.reduce((sum, row) => sum + (row[2] ?? 0) * 1024, 0)
+              : null
+          } catch {
+            return null
+          }
+        },
+        activate: async (input) => {
+          if (input.cwd !== cwd)
+            throw new Error('Prepared Codex process has a different working directory')
+          return prepared.start(input)
+        },
+        close: async () => prepared.close(),
+      }
+    },
     generateText: async (input) => {
       const exe = executable()
       if (!exe) throw new Error('Codex is not installed on this host')

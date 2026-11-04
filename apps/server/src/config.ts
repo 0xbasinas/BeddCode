@@ -14,6 +14,7 @@ export interface ServerConfig {
   relayPassword?: string
   /** Upload anonymous speed measurements to the relay. */
   telemetry?: boolean
+  warmPool?: { enabled: boolean }
 }
 
 /** Settings kept in `<data dir>/config.json` (see `beddcode config`); flags and variables win. */
@@ -26,6 +27,7 @@ export interface ConfigFile {
   relayUrl?: string
   relayPassword?: string
   telemetry?: boolean
+  warmPool?: { enabled: boolean }
 }
 
 export const configPath = () => path.join(dataHome(), 'config.json')
@@ -71,6 +73,14 @@ export function sanitizeConfig(raw: unknown, warn: (message: string) => void): C
     if (config[key] !== undefined && typeof config[key] !== 'boolean')
       drop(key, 'not true or false')
   }
+  if (
+    config.warmPool !== undefined &&
+    (!config.warmPool ||
+      typeof config.warmPool !== 'object' ||
+      Array.isArray(config.warmPool) ||
+      typeof (config.warmPool as Record<string, unknown>).enabled !== 'boolean')
+  )
+    drop('warmPool', 'enabled must be true or false')
   if (config.allowedOrigins !== undefined) {
     const origins = config.allowedOrigins
     if (typeof origins === 'string') config.allowedOrigins = [origins]
@@ -158,6 +168,7 @@ export function parseServeArgs(
   const telemetry =
     env.BEDDCODE_TELEMETRY !== undefined ? truthy(env.BEDDCODE_TELEMETRY) : file.telemetry
   if (telemetry !== undefined) config.telemetry = telemetry
+  if (file.warmPool) config.warmPool = file.warmPool
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!

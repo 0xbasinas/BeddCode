@@ -90,6 +90,35 @@ const completeTurn = (s: ReturnType<typeof fakeServer>, status = 'completed') =>
   s.notify('turn/completed', { threadId: 'th1', turn: { id: 'tu1', status } })
 
 describe('CodexSession', () => {
+  it('activates an adapter-prepared process with the actual session inputs', async () => {
+    const server = fakeServer()
+    const adapter = createCodexAdapter({
+      executablePath: process.execPath,
+      createTransport: () => server.transport,
+      log,
+    })
+    const prepared = await adapter.prepareSession('/work')
+    expect(await prepared.healthy()).toBe(true)
+    expect(server.sent('thread/start')).toHaveLength(0)
+    const session = await prepared.activate({
+      sessionId: 'real',
+      cwd: '/work',
+      model: 'model-a',
+      permissionMode: 'read-only',
+      mcpServers: [{ name: 'test', command: 'tool', args: [], env: {} }],
+    })
+    await nextEvent(session as CodexSession, (event) => event.type === 'session.provider-session')
+    expect(server.sent('initialize')).toHaveLength(1)
+    expect(server.sent('thread/start')[0]?.params).toMatchObject({
+      cwd: '/work',
+      model: 'model-a',
+      sandbox: 'read-only',
+      config: { 'mcp_servers.test': { command: 'tool' } },
+    })
+    await expect(prepared.activate({ sessionId: 'second', cwd: '/work' })).rejects.toThrow()
+    await prepared.close()
+    await session.close()
+  })
   it('hands an initialized process to exactly one new conversation', async () => {
     const server = fakeServer()
     const prepared = await prepareCodexProcess({ transport: server.transport, log })

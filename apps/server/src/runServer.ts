@@ -56,6 +56,7 @@ import { createShutdown, watchForCrashes } from './shutdown.ts'
 import type { AgentTools } from './automation/agentTools.ts'
 import { createAutomation } from './automation/index.ts'
 import { GatewayControl } from './mcpGateway/control.ts'
+import { createHostWarmPool } from './sessions/hostWarmPool.ts'
 
 /** Starts the host and keeps running until SIGINT/SIGTERM. */
 export async function runServer(
@@ -79,9 +80,10 @@ export async function runServer(
   recordChildrenIn(ledger)
 
   const acpStore = new AcpAgentStore(path.join(home, 'acp-agents.json'))
+  const codex = createCodexAdapter({ log: createLogger('codex') })
   const adapters: ProviderAdapter[] = [
     createClaudeAdapter({ log: createLogger('claude') }),
-    createCodexAdapter({ log: createLogger('codex') }),
+    codex,
     createGrokAdapter({ log: createLogger('grok') }),
     createPiAdapter({ log: createLogger('pi'), sessionDir: path.join(home, 'sessions', 'pi') }),
     createOpenCodeAdapter({ log: createLogger('opencode') }),
@@ -97,11 +99,17 @@ export async function runServer(
   recoverInterruptedTurns(store)
   const interruptedSessions = takeInterruptedSessions()
   const attachments = new AttachmentStore(path.join(home, 'attachments'))
+  const hostPool = options.warmPool
+    ? undefined
+    : createHostWarmPool(config.warmPool, codex, attachments.root)
   const git = new GitService()
   const workspace = {
     git,
     github: new GithubService(),
-    projects: new ProjectStore(path.join(home, 'projects.json'), git),
+    projects: new ProjectStore(path.join(home, 'projects.json'), git, (folder, added) => {
+      if (added) hostPool?.warmProject(folder)
+      else void hostPool?.removeProject(folder)
+    }),
     terminals: new TerminalManager(),
     files: new FileService(),
   }
@@ -120,8 +128,15 @@ export async function runServer(
     defaultCwd: process.cwd(),
     sessionRoot: path.join(home, 'sessions'),
     previews: new PreviewCache(path.join(home, 'agent-previews.json')),
-    warmPool: options.warmPool,
+    warmPool: options.warmPool ?? hostPool?.pool,
   })
+  if (hostPool)
+    void workspace.projects
+      .list()
+      .then((projects) => {
+        for (const project of projects) hostPool.warmProject(project.path)
+      })
+      .catch((error: unknown) => log.warn('could not warm projects', error))
   const agents = new AgentCatalog(
     acpStore,
     new AcpRegistry(),
@@ -260,6 +275,7 @@ export async function runServer(
     telemetry.stop()
     automation.stop()
     await sessions.close().catch(() => {})
+    await hostPool?.pool.close()
     killAllChildren()
     store.close()
     recordChildrenIn(undefined)
@@ -287,6 +303,7 @@ export async function runServer(
       mcpGateway.stop()
       telemetry.stop()
       automation.stop()
+      await hostPool?.pool.close()
       const resumable = await sessions.prepareForRestart()
       if (resumable.length)
         log.info(`saved ${resumable.length} active turn(s) for resume after host update`)
