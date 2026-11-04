@@ -50,6 +50,18 @@ const advance = (ms: number) => {
 }
 
 describe('LiveCoalescer', () => {
+  it('limits joined UTF-8 text without losing ordering or cursors', () => {
+    const { c, out } = make()
+    c.push(delta('first'))
+    for (let i = 0; i < 20; i++) c.push(delta('é'.repeat(4096)))
+    c.push(other())
+    expect(out.map(text).join('')).toBe('first' + 'é'.repeat(4096 * 20) + 'turn.completed')
+    expect(
+      out.slice(1, -1).every((row) => Buffer.byteLength(JSON.stringify(text(row))) <= 128 * 1024),
+    ).toBe(true)
+    expect(out.map((row) => row.seq)).toEqual(out.map((row) => row.seq).sort((a, b) => a - b))
+  })
+
   it('sends the first piece at once and joins the burst that follows', () => {
     const { c, out } = make()
     c.push(delta('a'))

@@ -28,23 +28,25 @@ export class ReplayCompactor {
   /** Joins only within one batch, so a run split by a batch edge is still correct, just longer. */
   compact(batch: StoredEvent[]): StoredEvent[] {
     const out: StoredEvent[] = []
-    const open = new Map<string, { at: number; turnId: string | undefined }>()
+    const open = new Map<string, { at: number; turnId: string | undefined; bytes: number }>()
     for (const stored of batch) {
       const e = stored.event
       if (SUPERSEDED_TYPES.has(e.type) && !this.keep.has(stored.seq)) continue
       if (e.type === 'message.delta' && e.role === 'assistant') {
         const run = open.get(e.sessionId)
+        const bytes = Buffer.byteLength(JSON.stringify(e.text))
         if (run && run.turnId === e.turnId) {
           const first = out[run.at]!
-          if (first.event.type === 'message.delta') {
+          if (first.event.type === 'message.delta' && run.bytes + bytes <= 128 * 1024) {
             out[run.at] = {
               seq: first.seq,
               event: { ...first.event, text: first.event.text + e.text, at: e.at },
             }
+            run.bytes += bytes
             continue
           }
         }
-        open.set(e.sessionId, { at: out.length, turnId: e.turnId })
+        open.set(e.sessionId, { at: out.length, turnId: e.turnId, bytes })
       } else {
         open.delete(e.sessionId)
       }

@@ -14,6 +14,7 @@ export class LiveCoalescer {
   private held: StoredEvent | null = null
   private timer: ReturnType<typeof setTimeout> | null = null
   private lastSentAt = -Infinity
+  private heldBytes = 0
 
   constructor(
     private readonly emit: (stored: StoredEvent) => void,
@@ -30,11 +31,17 @@ export class LiveCoalescer {
     }
     const held = this.held
     if (held && held.event.type === 'message.delta') {
-      if (held.event.sessionId === e.sessionId && held.event.turnId === e.turnId) {
+      const bytes = Buffer.byteLength(JSON.stringify(e.text))
+      if (
+        held.event.sessionId === e.sessionId &&
+        held.event.turnId === e.turnId &&
+        this.heldBytes + bytes <= 128 * 1024
+      ) {
         this.held = {
           seq: stored.seq,
           event: { ...held.event, text: held.event.text + e.text, at: e.at },
         }
+        this.heldBytes += bytes
         return
       }
       this.flush()
@@ -45,6 +52,7 @@ export class LiveCoalescer {
       return
     }
     this.held = stored
+    this.heldBytes = Buffer.byteLength(JSON.stringify(e.text))
     this.timer = setTimeout(() => this.flush(), wait)
   }
 
@@ -54,6 +62,7 @@ export class LiveCoalescer {
     this.timer = null
     const held = this.held
     this.held = null
+    this.heldBytes = 0
     if (held) this.send(held)
   }
 
@@ -62,6 +71,7 @@ export class LiveCoalescer {
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
     this.held = null
+    this.heldBytes = 0
   }
 
   private send(stored: StoredEvent) {

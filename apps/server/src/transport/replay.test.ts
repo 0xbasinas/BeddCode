@@ -6,6 +6,50 @@ import { replaySubscription } from './replay.ts'
 afterEach(() => vi.useRealTimers())
 
 describe('chunked replay', () => {
+  it.each([false, true])('budgets UTF-8 replay frames with compaction=%s', async (compact) => {
+    vi.useFakeTimers()
+    const store = new EventStore(':memory:')
+    store.appendMany(
+      Array.from({ length: 100 }, (_, n) => ({
+        type: 'message.delta' as const,
+        sessionId: 's',
+        turnId: 't',
+        role: 'assistant' as const,
+        at: n,
+        text: 'é'.repeat(4096),
+      })),
+    )
+    const frames: ServerFrame[] = []
+    const stop = replaySubscription({
+      store,
+      afterSeq: 0,
+      compact,
+      batch: true,
+      send: (frame) => frames.push(frame),
+      backlog: () => 0,
+      live: () => {},
+      failed: () => {
+        throw new Error('unexpected failure')
+      },
+      caughtUp: () => {},
+    })
+    await vi.runAllTimersAsync()
+    const batches = frames.filter((frame) => frame.t === 'events')
+    expect(batches.length).toBeGreaterThan(1)
+    expect(batches.every((frame) => Buffer.byteLength(JSON.stringify(frame)) <= 256 * 1024)).toBe(
+      true,
+    )
+    expect(
+      batches
+        .flatMap((frame) => frame.events)
+        .map((row) => (row.event.type === 'message.delta' ? row.event.text : ''))
+        .join(''),
+    ).toBe('é'.repeat(4096 * 100))
+    expect(frames.at(-1)).toEqual({ t: 'caught-up', seq: 100 })
+    stop()
+    store.close()
+  })
+
   it.each([false, true])(
     'keeps the replay/live boundary and cursor with compaction=%s',
     async (compact) => {
