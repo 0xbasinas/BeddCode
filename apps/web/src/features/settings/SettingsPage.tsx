@@ -31,6 +31,7 @@ import { PermissionsSettings } from './PermissionsSettings.tsx'
 import { ToolsSettings } from './ToolsSettings.tsx'
 import { NotificationsSettings } from './NotificationsSettings.tsx'
 import { UsageSettings } from './UsageSettings.tsx'
+import { OrchestrationSettings } from './OrchestrationSettings.tsx'
 import { AlertsSettings } from './AlertsSettings.tsx'
 import { RemoteMcpSettings } from './RemoteMcpSettings.tsx'
 import './settings.css'
@@ -46,6 +47,7 @@ export type SettingsSection =
   | 'permissions'
   | 'tools'
   | 'remote-mcp'
+  | 'orchestration'
   | 'alerts'
   | 'hosts'
   | 'git'
@@ -62,6 +64,7 @@ const SECTIONS = [
   { id: 'permissions', label: 'Permissions', group: 'Agents', icon: Shield },
   { id: 'tools', label: 'Tools & MCP', group: 'Agents', icon: Wrench },
   { id: 'remote-mcp', label: 'Remote MCP', group: 'Agents', icon: Server },
+  { id: 'orchestration', label: 'Orchestration', group: 'Automation', icon: SlidersHorizontal },
   { id: 'alerts', label: 'Phone alerts', group: 'Automation', icon: BellRing },
   { id: 'hosts', label: 'Hosts', group: 'Workspace', icon: Server },
   { id: 'git', label: 'Git', group: 'Workspace', icon: GitBranch },
@@ -177,19 +180,22 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
               section === 'permissions' ||
               section === 'tools' ||
               section === 'alerts' ||
+              section === 'orchestration' ||
               section === 'usage') && (
               <>
                 <header className="settings-heading">
                   <h2>
                     {section === 'permissions'
                       ? 'Permissions'
-                      : section === 'alerts'
-                        ? 'Phone alerts'
-                        : section === 'tools'
-                          ? 'Tools & MCP'
-                          : section === 'usage'
-                            ? 'Usage'
-                            : 'Agents'}
+                      : section === 'orchestration'
+                        ? 'Orchestration'
+                        : section === 'alerts'
+                          ? 'Phone alerts'
+                          : section === 'tools'
+                            ? 'Tools & MCP'
+                            : section === 'usage'
+                              ? 'Usage'
+                              : 'Agents'}
                   </h2>
                 </header>
                 {entries.length > 1 && (
@@ -217,7 +223,9 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
                     </Select>
                   </label>
                 )}
-                {section === 'agents' ? (
+                {section === 'orchestration' ? (
+                  <OrchestrationSettings key={selectedHost} hostKey={selectedHost} />
+                ) : section === 'agents' ? (
                   <AgentsSettings key={selectedHost} hostKey={selectedHost} />
                 ) : section === 'tools' ? (
                   <ToolsSettings key={selectedHost} hostKey={selectedHost} />

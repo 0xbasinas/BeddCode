@@ -632,3 +632,23 @@ it('files a turn’s changes card before a message queued behind it, not after',
     'second',
   ])
 })
+
+it('replays orchestration plans and preserves worker request IDs', () => {
+  const state = fold([
+    { ...created, parent: { sessionId: 'lead', depth: 1, requestId: 'plan:p:t' } },
+    {
+      type: 'orchestration.plan',
+      planId: 'p',
+      goal: 'Ship it',
+      tasks: [{ id: 't', agent: 'codex', prompt: 'Implement', worktree: true }],
+    },
+  ])
+  expect(state.sessions.s1?.parent?.requestId).toBe('plan:p:t')
+  expect(state.sessions.s1?.orchestrationPlans).toEqual([
+    {
+      planId: 'p',
+      goal: 'Ship it',
+      tasks: [{ id: 't', agent: 'codex', prompt: 'Implement', worktree: true }],
+    },
+  ])
+})
