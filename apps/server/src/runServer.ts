@@ -240,6 +240,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
       telemetryRecorder: (name, value, tags) => telemetry.record(name, value, tags),
       automation: {
         schedules,
+        orchestration: automation.orchestration,
         alerts,
         designs,
         computer: automation.computerPane,

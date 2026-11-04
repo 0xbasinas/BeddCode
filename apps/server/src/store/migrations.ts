@@ -44,4 +44,22 @@ export const migrations: (string | ((db: DatabaseSync) => void))[] = [
     ON CONFLICT(session_id) DO UPDATE SET seq = excluded.seq;
   END;
   `,
+  `
+  CREATE TABLE peer_sends (project TEXT NOT NULL, at INTEGER NOT NULL);
+  CREATE INDEX peer_sends_project_at ON peer_sends (project, at);
+  `,
+  `
+  CREATE TABLE peer_thread_sends (thread_id TEXT NOT NULL, message_id TEXT PRIMARY KEY);
+  CREATE INDEX peer_thread_sends_thread ON peer_thread_sends (thread_id);
+  INSERT OR IGNORE INTO peer_thread_sends (thread_id, message_id)
+    SELECT json_extract(payload, '$.threadId'), json_extract(payload, '$.messageId')
+    FROM events WHERE type = 'agent.message' AND json_valid(payload)
+      AND json_type(payload, '$.threadId') = 'text' AND json_type(payload, '$.messageId') = 'text';
+  `,
+  `
+  CREATE TABLE peer_outbox (
+    message_id TEXT PRIMARY KEY, payload TEXT NOT NULL, delivered INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE peer_receipts (message_id TEXT PRIMARY KEY);
+  `,
 ]

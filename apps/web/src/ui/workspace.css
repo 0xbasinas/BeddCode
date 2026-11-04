@@ -1021,3 +1021,243 @@ a {
   font-variant-numeric: tabular-nums;
   opacity: 0.55;
 }
+/* Orchestration: its own block above the composer, in normal flow. The composer wrap pulls up over
+   the transcript for its frosted fade, so a wrap that holds panels must not do that. */
+.transcript ~ .composer-wrap:has(> .orchestration-panel) {
+  margin-top: 0;
+}
+.orchestration-panel {
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  border-radius: var(--corner-md);
+  position: relative;
+  overflow: hidden;
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+  container-type: inline-size;
+  container-name: orch;
+}
+.orch-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 10px;
+  text-align: left;
+  color: var(--text-muted);
+}
+.orch-head:hover {
+  color: var(--text);
+}
+.orch-title {
+  flex: none;
+  color: var(--text);
+}
+.orch-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.orch-chevron {
+  margin-left: auto;
+  transition: transform var(--motion-fast);
+}
+.orch-head[aria-expanded='true'] .orch-chevron {
+  transform: rotate(90deg);
+}
+.orchestration-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 10px 10px;
+  max-height: 45vh;
+  overflow: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+}
+.orchestration-content h3 {
+  margin: 0 0 6px;
+  font-size: var(--fs-caption);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.orchestration-content p {
+  margin: 0;
+}
+.orch-goal {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px !important;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+.orch-goal small,
+.orch-files > span {
+  color: var(--text-faint);
+  font-size: var(--fs-caption);
+}
+.orch-workers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.orch-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--corner-sm);
+  background: var(--bg-panel);
+  list-style: none;
+}
+.orch-queue .orch-card + .orch-card {
+  margin-top: 6px;
+}
+.orch-card-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+a.orch-card-head:hover .orch-agent {
+  text-decoration: underline;
+}
+.orch-agent {
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.orch-model {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+  font-size: var(--fs-caption);
+}
+.orch-state {
+  margin-left: auto;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+.orch-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.orch-dot.running {
+  background: var(--running);
+}
+.orch-dot.waiting {
+  background: var(--accent);
+  opacity: 0.8;
+}
+.orch-dot.done {
+  background: var(--text-muted);
+}
+.orch-dot.failed {
+  background: var(--danger);
+  opacity: 0.7;
+}
+.orch-dot.stopped,
+.orch-dot.queued {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--text-faint);
+}
+.orchestration-content .orch-task,
+.orchestration-content .orch-activity {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+.orchestration-content .orch-activity {
+  color: var(--text-secondary);
+}
+.orch-files {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+.orch-files ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-caption);
+}
+.orch-diff {
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.orch-link {
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+  text-decoration: underline;
+}
+.orchestration-row {
+  border-top: 1px solid var(--border);
+  padding: 8px 0;
+}
+.orchestration-row p {
+  white-space: pre-wrap;
+}
+.orchestration-actions,
+.orch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.orch-actions button {
+  flex: none;
+  white-space: nowrap;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--corner-sm);
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+}
+.orch-actions button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.orch-actions button:disabled {
+  opacity: var(--disabled-opacity);
+}
+/* Layout follows the thread column, not the viewport. */
+@container orch (max-width: 460px) {
+  .orchestration-content {
+    padding: 4px 8px 8px;
+  }
+  .orch-state {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+  .orch-actions button {
+    flex: 1 0 auto;
+    padding: 6px 10px;
+  }
+}

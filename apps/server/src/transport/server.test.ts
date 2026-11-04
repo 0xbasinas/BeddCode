@@ -1119,6 +1119,70 @@ function startBridge(server: { command: string; args: string[]; env: Record<stri
 }
 
 describe('automation', () => {
+  it('decides waiting orchestration tools over WebSocket', async () => {
+    const { server, automation, store } = await boot()
+    const c = await Client.connect(server.port)
+    await c.until((fs) => fs.some((f) => f.t === 'welcome'))
+    const settings = (await c.rpc('orchestration.settings.get', {}))
+      .result as import('@beddcode/contracts').OrchestrationSettings
+    settings.global.approval = 'approve-spawns-and-messages'
+    expect((await c.rpc('orchestration.settings.set', settings)).ok).toBe(true)
+    const { sessionId } = (await c.rpc('sessions.create', { instanceId: 'fake', agentTools: true }))
+      .result as { sessionId: string }
+    const start = automation.agentTools.handle(sessionId, 'tools/call', {
+      name: 'start_session',
+      arguments: { agent: 'fake', prompt: 'work' },
+    })
+    await vi.waitFor(() => expect(automation.orchestration.list()).toHaveLength(1))
+    expect(store.childrenOf(sessionId)).toHaveLength(0)
+    const listed = (await c.rpc('orchestration.approvals.list', {})).result as {
+      id: string
+      status: string
+    }[]
+    expect(listed[0]!.status).toBe('pending')
+    await c.rpc('orchestration.approvals.approve', { id: listed[0]!.id })
+    expect(await start).not.toMatchObject({ isError: true })
+    const childId = store.childrenOf(sessionId)[0]!
+    const send = automation.agentTools.handle(sessionId, 'tools/call', {
+      name: 'send_message',
+      arguments: { session_id: childId, text: 'follow up' },
+    })
+    await vi.waitFor(() => expect(automation.orchestration.list()).toHaveLength(2))
+    await c.rpc('orchestration.approvals.deny', { id: automation.orchestration.list()[1]!.id })
+    expect(await send).toMatchObject({
+      isError: true,
+      content: [{ text: expect.stringMatching(/denied/) }],
+    })
+  })
+
+  it('lets the fake agent act as a lead and plan two workers with [orchestrate]', async () => {
+    const { server, store } = await boot()
+    const c = await Client.connect(server.port)
+    await c.until((fs) => fs.some((f) => f.t === 'welcome'))
+    const { sessionId } = (await c.rpc('sessions.create', { instanceId: 'fake', agentTools: true }))
+      .result as {
+      sessionId: string
+    }
+    await c.rpc('sessions.prompt', { sessionId, text: '[orchestrate]' })
+    const planned = () =>
+      store
+        .readSession(sessionId)
+        .flatMap(({ event }) => (event.type === 'orchestration.plan' ? [event] : []))
+    await vi.waitFor(() => expect(planned()).toHaveLength(1))
+    expect(planned()[0]).toMatchObject({ goal: expect.any(String), tasks: [{}, {}] })
+    await vi.waitFor(() => expect(store.childrenOf(sessionId)).toHaveLength(2))
+    // Each worker reports its result to the lead.
+    await vi.waitFor(() =>
+      expect(
+        store
+          .childrenOf(sessionId)
+          .filter((id) =>
+            store.readSession(id).some(({ event }) => event.type === 'session.result'),
+          ),
+      ).toHaveLength(2),
+    )
+  })
+
   it('lets a session with agent tools start a child, wait for it, and the user approves it', async () => {
     const { server, store, automation } = await boot()
     const c = await Client.connect(server.port)

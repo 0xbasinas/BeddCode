@@ -12,7 +12,7 @@ The agent CLIs (`claude`, `codex`, `grok`, …) aren't bundled. Install them and
 
 ### Agent collaboration
 
-Enable Agent collaboration when creating sessions to let them start child agents and exchange messages with other opted-in sessions on the same host and project. Agents can use `list_peer_sessions` and `send_peer_message`; the latter identifies the sender in the recipient's timeline. A message starts an idle session or waits in a busy session's queue, and an agent can reply using the same tool. The project is limited to ten peer sends per minute per host process. Discovery covers the 100 most recently active sessions. This opt-in applies to sessions already created with agent tools enabled as well. Peer delivery does not ask for a separate approval.
+Enable Agent collaboration when creating sessions to let them start child agents and exchange messages with other opted-in sessions on the same host and project. Agents can use `list_peer_sessions`, `send_peer_message`, `broadcast_peer_message` and `read_peer_inbox`. Messages carry a thread id for replies and appear in both participants' timelines. A message starts an idle session or waits in a busy session's queue. The project is limited to ten peer sends per minute, including across host restarts; a thread is limited to 50 delivery attempts, including failed attempts and across restarts. Broadcast takes an explicit list of up to 20 sessions and reports each delivery separately; replies use a separate thread for each recipient. Discovery covers the 100 most recently active sessions. This opt-in applies to sessions already created with agent tools enabled as well. Peer delivery does not ask for a separate approval.
 
 ### The `beddcode` command
 

@@ -21,6 +21,23 @@ const created = {
   instanceId: 'fake',
 }
 
+it('replays agent messages as distinct timeline items', () => {
+  const state = fold([
+    created,
+    {
+      type: 'agent.message',
+      messageId: 'm',
+      threadId: 't',
+      senderId: 's1',
+      recipientId: 's2',
+      text: 'hello',
+    },
+  ])
+  expect(state.sessions.s1?.items).toMatchObject([
+    { kind: 'agent-message', threadId: 't', senderId: 's1', recipientId: 's2', text: 'hello' },
+  ])
+})
+
 it('replays host-backed notes and queued edits in their reordered positions', () => {
   const state = fold([
     created,
@@ -634,4 +651,24 @@ it('clears the "Host is updating" notice once the interrupted turn resumes', () 
   expect(notices(resumed)).toHaveLength(0)
   expect(fold(resumed).sessions.s1?.items.some((i) => i.kind === 'message')).toBe(true)
   expect(notices([...before, { type: 'turn.started' as const, turnId: 't2' }])).toHaveLength(0)
+})
+
+it('replays orchestration plans and preserves worker request IDs', () => {
+  const state = fold([
+    { ...created, parent: { sessionId: 'lead', depth: 1, requestId: 'plan:p:t' } },
+    {
+      type: 'orchestration.plan',
+      planId: 'p',
+      goal: 'Ship it',
+      tasks: [{ id: 't', agent: 'codex', prompt: 'Implement', worktree: true }],
+    },
+  ])
+  expect(state.sessions.s1?.parent?.requestId).toBe('plan:p:t')
+  expect(state.sessions.s1?.orchestrationPlans).toEqual([
+    {
+      planId: 'p',
+      goal: 'Ship it',
+      tasks: [{ id: 't', agent: 'codex', prompt: 'Implement', worktree: true }],
+    },
+  ])
 })

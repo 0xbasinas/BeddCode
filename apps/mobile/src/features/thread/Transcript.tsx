@@ -384,6 +384,15 @@ const Row = memo(
               {item.message}
             </Muted>
           )
+        case 'agent-message':
+          return (
+            <Muted size={12.5}>
+              Agent message · {item.senderId} → {item.recipientId}
+              {'\n'}Thread {item.threadId}
+              {'\n'}
+              {item.text}
+            </Muted>
+          )
         case 'changes':
           return <ChangesCard item={item} />
         case 'error':

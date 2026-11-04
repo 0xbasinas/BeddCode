@@ -130,6 +130,7 @@ class FakeSession implements ProviderSession {
   readonly sessionId: string
   private readonly queue = createAsyncQueue<SessionEvent>()
   private readonly pending = new Map<string, Deferred<string>>()
+  private readonly mcpServers: NonNullable<StartSessionInput['mcpServers']>
   private abort = new AbortController()
   private permissionMode: string
   private turnCount = 0
@@ -141,6 +142,7 @@ class FakeSession implements ProviderSession {
     private readonly advanced: boolean,
   ) {
     this.sessionId = input.sessionId
+    this.mcpServers = input.mcpServers ?? []
     this.permissionMode = input.permissionMode ?? 'ask'
     if (advanced) {
       this.setModel = async (model, effort) => {
@@ -310,6 +312,21 @@ class FakeSession implements ProviderSession {
       if (signal.aborted) return this.finish(turnId, 'cancelled')
     }
 
+    // Acts as a lead: plans two worker tasks through the host's agent tools, like a real agent.
+    if (input.text.includes('[orchestrate]')) {
+      await this.callHostTool('create_orchestration_plan', {
+        goal: 'Implement the change and review it',
+        tasks: [
+          { agent: 'fake', prompt: 'Implement the change [report]' },
+          { agent: 'fake', prompt: 'Review the change [report]' },
+        ],
+      })
+    }
+    // Acts as a worker: tells the lead how the task ended.
+    if (input.text.includes('[report]')) {
+      await this.callHostTool('report_result', { status: 'done', summary: 'Finished the task' })
+    }
+
     await say(`Looking into "${input.text}". Let me check the code first.`)
     await this.runTool(turnId, signal, 'command', 'Running Bash: grep -rn "refill" src/')
     await say(' Found the cause. Applying a fix.')
@@ -359,6 +376,21 @@ class FakeSession implements ProviderSession {
     await this.runTool(turnId, signal, 'command', 'Running Bash: pnpm vitest run test/limiter')
     await say(' All tests pass.')
     this.finish(turnId, signal.aborted ? 'cancelled' : 'done')
+  }
+
+  /** Calls a host agent tool the way the MCP bridge does: over loopback with the session's key. */
+  private async callHostTool(name: string, args: object) {
+    const env = this.mcpServers.find((s) => s.name === 'beddcode')?.env
+    if (!env?.BEDDCODE_TOOLS_URL) return
+    const res = await fetch(env.BEDDCODE_TOOLS_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${env.BEDDCODE_TOOLS_TOKEN}`,
+      },
+      body: JSON.stringify({ method: 'tools/call', params: { name, arguments: args } }),
+    })
+    if (!res.ok) throw new Error(`Agent tools answered ${res.status}`)
   }
 
   private async runTool(

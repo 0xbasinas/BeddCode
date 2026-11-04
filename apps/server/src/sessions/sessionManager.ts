@@ -110,6 +110,7 @@ interface TurnState {
   /** A turn is running (or about to). */
   busy: boolean
   queue: QueuedPrompt[]
+  queueStarting?: string
   /** Send this queued message as soon as the interrupted turn ends. */
   sendAfterInterrupt?: string
   /** The snapshot taken as the running turn started (see `turn.changes`). */
@@ -526,6 +527,29 @@ export class SessionManager {
     return { state: 'queued', queueId }
   }
 
+  /** Wake a durably queued peer message, without inserting it a second time. */
+  async wakePeerMessage(sessionId: string, queueId: string, text: string): Promise<void> {
+    const turn = this.turnState(sessionId)
+    // A cached queue predating the SQLite delivery needs the new entry too.
+    const events = this.deps.store.readSession(sessionId)
+    const queued = events.some(
+      ({ event }) => event.type === 'prompt.queued' && event.queueId === queueId,
+    )
+    const removed = events.some(
+      ({ event }) => event.type === 'prompt.dequeued' && event.queueId === queueId,
+    )
+    if (removed) {
+      this.deps.store.markPeerDelivered(queueId)
+      return
+    }
+    if (!queued) return
+    if (turn.queueStarting === queueId) return
+    if (!turn.queue.some((item) => item.queueId === queueId))
+      turn.queue.push({ queueId, text, attachments: [] })
+    await this.ensureLive(sessionId)
+    if (!turn.busy && turn.queue.length) this.onTurnEnded(sessionId, 'done')
+  }
+
   /** Cancels a queued message, or pushes it ahead of the agent's current work. */
   editQueued(sessionId: string, queueId: string, text: string, expectedText: string) {
     const item = this.turnState(sessionId).queue.find((q) => q.queueId === queueId)
@@ -572,17 +596,22 @@ export class SessionManager {
         queueId,
         reason: 'cancelled',
       })
+      this.deps.store.markPeerDelivered(queueId)
       return
     }
 
     const live = await this.ensureLive(sessionId)
     if (!turn.busy) {
-      this.dequeued(sessionId, queueId, 'sent')
-      await this.startTurn(sessionId, live, item.text, item.attachments)
+      await this.startTurn(sessionId, live, item.text, item.attachments, queueId)
     } else if (live.session.steer) {
-      this.dequeued(sessionId, queueId, 'steered')
-      this.appendUserMessage(sessionId, item.text, item.attachments)
-      await live.session.steer(this.providerPrompt(sessionId, item.text, item.attachments))
+      try {
+        await live.session.steer(this.providerPrompt(sessionId, item.text, item.attachments))
+        this.dequeued(sessionId, queueId, 'steered')
+        this.appendUserMessage(sessionId, item.text, item.attachments)
+      } catch (err) {
+        turn.queue.unshift(item)
+        throw err
+      }
     } else {
       // No way to talk into the running turn: stop it and send this next.
       turn.queue.unshift(item)
@@ -649,6 +678,7 @@ export class SessionManager {
 
   private dequeued(sessionId: string, queueId: string, reason: 'sent' | 'steered') {
     this.deps.store.append({ type: 'prompt.dequeued', sessionId, at: Date.now(), queueId, reason })
+    this.deps.store.markPeerDelivered(queueId)
   }
 
   /**
@@ -661,14 +691,16 @@ export class SessionManager {
     { session }: LiveSession,
     text: string,
     attachments: { name: string; path: string }[],
+    queueId?: string,
   ): Promise<void> {
     const turn = this.turnState(sessionId)
+    if (queueId) turn.queueStarting = queueId
     turn.busy = true
     turn.stopRequested = false
     turn.lastPrompt = { text, attachments }
     turn.agentStarted = false
     this.touch(sessionId)
-    this.appendUserMessage(sessionId, text, attachments)
+    if (!queueId) this.appendUserMessage(sessionId, text, attachments)
     const failed = (err: unknown) => this.promptFailed(sessionId, session, err)
     // The sender is answered now, with its message already in the log; waiting for the snapshot
     // of the folder would hold the composer for as long as git takes.
@@ -677,8 +709,15 @@ export class SessionManager {
         await turn.settling
         await turn.taking
         await this.checkpointBefore(sessionId, turn)
-        session.prompt(this.providerPrompt(sessionId, text, attachments)).catch(failed)
+        if (queueId) this.appendUserMessage(sessionId, text, attachments)
+        const prompt = session.prompt(this.providerPrompt(sessionId, text, attachments))
+        prompt.catch(failed)
       } catch (err) {
+        if (queueId) {
+          turn.queueStarting = undefined
+          if (!turn.queue.some((item) => item.queueId === queueId))
+            turn.queue.unshift({ queueId, text, attachments })
+        }
         failed(err)
       }
     })()
@@ -693,6 +732,11 @@ export class SessionManager {
     const turn = this.turnState(sessionId)
     // Another process has the session by now (a new conversation replaced a lost one).
     if (this.live.get(sessionId) && this.live.get(sessionId)?.session !== session) return
+    if (turn.queueStarting && turn.lastPrompt) {
+      if (!turn.queue.some((item) => item.queueId === turn.queueStarting))
+        turn.queue.unshift({ queueId: turn.queueStarting, ...turn.lastPrompt })
+      turn.queueStarting = undefined
+    }
     turn.busy = false
     turn.before = undefined
     // The host is shutting down or closed the agent itself: the next start closes the turn with
@@ -889,8 +933,7 @@ export class SessionManager {
     if (!live) return
     turn.sendAfterInterrupt = undefined
     turn.queue.shift()
-    this.dequeued(sessionId, next.queueId, 'sent')
-    void this.startTurn(sessionId, live, next.text, next.attachments)
+    void this.startTurn(sessionId, live, next.text, next.attachments, next.queueId)
   }
 
   /** Waiting messages survive restarts: rebuild them from the log the first time they are needed. */
@@ -1762,7 +1805,14 @@ export class SessionManager {
           }
           if (confirmsConversation(raw)) live.confirmed = true
         }
-        if (raw.type === 'turn.started') this.turnState(sessionId).agentStarted = true
+        if (raw.type === 'turn.started') {
+          const turn = this.turnState(sessionId)
+          turn.agentStarted = true
+          if (turn.queueStarting) {
+            this.dequeued(sessionId, turn.queueStarting, 'sent')
+            turn.queueStarting = undefined
+          }
+        }
         if (raw.type === 'turn.started' && live?.session === session && live.skipTurnStart) {
           // The turn this answers is already open in the log.
           live.skipTurnStart = false

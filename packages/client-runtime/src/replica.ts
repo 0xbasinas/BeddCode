@@ -12,6 +12,15 @@ export type SessionStatus = 'idle' | 'running' | 'needs-you' | 'failed'
 
 export type TranscriptItem =
   | {
+      kind: 'agent-message'
+      id: string
+      threadId: string
+      messageId?: string
+      senderId: string
+      recipientId: string
+      text: string
+    }
+  | {
       kind: 'message'
       id: string
       role: 'user' | 'assistant'
@@ -152,7 +161,12 @@ export interface SessionView {
   /** Slash commands and skills the agent offers right now. */
   commands: SlashCommand[]
   /** Started by another session through its agent tools. */
-  parent?: { sessionId: string; depth: number }
+  parent?: { sessionId: string; depth: number; requestId?: string }
+  orchestrationPlans?: {
+    planId: string
+    goal: string
+    tasks: { id: string; agent: string; prompt: string; worktree: boolean }[]
+  }[]
   /** Started by a schedule. */
   schedule?: { id: string; name: string }
   mcpGateway?: boolean
@@ -341,6 +355,12 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
   )
     next.declined = undefined
   switch (e.type) {
+    case 'orchestration.plan':
+      next.orchestrationPlans = [
+        ...(current.orchestrationPlans ?? []).filter((p) => p.planId !== e.planId),
+        { planId: e.planId, goal: e.goal, tasks: e.tasks },
+      ]
+      break
     case 'session.renamed':
       next.title = e.title
       break
@@ -419,6 +439,20 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     }
     case 'session.result':
       next.result = { status: e.status, summary: e.summary }
+      break
+    case 'agent.message':
+      next.items = [
+        ...current.items,
+        {
+          kind: 'agent-message',
+          id,
+          threadId: e.threadId,
+          messageId: e.messageId,
+          senderId: e.senderId,
+          recipientId: e.recipientId,
+          text: e.text,
+        },
+      ]
       break
     case 'session.usage':
       next.usage = {

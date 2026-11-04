@@ -38,6 +38,70 @@ describe('EventStore', () => {
       rmSync(dir, { recursive: true, force: true })
     }
   })
+  it('replays orchestration plans and groups after reopening the database', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'bc-orchestration-'))
+    const file = path.join(dir, 'events.db')
+    try {
+      const first = new EventStore(file)
+      const events: SessionEvent[] = [
+        {
+          type: 'orchestration.plan',
+          sessionId: 'lead',
+          at: 1,
+          planId: 'plan',
+          goal: 'Ship',
+          tasks: [{ id: 'task', agent: 'codex', prompt: 'Work', worktree: true }],
+        },
+        {
+          type: 'orchestration.group',
+          sessionId: 'lead',
+          at: 2,
+          name: 'review',
+          members: ['peer'],
+        },
+      ]
+      first.appendMany(events)
+      first.close()
+      const second = new EventStore(file)
+      expect(second.readSession('lead').map(({ event }) => event)).toEqual(events)
+      second.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+  it('keeps the thread budget across reopen and session purges', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'bc-thread-limit-'))
+    const file = path.join(dir, 'events.db')
+    try {
+      const first = new EventStore(file)
+      for (let i = 0; i < 50; i++)
+        expect(first.reservePeerThreadSend('thread', String(i))).toBe(true)
+      first.purgeSession('sender', Number.MAX_SAFE_INTEGER)
+      first.close()
+      const second = new EventStore(file)
+      expect(second.reservePeerThreadSend('thread', 'overflow')).toBe(false)
+      expect(second.reservePeerThreadSend('other', 'other')).toBe(true)
+      second.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+  it('keeps peer send reservations across reopen, isolated by project and expiring at one minute', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'bc-peer-limit-'))
+    const file = path.join(dir, 'events.db')
+    try {
+      const first = new EventStore(file)
+      for (let i = 0; i < 10; i++) expect(first.reservePeerSend('/p', 100_000)).toBe(true)
+      first.close()
+      const second = new EventStore(file)
+      expect(second.reservePeerSend('/p', 159_999)).toBe(false)
+      expect(second.reservePeerSend('/other', 159_999)).toBe(true)
+      expect(second.reservePeerSend('/p', 160_000)).toBe(true)
+      second.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
   it('lists created sessions in activity order using a sequence cursor', () => {
     const store = new EventStore(':memory:')
     const created = (id: string): SessionEvent => ({

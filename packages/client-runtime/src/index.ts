@@ -39,3 +39,4 @@ export * from './messageIds.ts'
 export * from './terminalCursor.ts'
 
 export * from './cursorStore.ts'
+export * from './inbox.ts'

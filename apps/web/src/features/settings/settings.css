@@ -926,3 +926,29 @@
   font: inherit;
   font-size: var(--fs-small);
 }
+
+.orchestration-settings {
+  display: grid;
+  gap: 14px;
+  max-width: 620px;
+}
+.orchestration-settings label {
+  display: grid;
+  gap: 5px;
+}
+.orchestration-settings input,
+.orchestration-settings select {
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px;
+}
+.orchestration-setting-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.orchestration-settings button {
+  justify-self: start;
+}
