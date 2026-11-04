@@ -65,6 +65,7 @@ export interface ClaudeAdapterOptions {
   executablePath?: string
   /** Separate Claude account/config (sets CLAUDE_CONFIG_DIR). */
   configDir?: string
+  mcpEnv?: Record<string, string>
   instanceId?: string
   label?: string
   log?: Logger
@@ -77,7 +78,8 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
   const instanceId = options.instanceId ?? CLAUDE_INSTANCE_ID
   const log = options.log ?? createLogger('claude')
   const queryFn = options.queryFn ?? (query as QueryFn)
-  const env = options.configDir ? { CLAUDE_CONFIG_DIR: options.configDir } : undefined
+  const env = options.mcpEnv ?? {}
+  if (options.configDir) env.CLAUDE_CONFIG_DIR = options.configDir
   let capabilities = claudeCapabilities
   const history = createClaudeHistory(
     options.historySdk ?? ({ listSessions, getSessionMessages, forkSession } as ClaudeHistorySdk),

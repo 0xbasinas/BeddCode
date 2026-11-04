@@ -45,6 +45,7 @@ export interface CodexAdapterOptions {
   executablePath?: string
   /** Separate Codex home/account (sets CODEX_HOME). */
   codexHome?: string
+  mcpEnv?: Record<string, string>
   instanceId?: string
   label?: string
   log?: Logger
@@ -55,7 +56,7 @@ export interface CodexAdapterOptions {
 export function createCodexAdapter(options: CodexAdapterOptions = {}): ProviderAdapter {
   const instanceId = options.instanceId ?? CODEX_INSTANCE_ID
   const log = options.log ?? createLogger('codex')
-  const env = { ...process.env, ...(options.codexHome ? { CODEX_HOME: options.codexHome } : {}) }
+  const env = Object.assign(options.mcpEnv ?? {}, process.env, options.codexHome ? { CODEX_HOME: options.codexHome } : {})
   let capabilities = codexCapabilities
 
   const executable = () =>

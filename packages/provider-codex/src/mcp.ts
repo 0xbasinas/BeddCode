@@ -1,3 +1,6 @@
+import { appendFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import type { McpServer, McpServerInput } from '@beddcode/contracts'
 import type { ProviderMcp } from '@beddcode/provider-core'
 import { runCommand, type RunResult } from '@beddcode/shared'
@@ -52,6 +55,7 @@ export function addArgs(server: McpServerInput): string[] {
       throw new Error('Environment variables only apply to local MCP servers')
     }
     args.push('--url', server.url)
+    if (server.bearerToken) args.push('--bearer-token-env-var', server.bearerToken)
   }
   return args
 }
@@ -75,6 +79,11 @@ export function createCodexMcp(
     },
     async add(_instanceId, server, cwd) {
       await must(addArgs(server), cwd)
+      if (server.headers && Object.keys(server.headers).length) {
+        const table = `\n[mcp_servers.${JSON.stringify(server.name)}.env_http_headers]\n`
+        const entries = Object.entries(server.headers).map(([key, value]) => `${JSON.stringify(key)} = ${JSON.stringify(value)}\n`).join('')
+        await appendFile(join(env.CODEX_HOME ?? join(homedir(), '.codex'), 'config.toml'), table + entries)
+      }
     },
     async remove(_instanceId, name, _scope, cwd) {
       await must(['mcp', 'remove', name], cwd)

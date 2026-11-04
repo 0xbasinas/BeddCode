@@ -9,6 +9,8 @@ export interface McpForm {
   /** `NAME=value`, one per line. */
   env: string
   url: string
+  headers: string
+  bearerToken: string
   scope?: 'user' | 'project' | 'local'
 }
 
@@ -19,6 +21,8 @@ export const emptyMcpForm = (): McpForm => ({
   args: '',
   env: '',
   url: '',
+  headers: '',
+  bearerToken: '',
 })
 
 const lines = (text: string) =>
@@ -39,6 +43,18 @@ export function parseEnv(text: string): Record<string, string> {
     env[name] = line.slice(at + 1)
   }
   return env
+}
+
+export function parseHeaders(text: string): Record<string, string> {
+  const headers: Record<string, string> = {}
+  for (const line of lines(text)) {
+    const at = line.indexOf(':')
+    const name = at > 0 ? line.slice(0, at).trim() : ''
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name)) throw new Error('Invalid header name; use Name: value')
+    if (Object.keys(headers).some((key) => key.toLowerCase() === name.toLowerCase())) throw new Error('Duplicate header name')
+    headers[name] = line.slice(at + 1).trim()
+  }
+  return headers
 }
 
 /** Turns what was typed into the request, or explains what is missing in plain words. */
@@ -73,5 +89,12 @@ export function mcpInputFromForm(form: McpForm): McpServerInput {
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
     throw new Error('The address must start with https:// or http://')
   }
-  return { name, transport: form.kind, url, scope: form.scope }
+  const headers = parseHeaders(form.headers)
+  if (form.bearerToken && Object.keys(headers).some((key) => key.toLowerCase() === 'authorization')) {
+    throw new Error('Use either a bearer token or an Authorization header')
+  }
+  return { name, transport: form.kind, url, scope: form.scope,
+    ...(Object.keys(headers).length ? { headers } : {}),
+    ...(form.bearerToken ? { bearerToken: form.bearerToken } : {}) }
+
 }
