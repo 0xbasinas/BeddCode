@@ -113,9 +113,16 @@ describe('child ledger', { timeout: process.platform === 'win32' ? 60_000 : 5_00
       child.kill()
       return
     }
-    expect(await isSameProcess(child.pid!, startedAt, node)).toBe(true)
-    expect(await isSameProcess(child.pid!, startedAt, '/usr/bin/some-other-agent')).toBe(false)
-    expect(await isSameProcess(child.pid!, startedAt - 600_000, node)).toBe(false)
+    // Independent look-ups, run together: on Windows each starts PowerShell, and one after the
+    // other they can add up to more than the test timeout on a slow machine.
+    const [sameProgram, otherProgram, otherStart] = await Promise.all([
+      isSameProcess(child.pid!, startedAt, node),
+      isSameProcess(child.pid!, startedAt, '/usr/bin/some-other-agent'),
+      isSameProcess(child.pid!, startedAt - 600_000, node),
+    ])
+    expect(sameProgram).toBe(true)
+    expect(otherProgram).toBe(false)
+    expect(otherStart).toBe(false)
     child.kill()
   })
 
