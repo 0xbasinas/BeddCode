@@ -200,9 +200,16 @@ a {
 }
 .handoff-marker {
   display: block;
+  padding: calc(10px * var(--ui-scale)) calc(14px * var(--ui-scale));
+  border-color: var(--border-subtle);
+  font-size: var(--fs-small);
 }
 .handoff-marker summary {
   cursor: pointer;
+}
+.handoff-marker[open] summary {
+  padding-bottom: calc(10px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-subtle);
 }
 .handoff-permissions {
   margin: calc(8px * var(--ui-scale)) 0 0;

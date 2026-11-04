@@ -8,6 +8,8 @@ import {
 } from '@beddcode/client-runtime'
 import type { ProviderInstance } from '@beddcode/contracts'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { hostRequest } from '../../stores/host.ts'
 
 /** The switch request; only a reviewed note overrides the handoff the host builds. */
@@ -187,95 +189,110 @@ export function SwitchAgent({
             top: 55,
             zIndex: 20,
             padding: 16,
-            minWidth: 300,
+            width: 'min(380px, calc(100vw - 32px))',
           }}
         >
           <div className="session-panel-heading">Switch agent</div>
-          {!reviewing && (
-            <>
-              <label>
-                Agent{' '}
-                <select
-                  value={target}
-                  onChange={(e) => {
-                    setTarget(e.target.value)
-                    setModel('')
-                  }}
-                >
-                  {targets.map(({ provider: p, ready, reason }) => (
-                    <option key={p.id} value={p.id} disabled={!ready}>
-                      {ready ? p.label : `${p.label} (${reason})`}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                {' '}
-                Model{' '}
-                <select value={model} onChange={(e) => setModel(e.target.value)}>
-                  <option value="">Default</option>
-                  {selected?.capabilities.models?.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </>
-          )}
-          {!reviewing && busy && (
-            <p>
-              A turn is running. Wait for it to finish, or stop it to switch.{' '}
-              <label>
-                <input type="checkbox" checked={stop} onChange={(e) => setStop(e.target.checked)} />{' '}
-                Stop the turn
-              </label>
-            </p>
-          )}
-          {!reviewing && (
-            <>
-              <p>
-                <label>
+          <div className="flex flex-col gap-4">
+            {!reviewing && (
+              <>
+                <label className="flex flex-col gap-1.5 text-sm font-medium">
+                  Agent
+                  <select
+                    className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    value={target}
+                    onChange={(e) => {
+                      setTarget(e.target.value)
+                      setModel('')
+                    }}
+                  >
+                    {targets.map(({ provider: p, ready, reason }) => (
+                      <option key={p.id} value={p.id} disabled={!ready}>
+                        {ready ? p.label : `${p.label} (${reason})`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1.5 text-sm font-medium">
+                  Model
+                  <select
+                    className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                  >
+                    <option value="">Default</option>
+                    {selected?.capabilities.models?.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            )}
+            {!reviewing && busy && (
+              <div className="flex flex-col gap-1.5 text-sm text-muted-foreground">
+                <p>A turn is running. Wait for it to finish, or stop it to switch.</p>
+                <label className="flex items-center gap-2 text-foreground">
                   <input
                     type="checkbox"
-                    checked={review}
-                    onChange={(e) => {
-                      setReview(e.target.checked)
-                      localStorage.setItem('review-switch-handoff', String(e.target.checked))
-                    }}
+                    checked={stop}
+                    onChange={(e) => setStop(e.target.checked)}
                   />{' '}
-                  Review handoff before sending
+                  Stop the turn
                 </label>
-              </p>
-              {review && (
-                <p style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-small)' }}>
+              </div>
+            )}
+            {!reviewing && (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={review}
+                      onChange={(e) => {
+                        setReview(e.target.checked)
+                        localStorage.setItem('review-switch-handoff', String(e.target.checked))
+                      }}
+                    />{' '}
+                    Review handoff before sending
+                  </label>
+                  {review && (
+                    <p className="text-sm text-muted-foreground">
+                      The note is sent as written, with the next message. Sections you delete are
+                      left out.
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+            {reviewing && (
+              <>
+                <p className="text-sm text-muted-foreground">
                   The note is sent as written, with the next message. Sections you delete are left
                   out.
                 </p>
-              )}
-            </>
-          )}
-          {reviewing && (
-            <>
-              <p style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-small)' }}>
-                The note is sent as written, with the next message. Sections you delete are left
-                out.
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="switch-handoff">Handoff context</Label>
+                  <Textarea
+                    id="switch-handoff"
+                    aria-label="Handoff context"
+                    placeholder="Add handoff context"
+                    className="min-h-40 max-h-80 resize-y overflow-y-auto"
+                    disabled={loadingPreview}
+                    value={handoff}
+                    onChange={(e) => setHandoff(e.target.value)}
+                    rows={10}
+                  />
+                </div>
+              </>
+            )}
+            {error && (
+              <p role="alert" className="composer-error">
+                {error}
               </p>
-              <textarea
-                aria-label="Handoff context"
-                disabled={loadingPreview}
-                value={handoff}
-                onChange={(e) => setHandoff(e.target.value)}
-                rows={10}
-                style={{ width: '100%' }}
-              />
-            </>
-          )}
-          {error && (
-            <p role="alert" className="composer-error">
-              {error}
-            </p>
-          )}
+            )}
+          </div>
           <div className="switch-agent-footer">
             <Button type="button" variant="ghost" onClick={cancel} disabled={sending}>
               Cancel
