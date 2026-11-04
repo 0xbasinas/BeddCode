@@ -225,7 +225,7 @@ describe('AgentTools', () => {
     expect(await restarted.call('parent', 'list_peer_groups', {})).toEqual([])
   })
   it('records plans and reconnects workers and results after the tools restart', async () => {
-    const { host, created } = fakeHost()
+    const { host, created, append } = fakeHost()
     const initial = await call(tools(host), 'parent', 'create_orchestration_plan', {
       goal: 'Ship the feature',
       tasks: [{ agent: 'codex', prompt: 'Implement it', worktree: true }],
@@ -239,6 +239,9 @@ describe('AgentTools', () => {
       { plan_id: initial.plan_id, goal: 'Ship the feature' },
     ])
     host.report('child-1', 'done', 'Implemented')
+    append({ type: 'turn.completed', sessionId: 'child-1', at: 1, reason: 'done' })
+    append({ type: 'turn.started', sessionId: 'child-1', at: 2 })
+    append({ type: 'turn.completed', sessionId: 'child-1', at: 3, reason: 'done' })
     const recovered = await call(tools(host), 'parent', 'get_orchestration_plan', {
       plan_id: initial.plan_id,
       start_pending: true,

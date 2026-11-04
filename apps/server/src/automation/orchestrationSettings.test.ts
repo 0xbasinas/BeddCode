@@ -30,6 +30,7 @@ describe('orchestration settings and approvals', () => {
       maxMessagesPerMinute: 7,
       maxMessages: 3,
       approval: 'off',
+      onWorkerFailure: 'none',
     })
     expect(s.forProject('/other')).toEqual({
       maxDepth: 4,
@@ -38,6 +39,7 @@ describe('orchestration settings and approvals', () => {
       maxMessagesPerMinute: 7,
       maxMessages: 50,
       approval: 'off',
+      onWorkerFailure: 'none',
     })
   })
   it('restores pending approvals and expires them after a restart', async () => {

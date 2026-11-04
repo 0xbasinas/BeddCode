@@ -14,6 +14,7 @@ const defaults: OrchestrationLimits = {
   maxMessagesPerMinute: 10,
   maxMessages: 50,
   approval: 'off',
+  onWorkerFailure: 'none',
 }
 const expiryMs = 240_000
 

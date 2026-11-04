@@ -277,7 +277,7 @@ export class EventStore {
         ) === 1
       if (inserted) {
         const { prompt, ...event } = message
-        for (const sessionId of [message.senderId, message.recipientId])
+        for (const sessionId of new Set([message.senderId, message.recipientId]))
           this.writeEvent(SessionEvent.parse({ type: 'agent.message', sessionId, ...event }))
         this.writeEvent(
           SessionEvent.parse({
@@ -368,7 +368,7 @@ export class EventStore {
   /** Removes a session's events before `beforeSeq`; the log keeps its numbers, with a gap. */
   purgeSession(sessionId: string, beforeSeq: number): void {
     this.db.prepare('DELETE FROM events WHERE session_id = ? AND seq < ?').run(sessionId, beforeSeq)
-    for (const slot of [...this.snapshots.keys()]) {
+    for (const slot of this.snapshots.keys()) {
       if (
         slot.startsWith(`${sessionId}
 `)

@@ -30,7 +30,7 @@ import {
   isLinearToolName,
   type LinearTools,
 } from '../linear/linearTools.ts'
-import { digest, transcript, type SessionDigest } from './digest.ts'
+import { digest, reportedResult, transcript, type SessionDigest } from './digest.ts'
 
 /** How deep sessions may nest: a child (1) may start children of its own (2), and those none. */
 export const MAX_DEPTH = 2
@@ -886,12 +886,14 @@ export class AgentTools {
             )
         }
       }
-      const child = childId ? digest(this.host.readSession(childId)) : undefined
+      const childEvents = childId ? this.host.readSession(childId) : []
+      const child = digest(childEvents)
+      const result = reportedResult(childEvents)
       tasks.push({
         ...task,
         session_id: childId,
-        status: child?.result?.status ?? child?.status ?? 'pending',
-        result: child?.result,
+        status: result?.status ?? child?.status ?? 'pending',
+        result,
         ...(error ? { error } : {}),
       })
     }

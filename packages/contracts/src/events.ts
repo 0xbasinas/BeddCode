@@ -211,6 +211,24 @@ export const SessionEvent = z.discriminatedUnion('type', [
     ),
   }),
   Base.extend({
+    type: z.literal('orchestration.summary'),
+    planId: z.string(),
+    text: z.string(),
+  }),
+  Base.extend({
+    type: z.literal('orchestration.notification'),
+    planId: z.string(),
+    workerId: z.string(),
+    kind: z.enum(['approval', 'finished', 'failed']),
+  }),
+  Base.extend({
+    type: z.literal('orchestration.recovery'),
+    planId: z.string(),
+    taskId: z.string(),
+    workerId: z.string(),
+    agent: z.string(),
+  }),
+  Base.extend({
     type: z.literal('orchestration.group'),
     name: z.string(),
     members: z.array(z.string()),
