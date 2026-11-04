@@ -14,6 +14,8 @@ name: Android
 on:
   push:
     tags: ['v*']
+    # Each push to nightly-mobile replaces the nightly-mobile prerelease with a release APK.
+    branches: [nightly-mobile]
   workflow_dispatch:
     inputs:
       variant:
@@ -33,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: ${{ fromJSON(github.event_name == 'push' && '["release","debug"]' || format('["{0}"]', inputs.variant)) }}
+        variant: ${{ fromJSON(github.ref == 'refs/heads/nightly-mobile' && github.event_name == 'push' && '["release"]' || github.event_name == 'push' && '["release","debug"]' || format('["{0}"]', inputs.variant)) }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -143,14 +145,14 @@ jobs:
           gh release upload "$TAG" "$APK" --clobber
 
       # A manual run publishes to a fixed tag per variant. The release is recreated so the tag moves
-      # to the commit that was built.
+      # to the commit that was built. A release build from the nightly-mobile branch goes to nightly-mobile.
       - name: Publish it to the rolling release
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/nightly-mobile'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ matrix.variant }}-dev
+          TAG: ${{ github.ref == 'refs/heads/nightly-mobile' && matrix.variant == 'release' && 'nightly-mobile' || format('{0}-dev', matrix.variant) }}
           APK: ${{ steps.apk.outputs.name }}
         run: |
           gh release delete "$TAG" --cleanup-tag --yes || true
-          gh release create "$TAG" "$APK" --prerelease --target "$GITHUB_SHA" \
-            --title "$TAG" --notes "Built from $GITHUB_SHA by run $GITHUB_RUN_NUMBER. Replaced by the next manual run."
+          gh release create "$TAG" "$APK" --prerelease --latest=false --target "$GITHUB_SHA" \
+            --title "$TAG" --notes "Built from $GITHUB_SHA by run $GITHUB_RUN_NUMBER. Replaced by the next build."

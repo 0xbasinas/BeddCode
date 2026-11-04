@@ -7,13 +7,15 @@ name: Release
 on:
   push:
     tags: ['v*']
+    # Each push to nightly-desktop replaces the nightly-desktop prerelease.
+    branches: [nightly-desktop]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: desktop-release-${{ github.event_name == 'workflow_dispatch' && 'desktop-dev' || github.ref }}
+  group: desktop-release-${{ github.ref == 'refs/heads/nightly-desktop' && 'nightly-desktop' || github.event_name == 'workflow_dispatch' && 'desktop-dev' || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -46,7 +48,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-      - if: github.event_name == 'workflow_dispatch'
+      - if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/nightly-desktop'
         uses: actions/upload-artifact@v5
         with:
           name: installers-${{ matrix.os }}
@@ -93,8 +95,8 @@ jobs:
   # A manual run replaces the desktop-dev prerelease, recreated so its tag moves to the built commit.
   # The headless host bundles go on it too, so `install-host.sh --version desktop-dev` works without a tag.
   rolling:
-    name: Publish desktop-dev
-    if: github.event_name == 'workflow_dispatch'
+    name: Publish ${{ github.ref == 'refs/heads/nightly-desktop' && 'nightly-desktop' || 'desktop-dev' }}
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/nightly-desktop'
     runs-on: ubuntu-24.04
     needs: [installers, host]
     steps:
@@ -108,14 +110,16 @@ jobs:
           pattern: beddcode-host-*
           path: installers
           merge-multiple: true
+      # Runs from the nightly-desktop branch publish to the nightly-desktop prerelease instead.
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref == 'refs/heads/nightly-desktop' && 'nightly-desktop' || 'desktop-dev' }}
         run: |
           ls -lh installers
-          gh release delete desktop-dev --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true
-          gh release create desktop-dev installers/* --repo "$GITHUB_REPOSITORY" --prerelease \
-            --target "$GITHUB_SHA" --title desktop-dev \
-            --notes "Built from $GITHUB_SHA by run $GITHUB_RUN_NUMBER. Replaced by the next manual run."
+          gh release delete "$TAG" --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true
+          gh release create "$TAG" installers/* --repo "$GITHUB_REPOSITORY" --prerelease --latest=false \
+            --target "$GITHUB_SHA" --title "$TAG" \
+            --notes "Built from $GITHUB_SHA by run $GITHUB_RUN_NUMBER. Replaced by the next build."
 
   # The host alone, for Linux machines with no desktop (see scripts/install-host.sh; the Windows one
   # is built in the installers job above). It is built on the
