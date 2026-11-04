@@ -76,11 +76,12 @@ function resumableAdapter(opts: { resume: boolean; status?: ProviderInstance['st
   return { adapter, starts, closed, interrupted, prompts }
 }
 
-function setup(opts: Parameters<typeof resumableAdapter>[0]) {
+function setup(opts: Parameters<typeof resumableAdapter>[0], projectInstructions?: (folder: string) => string) {
   const store = new EventStore(':memory:')
   const stub = resumableAdapter(opts)
   const manager = new SessionManager({
     attachments,
+    projectInstructions,
     git: new GitService(),
     store,
     adapters: [stub.adapter],
@@ -94,6 +95,19 @@ function setup(opts: Parameters<typeof resumableAdapter>[0]) {
 const tick = () => new Promise((r) => setTimeout(r, 5))
 
 describe('SessionManager', () => {
+  it('captures project instructions for agent prompts without changing the user message', async () => {
+    let rules = 'Run the tests'
+    const { store, manager, prompts } = setup({ resume: true }, () => rules)
+    const { sessionId } = await manager.create({ instanceId: 'stub' })
+    rules = 'Changed later'
+    await manager.prompt(sessionId, 'Implement this')
+    await vi.waitFor(() => expect(prompts[0]).toBeDefined())
+    expect(prompts[0]?.text).toContain('Run the tests')
+    expect(prompts[0]?.text).not.toContain('Changed later')
+    expect(store.readSession(sessionId).map(({ event }) => event).find((event) => event.type === 'message.delta')).toMatchObject({ text: 'Implement this' })
+    await manager.close()
+  })
+
   it('directs design pane prompts to the canvas without changing the recorded message', async () => {
     const { store, manager, prompts } = setup({ resume: true })
     const design = await manager.create({ instanceId: 'stub', designTools: true })

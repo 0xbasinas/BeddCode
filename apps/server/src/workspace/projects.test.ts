@@ -27,6 +27,22 @@ function repo() {
 }
 
 describe('ProjectStore', () => {
+  it('persists and clears instructions only for added projects', async () => {
+    const file = path.join(tmp(), 'projects.json')
+    const folder = tmp()
+    const git = { info: async () => ({ isRepo: false }) } as unknown as GitService
+    const store = new ProjectStore(file, git)
+    await expect(store.setInstructions(folder, 'rules')).rejects.toThrow('Not an added folder')
+    await store.add(folder)
+    await store.setInstructions(folder, 'rules')
+    expect(new ProjectStore(file, git).instructionsFor(folder)).toBe('rules')
+    await store.setScripts(folder, [{ id: 'test', name: 'Test', command: 'test' }])
+    expect(store.instructionsFor(folder)).toBe('rules')
+    expect(store.remove(folder)).toBe(true)
+    await store.add(folder)
+    expect(store.instructionsFor(folder)).toBe('')
+  })
+
   it('stores folders, describes git state live, and ignores duplicates', async () => {
     const store = new ProjectStore(path.join(tmp(), 'projects.json'), new GitService())
     expect(await store.list()).toEqual([])

@@ -194,6 +194,10 @@ export const RpcMethods = {
     params: z.object({ path: z.string().min(1), scripts: z.array(ProjectScript).max(20) }),
     result: Project,
   },
+  'projects.setInstructions': {
+    params: z.object({ path: z.string().min(1), instructions: z.string().max(32000) }),
+    result: Project,
+  },
   /** Runs `git init` in a folder that was added but is not a repository yet. */
   'projects.initGit': {
     params: z.object({ path: z.string().min(1) }),

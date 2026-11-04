@@ -211,6 +211,7 @@ export function createRpcRouter(
     'projects.add': (p) => projects.add(p.path),
     'projects.remove': async (p) => ({ removed: projects.remove(p.path) }),
     'projects.initGit': (p) => projects.initGit(p.path),
+    'projects.setInstructions': (p) => projects.setInstructions(p.path, p.instructions),
     'projects.setScripts': (p) => projects.setScripts(p.path, p.scripts),
     'folders.browse': (p) => browseFolders(p.path, { showHidden: p.showHidden }),
     'git.info': (p) => git.info(p.cwd),

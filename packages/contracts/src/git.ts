@@ -22,6 +22,7 @@ export const Project = z.object({
   name: z.string(),
   isRepo: z.boolean(),
   branch: z.string().optional(),
+  instructions: z.string().optional(),
   /** Saved commands for this project. */
   scripts: z.array(ProjectScript).optional(),
 })
