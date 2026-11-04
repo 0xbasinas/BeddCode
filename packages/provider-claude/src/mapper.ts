@@ -216,6 +216,8 @@ export class ClaudeEventMapper {
           out.push({
             type: 'session.notice',
             message: `Claude is retrying the request (attempt ${msg.attempt} of ${msg.max_retries})`,
+            transient: true,
+            key: 'claude-request',
           })
         } else if (msg.subtype === 'compact_boundary') {
           const meta = msg.compact_metadata

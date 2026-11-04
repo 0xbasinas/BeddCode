@@ -683,3 +683,44 @@ it('drops the previous agent options, modes and commands when the session is swi
     currentModeId: undefined,
   })
 })
+
+describe('transient notices', () => {
+  const notice = (message: string, key = 'claude-request') =>
+    ({ type: 'session.notice', message, transient: true, key }) as const
+  const kinds = (events: Draft[]) =>
+    fold(events).sessions.s1!.items.flatMap((i) => (i.kind === 'notice' ? [i.message] : []))
+
+  it('replaces a notice with the same key', () => {
+    expect(
+      kinds([
+        created,
+        { type: 'turn.started' },
+        notice('Still waiting'),
+        notice('Retrying 2 of 10'),
+      ]),
+    ).toEqual(['Retrying 2 of 10'])
+  })
+
+  it('drops them when real output arrives', () => {
+    expect(
+      kinds([
+        created,
+        { type: 'turn.started' },
+        notice('Still waiting'),
+        { type: 'message.delta', role: 'assistant', text: 'hi' },
+      ]),
+    ).toEqual([])
+  })
+
+  it('drops them when the turn ends, but keeps ordinary notices', () => {
+    expect(
+      kinds([
+        created,
+        { type: 'turn.started' },
+        { type: 'session.notice', message: 'Permanent' },
+        notice('Still waiting'),
+        { type: 'turn.completed', reason: 'cancelled' },
+      ]),
+    ).toEqual(['Permanent'])
+  })
+})

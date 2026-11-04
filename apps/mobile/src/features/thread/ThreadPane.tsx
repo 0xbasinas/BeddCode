@@ -3,6 +3,8 @@ import {
   effortLabel,
   endedByDecline,
   folderName,
+  sessionModelId,
+  sessionModelLabel,
   switchTargets,
 } from '@beddcode/client-runtime'
 import { Checks, DotsThree, Stop as StopIcon, ArrowUUpLeft } from 'phosphor-react-native'
@@ -284,11 +286,10 @@ export function ThreadPane({
                 : undefined
             }
             model={
-              hasModels || session.model
+              hasModels || sessionModelId(session)
                 ? {
                     label:
-                      agent?.capabilities.models?.find((m) => m.id === session.model)?.label ??
-                      session.model ??
+                      sessionModelLabel(session, agent?.capabilities.models ?? []) ??
                       'Default model',
                     detail: session.effort ? effortLabel(session.effort) : undefined,
                     onPress: hasModels ? () => setModelMenu(true) : undefined,
@@ -304,7 +305,7 @@ export function ThreadPane({
           visible={modelMenu}
           onClose={() => setModelMenu(false)}
           provider={agent}
-          modelId={session.model}
+          modelId={sessionModelId(session)}
           effort={session.effort}
           onChange={(model, effort) => void setSessionModel(session.id, model, effort)}
         />

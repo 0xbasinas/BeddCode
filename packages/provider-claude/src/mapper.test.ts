@@ -21,7 +21,12 @@ describe('ClaudeEventMapper', () => {
       { type: 'system', subtype: 'api_retry', attempt: 2, max_retries: 10, error_status: null },
     ])
     expect(events).toMatchObject([
-      { type: 'session.notice', message: 'Claude is retrying the request (attempt 2 of 10)' },
+      {
+        type: 'session.notice',
+        message: 'Claude is retrying the request (attempt 2 of 10)',
+        transient: true,
+        key: 'claude-request',
+      },
     ])
   })
 

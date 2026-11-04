@@ -16,6 +16,12 @@ export function projectSegmentEvent(
       return segments.map((segment, i) =>
         i === last ? { ...segment, model: event.model, effort: event.effort } : segment,
       )
+    case 'session.config': {
+      // Agents such as Grok report their model only as a setting, never as `session.model`.
+      const chosen = event.options.find((option) => option.category === 'model')?.value
+      if (typeof chosen !== 'string' || !chosen) return segments
+      return segments.map((segment, i) => (i === last ? { ...segment, model: chosen } : segment))
+    }
     case 'session.provider-session':
       return segments.map((segment, i) =>
         i === last ? { ...segment, nativeSessionId: event.providerSessionId } : segment,

@@ -37,3 +37,4 @@ export * from './messageIds.ts'
 
 export * from './autoHandoff.ts'
 export * from './switchTargets.ts'
+export * from './modelLabel.ts'

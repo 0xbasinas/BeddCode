@@ -474,7 +474,12 @@ export class ClaudeSession implements ProviderSession {
       this.stallTimer = undefined
       if (this.closed || !this.turnActive) return
       this.emit(
-        { type: 'session.notice', message: 'Still waiting for Claude…' },
+        {
+          type: 'session.notice',
+          message: 'Still waiting for Claude…',
+          transient: true,
+          key: 'claude-request',
+        },
         this.currentTurn(),
       )
     }, this.deps.stallNoticeMs ?? STALL_NOTICE_MS)

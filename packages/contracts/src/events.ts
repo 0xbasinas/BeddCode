@@ -145,7 +145,14 @@ export const SessionEvent = z.discriminatedUnion('type', [
     agent: z.string(),
     reason: z.string().optional(),
   }),
-  Base.extend({ type: z.literal('session.notice'), message: z.string() }),
+  Base.extend({
+    type: z.literal('session.notice'),
+    message: z.string(),
+    /** Progress chatter ("still waiting"): dropped once real output arrives or the turn ends. */
+    transient: z.boolean().optional(),
+    /** A newer notice with the same key replaces the earlier one. */
+    key: z.string().optional(),
+  }),
   Base.extend({ type: z.literal('session.handoff-delivered') }),
   /** The provider's own session id, kept so a stopped session can be resumed later. */
   Base.extend({ type: z.literal('session.provider-session'), providerSessionId: z.string() }),

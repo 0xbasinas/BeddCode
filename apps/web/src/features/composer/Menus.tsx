@@ -1,6 +1,7 @@
 import { ModelIcon } from '../../ui/AgentMark.tsx'
 import { Check, ChevronDown, Shield } from 'lucide-react'
 import type { ModelOption } from '@beddcode/contracts'
+import { modelDisplayName } from '@beddcode/client-runtime'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import { effortLabel } from '../../ui/format.ts'
 import { modelChoice, modelEfforts } from '../../ui/models.ts'
@@ -89,8 +90,7 @@ export function ModelMenu({
   agent?: string
 }) {
   if (models.length === 0 && efforts.length === 0) return null
-  const model = models.find((m) => m.id === value.model)
-  const label = model?.label ?? 'Default model'
+  const label = modelDisplayName(models, value.model) ?? 'Default model'
   const availableEfforts = modelEfforts(models, efforts, value.model)
 
   return (
@@ -206,7 +206,7 @@ export function ModelBadge({
   agent?: string
 }) {
   if (!model && !effort) return null
-  const label = models.find((m) => m.id === model)?.label ?? model ?? 'Default model'
+  const label = modelDisplayName(models, model) ?? 'Default model'
   return (
     <span className="pill static" title="Chosen when the session started">
       <ModelIcon agent={agent} /> {label}

@@ -55,7 +55,7 @@ import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { folderName } from '../../ui/format.ts'
 import { Transcript } from './Transcript.tsx'
 import { ChildAgentsBar, StartedByBanner } from './AgentToolCard.tsx'
-import { endedByDecline } from '@beddcode/client-runtime'
+import { endedByDecline, sessionModelId } from '@beddcode/client-runtime'
 import { prepareHandoff } from '../../stores/handoff.ts'
 import { useFollowEnd } from './useFollowEnd.ts'
 import { JumpToLatest } from './JumpToLatest.tsx'
@@ -663,7 +663,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
               agent={session.instanceId}
               models={provider?.capabilities.models ?? []}
               efforts={provider?.capabilities.efforts ?? []}
-              value={{ model: session.model, effort: session.effort }}
+              value={{ model: sessionModelId(session), effort: session.effort }}
               onChange={(choice) =>
                 void setSessionModel(sessionId, choice.model, choice.effort).catch(report)
               }
@@ -672,7 +672,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             <ModelBadge
               agent={session.instanceId}
               models={provider?.capabilities.models ?? []}
-              model={session.model}
+              model={sessionModelId(session)}
               effort={session.effort}
             />
           )

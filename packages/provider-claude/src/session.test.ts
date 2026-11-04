@@ -262,7 +262,10 @@ describe('createClaudeAdapter', () => {
       const notices: string[] = []
       void (async () => {
         for await (const e of session.events)
-          if (e.type === 'session.notice') notices.push(e.message)
+          if (e.type === 'session.notice') {
+            notices.push(e.message)
+            expect(e).toMatchObject({ transient: true, key: 'claude-request' })
+          }
       })()
       return { out, session, notices }
     }
