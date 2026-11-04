@@ -89,6 +89,12 @@ function fakeHost(parentProjectless = false) {
     },
     providers: async () => [CODEX],
     readSession: (id) => logs.get(id) ?? [],
+    recentSessionIds: (limit) => [...logs.keys()].slice(0, limit),
+    promptPeer: async (id, text) => {
+      if (failPrompt.has(id)) throw new Error('the agent is gone')
+      prompts.push([id, text])
+      return { state: 'queued' }
+    },
     childrenOf: (id) =>
       [...logs.entries()]
         .filter(([, events]) => {
@@ -146,16 +152,98 @@ const call = async (t: AgentTools, session: string, name: string, args: object) 
 afterEach(() => vi.useRealTimers())
 
 describe('AgentTools', () => {
+  it('discovers and messages opted-in peers only within the same project', async () => {
+    const { host, append, prompts } = fakeHost()
+    const t = tools(host)
+    const add = (sessionId: string, projectPath: string, agentTools: boolean) =>
+      append({
+        type: 'session.created',
+        sessionId,
+        at: 0,
+        title: sessionId,
+        cwd: projectPath,
+        projectPath,
+        instanceId: 'codex',
+        agentTools,
+      })
+    add('peer', '/p', true)
+    add('private', '/p', false)
+    add('other', '/other', true)
+    const peers = (await call(t, 'parent', 'list_peer_sessions', {})) as unknown as {
+      session_id: string
+    }[]
+    expect(peers.map((p) => p.session_id)).toEqual(['peer'])
+    await expect(
+      call(t, 'parent', 'send_peer_message', { session_id: 'other', text: 'hello' }),
+    ).rejects.toThrow('Recipient')
+    await expect(
+      call(t, 'parent', 'send_peer_message', { session_id: 'private', text: 'hello' }),
+    ).rejects.toThrow('Recipient')
+    expect(
+      await call(t, 'parent', 'send_peer_message', { session_id: 'peer', text: 'hello' }),
+    ).toMatchObject({ state: 'queued' })
+    expect(prompts).toEqual([
+      ['peer', 'Message from agent claude (session parent, "Parent"):\n\nhello'],
+    ])
+    append({ type: 'session.deleted', sessionId: 'peer', at: 1 })
+    await expect(
+      call(t, 'parent', 'send_peer_message', { session_id: 'peer', text: 'hello' }),
+    ).rejects.toThrow('Recipient')
+  })
+
+  it('limits peer sends across a project and rejects oversized messages', async () => {
+    const { host, append } = fakeHost()
+    const t = tools(host)
+    append({
+      type: 'session.created',
+      sessionId: 'peer',
+      at: 0,
+      title: 'Peer',
+      cwd: '/p',
+      projectPath: '/p',
+      instanceId: 'codex',
+      agentTools: true,
+    })
+    await expect(
+      call(t, 'parent', 'send_peer_message', { session_id: 'peer', text: 'x'.repeat(8001) }),
+    ).rejects.toThrow('8000')
+    for (let i = 0; i < 10; i++)
+      await call(t, 'parent', 'send_peer_message', { session_id: 'peer', text: 'hello' })
+    await expect(
+      call(t, 'peer', 'send_peer_message', { session_id: 'parent', text: 'reply' }),
+    ).rejects.toThrow('limit')
+  })
   it('exposes design tools during provider startup before session.created is recorded', async () => {
     const { host, append } = fakeHost()
-    const t = new AgentTools(host, { file: '/bridge.mjs', url: () => 'http://127.0.0.1:1/agent-tools' }, undefined, {} as DesignTools)
+    const t = new AgentTools(
+      host,
+      { file: '/bridge.mjs', url: () => 'http://127.0.0.1:1/agent-tools' },
+      undefined,
+      {} as DesignTools,
+    )
     t.serversFor('starting', { designTools: true })
-    const names = ((await t.handle('starting', 'tools/list', {})) as { tools: { name: string }[] }).tools.map((tool) => tool.name)
+    const names = (
+      (await t.handle('starting', 'tools/list', {})) as { tools: { name: string }[] }
+    ).tools.map((tool) => tool.name)
     expect(names).toContain('design_add')
     expect(names).not.toContain('start_session')
-    expect(await t.handle('starting', 'instructions', {})).toContain('editable design on the open BeddCode canvas')
-    append({ type: 'session.created', sessionId: 'starting', at: 0, title: 'Design', cwd: '/p', instanceId: 'claude', designTools: true })
-    expect(((await t.handle('starting', 'tools/list', {})) as { tools: { name: string }[] }).tools.map((tool) => tool.name)).toContain('design_add')
+    expect(await t.handle('starting', 'instructions', {})).toContain(
+      'editable design on the open BeddCode canvas',
+    )
+    append({
+      type: 'session.created',
+      sessionId: 'starting',
+      at: 0,
+      title: 'Design',
+      cwd: '/p',
+      instanceId: 'claude',
+      designTools: true,
+    })
+    expect(
+      ((await t.handle('starting', 'tools/list', {})) as { tools: { name: string }[] }).tools.map(
+        (tool) => tool.name,
+      ),
+    ).toContain('design_add')
   })
 
   it('gives each session its own key and lists the tools', async () => {
@@ -245,8 +333,12 @@ describe('AgentTools', () => {
     expect(await names('child-1')).toEqual(
       expect.arrayContaining(['start_session', 'report_result']),
     )
-    // The deepest level cannot start sessions, but can still report.
-    expect(await names('child-2')).toEqual(['report_result'])
+    // The deepest level cannot start sessions, but can message peers and report.
+    expect(await names('child-2')).toEqual([
+      'list_peer_sessions',
+      'send_peer_message',
+      'report_result',
+    ])
 
     await expect(
       call(t, 'parent', 'report_result', { status: 'done', summary: 'x' }),

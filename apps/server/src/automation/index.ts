@@ -118,6 +118,8 @@ export function createAutomation(deps: AutomationDeps) {
       currentMode: (id) => sessions.currentMode(id),
       providers: () => sessions.listProviders(),
       readSession,
+      recentSessionIds: (limit) => store.listSessionIds(undefined, limit).map((s) => s.id),
+      promptPeer: (id, text) => sessions.prompt(id, text, [], 'queue'),
       childrenOf: (id) => store.childrenOf(id),
       subscribe,
       projectPaths: async () => (await workspace.projects.list()).map((p) => p.path),
