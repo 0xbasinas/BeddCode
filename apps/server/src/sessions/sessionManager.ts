@@ -1,5 +1,6 @@
 import { applyEvents, emptyReplica } from '@beddcode/client-runtime/replica'
 import { handoffPrompt } from '@beddcode/client-runtime/handoff'
+import { lastUsedModel } from '@beddcode/contracts'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { performance } from 'node:perf_hooks'
@@ -691,10 +692,16 @@ export class SessionManager {
           })
       }
       if (params.handoff !== undefined) draft = params.handoff
+      // The target starts from its own last-used model for this session (never the agent being
+      // left), or its default model when it has not run here yet.
+      const last = lastUsedModel(segments, instanceId)
+      const model = params.model ?? last?.model
+      const effort = !params.model || params.model === last?.model ? last?.effort : undefined
       const input: StartSessionInput = {
         sessionId,
         cwd: created.cwd,
-        model: params.model,
+        model,
+        effort,
         additionalDirectories: [this.deps.attachments.root],
         terminalHost: this.agentTerminal(
           sessionId,
@@ -726,7 +733,8 @@ export class SessionManager {
         sessionId,
         at: Date.now(),
         instanceId,
-        model: params.model,
+        model,
+        effort,
         handoff: draft,
       })
       if (resumeId)
@@ -1609,8 +1617,9 @@ export class SessionManager {
         : created.event.permissionMode
 
     // Continue with the model last chosen, not the one the session started with.
-    const lastModel = events.map((e) => e.event).findLast((e) => e.type === 'session.model')
-    const chosen = lastModel?.type === 'session.model' ? lastModel : created.event
+    const chosen = segment
+      ? { model: segment.model, effort: segment.effort }
+      : { model: created.event.model, effort: created.event.effort }
 
     const renamed = events.map((e) => e.event).findLast((e) => e.type === 'session.renamed')
     const input = {
@@ -1625,7 +1634,7 @@ export class SessionManager {
       ),
       additionalDirectories: [this.deps.attachments.root],
       permissionMode: mode,
-      model: segment?.model ?? chosen.model,
+      model: chosen.model,
       effort: chosen.effort,
       mcpServers: this.toolServersFor(
         sessionId,

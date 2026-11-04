@@ -443,7 +443,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       ]
       next.instanceId = e.instanceId
       next.model = e.model
-      next.effort = undefined
+      next.effort = e.effort
       break
     }
     case 'session.notice':

@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
+import { applyEvents, emptyReplica } from '@beddcode/client-runtime/replica'
 import { createFakeAdapter, type ProviderAdapter } from '@beddcode/provider-core'
 import { createLogger } from '@beddcode/shared'
 import { AttachmentStore } from '../attachments/store.ts'
@@ -18,7 +19,7 @@ async function setup(fail = false, resumeBehavior: 'normal' | 'unsupported' | 'l
   const dir = mkdtempSync(path.join(os.tmpdir(), 'switch-test-'))
   const store = new EventStore(':memory:')
   const fake = createFakeAdapter({ delayMs: 0, advanced: true })
-  const starts: { id: string; resumeId?: string }[] = []
+  const starts: { id: string; resumeId?: string; model?: string; effort?: string }[] = []
   const originalStart = fake.startSession.bind(fake)
   const originalCapabilities = fake.capabilities.bind(fake)
   fake.capabilities = (id) => ({
@@ -26,7 +27,7 @@ async function setup(fail = false, resumeBehavior: 'normal' | 'unsupported' | 'l
     resume: resumeBehavior !== 'unsupported',
   })
   fake.startSession = async (id, input) => {
-    starts.push({ id, resumeId: input.resumeId })
+    starts.push({ id, resumeId: input.resumeId, model: input.model, effort: input.effort })
     if (input.resumeId && resumeBehavior === 'lost') throw new Error('session not found')
     const session = await originalStart(id, input)
     const prompt = session.prompt.bind(session)
@@ -41,7 +42,7 @@ async function setup(fail = false, resumeBehavior: 'normal' | 'unsupported' | 'l
     ...fake,
     detect: async () => (await fake.detect()).map((i) => ({ ...i, id: 'target', label: 'Target' })),
     startSession: async (id, input) => {
-      starts.push({ id, resumeId: input.resumeId })
+      starts.push({ id, resumeId: input.resumeId, model: input.model, effort: input.effort })
       if (fail) throw new Error('target failed')
       const session = await fake.startSession(id, input)
       const prompt = session.prompt.bind(session)
@@ -188,4 +189,23 @@ it('previews without switching and sends the edited handoff', async () => {
   expect(store.sessionSegments(sessionId).at(-1)?.handoffContext).toBe('Edited handoff')
   await manager.prompt(sessionId, 'continue')
   await vi.waitFor(() => expect(prompts.at(-1)).toContain('Edited handoff'))
+})
+
+it('resets model and effort to the target agent last-used choice, else its default', async () => {
+  const { manager, store, sessionId, starts } = await setup()
+  const view = () =>
+    applyEvents(emptyReplica(), store.readSession(sessionId)).sessions[sessionId]
+  const choose = (model: string, effort: string) =>
+    store.append({ type: 'session.model', sessionId, at: Date.now(), model, effort })
+  choose('a-model', 'high')
+  expect((await manager.switchAgent({ sessionId, instanceId: 'target' })).ok).toBe(true)
+  expect(starts.at(-1)).toMatchObject({ id: 'target', model: undefined, effort: undefined })
+  expect(view()).toMatchObject({ instanceId: 'target', model: undefined, effort: undefined })
+  choose('b-model', 'low')
+  expect((await manager.switchAgent({ sessionId, instanceId: 'fake' })).ok).toBe(true)
+  expect(starts.at(-1)).toMatchObject({ id: 'fake', model: 'a-model', effort: 'high' })
+  expect(view()).toMatchObject({ instanceId: 'fake', model: 'a-model', effort: 'high' })
+  expect((await manager.switchAgent({ sessionId, instanceId: 'target' })).ok).toBe(true)
+  expect(starts.at(-1)).toMatchObject({ id: 'target', model: 'b-model', effort: 'low' })
+  expect(view()).toMatchObject({ instanceId: 'target', model: 'b-model', effort: 'low' })
 })

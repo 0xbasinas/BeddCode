@@ -78,6 +78,7 @@ export type TurnChangedFile = z.infer<typeof TurnChangedFile>
 export const SessionSegment = z.object({
   provider: z.string(),
   model: z.string().optional(),
+  effort: z.string().optional(),
   nativeSessionId: z.string().optional(),
   startedAt: z.number().int(),
   endedAt: z.number().int().optional(),
@@ -153,6 +154,7 @@ export const SessionEvent = z.discriminatedUnion('type', [
     type: z.literal('session.switched'),
     instanceId: z.string(),
     model: z.string().optional(),
+    effort: z.string().optional(),
     handoff: z.string().max(100_000),
   }),
   Base.extend({ type: z.literal('session.renamed'), title: z.string().trim().min(1).max(120) }),
