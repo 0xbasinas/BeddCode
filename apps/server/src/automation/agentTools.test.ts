@@ -148,14 +148,35 @@ afterEach(() => vi.useRealTimers())
 describe('AgentTools', () => {
   it('exposes design tools during provider startup before session.created is recorded', async () => {
     const { host, append } = fakeHost()
-    const t = new AgentTools(host, { file: '/bridge.mjs', url: () => 'http://127.0.0.1:1/agent-tools' }, undefined, {} as DesignTools)
+    const t = new AgentTools(
+      host,
+      { file: '/bridge.mjs', url: () => 'http://127.0.0.1:1/agent-tools' },
+      undefined,
+      {} as DesignTools,
+    )
     t.serversFor('starting', { designTools: true })
-    const names = ((await t.handle('starting', 'tools/list', {})) as { tools: { name: string }[] }).tools.map((tool) => tool.name)
+    const names = (
+      (await t.handle('starting', 'tools/list', {})) as { tools: { name: string }[] }
+    ).tools.map((tool) => tool.name)
     expect(names).toContain('design_add')
     expect(names).not.toContain('start_session')
-    expect(await t.handle('starting', 'instructions', {})).toContain('editable design on the open BeddCode canvas')
-    append({ type: 'session.created', sessionId: 'starting', at: 0, title: 'Design', cwd: '/p', instanceId: 'claude', designTools: true })
-    expect(((await t.handle('starting', 'tools/list', {})) as { tools: { name: string }[] }).tools.map((tool) => tool.name)).toContain('design_add')
+    expect(await t.handle('starting', 'instructions', {})).toContain(
+      'editable design on the open BeddCode canvas',
+    )
+    append({
+      type: 'session.created',
+      sessionId: 'starting',
+      at: 0,
+      title: 'Design',
+      cwd: '/p',
+      instanceId: 'claude',
+      designTools: true,
+    })
+    expect(
+      ((await t.handle('starting', 'tools/list', {})) as { tools: { name: string }[] }).tools.map(
+        (tool) => tool.name,
+      ),
+    ).toContain('design_add')
   })
 
   it('gives each session its own key and lists the tools', async () => {
