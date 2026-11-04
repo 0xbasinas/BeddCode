@@ -470,9 +470,9 @@ export function NewSession({
               <div className="capability-toggles" role="group" aria-label="Agent capabilities">
                 <button
                   className="capability-toggle"
-                  aria-label="Start other agents"
+                  aria-label="Agent collaboration"
                   aria-pressed={agentTools}
-                  title={`Start other agents: ${agentTools ? 'on' : 'off'}. Approvals still come to you.`}
+                  title={`Agent collaboration: ${agentTools ? 'on' : 'off'}. Start agents and exchange messages with opted-in sessions in this project. Messages can start a turn; approvals still come to you.`}
                   onClick={() => setAgentTools((v) => !v)}
                 >
                   <Bot size={14} aria-hidden="true" />

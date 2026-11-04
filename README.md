@@ -10,6 +10,10 @@ On Windows, the package is also being added to [winget](https://learn.microsoft.
 
 The agent CLIs (`claude`, `codex`, `grok`, …) aren't bundled. Install them and sign in on every machine that runs sessions.
 
+### Agent collaboration
+
+Enable Agent collaboration when creating sessions to let them start child agents and exchange messages with other opted-in sessions on the same host and project. Agents can use `list_peer_sessions` and `send_peer_message`; the latter identifies the sender in the recipient's timeline. A message starts an idle session or waits in a busy session's queue, and an agent can reply using the same tool. The project is limited to ten peer sends per minute per host process. Discovery covers the 100 most recently active sessions. This opt-in applies to sessions already created with agent tools enabled as well. Peer delivery does not ask for a separate approval.
+
 ### The `beddcode` command
 
 The installed app also gives you a `beddcode` command, so a terminal is enough to look after a host. It runs on the app's own runtime; nothing else has to be installed.
