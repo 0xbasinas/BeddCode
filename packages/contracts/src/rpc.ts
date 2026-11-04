@@ -406,10 +406,10 @@ export const RpcMethods = {
       cwd: z.string(),
       cols: z.number().int().min(2).max(500).optional(),
       rows: z.number().int().min(2).max(200).optional(),
-      /** A command to type into the new shell (a project script), and the tab's name for it. */
+      /** A command to run in the shell (a project script), and the tab's name for it. */
       command: z.string().trim().min(1).max(2000).optional(),
       title: z.string().trim().min(1).max(40).optional(),
-      /** The project script: an earlier terminal of it in this folder is closed and replaced. */
+      /** The project script: reuse a running instance in this folder. */
       scriptId: z.string().min(1).max(64).optional(),
     }),
     result: TerminalInfo,

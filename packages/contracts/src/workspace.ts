@@ -10,7 +10,7 @@ export const TerminalInfo = z.object({
   title: z.string().optional(),
   /** The name the user gave the tab; absent when they have not (the tab shows `title`/`shell`). */
   name: z.string().optional(),
-  /** The project script it runs; running that script again in the folder replaces this terminal. */
+  /** The project script it runs; a running instance is reused within the folder. */
   scriptId: z.string().optional(),
   cols: z.number().int(),
   rows: z.number().int(),

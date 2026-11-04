@@ -284,8 +284,8 @@ function TerminalPaneContent({ workspace }: { workspace: PaneWorkspace }) {
           {connection !== 'connected'
             ? 'Disconnected'
             : current.exited !== undefined
-              ? `Shell exited${current.exited === null ? '' : ` (${current.exited})`}`
-              : 'Shell running'}
+              ? `${current.scriptId ? 'Command' : 'Shell'} exited${current.exited === null ? '' : ` (${current.exited})`}`
+              : `${current.scriptId ? 'Command' : 'Shell'} running`}
         </div>
       )}
 
