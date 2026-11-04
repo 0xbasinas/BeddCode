@@ -66,7 +66,7 @@ import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { folderName } from '../../ui/format.ts'
 import { Transcript } from './Transcript.tsx'
 import { ChildAgentsBar, StartedByBanner } from './AgentToolCard.tsx'
-import { endedByDecline } from '@beddcode/client-runtime'
+import { endedByDecline, sessionModelId } from '@beddcode/client-runtime'
 import { prepareHandoff } from '../../stores/handoff.ts'
 import { useFollowEnd } from './useFollowEnd.ts'
 import { JumpToLatest } from './JumpToLatest.tsx'
@@ -82,6 +82,7 @@ import { downloadSession } from './exportSession.ts'
 import { sessionArchive } from './sessionArchive.ts'
 import { usePane, type PaneInfo } from '../split/paneContext.ts'
 import { DiffStat } from '../../ui/DiffStat.tsx'
+import { SwitchAgent } from './SwitchAgent.tsx'
 
 export function ThreadView({ sessionId }: { sessionId: string }) {
   const navigate = useNavigate()
@@ -356,6 +357,12 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
           </div>
         </div>
         <div className="thread-actions">
+          <SwitchAgent
+            session={session}
+            hostKey={hostKey}
+            providers={providers}
+            pendingMessage={() => useComposerDrafts.getState().drafts[memoryKey] ?? ''}
+          />
           <OpenInEditor hostKey={hostKey} cwd={session.cwd} />
           <EnvironmentButton session={session} hostKey={hostKey} stats={stats} />
           <Dropdown
@@ -586,7 +593,10 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             ? `quote-${quoteFocus}:decline-${endedByDecline(session) ? session.completedTurns : ''}`
             : undefined
         }
-        commands={session.commands}
+        commands={[
+          { name: 'switch', description: 'Switch to a ready agent', hint: '<agent>' },
+          ...session.commands.filter((c) => c.name !== 'switch'),
+        ]}
         above={
           <>
             <AgentInbox session={session} hostKey={hostKey} />
@@ -632,6 +642,17 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
         }}
         canSteer={canSteer}
         onSend={async (value, attachments, delivery) => {
+          const switchCommand = /^\/switch\s+(.+)$/i.exec(value.trim())
+          if (switchCommand) {
+            await new Promise<void>((resolve, reject) =>
+              window.dispatchEvent(
+                new CustomEvent('switch-agent', {
+                  detail: { sessionId, agent: switchCommand[1]!.trim(), resolve, reject },
+                }),
+              ),
+            )
+            return
+          }
           followEnd()
           try {
             await prompt(sessionId, value, attachments, delivery)
@@ -656,7 +677,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
               agent={session.instanceId}
               models={provider?.capabilities.models ?? []}
               efforts={provider?.capabilities.efforts ?? []}
-              value={{ model: session.model, effort: session.effort }}
+              value={{ model: sessionModelId(session), effort: session.effort }}
               onChange={(choice) =>
                 void setSessionModel(sessionId, choice.model, choice.effort).catch(report)
               }
@@ -665,7 +686,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             <ModelBadge
               agent={session.instanceId}
               models={provider?.capabilities.models ?? []}
-              model={session.model}
+              model={sessionModelId(session)}
               effort={session.effort}
             />
           )

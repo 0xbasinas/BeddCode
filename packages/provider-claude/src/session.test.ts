@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   CanUseTool,
   Options,
@@ -248,5 +248,49 @@ describe('createClaudeAdapter', () => {
       'plan',
       'bypassPermissions',
     ])
+  })
+
+  describe('stall notice', () => {
+    afterEach(() => vi.useRealTimers())
+
+    const silentSession = () => {
+      const out = createAsyncQueue<SDKMessage>()
+      const session = new ClaudeSession(
+        { sessionId: 's1', cwd: '/work' },
+        { queryFn: () => out as unknown as Query, log, stallNoticeMs: 30_000 },
+      )
+      const notices: string[] = []
+      void (async () => {
+        for await (const e of session.events)
+          if (e.type === 'session.notice') {
+            notices.push(e.message)
+            expect(e).toMatchObject({ transient: true, key: 'claude-request' })
+          }
+      })()
+      return { out, session, notices }
+    }
+
+    it('says it is still waiting once a started turn is silent for too long', async () => {
+      vi.useFakeTimers()
+      const { session, notices } = silentSession()
+      void session.prompt({ text: 'hi' })
+      await vi.advanceTimersByTimeAsync(29_000)
+      expect(notices).toEqual([])
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(notices).toEqual(['Still waiting for Claude…'])
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(notices).toHaveLength(1)
+    })
+
+    it('stays quiet while events keep arriving', async () => {
+      vi.useFakeTimers()
+      const { out, session, notices } = silentSession()
+      void session.prompt({ text: 'hi' })
+      for (let i = 0; i < 4; i++) {
+        await vi.advanceTimersByTimeAsync(20_000)
+        out.push({ type: 'system', subtype: 'init', session_id: 'x' } as unknown as SDKMessage)
+      }
+      expect(notices).toEqual([])
+    })
   })
 })

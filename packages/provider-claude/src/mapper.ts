@@ -212,6 +212,13 @@ export class ClaudeEventMapper {
           else if (msg.compact_result === 'failed') {
             out.push({ type: 'session.compaction', state: 'failed' })
           }
+        } else if (msg.subtype === 'api_retry') {
+          out.push({
+            type: 'session.notice',
+            message: `Claude is retrying the request (attempt ${msg.attempt} of ${msg.max_retries})`,
+            transient: true,
+            key: 'claude-request',
+          })
         } else if (msg.subtype === 'compact_boundary') {
           const meta = msg.compact_metadata
           out.push({

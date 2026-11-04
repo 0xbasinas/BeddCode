@@ -4,7 +4,7 @@ import type { ReplicaState } from './replica.ts'
  * Bump when `SessionView` or `applyEvent` change in a way that makes an old saved copy wrong:
  * it is then thrown away and the history is fetched again.
  */
-export const SNAPSHOT_VERSION = 1
+export const SNAPSHOT_VERSION = 3
 
 /** A copy of the history is not worth keeping past this size; the host is asked for it instead. */
 export const MAX_SNAPSHOT_CHARS = 32_000_000

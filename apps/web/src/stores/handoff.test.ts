@@ -25,21 +25,21 @@ describe('prepareHandoff', () => {
     request.mockImplementation(async (_host, method) =>
       method === 'git.status'
         ? { files: [{ path: 'new.txt', status: 'A' }] }
-        : { patch: '+new content', truncated: true },
+        : { patch: '@@ -0,0 +1,2 @@\n+new content\n+more', truncated: true },
     )
     await prepareHandoff('host', session, 'Claude')
     expect(request).toHaveBeenCalledWith('host', 'git.status', { cwd: '/repo/worktree' })
     expect(peekHandoff('host')).toMatchObject({
       source: { sessionId: 'source', cwd: '/repo/worktree' },
     })
-    expect(peekHandoff('host')?.text).toContain('+new content')
-    expect(peekHandoff('host')?.text).toContain('Diff unavailable or truncated')
+    expect(peekHandoff('host')?.text).toContain('new.txt (+2/-0) @@ -0,0 +1,2 @@')
+    expect(peekHandoff('host')?.text).not.toContain('+new content')
     expect(peekHandoff('other')).toBeUndefined()
   })
 
   it('still prepares a reviewable packet when Git is unavailable', async () => {
     request.mockRejectedValue(new Error('not a repository'))
     await prepareHandoff('host', session)
-    expect(peekHandoff('host')?.text).toContain('unavailable; inspect the working tree')
+    expect(peekHandoff('host')?.text).not.toContain('Changed files')
   })
 })

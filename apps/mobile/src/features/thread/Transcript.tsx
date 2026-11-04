@@ -1,9 +1,11 @@
 import {
+  agentLabel,
   isAgentTool,
   buildBlocks,
   createBlockBuilder,
   defaultOpen,
   formatDuration,
+  parseHandoffNote,
   summarizeTools,
   toolDetails,
   toolDuration,
@@ -20,6 +22,7 @@ import {
   Check,
   CaretDown,
   CaretRight,
+  ArrowsLeftRight,
   FileText,
   Hand,
   MagnifyingGlass,
@@ -33,6 +36,7 @@ import { ActivityIndicator, Animated, FlatList, Pressable, StyleSheet, View } fr
 
 import { colors, radius } from '@/theme/tokens'
 import { AttachmentImage, isImageName } from '@/features/composer/AttachmentImage'
+import { useHostStore } from '@/host/store'
 import { Message } from './Message'
 import { Diffstat } from '@/ui/Diffstat'
 import { FadeIn } from '@/ui/FadeIn'
@@ -378,6 +382,8 @@ const Row = memo(
           return <ApprovalCard item={item} cwd={cwd} onApprove={onApprove} />
         case 'question':
           return <QuestionCard item={item} onAnswer={onAnswer} />
+        case 'switch':
+          return <SwitchMarker item={item} hostKey={hostKey} />
         case 'notice':
           return (
             <Muted size={12.5} style={{ textAlign: 'center' }}>
@@ -601,4 +607,71 @@ const styles = StyleSheet.create({
     borderRadius: radius.control,
     padding: 10,
   },
+  switchMarker: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.control,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  switchContent: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    marginTop: 10,
+    paddingTop: 10,
+    gap: 10,
+  },
 })
+
+function SwitchMarker({
+  item,
+  hostKey,
+}: {
+  item: {
+    from: string
+    to: string
+    handoff: string
+    permissionLabel?: string
+    permissionNote?: string
+  }
+  hostKey?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const providers = useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.providers : undefined))
+  return (
+    <View style={styles.switchMarker}>
+      <Pressable
+        onPress={() => setOpen(!open)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        style={styles.switchRow}
+      >
+        <Icon icon={ArrowsLeftRight} size={14} color={colors.faint} />
+        <Muted size={12.5} style={{ flex: 1 }}>
+          Switched from {agentLabel(providers, item.from)} to {agentLabel(providers, item.to)}
+        </Muted>
+        <Icon icon={open ? CaretDown : CaretRight} size={14} color={colors.faint} />
+      </Pressable>
+      {open && (
+        <View style={styles.switchContent}>
+          {item.permissionNote || item.permissionLabel ? (
+            <Muted size={12}>{item.permissionNote ?? `Permissions: ${item.permissionLabel}`}</Muted>
+          ) : null}
+          {parseHandoffNote(item.handoff).map((part, i) => (
+            <View key={i}>
+              {part.title ? (
+                <Muted size={12} style={{ fontWeight: '600' }}>
+                  {part.title}
+                </Muted>
+              ) : null}
+              <Text size={12} color={colors.textSecondary} selectable>
+                {part.body}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  )
+}

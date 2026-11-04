@@ -10,7 +10,8 @@
     "./relaySocket": "./src/relaySocket.ts",
     "./perf": "./src/perf.ts",
     "./relayCrypto": "./src/relayCrypto.ts",
-    "./replica": "./src/replica.ts"
+    "./replica": "./src/replica.ts",
+    "./handoff": "./src/handoff.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

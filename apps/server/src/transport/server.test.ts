@@ -577,6 +577,51 @@ describe('server', () => {
     expect(seqs).toEqual([...seqs].sort((a, b) => a - b))
   })
 
+  it('switches a fake provider within one session through RPC', async () => {
+    const { server, store } = await boot()
+    const c = await Client.connect(server.port)
+    c.send({ t: 'subscribe', afterSeq: 0 })
+    await c.until((fs) => fs.some((f) => f.t === 'caught-up'))
+    const created = await c.rpc('sessions.create', { instanceId: 'fake', title: 'Switch test' })
+    const { sessionId } = created.result as { sessionId: string }
+    await c.rpc('sessions.prompt', { sessionId, text: 'first request' })
+    await c.until((fs) =>
+      fs.some((f) => f.t === 'event' && f.stored.event.type === 'approval.requested'),
+    )
+    const switched = await c.rpc('session.switchAgent', {
+      sessionId,
+      instanceId: 'fake',
+      stop: true,
+    })
+    expect(switched.result).toMatchObject({
+      ok: true,
+      draft: expect.stringContaining('first request'),
+    })
+    expect(store.sessionSegments(sessionId)).toHaveLength(2)
+    expect(
+      store
+        .readSession(sessionId)
+        .some(
+          ({ event }) =>
+            event.type === 'session.notice' && event.message.includes('approvals were cancelled'),
+        ),
+    ).toBe(true)
+    await c.rpc('sessions.prompt', { sessionId, text: 'second request' })
+    await c.until(() =>
+      store
+        .readSession(sessionId)
+        .some(
+          ({ event }) =>
+            event.type === 'message.delta' &&
+            event.role === 'user' &&
+            event.text === 'second request',
+        ),
+    )
+    expect(
+      store.readSession(sessionId).filter(({ event }) => event.type === 'session.created'),
+    ).toHaveLength(1)
+  })
+
   it('resumes after a reconnect without gaps or duplicates', async () => {
     const { server, store } = await boot()
     const first = await Client.connect(server.port)

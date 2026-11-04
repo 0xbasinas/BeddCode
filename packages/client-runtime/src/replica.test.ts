@@ -672,3 +672,111 @@ it('replays orchestration plans and preserves worker request IDs', () => {
     },
   ])
 })
+it('places switch markers in transcript order with the sent context', () => {
+  const state = fold([
+    created,
+    { type: 'session.switched', instanceId: 'other', handoff: 'reviewed context' },
+  ])
+  expect(state.sessions.s1?.items).toMatchObject([
+    { kind: 'switch', from: 'fake', to: 'other', handoff: 'reviewed context' },
+  ])
+})
+
+it('shows the target agent model and effort after a switch, and restores them on switch back', () => {
+  const state = fold([
+    created,
+    { type: 'session.model', model: 'a-model', effort: 'high' },
+    { type: 'session.switched', instanceId: 'other', handoff: 'h' },
+    { type: 'session.model', model: 'b-model', effort: 'low' },
+    {
+      type: 'session.switched',
+      instanceId: 'fake',
+      model: 'a-model',
+      effort: 'high',
+      handoff: 'h',
+    },
+  ])
+  expect(state.sessions.s1).toMatchObject({ instanceId: 'fake', model: 'a-model', effort: 'high' })
+  expect(
+    fold([created, { type: 'session.switched', instanceId: 'other', handoff: 'h' }]).sessions.s1,
+  ).toMatchObject({ instanceId: 'other', model: undefined, effort: undefined })
+})
+
+it('drops the previous agent options, modes and commands when the session is switched', () => {
+  const state = fold([
+    created,
+    { type: 'session.model', model: 'claude-sonnet-5-5', effort: 'high' },
+    { type: 'session.switched', instanceId: 'other', handoff: 'h' },
+    { type: 'session.modes', modes: [{ id: 'plan', label: 'Plan' }], currentModeId: 'plan' },
+    { type: 'session.commands', commands: [{ name: 'review' }] },
+    {
+      type: 'session.config',
+      options: [
+        {
+          id: 'model',
+          name: 'Model',
+          type: 'select',
+          value: 'grok-4.7',
+          choices: [{ value: 'grok-4.7', name: 'Grok 4.7' }],
+        },
+      ],
+    },
+    {
+      type: 'session.switched',
+      instanceId: 'fake',
+      model: 'claude-sonnet-5-5',
+      effort: 'high',
+      handoff: 'h',
+    },
+  ]).sessions.s1
+  expect(state).toMatchObject({
+    instanceId: 'fake',
+    model: 'claude-sonnet-5-5',
+    effort: 'high',
+    config: [],
+    modes: [],
+    commands: [],
+    currentModeId: undefined,
+  })
+})
+
+describe('transient notices', () => {
+  const notice = (message: string, key = 'claude-request') =>
+    ({ type: 'session.notice', message, transient: true, key }) as const
+  const kinds = (events: Draft[]) =>
+    fold(events).sessions.s1!.items.flatMap((i) => (i.kind === 'notice' ? [i.message] : []))
+
+  it('replaces a notice with the same key', () => {
+    expect(
+      kinds([
+        created,
+        { type: 'turn.started' },
+        notice('Still waiting'),
+        notice('Retrying 2 of 10'),
+      ]),
+    ).toEqual(['Retrying 2 of 10'])
+  })
+
+  it('drops them when real output arrives', () => {
+    expect(
+      kinds([
+        created,
+        { type: 'turn.started' },
+        notice('Still waiting'),
+        { type: 'message.delta', role: 'assistant', text: 'hi' },
+      ]),
+    ).toEqual([])
+  })
+
+  it('drops them when the turn ends, but keeps ordinary notices', () => {
+    expect(
+      kinds([
+        created,
+        { type: 'turn.started' },
+        { type: 'session.notice', message: 'Permanent' },
+        notice('Still waiting'),
+        { type: 'turn.completed', reason: 'cancelled' },
+      ]),
+    ).toEqual(['Permanent'])
+  })
+})

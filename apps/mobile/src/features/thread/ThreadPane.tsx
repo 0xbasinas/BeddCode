@@ -1,9 +1,17 @@
-import { doneMenuAction, effortLabel, endedByDecline, folderName } from '@beddcode/client-runtime'
+import {
+  doneMenuAction,
+  effortLabel,
+  endedByDecline,
+  folderName,
+  sessionModelId,
+  sessionModelLabel,
+  switchTargets,
+} from '@beddcode/client-runtime'
 import { Checks, DotsThree, Stop as StopIcon, ArrowUUpLeft } from 'phosphor-react-native'
 import { now } from '@beddcode/client-runtime'
 import { useEffect, useRef, useState } from 'react'
 import { router } from 'expo-router'
-import { Animated, Pressable, StyleSheet, View } from 'react-native'
+import { Alert, Animated, Pressable, StyleSheet, View } from 'react-native'
 
 import { Composer } from '@/features/composer/Composer'
 import { ModelPicker } from '@/features/composer/ModelPicker'
@@ -11,6 +19,7 @@ import {
   answerQuestion,
   approve,
   interrupt,
+  hostRequest,
   prompt,
   recordMetric,
   setMode,
@@ -47,6 +56,7 @@ export function ThreadPane({
   const session = useSession(sessionId)
   const hostKey = useSessionHostKey(sessionId)
   const openedAt = useRef(now())
+  const composerDraft = useRef('')
   // Only the parts of the host this screen shows, so another session streaming on the same host
   // does not redraw this one.
   const providers = useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.providers : undefined))
@@ -59,6 +69,8 @@ export function ThreadPane({
   const [modeMenu, setModeMenu] = useState(false)
   const [attachMenu, setAttachMenu] = useState(false)
   const [modelMenu, setModelMenu] = useState(false)
+  const [switchMenu, setSwitchMenu] = useState(false)
+  const [switchTarget, setSwitchTarget] = useState<string>()
   const draft = useAttachments((s) => s.drafts[sessionId]) ?? EMPTY_ATTACHMENTS
 
   if (!session) {
@@ -120,6 +132,7 @@ export function ThreadPane({
 
   const action = doneMenuAction(session)
   const items: MenuItem[] = [
+    { id: 'switch', label: 'Switch agent…', onSelect: () => setSwitchMenu(true) },
     {
       id: 'notes',
       label: notesOpen ? 'Hide session notes' : 'Session notes',
@@ -152,9 +165,18 @@ export function ThreadPane({
         title={session.title}
         subtitle={subtitle}
         right={
-          <Pressable hitSlop={10} onPress={() => setMenu(true)} accessibilityLabel="More">
-            <Icon icon={DotsThree} size={22} weight="bold" />
-          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+            <Pressable
+              onPress={() => setSwitchMenu(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Switch agent"
+            >
+              <Muted size={12}>{agent?.label ?? 'Agent'} ▾</Muted>
+            </Pressable>
+            <Pressable hitSlop={10} onPress={() => setMenu(true)} accessibilityLabel="More">
+              <Icon icon={DotsThree} size={22} weight="bold" />
+            </Pressable>
+          </View>
         }
       />
       <StreamIndicator state={streamState} />
@@ -252,6 +274,9 @@ export function ThreadPane({
             attachments={draft}
             hostKey={hostKey}
             commands={session.commands}
+            onDraftChange={(text) => {
+              composerDraft.current = text
+            }}
             onRemoveAttachment={(key) => useAttachments.getState().remove(session.id, [key])}
             onAttach={() => setAttachMenu(true)}
             mode={
@@ -263,11 +288,10 @@ export function ThreadPane({
                 : undefined
             }
             model={
-              hasModels || session.model
+              hasModels || sessionModelId(session)
                 ? {
                     label:
-                      agent?.capabilities.models?.find((m) => m.id === session.model)?.label ??
-                      session.model ??
+                      sessionModelLabel(session, agent?.capabilities.models ?? []) ??
                       'Default model',
                     detail: session.effort ? effortLabel(session.effort) : undefined,
                     onPress: hasModels ? () => setModelMenu(true) : undefined,
@@ -283,11 +307,72 @@ export function ThreadPane({
           visible={modelMenu}
           onClose={() => setModelMenu(false)}
           provider={agent}
-          modelId={session.model}
+          modelId={sessionModelId(session)}
           effort={session.effort}
           onChange={(model, effort) => void setSessionModel(session.id, model, effort)}
         />
       ) : null}
+      <MenuSheet
+        visible={switchMenu}
+        title={switchTarget ? 'Choose model' : 'Switch agent'}
+        onClose={() => {
+          setSwitchMenu(false)
+          setSwitchTarget(undefined)
+        }}
+        closeOnSelect={false}
+        items={
+          switchTarget
+            ? [
+                { id: '', label: 'Default model' },
+                ...(providers?.find((p) => p.id === switchTarget)?.capabilities.models ?? []).map(
+                  (m) => ({ id: m.id, label: m.label }),
+                ),
+              ].map((m) => ({
+                ...m,
+                onSelect: () => {
+                  const perform = async (stop: boolean) => {
+                    if (!hostKey) return
+                    try {
+                      const result = await hostRequest(hostKey, 'session.switchAgent', {
+                        sessionId: session.id,
+                        instanceId: switchTarget,
+                        pendingMessage: composerDraft.current || undefined,
+                        model: m.id || undefined,
+                        stop,
+                      })
+                      if (!result.ok) throw new Error(result.error ?? 'Could not switch agent')
+                      setSwitchMenu(false)
+                      setSwitchTarget(undefined)
+                    } catch (err) {
+                      Alert.alert(
+                        'Could not switch agent',
+                        err instanceof Error ? err.message : String(err),
+                      )
+                    }
+                  }
+                  if (session.status === 'running' || session.status === 'needs-you')
+                    Alert.alert(
+                      'Agent is busy',
+                      'Wait for the turn to finish, or stop it to switch.',
+                      [
+                        { text: 'Wait', style: 'cancel' },
+                        { text: 'Stop and switch', onPress: () => void perform(true) },
+                      ],
+                    )
+                  else void perform(false)
+                },
+              }))
+            : switchTargets(providers ?? [], session.instanceId).map(
+                ({ provider: p, ready, reason }) => ({
+                  id: p.id,
+                  label: p.label,
+                  hint: reason,
+                  disabled: !ready,
+                  onSelect: () => setSwitchTarget(p.id),
+                }),
+              )
+        }
+      />
       <MenuSheet
         visible={attachMenu}
         title="Add context"

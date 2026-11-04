@@ -16,6 +16,20 @@ describe('ClaudeEventMapper', () => {
     expect(events).toMatchObject([{ type: 'session.provider-session', providerSessionId: 'abc' }])
   })
 
+  it('surfaces an API retry as a notice', () => {
+    const events = mapAll([
+      { type: 'system', subtype: 'api_retry', attempt: 2, max_retries: 10, error_status: null },
+    ])
+    expect(events).toMatchObject([
+      {
+        type: 'session.notice',
+        message: 'Claude is retrying the request (attempt 2 of 10)',
+        transient: true,
+        key: 'claude-request',
+      },
+    ])
+  })
+
   it('reports a compaction from its start to the boundary it leaves', () => {
     const events = mapAll([
       { type: 'system', subtype: 'status', status: 'compacting' },

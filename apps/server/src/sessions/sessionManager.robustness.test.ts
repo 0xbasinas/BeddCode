@@ -103,9 +103,12 @@ function scriptedAdapter() {
   }
 }
 
-function setup(stallMs = 0, toolStallMs?: number) {
+function setup(stallMs = 0, toolStallMs?: number, secondInstance = false) {
   const store = new EventStore(':memory:')
   const stub = scriptedAdapter()
+  if (secondInstance) {
+    stub.adapter.detect = async () => [stub.instance, { ...stub.instance, id: 'other' }]
+  }
   const manager = new SessionManager({
     attachments,
     git: new GitService(),
@@ -290,7 +293,7 @@ describe('SessionManager robustness', () => {
   })
 
   it('continues in a new conversation when the agent lost the old one, and says so', async () => {
-    const { manager, events, state, crash, starts } = setup()
+    const { manager, events, state, crash, starts, prompts } = setup()
     const folder = mkdtempSync(path.join(os.tmpdir(), 'beddcode-lost-'))
     folders.push(folder)
     const { sessionId } = await manager.create({ instanceId: 'stub', cwd: folder })
@@ -301,6 +304,7 @@ describe('SessionManager robustness', () => {
     await manager.prompt(sessionId, 'hi')
     await until(() => events(sessionId).some((e) => e.type === 'turn.completed'))
     expect(starts.at(-1)?.resumeId).toBeUndefined()
+    expect(prompts).toEqual(['hi'])
     expect(events(sessionId).find((e) => e.type === 'error')).toMatchObject({
       message: expect.stringMatching(/no longer has this conversation/),
     })
@@ -347,6 +351,38 @@ describe('SessionManager robustness', () => {
     expect(log.some((e) => e.type === 'message.delta' && e.text === 'fresh')).toBe(true)
     // The new conversation is the one resumed next time.
     expect(manager.isBusy(sessionId)).toBe(false)
+    await manager.close()
+  })
+
+  it('sends full context when a switched-back conversation is lost on its first message', async () => {
+    const { manager, store, events, state, starts, prompts } = setup(0, undefined, true)
+    const { sessionId } = await manager.create({ instanceId: 'stub', title: 'Original goal' })
+    await until(() => !!store.sessionSegments(sessionId)[0]?.nativeSessionId)
+    store.append({
+      type: 'message.delta',
+      sessionId,
+      at: Date.now(),
+      role: 'user',
+      text: 'original request',
+    })
+    expect((await manager.switchAgent({ sessionId, instanceId: 'other' })).ok).toBe(true)
+    await until(() => !!store.sessionSegments(sessionId)[1]?.nativeSessionId)
+    expect((await manager.switchAgent({ sessionId, instanceId: 'stub' })).ok).toBe(true)
+    expect(starts.at(-1)?.resumeId).toBeTruthy()
+    state.onPrompt = (emit) => {
+      if (starts.at(-1)?.resumeId) {
+        emit({ type: 'error', message: 'No conversation found with session ID: native-1' })
+        emit({ type: 'turn.completed', reason: 'error' })
+      } else {
+        emit({ type: 'turn.completed', reason: 'done' })
+      }
+    }
+    await manager.prompt(sessionId, 'continue')
+    await until(() => events(sessionId).some((e) => e.type === 'turn.completed'))
+    expect(prompts).toHaveLength(2)
+    expect(prompts[1]).toContain('original request')
+    expect(prompts[1]).toContain('## Goal\noriginal request')
+    expect(prompts[1]).toContain('continue')
     await manager.close()
   })
 

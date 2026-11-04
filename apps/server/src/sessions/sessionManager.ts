@@ -1,3 +1,6 @@
+import { applyEvents, emptyReplica, type SessionView } from '@beddcode/client-runtime/replica'
+import { handoffPrompt, type HandoffFile } from '@beddcode/client-runtime/handoff'
+import { carryPermissionMode, lastUsedModel } from '@beddcode/contracts'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { performance } from 'node:perf_hooks'
@@ -12,6 +15,7 @@ import type {
   HistoryEntry,
   McpServer,
   McpServerInput,
+  PermissionModeOption,
   ProviderInstance,
   RpcParams,
   RpcResult,
@@ -156,6 +160,10 @@ export interface ResumeSession {
  * snapshot matters: an agent that starts first can edit files the snapshot would then include,
  * and the turn's changes and undo would miss them.
  */
+/** The note's reason when a conversation could not be resumed and starts over with the history. */
+const LOST = {
+  reason: 'Your earlier conversation in this session was lost, so this is the full history.',
+}
 const CHECKPOINT_GRACE_MS = 4_000
 /** Folders with more untracked (and not ignored) files than this get no turn snapshots. */
 const CHECKPOINT_MAX_UNTRACKED = 5_000
@@ -169,6 +177,9 @@ const PREVIEW_REFRESH_WAIT_MS = 4_000
 
 export class SessionManager {
   private readonly live = new Map<string, LiveSession>()
+  private readonly switching = new Set<string>()
+  private readonly promptStarting = new Map<string, number>()
+  private readonly preambles = new Map<string, string>()
   private readonly resuming = new Map<string, Promise<LiveSession>>()
   private readonly turns = new Map<string, TurnState>()
   private readonly activity = new Map<string, Activity>()
@@ -512,14 +523,15 @@ export class SessionManager {
     mode: 'auto' | 'queue' = 'auto',
     clientMessageId?: string,
   ): Promise<RpcResult<'sessions.prompt'>> {
-    if (!clientMessageId) return this.sendPrompt(sessionId, text, attachmentIds, mode)
+    if (this.switching.has(sessionId)) throw new Error('Agent switch in progress')
+    if (!clientMessageId) return this.guardedPrompt(sessionId, text, attachmentIds, mode)
     const key = `${sessionId}\u0000${clientMessageId}`
     const sent = this.recentSends.get(key)
     if (sent) {
       this.deps.log.info(`${sessionId}: the same message was sent again; answering it once`)
       return sent
     }
-    const result = this.sendPrompt(sessionId, text, attachmentIds, mode)
+    const result = this.guardedPrompt(sessionId, text, attachmentIds, mode)
     this.recentSends.set(key, result)
     // Only a few minutes and a few hundred messages are remembered: a resend comes right away.
     setTimeout(() => this.recentSends.delete(key), 10 * 60_000).unref?.()
@@ -532,6 +544,301 @@ export class SessionManager {
       if (this.recentSends.get(key) === result) this.recentSends.delete(key)
     })
     return result
+  }
+
+  private async guardedPrompt(
+    sessionId: string,
+    text: string,
+    attachments: string[],
+    mode: 'auto' | 'queue',
+  ) {
+    this.promptStarting.set(sessionId, (this.promptStarting.get(sessionId) ?? 0) + 1)
+    try {
+      return await this.sendPrompt(sessionId, text, attachments, mode)
+    } finally {
+      const count = this.promptStarting.get(sessionId)! - 1
+      if (count) this.promptStarting.set(sessionId, count)
+      else this.promptStarting.delete(sessionId)
+    }
+  }
+
+  /** The working tree's changed files for a handoff; the patches are read in parallel. */
+  private async workingFiles(cwd: string): Promise<HandoffFile[]> {
+    try {
+      const status = await this.deps.git.status(cwd)
+      return await Promise.all(
+        status.files.slice(0, 30).map(async (file) => {
+          const { patch } = await this.deps.git.diff(cwd, file.path)
+          return { path: file.path, status: file.status, patch }
+        }),
+      )
+    } catch {
+      /* Non-repositories have no git diff. */
+      return []
+    }
+  }
+
+  async switchAgent(
+    params: RpcParams<'session.switchAgent'>,
+  ): Promise<RpcResult<'session.switchAgent'>> {
+    const { sessionId, instanceId } = params
+    if (this.switching.has(sessionId) || this.promptStarting.has(sessionId))
+      return { ok: false, draft: '', error: 'Session is busy starting another operation' }
+    this.switching.add(sessionId)
+    let draft = ''
+    let switchTimer = 0
+    let old: LiveSession | undefined
+    let stopped = false
+    let replacement: ProviderSession | undefined
+    let restoreFailure: unknown
+    try {
+      const created = this.createdEvent(sessionId)
+      if (!created) throw new Error(`Unknown session: ${sessionId}`)
+      const turn = this.turnState(sessionId)
+      const view = applyEvents(emptyReplica(), this.deps.store.readSession(sessionId)).sessions[
+        sessionId
+      ]
+      if (!view) throw new Error('Cannot build session handoff')
+      const pendingMessage = params.pendingMessage ?? turn.queue.map((q) => q.text).join('\n')
+      const targetInstance = await this.findInstance(instanceId)
+      // Switching back to an agent that can resume its earlier conversation sends only what changed
+      // since then; everything else gets the full note.
+      const plan = async (agentLabel?: string) => {
+        const events = this.deps.store.readSession(sessionId)
+        const segments = this.deps.store.sessionSegments(sessionId)
+        const previousIndex = segments.findLastIndex(
+          (segment, index) =>
+            index < segments.length - 1 &&
+            segment.provider === instanceId &&
+            !!segment.nativeSessionId,
+        )
+        const resumeId = targetInstance.adapter.capabilities(instanceId).resume
+          ? segments[previousIndex]?.nativeSessionId
+          : undefined
+        const files = await this.workingFiles(created.cwd)
+        const note = (from: SessionView, delta: boolean) =>
+          handoffPrompt(from, {
+            agentLabel,
+            targetLabel: targetInstance.instance.label,
+            pendingMessage,
+            files,
+            delta,
+          })
+        const full = applyEvents(emptyReplica(), events).sessions[sessionId]
+        let deltaDraft: string | undefined
+        if (resumeId) {
+          const boundaries = events
+            .map((entry, index) => (entry.event.type === 'session.switched' ? index : -1))
+            .filter((index) => index >= 0)
+          const deltaEvents = [events[0]!, ...events.slice(boundaries[previousIndex]! + 1)]
+          const deltaView = applyEvents(emptyReplica(), deltaEvents).sessions[sessionId]
+          if (deltaView) deltaDraft = note(deltaView, true)
+        }
+        return {
+          segments,
+          resumeId,
+          fullDraft: note(full ?? view, false),
+          draft: deltaDraft ?? note(full ?? view, false),
+        }
+      }
+      // Only a preview (or a failure before the agent stops) needs this early; a real switch builds
+      // the handoff once, after the old agent has stopped writing.
+      if (params.preview) {
+        draft = (await plan(this.live.get(sessionId)?.label)).draft
+        return { ok: true, draft }
+      }
+      switchTimer = performance.now()
+      const target = targetInstance
+      if (turn.busy && !params.stop) throw new Error('A turn is running; stop it before switching')
+      const pending = new Map<string, Extract<SessionEvent, { type: 'approval.requested' }>>()
+      for (const { event } of this.deps.store.readSession(sessionId)) {
+        if (event.type === 'approval.requested') pending.set(event.requestId, event)
+        if (event.type === 'approval.resolved') pending.delete(event.requestId)
+        if (event.type === 'turn.completed') pending.clear()
+      }
+      old = await this.ensureLive(sessionId)
+      if (turn.busy) {
+        await this.interruptOne(sessionId)
+        await withTimeout(
+          (async () => {
+            while (turn.busy) await new Promise((resolve) => setTimeout(resolve, 10))
+          })(),
+          10_000,
+          'stopping the turn',
+        )
+      }
+      this.dropAsks(sessionId)
+      for (const request of pending.values()) {
+        if (
+          this.deps.store
+            .readSession(sessionId)
+            .some(
+              ({ event }) =>
+                event.type === 'approval.resolved' && event.requestId === request.requestId,
+            )
+        )
+          continue
+        const deny = request.options.find((o) => o.kind === 'deny')
+        if (deny)
+          await old.session.respondToApproval(request.requestId, deny.id).catch(() => undefined)
+        this.deps.store.append({
+          type: 'approval.resolved',
+          sessionId,
+          at: Date.now(),
+          requestId: request.requestId,
+          optionId: deny?.id ?? 'cancelled',
+        })
+      }
+      if (pending.size)
+        this.deps.store.append({
+          type: 'session.notice',
+          sessionId,
+          at: Date.now(),
+          message: 'Pending approvals were cancelled because the agent was switched.',
+        })
+      this.closedOnPurpose.add(old.session)
+      if (this.live.get(sessionId) === old) this.live.delete(sessionId)
+      stopped = true
+      await withTimeout(old.session.close(), 5_000, 'closing the agent')
+      // Built after the close, so it holds anything the interrupted provider wrote while stopping.
+      const planned = await plan(old.label)
+      draft = planned.draft
+      const { fullDraft, segments } = planned
+      let resumeId = planned.resumeId
+      if (params.handoff !== undefined) draft = params.handoff
+      // The target starts from its own last-used model for this session (never the agent being
+      // left), or its default model when it has not run here yet.
+      const last = lastUsedModel(segments, instanceId)
+      const model = params.model ?? last?.model
+      const effort = !params.model || params.model === last?.model ? last?.effort : undefined
+      // The approval level goes with the session: the closest equal-or-safer mode the target has.
+      const currentModeId = this.currentMode(sessionId)
+      const currentMode = this.currentModes(sessionId).find((m) => m.id === currentModeId)
+      const carried = carryPermissionMode(
+        currentMode ?? currentModeId,
+        target.adapter.capabilities(instanceId).permissionModes,
+        target.instance.label,
+      )
+      const input: StartSessionInput = {
+        sessionId,
+        cwd: created.cwd,
+        model,
+        effort,
+        permissionMode: carried.modeId,
+        additionalDirectories: [this.deps.attachments.root],
+        terminalHost: this.agentTerminal(
+          sessionId,
+          created.cwd,
+          target.adapter,
+          target.instance,
+          created.title,
+        ),
+        mcpServers: this.toolServersFor(
+          sessionId,
+          created.agentTools ||
+            created.browserTools ||
+            created.designTools ||
+            created.computerTools ||
+            created.linearTools,
+          created.designTools,
+        ),
+      }
+      try {
+        replacement = await target.adapter.startSession(instanceId, { ...input, resumeId })
+      } catch (err) {
+        if (!resumeId) throw err
+        resumeId = undefined
+        draft = params.handoff ?? fullDraft
+        replacement = await target.adapter.startSession(instanceId, input)
+      }
+      this.deps.store.append({
+        type: 'session.switched',
+        sessionId,
+        at: Date.now(),
+        instanceId,
+        model,
+        effort,
+        handoff: draft,
+        permissionMode: carried.modeId,
+        permissionLabel: carried.label,
+        permissionNote: carried.note,
+      })
+      if (resumeId)
+        this.deps.store.append({
+          type: 'session.provider-session',
+          sessionId,
+          at: Date.now(),
+          providerSessionId: resumeId,
+        })
+      this.live.set(sessionId, {
+        session: replacement,
+        adapter: target.adapter,
+        instanceId,
+        label: target.instance.label,
+        input,
+        resumedFrom: resumeId,
+      })
+      this.preambles.set(sessionId, draft)
+      try {
+        this.announceModes(sessionId, target.adapter, instanceId, carried.modeId)
+      } catch (err) {
+        this.deps.log.warn(`Could not announce modes for ${sessionId}`, err)
+      }
+      void this.pump(sessionId, replacement)
+      this.deps.log.debug(
+        `switched ${sessionId} to ${instanceId} in ${Math.round(performance.now() - switchTimer)}ms (resume: ${resumeId ? 'yes' : 'no'}, handoff: ${draft.length} chars)`,
+      )
+      return { ok: true, draft }
+    } catch (err) {
+      if (replacement) await replacement.close().catch(() => undefined)
+      if (stopped && old) {
+        try {
+          await this.resume(sessionId)
+        } catch {
+          try {
+            const created = this.createdEvent(sessionId)!
+            const input = old.input ?? {
+              sessionId,
+              cwd: created.cwd,
+              additionalDirectories: [this.deps.attachments.root],
+            }
+            const session = await old.adapter.startSession(old.instanceId!, {
+              ...input,
+              resumeId: undefined,
+            })
+            this.live.set(sessionId, { ...old, session, input })
+            this.preambles.set(sessionId, draft)
+            void this.pump(sessionId, session)
+          } catch (restoreError) {
+            restoreFailure = restoreError
+            this.deps.log.error(`Could not restore ${sessionId}`, restoreError)
+          }
+        }
+      }
+      if (!draft) {
+        const view = applyEvents(emptyReplica(), this.deps.store.readSession(sessionId)).sessions[
+          sessionId
+        ]
+        if (view)
+          draft = handoffPrompt(view, {
+            agentLabel: old?.label,
+            pendingMessage:
+              params.pendingMessage ??
+              this.turnState(sessionId)
+                .queue.map((q) => q.text)
+                .join('\n'),
+          })
+      }
+      return {
+        ok: false,
+        draft,
+        error: restoreFailure
+          ? `${errorText(err)}; could not restore the previous provider: ${errorText(restoreFailure)}`
+          : errorText(err),
+      }
+    } finally {
+      this.switching.delete(sessionId)
+    }
   }
 
   private async sendPrompt(
@@ -767,8 +1074,19 @@ export class SessionManager {
         await turn.taking
         await this.checkpointBefore(sessionId, turn)
         if (queueId) this.appendUserMessage(sessionId, text, attachments)
-        const prompt = session.prompt(this.providerPrompt(sessionId, text, attachments))
-        prompt.catch(failed)
+        const preamble = this.preambles.get(sessionId)
+        const sent = session.prompt(
+          this.providerPrompt(sessionId, preamble ? `${preamble}\n\n${text}` : text, attachments),
+        )
+        if (preamble) {
+          this.preambles.delete(sessionId)
+          this.deps.store.append({ type: 'session.handoff-delivered', sessionId, at: Date.now() })
+        }
+        sent.catch((err) => {
+          if (preamble && this.live.get(sessionId)?.session === session)
+            this.preambles.set(sessionId, preamble)
+          failed(err)
+        })
       } catch (err) {
         if (queueId) {
           turn.queueStarting = undefined
@@ -983,7 +1301,7 @@ export class SessionManager {
     const turn = this.turnState(sessionId)
     turn.busy = false
     const next = turn.queue[0]
-    if (!next) return
+    if (!next || this.switching.has(sessionId)) return
     const wanted = reason === 'done' || turn.sendAfterInterrupt === next.queueId
     if (!wanted) return
     const live = this.live.get(sessionId)
@@ -1349,8 +1667,10 @@ export class SessionManager {
         e.event.type === 'session.created',
     )
     if (!created) throw new Error(`Unknown session: ${sessionId}`)
+    const segment = this.deps.store.sessionSegments(sessionId).at(-1)
     const providerSession = events
       .map((e) => e.event)
+      .slice(events.map((e) => e.event.type).lastIndexOf('session.switched') + 1)
       .findLast((e) => e.type === 'session.provider-session')
     const resumeId =
       providerSession?.type === 'session.provider-session'
@@ -1366,8 +1686,10 @@ export class SessionManager {
           : `This session's folder no longer exists (${created.event.cwd}). Restore it, or start a new session.`,
       )
     }
-    const { adapter, instance } = await this.findInstance(created.event.instanceId)
-    if (!adapter.capabilities(instance.id).resume || !resumeId) {
+    const { adapter, instance } = await this.findInstance(
+      segment?.provider ?? created.event.instanceId,
+    )
+    if ((!adapter.capabilities(instance.id).resume || !resumeId) && !segment?.handoffContext) {
       throw new Error(`${instance.label} cannot resume this session`)
     }
 
@@ -1379,8 +1701,9 @@ export class SessionManager {
         : created.event.permissionMode
 
     // Continue with the model last chosen, not the one the session started with.
-    const lastModel = events.map((e) => e.event).findLast((e) => e.type === 'session.model')
-    const chosen = lastModel?.type === 'session.model' ? lastModel : created.event
+    const chosen = segment
+      ? { model: segment.model, effort: segment.effort }
+      : { model: created.event.model, effort: created.event.effort }
 
     const renamed = events.map((e) => e.event).findLast((e) => e.type === 'session.renamed')
     const input = {
@@ -1411,6 +1734,14 @@ export class SessionManager {
     let resumedFrom: string | undefined = resumeId
     try {
       session = await adapter.startSession(instance.id, { ...input, resumeId })
+      const afterSwitch = events.slice(
+        events.map((e) => e.event.type).lastIndexOf('session.switched') + 1,
+      )
+      if (
+        segment?.handoffContext &&
+        !afterSwitch.some(({ event }) => event.type === 'session.handoff-delivered')
+      )
+        this.preambles.set(sessionId, segment.handoffContext)
     } catch (err) {
       // The agent lost its copy of the conversation (cleaned up, or cut short by a crash mid-write).
       // Keep the session usable: continue in a new conversation and say what was lost.
@@ -1418,6 +1749,10 @@ export class SessionManager {
       this.deps.log.warn(`${instance.label} could not resume ${sessionId}; starting fresh`, err)
       session = await adapter.startSession(instance.id, input)
       resumedFrom = undefined
+      if (this.deps.store.sessionSegments(sessionId).length > 1) {
+        const view = applyEvents(emptyReplica(), events).sessions[sessionId]
+        if (view) this.preambles.set(sessionId, handoffPrompt(view, LOST))
+      }
       this.deps.store.append({
         type: 'error',
         sessionId,
@@ -1487,6 +1822,14 @@ export class SessionManager {
   /** A turn is running, or about to. */
   isBusy(sessionId: string): boolean {
     return this.turns.get(sessionId)?.busy ?? false
+  }
+
+  /** The modes the session's agent last announced. */
+  private currentModes(sessionId: string): PermissionModeOption[] {
+    let modes: PermissionModeOption[] = []
+    for (const { event } of this.deps.store.readSession(sessionId))
+      if (event.type === 'session.modes') modes = event.modes
+    return modes
   }
 
   /** The permission mode the session is in now, and the modes it could be in. */
@@ -1850,7 +2193,11 @@ export class SessionManager {
     })
     try {
       for await (const raw of session.events) {
-        if (this.lostStreams.has(session)) continue
+        if (
+          this.lostStreams.has(session) ||
+          (this.closedOnPurpose.has(session) && this.live.get(sessionId)?.session !== session)
+        )
+          continue
         const live = this.live.get(sessionId)
         if (live?.session === session && live.resumedFrom && !live.confirmed) {
           // Some agents (Claude) only find out at the first message that the conversation they
@@ -1983,6 +2330,11 @@ export class SessionManager {
         return
       }
       const resend = turn.busy ? turn.lastPrompt : undefined
+      const view =
+        this.deps.store.sessionSegments(sessionId).length > 1
+          ? applyEvents(emptyReplica(), this.deps.store.readSession(sessionId)).sessions[sessionId]
+          : undefined
+      const fullContext = view ? handoffPrompt(view, LOST) : undefined
       const live: LiveSession = { ...old, session, resumedFrom: undefined, skipTurnStart: !!resend }
       this.live.set(sessionId, live)
       void this.pump(sessionId, session)
@@ -1993,11 +2345,18 @@ export class SessionManager {
         message: lostConversationText(label, reason),
       })
       if (resend) {
+        this.preambles.delete(sessionId)
         this.touch(sessionId)
         session
-          .prompt(this.providerPrompt(sessionId, resend.text, resend.attachments))
+          .prompt(
+            this.providerPrompt(
+              sessionId,
+              fullContext ? `${fullContext}\n\n${resend.text}` : resend.text,
+              resend.attachments,
+            ),
+          )
           .catch((err: unknown) => this.promptFailed(sessionId, session, err))
-      }
+      } else if (fullContext) this.preambles.set(sessionId, fullContext)
     } catch (err) {
       this.deps.log.error(`could not continue ${sessionId} in a new conversation`, err)
       if (this.live.get(sessionId) === old) {

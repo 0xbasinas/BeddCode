@@ -5,7 +5,9 @@ import type {
   SlashCommand,
   StoredEvent,
   TurnChangedFile,
+  SessionSegment,
 } from '@beddcode/contracts'
+import { projectSegmentEvent } from '@beddcode/contracts'
 import { sessionChanges } from './blocks.ts'
 
 export type SessionStatus = 'idle' | 'running' | 'needs-you' | 'failed'
@@ -104,10 +106,28 @@ export type TranscriptItem =
       tokensBefore?: number
       tokensAfter?: number
     }
-  | { kind: 'notice'; id: string; message: string; hostUpdating?: true }
+  | {
+      kind: 'notice'
+      id: string
+      message: string
+      hostUpdating?: true
+      transient?: boolean
+      key?: string
+    }
+  | {
+      kind: 'switch'
+      id: string
+      from: string
+      to: string
+      handoff: string
+      permissionLabel?: string
+      permissionNote?: string
+    }
   | { kind: 'error'; id: string; message: string }
 
 export interface SessionView {
+  /** Provider history, reconstructed from the durable event log. */
+  segments?: SessionSegment[]
   notes?: { text: string; version: number }
   id: string
   title: string
@@ -272,6 +292,23 @@ function waiting(items: TranscriptItem[]): boolean {
   )
 }
 
+/** Real output (or the end of the turn) makes "still waiting" style notices obsolete. */
+function endsWaiting(e: StoredEvent['event']): boolean {
+  switch (e.type) {
+    case 'message.delta':
+      return e.role === 'assistant'
+    case 'tool.started':
+    case 'approval.requested':
+    case 'question.requested':
+    case 'turn.started':
+    case 'turn.completed':
+    case 'error':
+      return true
+    default:
+      return false
+  }
+}
+
 export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaState {
   // Reconnects can replay what we already hold; the log is idempotent by seq.
   if (stored.seq <= state.lastSeq) return state
@@ -283,6 +320,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       title: e.title,
       cwd: e.cwd,
       instanceId: e.instanceId,
+      segments: projectSegmentEvent([], e),
       model: e.model,
       effort: e.effort,
       projectPath: e.projectPath ?? e.cwd,
@@ -415,6 +453,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     case 'session.model':
       next.model = e.model
       next.effort = e.effort
+      next.segments = projectSegmentEvent(current.segments ?? [], e)
       break
     case 'session.context':
       next.context = { used: e.used, size: e.size }
@@ -458,6 +497,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       ]
       break
     case 'session.usage':
+      if (!current.model && e.model) next.model = e.model
       next.usage = {
         tokens:
           (current.usage?.tokens ?? 0) +
@@ -469,7 +509,46 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       }
       break
     case 'session.provider-session':
-      return { ...state, lastSeq: stored.seq }
+      next.updatedAt = current.updatedAt
+      next.segments = projectSegmentEvent(current.segments ?? [], e)
+      break
+    case 'session.switched': {
+      const segments = current.segments ?? [
+        { provider: current.instanceId, model: current.model, startedAt: current.createdAt },
+      ]
+      next.segments = projectSegmentEvent(segments, e)
+      next.items = [
+        ...current.items,
+        {
+          kind: 'switch',
+          id,
+          from: current.instanceId,
+          to: e.instanceId,
+          handoff: e.handoff,
+          permissionLabel: e.permissionLabel,
+          permissionNote: e.permissionNote,
+        },
+      ]
+      next.instanceId = e.instanceId
+      next.model = e.model
+      next.effort = e.effort
+      // Options, modes and commands belong to the agent that offered them; the new one announces
+      // its own, and until then the composer must not show the old agent's.
+      next.config = []
+      next.modes = []
+      // The mode carried over is shown until the new agent announces its own list.
+      next.currentModeId = e.permissionMode
+      next.commands = []
+      break
+    }
+    case 'session.notice':
+      next.items = [
+        ...current.items.filter(
+          (item) => !(item.kind === 'notice' && e.key !== undefined && item.key === e.key),
+        ),
+        { kind: 'notice', id, message: e.message, transient: e.transient, key: e.key },
+      ]
+      break
     case 'host.updating':
       next.items = [
         ...current.items,
@@ -646,9 +725,13 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     case 'session.commands':
       next.commands = e.commands
       break
-    case 'session.config':
+    case 'session.config': {
       next.config = e.options
+      const chosen = e.options.find((option) => option.category === 'model')?.value
+      if (typeof chosen === 'string' && chosen) next.model = chosen
+      next.segments = projectSegmentEvent(current.segments ?? [], e)
       break
+    }
     case 'approval.resolved': {
       const request = current.items.find(
         (item) => item.kind === 'approval' && item.requestId === e.requestId,
@@ -712,6 +795,8 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
   }
 
   if (next.status !== current.status) next.statusSince = e.at
+  if (endsWaiting(e) && next.items.some((item) => item.kind === 'notice' && item.transient))
+    next.items = next.items.filter((item) => !(item.kind === 'notice' && item.transient))
   next = { ...next }
   return { ...state, lastSeq: stored.seq, sessions: { ...state.sessions, [e.sessionId]: next } }
 }

@@ -203,6 +203,14 @@ function PaletteDialog() {
           })
       out.push(
         {
+          id: 'switch-agent',
+          label: 'Switch agent…',
+          group: 'This session',
+          icon: <ArrowRightLeft size={14} />,
+          run: () =>
+            window.dispatchEvent(new CustomEvent('switch-agent', { detail: { sessionId } })),
+        },
+        {
           id: 'copy-path',
           label: 'Copy folder path',
           group: 'This session',
