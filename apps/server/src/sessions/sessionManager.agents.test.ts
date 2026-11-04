@@ -17,15 +17,26 @@ afterEach(async () => {
   for (const d of dirs.splice(0)) await removeDir(d)
 })
 
-function setup(options: Parameters<typeof createFakeAdapter>[0] = {}) {
+function setup(options: Parameters<typeof createFakeAdapter>[0] = {}, readOnly = false) {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'beddcode-agents-'))
   dirs.push(dir)
   const store = new EventStore(':memory:')
+  const adapter = createFakeAdapter({ delayMs: 20, ...options })
+  if (readOnly) {
+    const capabilities = adapter.capabilities.bind(adapter)
+    adapter.capabilities = (id) => ({
+      ...capabilities(id),
+      permissionModes: [
+        ...capabilities(id).permissionModes,
+        { id: 'read-only', label: 'Read only' },
+      ],
+    })
+  }
   const manager = new SessionManager({
     store,
     attachments: new AttachmentStore(path.join(dir, 'attachments')),
     git: new GitService(),
-    adapters: [createFakeAdapter({ delayMs: 20, ...options })],
+    adapters: [adapter],
     log: createLogger('test', 'error'),
     defaultCwd: dir,
   })
@@ -326,6 +337,37 @@ describe('history, import and fork', () => {
     await manager.prompt(forkId, 'three')
     await waitFor(() => turnsDone(forkId) === 2, 'the fork continuing')
     await expect(manager.fork({ sessionId, throughTurn: 9 })).rejects.toThrow('fewer than 9')
+  })
+
+  it('starts an isolated side thread in read-only mode', async () => {
+    const starts: string[] = []
+    const { manager, events, waitFor, turnsDone } = setup(
+      { advanced: true, onStart: (input) => starts.push(input.permissionMode ?? '') },
+      true,
+    )
+    const { sessionId } = await manager.create({ instanceId: 'fake', permissionMode: 'full' })
+    await manager.prompt(sessionId, 'main question')
+    await waitFor(() => turnsDone(sessionId) === 1, 'main turn')
+    const original = events(sessionId)
+    const { sessionId: sideId } = await manager.fork({ sessionId, side: true })
+    expect(events(sideId)[0]).toMatchObject({
+      sideThread: true,
+      permissionMode: 'read-only',
+      forkedFrom: { sessionId },
+      agentTools: false,
+    })
+    await manager.prompt(sideId, 'side question')
+    await waitFor(() => turnsDone(sideId) === 2, 'side turn')
+    expect(starts.at(-1)).toBe('read-only')
+    expect(events(sessionId)).toEqual(original)
+  })
+
+  it('rejects side threads when the provider has no read-only mode', async () => {
+    const { manager, waitFor, turnsDone } = setup({ advanced: true })
+    const { sessionId } = await manager.create({ instanceId: 'fake', permissionMode: 'full' })
+    await manager.prompt(sessionId, 'hello')
+    await waitFor(() => turnsDone(sessionId) === 1, 'turn')
+    await expect(manager.fork({ sessionId, side: true })).rejects.toThrow('read-only side threads')
   })
 
   it('does not fork an agent that cannot', async () => {

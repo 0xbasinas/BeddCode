@@ -79,7 +79,14 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
   const pane = usePane()
   const paneActive = pane?.active ?? true
   const hostKey = useSessionHostKey(sessionId) ?? LOCAL_HOST_KEY
-  const { providers, host } = useRuntime(hostKey)
+  const { providers, host, replica } = useRuntime(hostKey)
+  const sideThreads = useMemo(
+    () =>
+      replica.order
+        .map((id) => replica.sessions[id]!)
+        .filter((s) => s.sideThread && s.forkedFrom?.sessionId === sessionId),
+    [replica, sessionId],
+  )
   const multiHost = useHostStore((s) => s.entries.length > 1)
   const hostName = multiHost ? (host?.name ?? hostKey) : undefined
   // Still waiting on a host that has not replied yet, or one that is away.
@@ -309,7 +316,8 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                   params={{ sessionId: session.forkedFrom.sessionId }}
                   className="thread-fork-link"
                 >
-                  Forked from {session.forkedFrom.title ?? 'another session'}
+                  {session.sideThread ? 'Side thread of' : 'Forked from'}{' '}
+                  {session.forkedFrom.title ?? 'another session'}
                 </Link>
               </>
             )}
@@ -521,6 +529,18 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
           onJump={followEnd}
         />
       </div>
+      {sideThreads.length > 0 && (
+        <details className="side-threads">
+          <summary>Side threads ({sideThreads.length})</summary>
+          {sideThreads.map((side) => (
+            <div key={side.id}>
+              <Link to="/session/$sessionId" params={{ sessionId: side.id }}>
+                {side.title}
+              </Link>
+            </div>
+          ))}
+        </details>
+      )}
       {actionError && (
         <p className="thread-action-error" role="alert">
           {actionError}
@@ -547,7 +567,10 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             ? `quote-${quoteFocus}:decline-${endedByDecline(session) ? session.completedTurns : ''}`
             : undefined
         }
-        commands={session.commands}
+        commands={[
+          { name: 'side', description: 'Open a read-only side thread' },
+          ...(session.commands ?? []).filter((c) => c.name !== 'side'),
+        ]}
         above={
           <>
             {session.agentTools && <ChildAgentsBar sessionId={sessionId} hostKey={hostKey} />}
@@ -593,6 +616,15 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
         onSend={async (value, attachments, delivery) => {
           followEnd()
           try {
+            const side = /^\/side(?:\s+([\s\S]*))?$/.exec(value.trim())
+            if (side) {
+              if (attachments.length)
+                throw new Error('Remove attachments before opening a side thread')
+              const id = await forkSession(sessionId, undefined, true)
+              if (side[1]) useComposerDrafts.getState().setDraft(threadKey(hostKey, id), side[1])
+              void navigate({ to: '/session/$sessionId', params: { sessionId: id } })
+              return
+            }
             await prompt(sessionId, value, attachments, delivery)
           } catch (err) {
             useComposerDrafts.getState().restoreDraft(memoryKey, value)

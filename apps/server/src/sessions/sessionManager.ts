@@ -50,7 +50,16 @@ export interface SessionManagerDeps {
   /** Remembers what agents offer for new sessions (see `previewAgent`). */
   previews?: PreviewCache
   /** MCP servers to add to a session that may use BeddCode's agent tools. */
-  agentToolServers?: (sessionId: string, features?: { agentTools?: boolean; browserTools?: boolean; designTools?: boolean; computerTools?: boolean; linearTools?: boolean }) => SessionMcpServer[]
+  agentToolServers?: (
+    sessionId: string,
+    features?: {
+      agentTools?: boolean
+      browserTools?: boolean
+      designTools?: boolean
+      computerTools?: boolean
+      linearTools?: boolean
+    },
+  ) => SessionMcpServer[]
   /** Shows the commands agents run in the Terminal pane (and runs ACP agents' commands there). */
   agentTerminals?: AgentTerminals
   /**
@@ -613,7 +622,9 @@ export class SessionManager {
 
   /** Supply design-pane context in the provider prompt even if MCP server instructions are ignored. */
   private providerPrompt(sessionId: string, text: string, attachments: { path: string }[]) {
-    const created = this.deps.store.readSession(sessionId).find(({ event }) => event.type === 'session.created')?.event
+    const created = this.deps.store
+      .readSession(sessionId)
+      .find(({ event }) => event.type === 'session.created')?.event
     const design = created?.type === 'session.created' && created.designTools === true
     const context = design
       ? 'This message comes from the BeddCode Design canvas. For design requests, create or edit the editable canvas using the BeddCode design MCP tools (design_list, design_read, design_add and related tools). Load design_skill for guidance. Match the requested style and density; align repeated rows, icon containers, text columns, padding and spacing. Inspect the whole frame and a representative panel with design_screenshot, correct visible clipping, tiny text, inconsistent icons or alignment, and inspect again. Use design_read for actual sizes; large screenshots may be downscaled. Do not substitute an HTML file or code unless the user explicitly asks for code. If the design tools are unavailable, tell the user; do not silently create a file instead. The user request follows:\n\n'
@@ -1353,10 +1364,24 @@ export class SessionManager {
     })
   }
 
-  private toolServersFor(sessionId: string, wanted: boolean | undefined, design?: boolean, features?: { agentTools?: boolean; browserTools?: boolean; designTools?: boolean; computerTools?: boolean; linearTools?: boolean }) {
+  private toolServersFor(
+    sessionId: string,
+    wanted: boolean | undefined,
+    design?: boolean,
+    features?: {
+      agentTools?: boolean
+      browserTools?: boolean
+      designTools?: boolean
+      computerTools?: boolean
+      linearTools?: boolean
+    },
+  ) {
     if (!wanted || !this.deps.agentToolServers) return undefined
     // Sessions that work on designs also get the logo lookup server.
-    return [...this.deps.agentToolServers(sessionId, features), ...(design ? designMcpServers() : [])]
+    return [
+      ...this.deps.agentToolServers(sessionId, features),
+      ...(design ? designMcpServers() : []),
+    ]
   }
 
   /** A turn is running, or about to. */
@@ -1462,6 +1487,9 @@ export class SessionManager {
 
   /** A new session that continues an existing one, optionally only its first `throughTurn` turns. */
   async fork(params: RpcParams<'sessions.fork'>): Promise<{ sessionId: string }> {
+    if (params.side && this.isBusy(params.sessionId)) {
+      throw new Error('Wait for the current turn to finish before opening a side thread')
+    }
     const events = this.deps.store.readSession(params.sessionId)
     const created = events.find((e) => e.event.type === 'session.created')?.event
     if (created?.type !== 'session.created') throw new Error(`Unknown session: ${params.sessionId}`)
@@ -1474,6 +1502,13 @@ export class SessionManager {
     const { adapter, instance } = await this.findInstance(created.instanceId)
     if (!adapter.forkHistory || !adapter.capabilities(instance.id).fork) {
       throw new Error(`${instance.label} cannot fork a conversation`)
+    }
+
+    if (
+      params.side &&
+      !adapter.capabilities(instance.id).permissionModes.some((m) => m.id === 'read-only')
+    ) {
+      throw new Error(`${instance.label} does not support read-only side threads`)
     }
 
     // Keep everything up to the end of the chosen turn.
@@ -1498,7 +1533,18 @@ export class SessionManager {
       ...created,
       sessionId,
       at: Date.now(),
-      title: params.title ?? `${created.title} (fork)`,
+      title: params.title ?? `${created.title} (${params.side ? 'side thread' : 'fork'})`,
+      sideThread: params.side || undefined,
+      permissionMode: params.side ? 'read-only' : created.permissionMode,
+      ...(params.side
+        ? {
+            agentTools: false,
+            browserTools: false,
+            designTools: false,
+            computerTools: false,
+            linearTools: false,
+          }
+        : {}),
       forkedFrom: { sessionId: params.sessionId, title: created.title },
       imported: undefined,
     })
@@ -1527,7 +1573,11 @@ export class SessionManager {
       sessionId,
       adapter,
       instance.id,
-      lastModes?.type === 'session.modes' ? lastModes.currentModeId : created.permissionMode,
+      params.side
+        ? 'read-only'
+        : lastModes?.type === 'session.modes'
+          ? lastModes.currentModeId
+          : created.permissionMode,
     )
     return { sessionId }
   }

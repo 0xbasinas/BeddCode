@@ -98,6 +98,7 @@ export const SessionEvent = z.discriminatedUnion('type', [
       .optional(),
     /** Set when this session continues another one's history. */
     forkedFrom: z.object({ sessionId: z.string(), title: z.string().optional() }).optional(),
+    sideThread: z.boolean().optional(),
     /** True when the conversation was started outside BeddCode and imported. */
     imported: z.boolean().optional(),
     /** Set when another session's agent started this one (see agent tools). */
