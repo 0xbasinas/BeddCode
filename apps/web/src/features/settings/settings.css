@@ -926,3 +926,8 @@
   font: inherit;
   font-size: var(--fs-small);
 }
+
+.warm-pool-input {
+  width: calc(96px * var(--ui-scale));
+  text-align: right;
+}

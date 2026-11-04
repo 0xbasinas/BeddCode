@@ -101,7 +101,9 @@ export async function runServer(
   const attachments = new AttachmentStore(path.join(home, 'attachments'))
   const hostPool = options.warmPool
     ? undefined
-    : createHostWarmPool(config.warmPool, adapters, attachments.root)
+    : createHostWarmPool(config.warmPool, adapters, attachments.root, (warmPool) =>
+        writeConfigFile({ ...readConfigFile(), warmPool }),
+      )
   const git = new GitService()
   const workspace = {
     git,
@@ -255,6 +257,7 @@ export async function runServer(
       }),
       relay: relayControl,
       mcpGateway,
+      warmPool: hostPool?.settings,
       telemetry,
       telemetryRecorder: (name, value, tags) => telemetry.record(name, value, tags),
       automation: {

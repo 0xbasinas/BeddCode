@@ -19,6 +19,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Wrench,
+  Zap,
 } from 'lucide-react'
 import { useHostStore } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
@@ -32,6 +33,7 @@ import { ToolsSettings } from './ToolsSettings.tsx'
 import { NotificationsSettings } from './NotificationsSettings.tsx'
 import { UsageSettings } from './UsageSettings.tsx'
 import { AlertsSettings } from './AlertsSettings.tsx'
+import { WarmPoolSettings } from './WarmPoolSettings.tsx'
 import { RemoteMcpSettings } from './RemoteMcpSettings.tsx'
 import './settings.css'
 import { Select } from '../../ui/Select.tsx'
@@ -46,6 +48,7 @@ export type SettingsSection =
   | 'permissions'
   | 'tools'
   | 'remote-mcp'
+  | 'warm-pool'
   | 'alerts'
   | 'hosts'
   | 'git'
@@ -62,6 +65,7 @@ const SECTIONS = [
   { id: 'permissions', label: 'Permissions', group: 'Agents', icon: Shield },
   { id: 'tools', label: 'Tools & MCP', group: 'Agents', icon: Wrench },
   { id: 'remote-mcp', label: 'Remote MCP', group: 'Agents', icon: Server },
+  { id: 'warm-pool', label: 'Warm pool', group: 'Agents', icon: Zap },
   { id: 'alerts', label: 'Phone alerts', group: 'Automation', icon: BellRing },
   { id: 'hosts', label: 'Hosts', group: 'Workspace', icon: Server },
   { id: 'git', label: 'Git', group: 'Workspace', icon: GitBranch },
@@ -237,6 +241,18 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
                   <h2>Remote MCP</h2>
                 </header>
                 <RemoteMcpSettings />
+              </>
+            )}
+            {section === 'warm-pool' && (
+              <>
+                <header className="settings-heading">
+                  <h2>Warm pool</h2>
+                  <p>
+                    Keeps agents started in the background so new sessions open sooner. Changes
+                    apply right away.
+                  </p>
+                </header>
+                <WarmPoolSettings />
               </>
             )}
             {section === 'hosts' && (

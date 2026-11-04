@@ -1,5 +1,6 @@
 import { readJsonFile, writeFileAtomic } from '@beddcode/shared'
 import path from 'node:path'
+import { WarmPoolSettings } from '@beddcode/contracts'
 import { defaultGuard, type GuardOptions } from './auth/guard.ts'
 import { dataHome } from './hostIdentity.ts'
 
@@ -14,7 +15,7 @@ export interface ServerConfig {
   relayPassword?: string
   /** Upload anonymous speed measurements to the relay. */
   telemetry?: boolean
-  warmPool?: { enabled: boolean }
+  warmPool?: Partial<WarmPoolSettings> & { enabled: boolean }
 }
 
 /** Settings kept in `<data dir>/config.json` (see `beddcode config`); flags and variables win. */
@@ -27,7 +28,7 @@ export interface ConfigFile {
   relayUrl?: string
   relayPassword?: string
   telemetry?: boolean
-  warmPool?: { enabled: boolean }
+  warmPool?: Partial<WarmPoolSettings> & { enabled: boolean }
 }
 
 export const configPath = () => path.join(dataHome(), 'config.json')
@@ -73,14 +74,24 @@ export function sanitizeConfig(raw: unknown, warn: (message: string) => void): C
     if (config[key] !== undefined && typeof config[key] !== 'boolean')
       drop(key, 'not true or false')
   }
-  if (
-    config.warmPool !== undefined &&
-    (!config.warmPool ||
-      typeof config.warmPool !== 'object' ||
-      Array.isArray(config.warmPool) ||
-      typeof (config.warmPool as Record<string, unknown>).enabled !== 'boolean')
-  )
-    drop('warmPool', 'enabled must be true or false')
+  if (config.warmPool !== undefined) {
+    const raw = config.warmPool
+    const record =
+      raw && typeof raw === 'object' && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>)
+        : undefined
+    if (typeof record?.enabled !== 'boolean') drop('warmPool', 'enabled must be true or false')
+    else {
+      // A bad number falls back to its default instead of discarding the whole section.
+      const good: Record<string, unknown> = { enabled: record.enabled }
+      for (const key of ['size', 'memoryCapMb', 'idleTimeoutMinutes'] as const) {
+        if (record[key] === undefined) continue
+        if (WarmPoolSettings.shape[key].safeParse(record[key]).success) good[key] = record[key]
+        else warn(`ignoring warmPool.${key} (out of range); using the default`)
+      }
+      config.warmPool = good
+    }
+  }
   if (config.allowedOrigins !== undefined) {
     const origins = config.allowedOrigins
     if (typeof origins === 'string') config.allowedOrigins = [origins]

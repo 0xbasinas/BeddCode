@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { ClientFrame, FolderListing, RpcMethods, ServerFrame, SessionEvent } from './index.ts'
+import {
+  WARM_POOL_DEFAULTS,
+  WarmPoolSettings,
+  ClientFrame,
+  FolderListing,
+  RpcMethods,
+  ServerFrame,
+  SessionEvent,
+} from './index.ts'
 
 describe('contracts', () => {
   it('parses a session event', () => {
@@ -47,5 +55,23 @@ describe('contracts', () => {
     expect(browse.parse({ path: '/srv', showHidden: true }).path).toBe('/srv')
     expect(() => browse.parse({ path: '' })).toThrow()
     expect(() => RpcMethods['projects.initGit'].params.parse({ path: '' })).toThrow()
+  })
+
+  it('validates warm pool settings and changes', () => {
+    expect(WarmPoolSettings.parse(WARM_POOL_DEFAULTS)).toEqual(WARM_POOL_DEFAULTS)
+    expect(WARM_POOL_DEFAULTS.enabled).toBe(false)
+    const set = RpcMethods['host.warmPool.set'].params
+    expect(set.parse({})).toEqual({})
+    expect(set.parse({ size: 4 })).toEqual({ size: 4 })
+    for (const bad of [
+      { size: 5 },
+      { size: -1 },
+      { size: 1.2 },
+      { enabled: 1 },
+      { memoryCapMb: 0 },
+    ])
+      expect(() => set.parse(bad)).toThrow()
+    expect(() => WarmPoolSettings.parse({ enabled: true, size: 1 })).toThrow()
+    expect(RpcMethods['host.warmPool.get'].result).toBe(WarmPoolSettings)
   })
 })

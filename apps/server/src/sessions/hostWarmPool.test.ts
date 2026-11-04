@@ -13,7 +13,7 @@ import { createHostWarmPool } from './hostWarmPool.ts'
 import { SessionManager } from './sessionManager.ts'
 
 describe('host warm pool', () => {
-  it('constructs only when enabled and supplies a warmed project to a session', async () => {
+  it('prepares nothing unless enabled and supplies a warmed project to a session', async () => {
     const cwd = os.tmpdir()
     const attachments = new AttachmentStore(path.join(cwd, 'host-warm-test'))
     const fake = createFakeAdapter({ delayMs: 0 })
@@ -37,10 +37,14 @@ describe('host warm pool', () => {
       prepareSession,
       warmPool: { supported: true, prepareSession, fingerprint: () => 'test' },
     } as CodexAdapter
-    expect(createHostWarmPool(undefined, [adapter], attachments.root)).toBeUndefined()
-    expect(createHostWarmPool({ enabled: false }, [adapter], attachments.root)).toBeUndefined()
+    for (const config of [undefined, { enabled: false }]) {
+      const off = createHostWarmPool(config, [adapter], attachments.root)
+      off.warmProject(cwd)
+      await expect(off.pool.take('x')).resolves.toBeNull()
+      await off.pool.close()
+    }
     expect(prepareSession).not.toHaveBeenCalled()
-    const host = createHostWarmPool({ enabled: true }, [adapter], attachments.root)!
+    const host = createHostWarmPool({ enabled: true }, [adapter], attachments.root)
     host.warmProject(cwd)
     await vi.waitFor(() => expect(prepareSession).toHaveBeenCalledWith(cwd))
     await vi.waitFor(() => expect(healthy).toHaveBeenCalled())
@@ -78,7 +82,7 @@ describe('host warm pool', () => {
         (await fake.detect()).map((instance) => ({ ...instance, kind, id: kind })),
       startSession,
     }
-    const host = createHostWarmPool({ enabled: true }, [adapter], attachments.root)!
+    const host = createHostWarmPool({ enabled: true }, [adapter], attachments.root)
     host.warmProject(cwd)
     const take = vi.spyOn(host.pool, 'take')
     const store = new EventStore(':memory:')
@@ -132,7 +136,7 @@ describe('host warm pool invalidation', () => {
       prepareSession,
       warmPool: { supported: true, prepareSession, fingerprint: () => fingerprint },
     } as CodexAdapter
-    const host = createHostWarmPool({ enabled: true }, [adapter], attachments.root)!
+    const host = createHostWarmPool({ enabled: true }, [adapter], attachments.root)
     const store = new EventStore(':memory:')
     const manager = new SessionManager({
       store,
@@ -188,5 +192,101 @@ describe('host warm pool invalidation', () => {
       await host.pool.close()
       vi.useRealTimers()
     }
+  })
+})
+
+describe('host warm pool settings', () => {
+  const setup = () => {
+    const close = vi.fn(async () => {})
+    const prepareSession = vi.fn(async () => ({
+      healthy: async () => true,
+      memoryBytes: async () => 1,
+      close,
+      activate: vi.fn(),
+    }))
+    const adapter = {
+      ...createFakeAdapter({ delayMs: 0 }),
+      kind: 'codex',
+      warmPool: { supported: true, prepareSession, fingerprint: () => 'same' },
+    } as unknown as CodexAdapter
+    const persist = vi.fn()
+    const host = createHostWarmPool(undefined, [adapter], '/attachments', persist)
+    return { host, close, prepareSession, persist }
+  }
+
+  it('defaults to off and reports the defaults', async () => {
+    const { host } = setup()
+    expect(host.settings.get()).toEqual({
+      enabled: false,
+      size: 1,
+      memoryCapMb: 1024,
+      idleTimeoutMinutes: 10,
+    })
+    await host.pool.close()
+  })
+
+  it.each([
+    [{ enabled: 'yes' }],
+    [{ size: 5 }],
+    [{ size: -1 }],
+    [{ size: 1.5 }],
+    [{ memoryCapMb: 0 }],
+    [{ idleTimeoutMinutes: 0 }],
+    [{ idleTimeoutMinutes: '10' }],
+  ])('rejects %j without changing anything', async (change) => {
+    const { host, persist } = setup()
+    await expect(host.settings.set(change)).rejects.toThrow(/Invalid warm pool/)
+    expect(host.settings.get().enabled).toBe(false)
+    expect(persist).not.toHaveBeenCalled()
+    await host.pool.close()
+  })
+
+  it('starts warming when switched on and stops when switched off', async () => {
+    const { host, close, prepareSession, persist } = setup()
+    try {
+      host.warmProject('/project')
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(prepareSession).not.toHaveBeenCalled()
+      await expect(host.settings.set({ enabled: true })).resolves.toMatchObject({ enabled: true })
+      await vi.waitFor(() => expect(prepareSession).toHaveBeenCalledTimes(1))
+      expect(persist).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, size: 1 }))
+      await host.settings.set({ enabled: false })
+      await vi.waitFor(() => expect(close).toHaveBeenCalledTimes(1))
+      await expect(
+        host.pool.take(JSON.stringify(['codex', 'codex', '/project'])),
+      ).resolves.toBeNull()
+    } finally {
+      await host.pool.close()
+    }
+  })
+
+  it('resizes live, keeping unspecified values', async () => {
+    const { host, close, prepareSession } = setup()
+    try {
+      await host.settings.set({ enabled: true, size: 2, idleTimeoutMinutes: 30 })
+      host.warmProject('/project')
+      await vi.waitFor(() => expect(prepareSession).toHaveBeenCalledTimes(2))
+      await host.settings.set({ size: 3 })
+      expect(host.settings.get()).toEqual({
+        enabled: true,
+        size: 3,
+        memoryCapMb: 1024,
+        idleTimeoutMinutes: 30,
+      })
+      await vi.waitFor(() => expect(close).toHaveBeenCalledTimes(2))
+      await vi.waitFor(() => expect(prepareSession).toHaveBeenCalledTimes(5))
+      await host.settings.set({ size: 0 })
+      await vi.waitFor(() => expect(close).toHaveBeenCalledTimes(5))
+      expect(prepareSession).toHaveBeenCalledTimes(5)
+    } finally {
+      await host.pool.close()
+    }
+  })
+
+  it('does not persist or restart for an unchanged value', async () => {
+    const { host, persist } = setup()
+    await host.settings.set({ enabled: false })
+    expect(persist).not.toHaveBeenCalled()
+    await host.pool.close()
   })
 })

@@ -8,6 +8,12 @@ describe('parseServeArgs', () => {
       enabled: true,
     })
     expect(sanitizeConfig({ warmPool: { enabled: 'yes' } }, () => {})).toEqual({})
+    expect(
+      sanitizeConfig(
+        { warmPool: { enabled: true, size: 3, memoryCapMb: 5, idleTimeoutMinutes: 20 } },
+        () => {},
+      ),
+    ).toEqual({ warmPool: { enabled: true, size: 3, idleTimeoutMinutes: 20 } })
   })
   it('defaults to loopback, port 3773 and the safe guard', () => {
     const c = parseServeArgs([], {})
