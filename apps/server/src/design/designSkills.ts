@@ -110,7 +110,8 @@ Repeat a row 5 times: build one, design_duplicate it, then design_update each co
   },
   {
     name: 'design-quality',
-    summary: 'Canvas-adapted layout, typography, colour and visual review guidance from Interfaces and UI UX Pro Max.',
+    summary:
+      'Canvas-adapted layout, typography, colour and visual review guidance from Interfaces and UI UX Pro Max.',
     body: `Canvas design quality (adapted from Jakub Krehel's Interfaces skills and UI UX Pro Max)
 Start with the user's brief or reference and existing design. Use design_search_knowledge to explore product, style, color, typography, ux and interface guidance; treat results as starting points, not mandatory visual styles. Prefer the user's established style over a generic recommendation.
 Layout: use nested auto-layout rows and columns, shared alignment edges, consistent spacing and larger gaps between groups than within them. Set usable padding and reserve enough room for long labels. Keep important actions and text within the frame; avoid accidental clipping. Repeat components with consistent dimensions and internal alignment.
@@ -122,7 +123,8 @@ Review: call design_check_layout and design_screenshot after the editor has laid
 
   {
     name: 'layout-review',
-    summary: 'Plan and review alignment, spacing, frame bounds, dense layouts and responsive variants.',
+    summary:
+      'Plan and review alignment, spacing, frame bounds, dense layouts and responsive variants.',
     body: `Canvas layout review, adapted from Interfaces better-layout and UI UX Pro Max
 1. Identify the frame size, purpose, reading order, most important action and visible regions. Follow the user's reference and density before choosing a spacing scale.
 2. Create nested auto-layout frames for rows, sections and repeated items. Align shared edges, keep sibling gaps consistent, and use more space between distinct groups than inside them. Treat 8px and 16px as starting points, not rules that override the brief. Use fixed-width cells for repeated columns and fill-sized content where available space should flex.
@@ -140,14 +142,14 @@ Use design_read and design_check_layout, then inspect a screenshot at useful res
   },
   {
     name: 'color-and-surfaces',
-    summary: 'Build coherent palettes, hierarchy and surface treatments and check contrast honestly.',
+    summary:
+      'Build coherent palettes, hierarchy and surface treatments and check contrast honestly.',
     body: `Canvas color and surfaces, adapted from Interfaces better-colors and better-ui and UI UX Pro Max
 Start from the user's reference or existing palette. For new directions search design_search_knowledge in color and style. Choose a restrained set of roles: canvas background, raised surface, primary and secondary text, border, accent and only the statuses the design uses. Reuse each role consistently and keep a clear primary action.
 Distinguish text and controls from their actual backgrounds, including tinted cards and overlays. Verify contrast with a measurement tool if one is available; never assert a ratio or accessibility conformance based on appearance alone. For translucent colors, assess the composited result. Use text or icons alongside status colors.
 Use a consistent corner-radius family, borders where they convey structure, and shadows only where they explain elevation. Align nested rounded surfaces and check icons visually for optical balance. Keep all visual treatments subordinate to the requested style; do not force shadows, color or a specific radius on an existing design.
 Inspect a rendered screenshot, including muted labels, active states, repeated components and full frame edges. Correct inconsistent or unreadable details and inspect again. Document interaction and focus states as design intent; a static canvas cannot verify their behavior.`,
   },
-
 ]
 
 export const DESIGN_SKILL_NAMES: readonly string[] = DESIGN_SKILLS.map((s) => s.name)
@@ -165,18 +167,33 @@ export function designSkill(name: unknown): unknown {
 /** Search the bundled UI UX Pro Max catalog without shelling out or requiring Python. */
 export function searchDesignKnowledge(query: unknown, domain: unknown, limit: unknown) {
   const text = typeof query === 'string' ? query.trim().toLowerCase() : ''
-  const terms = [...new Set(text.match(/[\p{L}\p{N}]+/gu)?.filter((term) => term.length > 1) ?? [])].slice(0, 20)
-  if (!terms.length) throw new Error('Provide a search query with at least one word of two or more characters.')
+  const terms = [
+    ...new Set(text.match(/[\p{L}\p{N}]+/gu)?.filter((term) => term.length > 1) ?? []),
+  ].slice(0, 20)
+  if (!terms.length)
+    throw new Error('Provide a search query with at least one word of two or more characters.')
   const selected = typeof domain === 'string' && domain ? domain : 'all'
-  if (selected !== 'all' && !(selected in UI_UX_CATALOG)) throw new Error('Unknown domain. Use product, style, color, typography, ux, interface, or all.')
-  const count = typeof limit === 'number' && Number.isFinite(limit) ? Math.max(1, Math.min(10, Math.floor(limit))) : 5
-  const matches = Object.entries(UI_UX_CATALOG).flatMap(([kind, rows]) => {
-    if (selected !== 'all' && kind !== selected) return []
-    return rows.map((entry) => {
-      const value = Object.values(entry).join(' ').toLowerCase()
-      const score = terms.reduce((sum, term) => sum + (value.includes(term) ? 1 : 0), 0)
-      return { domain: kind, score, entry }
-    }).filter((item) => item.score > 0)
-  }).sort((a, b) => b.score - a.score)
-  return { query: text, results: matches.slice(0, count), note: 'Recommendations are starting points. Follow the user brief, verify contrast and geometry, and use editable canvas tools.' }
+  if (selected !== 'all' && !(selected in UI_UX_CATALOG))
+    throw new Error('Unknown domain. Use product, style, color, typography, ux, interface, or all.')
+  const count =
+    typeof limit === 'number' && Number.isFinite(limit)
+      ? Math.max(1, Math.min(10, Math.floor(limit)))
+      : 5
+  const matches = Object.entries(UI_UX_CATALOG)
+    .flatMap(([kind, rows]) => {
+      if (selected !== 'all' && kind !== selected) return []
+      return rows
+        .map((entry) => {
+          const value = Object.values(entry).join(' ').toLowerCase()
+          const score = terms.reduce((sum, term) => sum + (value.includes(term) ? 1 : 0), 0)
+          return { domain: kind, score, entry }
+        })
+        .filter((item) => item.score > 0)
+    })
+    .sort((a, b) => b.score - a.score)
+  return {
+    query: text,
+    results: matches.slice(0, count),
+    note: 'Recommendations are starting points. Follow the user brief, verify contrast and geometry, and use editable canvas tools.',
+  }
 }
