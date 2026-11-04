@@ -8,13 +8,15 @@ describe('Codex warm fingerprint', () => {
       ['/home/test/.codex/config.toml', { content: 'config secret', time: 1 }],
       ['/home/test/.codex/auth.json', { content: 'auth secret', time: 1 }],
     ])
+    // path.join yields backslashes on Windows; the fixtures are keyed with forward slashes.
+    const key = (file: string) => file.replaceAll('\\', '/')
     const fs = {
       stat: (file: string) => {
-        const item = files.get(file)
+        const item = files.get(key(file))
         if (!item) throw Object.assign(new Error('missing'), { code: 'ENOENT' })
         return { dev: 1, ino: 1, size: item.content.length, mtimeMs: item.time, ctimeMs: item.time }
       },
-      read: vi.fn((file: string) => Buffer.from(files.get(file)!.content)),
+      read: vi.fn((file: string) => Buffer.from(files.get(key(file))!.content)),
       realpath: (file: string) => file,
     }
     const env: NodeJS.ProcessEnv = { HOME: '/home/test', OPENAI_API_KEY: 'secret' }
