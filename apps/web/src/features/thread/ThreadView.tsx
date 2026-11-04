@@ -207,6 +207,26 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
     return () => document.removeEventListener('keydown', onKey)
   }, [pending, sessionId, paneActive])
 
+  const stopEditingQueued = () => {
+    const stashed = stashedDraft.current
+    if (stashed !== undefined) useComposerDrafts.getState().setDraft(memoryKey, stashed)
+    stashedDraft.current = undefined
+    setEditingQueue(undefined)
+  }
+  // The message went out or was removed while it was open: the box goes back to what it held.
+  const stillQueued = !editingQueue || (session?.queue.some((q) => q.queueId === editingQueue.queueId) ?? true)
+  useEffect(() => {
+    if (!stillQueued) stopEditingQueued()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stillQueued])
+  // Leaving the session mid-edit must not leave the edited text behind as its draft.
+  useEffect(
+    () => () => {
+      const stashed = stashedDraft.current
+      if (stashed !== undefined) useComposerDrafts.getState().setDraft(memoryKey, stashed)
+    },
+    [memoryKey],
+  )
   if (!session) {
     return (
       <main className="panel thread-empty">
@@ -239,26 +259,6 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
     setEditingQueue({ queueId, original: queued.text })
     setQuoteFocus((n) => n + 1)
   }
-  const stopEditingQueued = () => {
-    const stashed = stashedDraft.current
-    if (stashed !== undefined) useComposerDrafts.getState().setDraft(memoryKey, stashed)
-    stashedDraft.current = undefined
-    setEditingQueue(undefined)
-  }
-  // The message went out or was removed while it was open: the box goes back to what it held.
-  const stillQueued = !editingQueue || session.queue.some((q) => q.queueId === editingQueue.queueId)
-  useEffect(() => {
-    if (!stillQueued) stopEditingQueued()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stillQueued])
-  // Leaving the session mid-edit must not leave the edited text behind as its draft.
-  useEffect(
-    () => () => {
-      const stashed = stashedDraft.current
-      if (stashed !== undefined) useComposerDrafts.getState().setDraft(memoryKey, stashed)
-    },
-    [memoryKey],
-  )
   const report = (err: unknown) => setActionError(err instanceof Error ? err.message : String(err))
 
   return (
