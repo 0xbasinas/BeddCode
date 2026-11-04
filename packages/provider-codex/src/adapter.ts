@@ -47,6 +47,7 @@ export interface CodexAdapterOptions {
   executablePath?: string
   /** Separate Codex home/account (sets CODEX_HOME). */
   codexHome?: string
+  mcpEnv?: Record<string, string>
   instanceId?: string
   label?: string
   log?: Logger
@@ -72,6 +73,7 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): CodexAdap
   const log = options.log ?? createLogger('codex')
   const env = () => ({
     ...process.env,
+    ...options.mcpEnv,
     ...(options.codexHome ? { CODEX_HOME: options.codexHome } : {}),
   })
   let capabilities = codexCapabilities
@@ -195,6 +197,6 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): CodexAdap
       ...scanCodexPrompts(),
       ...(await listCodexSkills(appServer, cwd ?? process.cwd()).catch(() => [])),
     ],
-    mcp: createCodexMcp(executable, env()),
+    mcp: createCodexMcp(executable, env),
   }
 }

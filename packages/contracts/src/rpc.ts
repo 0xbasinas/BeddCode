@@ -122,6 +122,16 @@ export const McpServerInput = z.object({
   args: z.array(z.string()).optional(),
   env: z.record(z.string(), z.string()).optional(),
   url: z.string().optional(),
+  headers: z
+    .record(
+      z.string().regex(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/),
+      z.string().refine((v) => !/[\r\n]/.test(v)),
+    )
+    .optional(),
+  bearerToken: z
+    .string()
+    .refine((v) => !/[\r\n]/.test(v))
+    .optional(),
   scope: z.enum(['user', 'project', 'local']).optional(),
 })
 export type McpServerInput = z.infer<typeof McpServerInput>

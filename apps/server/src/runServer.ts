@@ -1,3 +1,4 @@
+import { protectMcpSecrets } from './mcpSecrets.ts'
 import os from 'node:os'
 import path from 'node:path'
 import {
@@ -80,15 +81,17 @@ export async function runServer(
   recordChildrenIn(ledger)
 
   const acpStore = new AcpAgentStore(path.join(home, 'acp-agents.json'))
-  const codex = createCodexAdapter({ log: createLogger('codex') })
+  const mcpEnv: Record<string, string> = {}
+  const codex = createCodexAdapter({ log: createLogger('codex'), mcpEnv })
   const adapters: ProviderAdapter[] = [
-    createClaudeAdapter({ log: createLogger('claude') }),
+    createClaudeAdapter({ log: createLogger('claude'), mcpEnv }),
     codex,
     createGrokAdapter({ log: createLogger('grok') }),
     createPiAdapter({ log: createLogger('pi'), sessionDir: path.join(home, 'sessions', 'pi') }),
     createOpenCodeAdapter({ log: createLogger('opencode') }),
     createAcpAdapter({ store: acpStore, log: createLogger('acp') }),
   ]
+  await protectMcpSecrets(home, mcpEnv, adapters)
   // "advanced" adds steering, plans, questions, forks and history to the scripted agent.
   const fake = process.env.BEDDCODE_FAKE_PROVIDER
   if (fake === '1' || fake === 'advanced') {
