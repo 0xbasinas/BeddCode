@@ -86,6 +86,15 @@ describe('wholePath', () => {
     expect(wholePath('src/math.ts:2')).toMatchObject({ path: 'src/math.ts', line: 2 })
     expect(wholePath('npm run build')).toBeNull()
     expect(wholePath('cat src/a.ts')).toBeNull()
+    expect(wholePath('src/my folder/a file.ts:12:3')).toMatchObject({
+      path: 'src/my folder/a file.ts',
+      line: 12,
+      column: 3,
+    })
+    expect(wholePath('C:\\My Projects\\app.ts:4')).toMatchObject({
+      path: 'C:\\My Projects\\app.ts',
+      line: 4,
+    })
   })
 })
 

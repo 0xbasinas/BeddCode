@@ -105,6 +105,17 @@ export function findTextLinks(text: string): TextLink[] {
 /** `text` when the whole of it is one path (an inline code span like `src/a.ts:3`), else null. */
 export function wholePath(text: string): PathLink | null {
   const trimmed = text.trim()
+  // Spaces are unambiguous in a path-only code span when a root or directory precedes them.
+  // Avoid treating commands such as `cat src/a.ts` as file names.
+  if (/^(?:[A-Za-z]:[\\/]|\\\\|\.{1,2}[\\/]|\/|[^\s\\/]+[\\/])/.test(trimmed)) {
+    const location = /(?::(\d+)(?::(\d+))?|#L(\d+)(?:C(\d+))?)$/.exec(trimmed)
+    const path = location ? trimmed.slice(0, location.index) : trimmed
+    if (/\s/.test(path) && !/[`\r\n]/.test(path) && looksLikePath(path)) {
+      const line = Number(location?.[1] ?? location?.[3]) || undefined
+      const column = Number(location?.[2] ?? location?.[4]) || undefined
+      return { kind: 'path', start: 0, end: trimmed.length, text: trimmed, path, line, column }
+    }
+  }
   const links = findTextLinks(trimmed)
   const only = links.length === 1 ? links[0] : undefined
   return only?.kind === 'path' && only.start === 0 && only.end === trimmed.length ? only : null

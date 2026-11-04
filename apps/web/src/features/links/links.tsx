@@ -6,7 +6,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react'
-import { findTextLinks, pathFromHref } from '@beddcode/client-runtime'
+import { findTextLinks } from '@beddcode/client-runtime'
 import { useUiStore } from '../../stores/ui.ts'
 import { useBrowser } from '../browser/browserStore.ts'
 import { folderId, useFiles } from '../files/filesStore.ts'
@@ -44,14 +44,13 @@ export function openUrl(url: string, outside = false) {
 }
 
 /**
- * Opens a path from the session folder: in the editor picked last (when the host can start one),
- * else, or with Alt held, in the Files pane at that line.
+ * Opens a path in the Files pane, or in the preferred external editor with Alt held.
  */
 export async function openLocated(
   scope: LinkScopeValue,
   found: Located,
   at: { line?: number; column?: number },
-  inFilesPane = false,
+  inEditor = false,
 ) {
   const files = useFiles.getState()
   const id = folderId(scope.hostKey, scope.cwd)
@@ -61,7 +60,7 @@ export async function openLocated(
     else void files.openAt(id, found.path, at.line, at.column)
   }
   const editor = preferredEditor(scope.hostKey)
-  if (inFilesPane || !editor) return showInPane()
+  if (!inEditor || !editor) return showInPane()
   try {
     await openInEditor(scope.hostKey, editor, {
       cwd: scope.cwd,
@@ -89,7 +88,7 @@ function pathTitle(hostKey: string, found: Located, line?: number) {
   const name =
     editor && useEditorStore.getState().byHost[hostKey]?.editors.find((e) => e.id === editor)
   return name
-    ? `Open ${where} in ${name.label} · Alt-click for the Files pane`
+    ? `Show ${where} in the Files pane · Alt-click to open in ${name.label}`
     : `Show ${where} in the Files pane`
 }
 
@@ -109,9 +108,15 @@ export function PathAnchor({
   const key = scope ? linkKey(scope.hostKey, scope.cwd, path) : ''
   const found = useLinkStore((s) => (key ? s.found[key] : undefined))
   useEffect(() => {
-    if (scope) locate(scope.hostKey, scope.cwd, path)
+    if (scope?.cwd) locate(scope.hostKey, scope.cwd, path)
   }, [scope, path])
-  if (!scope || !found) return <>{children}</>
+  if (!scope?.cwd || found === null)
+    return (
+      <span title="File unavailable: missing, outside the session folder, or host unavailable">
+        {children}
+      </span>
+    )
+  if (!found) return <>{children}</>
   return (
     <a
       href="#"
@@ -152,7 +157,7 @@ export function UrlAnchor({ href, children }: { href: string; children: ReactNod
   )
 }
 
-/** The `a` renderer for Markdown: path markers and relative targets are paths, the rest web links. */
+/** The `a` renderer for Markdown: generated path markers are checked; authored links are preserved. */
 export function MarkdownAnchor(props: {
   href?: string
   children?: ReactNode
@@ -173,15 +178,8 @@ export function MarkdownAnchor(props: {
     )
   }
   const href = props.href ?? ''
-  const asPath = pathFromHref(href)
-  if (asPath) {
-    return (
-      <PathAnchor path={asPath.path} line={asPath.line} column={asPath.column}>
-        {props.children}
-      </PathAnchor>
-    )
-  }
   if (!href) return <>{props.children}</>
+  if (!/^https?:/i.test(href)) return <a href={href}>{props.children}</a>
   return <UrlAnchor href={href}>{props.children}</UrlAnchor>
 }
 

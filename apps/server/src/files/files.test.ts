@@ -241,6 +241,18 @@ describe('FileWatchers', () => {
 })
 
 describe('FileService.locate', () => {
+  it('resolves the same relative path in each session worktree', async () => {
+    const first = tmp()
+    const second = tmp()
+    mkdirSync(path.join(first, 'src'))
+    mkdirSync(path.join(second, 'src'))
+    writeFileSync(path.join(second, 'src', 'a file.ts'), 'worktree')
+    expect(await files.locate(first, ['src/a file.ts'])).toEqual([null])
+    expect(await files.locate(second, ['src/a file.ts'])).toEqual([
+      { path: 'src/a file.ts', type: 'file' },
+    ])
+  })
+
   it('finds files and folders inside the folder, relative or absolute, and nothing outside', async () => {
     const cwd = tmp()
     const outside = tmp()
