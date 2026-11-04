@@ -1,3 +1,4 @@
+import { probeMcp } from '../mcpProbe.ts'
 import { existsSync, statSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -398,6 +399,7 @@ export function createRpcRouter(
     'commands.list': (p) => sessions.listCommands(p.instanceId, p.cwd),
     'agents.preview': (p) => sessions.previewAgent(p.instanceId, p.cwd),
     'mcp.list': async (p) => (await sessions.mcp(p.instanceId)).list(p.cwd),
+    'mcp.test': (p) => probeMcp(p),
     'mcp.add': async (p) => {
       await (await sessions.mcp(p.instanceId)).add(p.server, p.cwd)
       return {}

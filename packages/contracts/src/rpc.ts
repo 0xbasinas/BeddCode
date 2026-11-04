@@ -670,6 +670,22 @@ export const RpcMethods = {
     params: z.object({ instanceId: z.string(), cwd: z.string().optional() }),
     result: z.array(McpServer),
   },
+  'mcp.test': {
+    params: z.object({
+      url: z.string(),
+      transport: z.enum(['http', 'sse']),
+      headers: z.record(z.string(), z.string()).optional(),
+    }),
+    result: z.discriminatedUnion('ok', [
+      z.object({
+        ok: z.literal(true),
+        name: z.string(),
+        version: z.string(),
+        toolCount: z.number(),
+      }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  },
   'mcp.add': {
     params: z.object({
       instanceId: z.string(),
