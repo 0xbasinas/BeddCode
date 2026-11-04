@@ -216,7 +216,8 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
     setEditingQueue(undefined)
   }
   // The message went out or was removed while it was open: the box goes back to what it held.
-  const stillQueued = !editingQueue || (session?.queue.some((q) => q.queueId === editingQueue.queueId) ?? true)
+  const stillQueued =
+    !editingQueue || (session?.queue.some((q) => q.queueId === editingQueue.queueId) ?? true)
   useEffect(() => {
     if (!stillQueued) stopEditingQueued()
     // eslint-disable-next-line react-hooks/exhaustive-deps
