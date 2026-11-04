@@ -1,0 +1,9 @@
+[
+  { "type": "system", "subtype": "init", "session_id": "fixture-claude" },
+  {
+    "type": "result",
+    "subtype": "error_during_execution",
+    "is_error": true,
+    "errors": ["Provider unavailable"]
+  }
+]

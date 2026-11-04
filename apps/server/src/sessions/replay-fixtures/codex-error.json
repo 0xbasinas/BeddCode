@@ -1,0 +1,5 @@
+{
+  "initialize": { "result": { "userAgent": "fixture" } },
+  "thread/start": { "result": { "thread": { "id": "fixture-thread" } } },
+  "turn/start": { "error": { "code": -32000, "message": "Provider unavailable" } }
+}
