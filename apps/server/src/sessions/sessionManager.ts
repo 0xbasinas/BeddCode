@@ -190,6 +190,8 @@ export class SessionManager {
     instances: { adapter: ProviderAdapter; instance: ProviderInstance }[]
   } | null = null
   private readonly gitGenerations = new Set<string>()
+  /** Concurrent automatic requests for the same source share one creation. */
+  private readonly automaticHandoffs = new Map<string, Promise<{ sessionId: string }>>()
 
   constructor(private readonly deps: SessionManagerDeps) {
     // Also retries events the database refused, so it runs even with both stall limits off.
@@ -336,6 +338,29 @@ export class SessionManager {
     params: RpcParams<'sessions.create'>,
     origin: SessionOrigin = {},
   ): Promise<{ sessionId: string }> {
+    if (params.handoffFrom && params.handoffReason) {
+      const sourceId = params.handoffFrom
+      const pending = this.automaticHandoffs.get(sourceId)
+      if (pending) return pending
+      const previous = this.deps.store
+        .readSession(sourceId)
+        .find(({ event }) => event.type === 'session.handed-off')?.event
+      if (previous?.type === 'session.handed-off') return { sessionId: previous.targetSessionId }
+      const creation = this.createOnce(params, origin)
+      this.automaticHandoffs.set(sourceId, creation)
+      try {
+        return await creation
+      } finally {
+        this.automaticHandoffs.delete(sourceId)
+      }
+    }
+    return this.createOnce(params, origin)
+  }
+
+  private async createOnce(
+    params: RpcParams<'sessions.create'>,
+    origin: SessionOrigin,
+  ): Promise<{ sessionId: string }> {
     const source = params.handoffFrom
       ? this.deps.store
           .readSession(params.handoffFrom)
@@ -453,6 +478,16 @@ export class SessionManager {
         (params.computerTools && this.deps.agentToolServers !== undefined) || undefined,
       linearTools: (params.linearTools && this.deps.agentToolServers !== undefined) || undefined,
     })
+    if (source?.type === 'session.created') {
+      this.record({
+        type: 'session.handed-off',
+        sessionId: source.sessionId,
+        at: Date.now(),
+        targetSessionId: sessionId,
+        agent: instance.label,
+        reason: params.handoffReason,
+      })
+    }
     this.announceModes(sessionId, adapter, instance.id, params.permissionMode)
     void this.pump(sessionId, session)
     return { sessionId }

@@ -95,6 +95,28 @@ const created = (store: EventStore, sessionId: string) =>
   >
 
 describe('SessionManager: workspaces', () => {
+  it('shares concurrent automatic handoff creation and returns the existing destination on retry', async () => {
+    const { manager, store, starts } = setup()
+    try {
+      const source = await manager.create({ instanceId: 'rec', title: 'Original' })
+      const params = {
+        instanceId: 'rec',
+        handoffFrom: source.sessionId,
+        handoffReason: 'rate limit',
+      }
+      const [first, second] = await Promise.all([manager.create(params), manager.create(params)])
+      expect(second).toEqual(first)
+      expect(await manager.create(params)).toEqual(first)
+      expect(starts).toHaveLength(2)
+      expect(
+        store.readSession(source.sessionId).filter((e) => e.event.type === 'session.handed-off'),
+      ).toHaveLength(1)
+    } finally {
+      await manager.close()
+      store.close()
+    }
+  })
+
   it('continues in the source folder and records a durable link', async () => {
     const { manager, store, starts } = setup()
     try {
@@ -103,7 +125,19 @@ describe('SessionManager: workspaces', () => {
         projectless: true,
         title: 'Original',
       })
-      const next = await manager.create({ instanceId: 'rec', handoffFrom: source.sessionId })
+      const next = await manager.create({
+        instanceId: 'rec',
+        handoffFrom: source.sessionId,
+        handoffReason: 'rate limit',
+      })
+      expect(store.readSession(source.sessionId).map((e) => e.event)).toContainEqual(
+        expect.objectContaining({
+          type: 'session.handed-off',
+          targetSessionId: next.sessionId,
+          agent: 'Rec',
+          reason: 'rate limit',
+        }),
+      )
       expect(starts[1]?.cwd).toBe(starts[0]?.cwd)
       expect(created(store, next.sessionId)).toMatchObject({
         cwd: starts[0]?.cwd,
