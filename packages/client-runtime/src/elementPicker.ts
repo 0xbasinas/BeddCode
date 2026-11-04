@@ -1,4 +1,5 @@
 export interface PickedElement {
+  documentId: string
   url: string
   title: string
   selector: string
@@ -79,7 +80,10 @@ export function pickElement(doc: Document): Promise<PickedElement | null> {
       const r = target.getBoundingClientRect()
       const x = Math.max(0, Math.floor(r.left))
       const y = Math.max(0, Math.floor(r.top))
+      const rootElement = doc.documentElement as HTMLElement & { __beddcodeDocumentId?: string }
+      rootElement.__beddcodeDocumentId ??= `${Date.now()}-${Math.random().toString(36).slice(2)}`
       finish({
+        documentId: rootElement.__beddcodeDocumentId,
         url: doc.URL.slice(0, 8192),
         title: doc.title.slice(0, 1024),
         selector: `${shadow ? '[inside shadow root] ' : ''}${parts.join(' > ')}`.slice(0, 8192),

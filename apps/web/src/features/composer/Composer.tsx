@@ -28,6 +28,7 @@ import { insertCommand, insertMention, matchCommands, mentionAt } from '@beddcod
 import { useRuntime } from '../../stores/host.ts'
 import { FileIcon, FolderIcon } from '../files/FileIcon.tsx'
 import { mentionItems, type MentionItem } from './mentionItems.ts'
+import { annotationKey, EMPTY_ANNOTATIONS, useAnnotations } from '../browser/annotations.ts'
 import { ModeMenu, type ModeItem } from './Menus.tsx'
 
 /** Drafts at least this long show their size beside the toolbar. */
@@ -91,6 +92,9 @@ export function Composer(props: ComposerProps) {
   const requestedDelivery = useRef<'auto' | 'queue'>('queue')
   const draftId = props.draftId ?? 'new-session'
   const draft = attachmentDraftKey(props.hostKey, draftId)
+  const annotationDraft = annotationKey(props.hostKey, draftId)
+  const annotations = useAnnotations((s) => s.drafts[annotationDraft] ?? EMPTY_ANNOTATIONS)
+  const selectedAnnotations = props.editing ? EMPTY_ANNOTATIONS : annotations
   const files = useAttachments((s) => s.drafts[draft] ?? EMPTY_ATTACHMENTS)
   const storageError = useAttachments((s) => s.storageError)
   const { epoch, connection } = useRuntime(props.hostKey)
@@ -126,9 +130,13 @@ export function Composer(props: ComposerProps) {
   const pending = files.some((f) => f.status !== 'done')
   // Sending is allowed while the agent works: the host steers the message in or queues it.
   const canSend =
-    !props.disabled && !pending && !sending && (text.trim().length > 0 || ready.length > 0)
+    !props.disabled &&
+    !pending &&
+    !sending &&
+    selectedAnnotations.every((a) => !a.stale && a.comment.trim()) &&
+    (text.trim().length > 0 || ready.length > 0 || selectedAnnotations.length > 0)
 
-  const hasContent = text.trim().length > 0 || files.length > 0
+  const hasContent = text.trim().length > 0 || files.length > 0 || selectedAnnotations.length > 0
   // Enter (or Send) while the host is still connecting or the agent or an upload is still loading
   // is not dropped: the message goes out as soon as it can.
   const [armed, setArmed] = useState<string>()
@@ -139,6 +147,10 @@ export function Composer(props: ComposerProps) {
   useEffect(() => setError(null), [draft])
   const trySend = (requested?: 'auto' | 'queue') => {
     requestedDelivery.current = requested ?? delivery
+    if (selectedAnnotations.some((a) => a.stale || !a.comment.trim())) {
+      setError('Remove stale annotations and add a comment to each annotation before sending.')
+      return
+    }
     if (canSend) void send()
     else if (hasContent && !sending) setArmed(draft)
   }
@@ -154,7 +166,14 @@ export function Composer(props: ComposerProps) {
       const request = props.editing
         ? props.editing.onSave(sent.trim())
         : props.onSend(
-            sent.trim(),
+            [
+              sent.trim(),
+              selectedAnnotations.length
+                ? `Browser annotations:\n${JSON.stringify({ version: 1, annotations: selectedAnnotations.map(({ id: _id, stale: _stale, ...a }, index) => ({ number: index + 1, ...a })) }, null, 2)}`
+                : '',
+            ]
+              .filter(Boolean)
+              .join('\n\n'),
             ready.map((f) => f.id!),
             props.busy ? requestedDelivery.current : 'auto',
           )
@@ -171,11 +190,23 @@ export function Composer(props: ComposerProps) {
         }
         throw err
       }
-      if (!props.editing)
+      if (!props.editing) {
+        useAnnotations.getState().remove(
+          annotationDraft,
+          selectedAnnotations
+            .filter((sentAnnotation) => {
+              const current = useAnnotations
+                .getState()
+                .drafts[annotationDraft]?.find((a) => a.id === sentAnnotation.id)
+              return current && current.comment === sentAnnotation.comment
+            })
+            .map((a) => a.id),
+        )
         useAttachments.getState().remove(
           draft,
           ready.map((f) => f.key),
         )
+      }
     } catch (err) {
       if (mounted.current && latest.current.draft === draft)
         setError(err instanceof Error ? err.message : 'Could not send')
