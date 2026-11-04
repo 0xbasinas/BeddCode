@@ -101,7 +101,12 @@ describe('SessionManager', () => {
     await vi.waitFor(() => expect(prompts[0]).toBeDefined())
     expect(prompts[0]?.text).toContain('editable canvas using the BeddCode design MCP tools')
     expect(prompts[0]?.text).toContain('Make a dashboard')
-    expect(store.readSession(design.sessionId).map(({ event }) => event).find((event) => event.type === 'message.delta')).toMatchObject({ text: 'Make a dashboard' })
+    expect(
+      store
+        .readSession(design.sessionId)
+        .map(({ event }) => event)
+        .find((event) => event.type === 'message.delta'),
+    ).toMatchObject({ text: 'Make a dashboard' })
     const normal = await manager.create({ instanceId: 'stub' })
     await manager.prompt(normal.sessionId, 'Make a dashboard')
     await vi.waitFor(() => expect(prompts[1]).toBeDefined())
