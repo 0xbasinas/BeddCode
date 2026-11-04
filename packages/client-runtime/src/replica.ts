@@ -84,6 +84,7 @@ export type TranscriptItem =
       after: string
       files: TurnChangedFile[]
       truncated?: boolean
+      coverage?: { state: 'full' | 'skipped' | 'truncated' | 'expired'; reason?: string }
       /** The user undid these changes. */
       reverted?: boolean
     }
@@ -360,6 +361,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
         after: e.after,
         files: e.files,
         truncated: e.truncated,
+        coverage: e.coverage,
       }
       // The snapshot is taken after the turn ends and can land after a queued message has already
       // started the next turn. The card belongs to the turn it describes: before that message.

@@ -50,7 +50,16 @@ export interface SessionManagerDeps {
   /** Remembers what agents offer for new sessions (see `previewAgent`). */
   previews?: PreviewCache
   /** MCP servers to add to a session that may use BeddCode's agent tools. */
-  agentToolServers?: (sessionId: string, features?: { agentTools?: boolean; browserTools?: boolean; designTools?: boolean; computerTools?: boolean; linearTools?: boolean }) => SessionMcpServer[]
+  agentToolServers?: (
+    sessionId: string,
+    features?: {
+      agentTools?: boolean
+      browserTools?: boolean
+      designTools?: boolean
+      computerTools?: boolean
+      linearTools?: boolean
+    },
+  ) => SessionMcpServer[]
   /** Shows the commands agents run in the Terminal pane (and runs ACP agents' commands there). */
   agentTerminals?: AgentTerminals
   /**
@@ -105,6 +114,7 @@ interface TurnState {
   sendAfterInterrupt?: string
   /** The snapshot taken as the running turn started (see `turn.changes`). */
   before?: { hash: string; refBase: string }
+  coverageReason?: string
   /** The message is answered but not yet with the agent: the snapshot comes first. */
   starting?: Promise<void>
   /** The starting snapshot, still being taken after the message was already sent. */
@@ -613,7 +623,9 @@ export class SessionManager {
 
   /** Supply design-pane context in the provider prompt even if MCP server instructions are ignored. */
   private providerPrompt(sessionId: string, text: string, attachments: { path: string }[]) {
-    const created = this.deps.store.readSession(sessionId).find(({ event }) => event.type === 'session.created')?.event
+    const created = this.deps.store
+      .readSession(sessionId)
+      .find(({ event }) => event.type === 'session.created')?.event
     const design = created?.type === 'session.created' && created.designTools === true
     const context = design
       ? 'This message comes from the BeddCode Design canvas. For design requests, create or edit the editable canvas using the BeddCode design MCP tools (design_list, design_read, design_add and related tools). Load design_skill for guidance. Match the requested style and density; align repeated rows, icon containers, text columns, padding and spacing. Inspect the whole frame and a representative panel with design_screenshot, correct visible clipping, tiny text, inconsistent icons or alignment, and inspect again. Use design_read for actual sizes; large screenshots may be downscaled. Do not substitute an HTML file or code unless the user explicitly asks for code. If the design tools are unavailable, tell the user; do not silently create a file instead. The user request follows:\n\n'
@@ -731,6 +743,7 @@ export class SessionManager {
 
   private async checkpointBefore(sessionId: string, turn: TurnState): Promise<void> {
     turn.before = undefined
+    turn.coverageReason = undefined
     const cwd = await this.checkpointFolder(sessionId)
     if (!cwd) return
     const refBase = `refs/beddcode/checkpoints/${sessionId}/${Date.now().toString(36)}`
@@ -739,6 +752,9 @@ export class SessionManager {
       .then((hash) => ({ hash, refBase }))
       .catch((err: unknown) => {
         this.deps.log.debug(`no checkpoint for ${sessionId}: ${String(err)}`)
+        turn.coverageReason = /Too many untracked files/.test(String(err))
+          ? 'Too many untracked files to snapshot.'
+          : 'The starting snapshot could not be taken.'
         return undefined
       })
     let timer: NodeJS.Timeout | undefined
@@ -751,6 +767,8 @@ export class SessionManager {
       turn.before = first
       return
     }
+    turn.coverageReason =
+      'The starting snapshot finished after the turn began, so early edits may be missing.'
     const finishing = taking.then((snapshot) => {
       turn.before = snapshot
     })
@@ -765,13 +783,28 @@ export class SessionManager {
     await turn.taking
     const before = turn.before
     turn.before = undefined
-    if (!before) return
+    if (!before) {
+      this.deps.store.append({
+        type: 'turn.changes',
+        sessionId,
+        turnId,
+        at: Date.now(),
+        before: '',
+        after: '',
+        files: [],
+        coverage: {
+          state: 'skipped',
+          reason: turn.coverageReason ?? 'The starting snapshot was unavailable.',
+        },
+      })
+      return
+    }
     const cwd = await this.checkpointFolder(sessionId)
     if (!cwd) return
     try {
       const after = await this.deps.git.snapshot(cwd, `${before.refBase}-after`)
       const { files, truncated } = await this.deps.git.snapshotChanges(cwd, before.hash, after)
-      if (files.length === 0) {
+      if (files.length === 0 && !turn.coverageReason && !truncated) {
         await this.deps.git.dropSnapshots(cwd, `${before.refBase}-`)
         return
       }
@@ -784,6 +817,18 @@ export class SessionManager {
         after,
         files,
         truncated: truncated || undefined,
+        coverage:
+          truncated || turn.coverageReason
+            ? {
+                state: 'truncated',
+                reason: [
+                  turn.coverageReason,
+                  truncated ? 'The file list is incomplete.' : undefined,
+                ]
+                  .filter(Boolean)
+                  .join(' '),
+              }
+            : { state: 'full' },
       })
       // Only the latest turn can be undone; older ones keep their diffs for a while, then go.
       await this.deps.git
@@ -791,6 +836,16 @@ export class SessionManager {
         .catch((err: unknown) => this.deps.log.debug(`could not prune checkpoints: ${String(err)}`))
     } catch (err) {
       this.deps.log.warn(`could not record the changes of a turn in ${sessionId}`, err)
+      this.deps.store.append({
+        type: 'turn.changes',
+        sessionId,
+        turnId,
+        at: Date.now(),
+        before: '',
+        after: '',
+        files: [],
+        coverage: { state: 'skipped', reason: 'The ending snapshot or comparison failed.' },
+      })
     }
   }
 
@@ -834,6 +889,7 @@ export class SessionManager {
     const created = this.createdEvent(sessionId)
     if (!created) throw new Error(`Unknown session: ${sessionId}`)
     const { changes, isLatest, reverted } = this.turnChanges(sessionId, after)
+    if (!changes.after) throw new Error('No snapshot is available to undo')
     if (reverted) throw new Error('Those changes were already undone')
     if (!isLatest) throw new Error('Only the latest changes can be undone')
     const turn = this.turnState(sessionId)
@@ -1353,10 +1409,24 @@ export class SessionManager {
     })
   }
 
-  private toolServersFor(sessionId: string, wanted: boolean | undefined, design?: boolean, features?: { agentTools?: boolean; browserTools?: boolean; designTools?: boolean; computerTools?: boolean; linearTools?: boolean }) {
+  private toolServersFor(
+    sessionId: string,
+    wanted: boolean | undefined,
+    design?: boolean,
+    features?: {
+      agentTools?: boolean
+      browserTools?: boolean
+      designTools?: boolean
+      computerTools?: boolean
+      linearTools?: boolean
+    },
+  ) {
     if (!wanted || !this.deps.agentToolServers) return undefined
     // Sessions that work on designs also get the logo lookup server.
-    return [...this.deps.agentToolServers(sessionId, features), ...(design ? designMcpServers() : [])]
+    return [
+      ...this.deps.agentToolServers(sessionId, features),
+      ...(design ? designMcpServers() : []),
+    ]
   }
 
   /** A turn is running, or about to. */
@@ -1761,7 +1831,7 @@ export class SessionManager {
         if (event.type === 'turn.completed') {
           const turn = this.turnState(sessionId)
           turn.stopRequested = false
-          if (turn.before || turn.taking) {
+          if (turn.before || turn.taking || turn.coverageReason) {
             const settling = this.recordTurnChanges(sessionId, turn, event.turnId)
             turn.settling = settling
             void settling.finally(() => {

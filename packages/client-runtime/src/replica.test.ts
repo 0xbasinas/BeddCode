@@ -605,9 +605,13 @@ it('files a turn’s changes card before a message queued behind it, not after',
       turnId: 't1',
       before: 'a',
       after: 'b',
+      coverage: { state: 'truncated', reason: 'File limit reached.' },
       files: [{ path: 'x.ts', status: 'modified', added: 1, removed: 0 }],
     },
   ] as Draft[])
+  expect(state.sessions.s1?.items.find((i) => i.kind === 'changes')).toMatchObject({
+    coverage: { state: 'truncated', reason: 'File limit reached.' },
+  })
   expect(state.sessions.s1?.items.map((i) => (i.kind === 'message' ? i.text : i.kind))).toEqual([
     'first',
     'done',
