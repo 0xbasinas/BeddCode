@@ -90,6 +90,46 @@ const completeTurn = (s: ReturnType<typeof fakeServer>, status = 'completed') =>
   s.notify('turn/completed', { threadId: 'th1', turn: { id: 'tu1', status } })
 
 describe('CodexSession', () => {
+  it('sends image and file attachments on prompts and steering', async () => {
+    const server = fakeServer()
+    const session = start(server)
+    const turn = session.prompt({
+      text: 'inspect',
+      attachments: ['/tmp/image.PNG', '/tmp/notes.txt'],
+    })
+    await server.waitFor((m) => m.method === 'turn/start')
+    expect(server.sent('turn/start')[0]?.params?.input).toEqual([
+      { type: 'text', text: 'inspect\n\nAttached files:\n/tmp/notes.txt', text_elements: [] },
+      { type: 'localImage', path: '/tmp/image.PNG' },
+    ])
+    await session.steer({ text: 'also look', attachments: ['/tmp/other.jpg'] })
+    expect(server.sent('turn/steer')[0]?.params?.input).toEqual([
+      { type: 'text', text: 'also look', text_elements: [] },
+      { type: 'localImage', path: '/tmp/other.jpg' },
+    ])
+    completeTurn(server)
+    await turn
+    await session.close()
+  })
+
+  it('declines pending permission grants in the protocol shape on interrupt', async () => {
+    const server = fakeServer()
+    const session = start(server)
+    const turn = session.prompt({ text: 'work' })
+    await server.waitFor((m) => m.method === 'turn/start')
+    const reply = server.ask('item/permissions/requestApproval', { permissions: { network: {} } })
+    await nextEvent(session, (e) => e.type === 'approval.requested')
+    await session.interrupt()
+    expect((await reply).result).toEqual({ permissions: {}, scope: 'turn' })
+    completeTurn(server, 'interrupted')
+    await turn
+    await session.close()
+  })
+
+  it('advertises image and usage support', () => {
+    const capabilities = createCodexAdapter().capabilities('codex')
+    expect(capabilities).toMatchObject({ imageInput: true, usage: true })
+  })
   it('isolates metadata generation in an ephemeral read-only thread', async () => {
     const server = fakeServer()
     const session = start(server, { textOnly: true, effort: 'low' })

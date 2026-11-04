@@ -44,6 +44,7 @@ const DENY = 'deny'
 interface PendingApproval {
   /** Builds the JSON-RPC result for the option the user picked. */
   answer(optionId: string): unknown
+  cancel(): unknown
   resolve(result: unknown): void
 }
 
@@ -190,13 +191,14 @@ export class CodexSession implements ProviderSession {
    * Starts the turn for a message: Codex's `/compact` and `/review` have their own requests;
    * everything else (custom prompts expanded) is a normal turn.
    */
-  private async startCodexTurn(text: string): Promise<void> {
+  private async startCodexTurn(input: PromptInput): Promise<void> {
+    const { text } = input
     const slash = parseSlash(text)
-    if (slash?.name === 'compact' && !this.skills.has('compact')) {
+    if (!input.attachments?.length && slash?.name === 'compact' && !this.skills.has('compact')) {
       await this.rpc.request('thread/compact/start', { threadId: this.threadId })
       return
     }
-    if (slash?.name === 'review' && !this.skills.has('review')) {
+    if (!input.attachments?.length && slash?.name === 'review' && !this.skills.has('review')) {
       const res = await this.rpc.request<{ turn: { id: string } }>('review/start', {
         threadId: this.threadId,
         target: slash.args
@@ -209,7 +211,7 @@ export class CodexSession implements ProviderSession {
     }
     const res = await this.rpc.request<{ turn: { id: string } }>('turn/start', {
       threadId: this.threadId,
-      input: this.inputFor(this.expand(text)),
+      input: this.inputFor(this.expand(text), input.attachments),
       // Sent with every turn, so a model chosen mid-session sticks for the rest of the thread.
       ...(this.model ? { model: this.model } : {}),
       ...(this.effort ? { effort: this.effort } : {}),
@@ -219,14 +221,19 @@ export class CodexSession implements ProviderSession {
   }
 
   /** A leading `/skill` or `$skill` names a skill, which Codex takes as its own input item. */
-  private inputFor(text: string): Obj[] {
+  private inputFor(text: string, attachments: string[] = []): Obj[] {
+    const images = attachments.filter((file) => /\.(?:png|jpe?g|gif|webp)$/i.test(file))
+    const files = attachments.filter((file) => !images.includes(file))
+    if (files.length) text += `\n\nAttached files:\n${files.join('\n')}`
     const match = /^[/$]([\w.-]+)(?:\s+([\s\S]*))?$/.exec(text.trim())
     const path = match && this.skills.get(match[1]!)
-    if (!match || !path) return [{ type: 'text', text, text_elements: [] }]
+    const imageInputs = images.map((path) => ({ type: 'localImage', path }))
+    if (!match || !path) return [{ type: 'text', text, text_elements: [] }, ...imageInputs]
     const rest = match[2]?.trim()
     return [
       { type: 'skill', name: match[1], path },
       ...(rest ? [{ type: 'text', text: rest, text_elements: [] }] : []),
+      ...imageInputs,
     ]
   }
 
@@ -245,7 +252,7 @@ export class CodexSession implements ProviderSession {
     this.turnWaiters.push(done)
 
     try {
-      await this.startCodexTurn(input.text)
+      await this.startCodexTurn(input)
     } catch (err) {
       // Report the failure as a finished turn so the UI never waits on one that cannot complete.
       this.turnWaiters.splice(this.turnWaiters.indexOf(done), 1)
@@ -270,7 +277,7 @@ export class CodexSession implements ProviderSession {
     try {
       await this.rpc.request('turn/steer', {
         threadId: this.threadId,
-        input: this.inputFor(this.expand(input.text)),
+        input: this.inputFor(this.expand(input.text), input.attachments),
         expectedTurnId: this.codexTurnId,
       })
     } catch (err) {
@@ -292,7 +299,7 @@ export class CodexSession implements ProviderSession {
   }
 
   async interrupt() {
-    this.resolveAllPending('cancel')
+    this.resolveAllPending()
     if (this.threadId && this.codexTurnId) {
       await this.rpc.request('turn/interrupt', {
         threadId: this.threadId,
@@ -323,7 +330,7 @@ export class CodexSession implements ProviderSession {
   async close() {
     if (this.closed) return
     this.closed = true
-    this.resolveAllPending('cancel')
+    this.resolveAllPending()
     this.rpc.close()
     this.releaseTurns()
     this.queue.close()
@@ -387,6 +394,7 @@ export class CodexSession implements ProviderSession {
           title:
             typeof p.reason === 'string' && p.reason ? p.reason : 'Grant additional permissions?',
           canRemember: true,
+          cancel: () => ({ permissions: {}, scope: 'turn' }),
           answer: (id) =>
             id === DENY
               ? { permissions: {}, scope: 'turn' }
@@ -433,10 +441,15 @@ export class CodexSession implements ProviderSession {
     detail?: string
     canRemember: boolean
     answer(optionId: string): unknown
+    cancel?(): unknown
   }): Promise<unknown> {
     const requestId = `req-${++this.approvalCount}`
     return new Promise((resolve) => {
-      this.pending.set(requestId, { answer: opts.answer, resolve })
+      this.pending.set(requestId, {
+        answer: opts.answer,
+        cancel: opts.cancel ?? (() => ({ decision: 'cancel' })),
+        resolve,
+      })
       this.emit(
         {
           type: 'approval.requested',
@@ -457,14 +470,14 @@ export class CodexSession implements ProviderSession {
   }
 
   /** Answers every open approval with Codex's own "cancel" and tells the UI. */
-  private resolveAllPending(decision: 'cancel') {
+  private resolveAllPending() {
     for (const [requestId, resolve] of this.questions) {
       resolve({ answers: {} })
       this.emit({ type: 'question.resolved', requestId }, this.currentTurn())
     }
     this.questions.clear()
     for (const [requestId, waiting] of this.pending) {
-      waiting.resolve({ decision })
+      waiting.resolve(waiting.cancel())
       this.emit({ type: 'approval.resolved', requestId, optionId: DENY }, this.currentTurn())
     }
     this.pending.clear()
