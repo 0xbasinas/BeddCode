@@ -21,6 +21,23 @@ const created = {
   instanceId: 'fake',
 }
 
+it('replays agent messages as distinct timeline items', () => {
+  const state = fold([
+    created,
+    {
+      type: 'agent.message',
+      messageId: 'm',
+      threadId: 't',
+      senderId: 's1',
+      recipientId: 's2',
+      text: 'hello',
+    },
+  ])
+  expect(state.sessions.s1?.items).toMatchObject([
+    { kind: 'agent-message', threadId: 't', senderId: 's1', recipientId: 's2', text: 'hello' },
+  ])
+})
+
 it('replays host-backed notes and queued edits in their reordered positions', () => {
   const state = fold([
     created,

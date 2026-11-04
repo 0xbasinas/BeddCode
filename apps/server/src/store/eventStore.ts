@@ -236,6 +236,53 @@ export class EventStore {
     return this.parseRows(rows)
   }
 
+  /** Reserve a project send before delivery, including across host restarts. */
+  reservePeerSend(project: string, now: number): boolean {
+    this.db.exec('BEGIN IMMEDIATE')
+    try {
+      this.db.prepare('DELETE FROM peer_sends WHERE at <= ?').run(now - 60_000)
+      const row = this.db
+        .prepare('SELECT COUNT(*) AS count FROM peer_sends WHERE project = ?')
+        .get(project) as { count: number }
+      if (row.count >= 10) {
+        this.db.exec('COMMIT')
+        return false
+      }
+      this.db.prepare('INSERT INTO peer_sends (project, at) VALUES (?, ?)').run(project, now)
+      this.db.exec('COMMIT')
+      return true
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
+
+  /** Count attempted deliveries durably, even if a session is subsequently purged. */
+  reservePeerThreadSend(threadId: string, messageId: string): boolean {
+    this.db.exec('BEGIN IMMEDIATE')
+    try {
+      const { count } = this.db
+        .prepare('SELECT COUNT(*) AS count FROM peer_thread_sends WHERE thread_id = ?')
+        .get(threadId) as { count: number }
+      if (count >= 50) {
+        this.db.exec('COMMIT')
+        return false
+      }
+      this.db
+        .prepare('INSERT INTO peer_thread_sends (thread_id, message_id) VALUES (?, ?)')
+        .run(threadId, messageId)
+      this.db.exec('COMMIT')
+      return true
+    } catch (error) {
+      try {
+        this.db.exec('ROLLBACK')
+      } catch {
+        /* SQLite may already have rolled back. */
+      }
+      throw error
+    }
+  }
+
   /** Session IDs with recorded creation events, ordered by their most recent activity. */
   listSessionIds(before = Number.MAX_SAFE_INTEGER, limit = 101): { id: string; latest: number }[] {
     const rows = this.db

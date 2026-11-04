@@ -12,6 +12,14 @@ export type SessionStatus = 'idle' | 'running' | 'needs-you' | 'failed'
 
 export type TranscriptItem =
   | {
+      kind: 'agent-message'
+      id: string
+      threadId: string
+      senderId: string
+      recipientId: string
+      text: string
+    }
+  | {
       kind: 'message'
       id: string
       role: 'user' | 'assistant'
@@ -406,6 +414,19 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     }
     case 'session.result':
       next.result = { status: e.status, summary: e.summary }
+      break
+    case 'agent.message':
+      next.items = [
+        ...current.items,
+        {
+          kind: 'agent-message',
+          id,
+          threadId: e.threadId,
+          senderId: e.senderId,
+          recipientId: e.recipientId,
+          text: e.text,
+        },
+      ]
       break
     case 'session.usage':
       next.usage = {

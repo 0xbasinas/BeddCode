@@ -28,6 +28,8 @@ function itemText(item: TranscriptItem): string {
       return `### Error\n\n${item.message}`
     case 'notice':
       return `### Notice\n\n${item.message}`
+    case 'agent-message':
+      return `### Agent message · ${item.senderId} → ${item.recipientId} · thread ${item.threadId}\n\n${item.text}`
   }
 }
 

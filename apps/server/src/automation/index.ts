@@ -120,6 +120,20 @@ export function createAutomation(deps: AutomationDeps) {
       readSession,
       recentSessionIds: (limit) => store.listSessionIds(undefined, limit).map((s) => s.id),
       promptPeer: (id, text) => sessions.prompt(id, text, [], 'queue'),
+      reservePeerSend: (project, now) => store.reservePeerSend(project, now),
+      reservePeerThreadSend: (threadId, messageId) =>
+        store.reservePeerThreadSend(threadId, messageId),
+      recordPeerMessage: (message) => {
+        store.appendMany(
+          [message.senderId, message.recipientId].map((sessionId) => ({
+            type: 'agent.message' as const,
+            sessionId,
+            ...message,
+          })),
+        )
+      },
+      recordPlan: (plan) => void store.append(plan),
+      recordGroup: (group) => void store.append(group),
       childrenOf: (id) => store.childrenOf(id),
       subscribe,
       projectPaths: async () => (await workspace.projects.list()).map((p) => p.path),

@@ -425,6 +425,16 @@ function ItemView({
           <span>{item.message}</span>
         </div>
       )
+    case 'agent-message':
+      return (
+        <div className="turn-notice">
+          <span>
+            Agent message · {item.senderId} → {item.recipientId} · thread {item.threadId}
+            <br />
+            {item.text}
+          </span>
+        </div>
+      )
     case 'diff':
       return null // grouped into the "Edited files" card
     case 'changes':

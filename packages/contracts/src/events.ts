@@ -192,6 +192,29 @@ export const SessionEvent = z.discriminatedUnion('type', [
     /** Files the user attached to this message (user messages only). */
     attachments: z.array(z.object({ name: z.string(), path: z.string() })).optional(),
   }),
+  /** A delivered agent-to-agent message, recorded on both participants' timelines. */
+  Base.extend({
+    type: z.literal('agent.message'),
+    messageId: z.string(),
+    threadId: z.string(),
+    senderId: z.string(),
+    recipientId: z.string(),
+    text: z.string(),
+  }),
+  /** A lead's durable plan. Worker sessions are linked by their parent request ID. */
+  Base.extend({
+    type: z.literal('orchestration.plan'),
+    planId: z.string(),
+    goal: z.string(),
+    tasks: z.array(
+      z.object({ id: z.string(), agent: z.string(), prompt: z.string(), worktree: z.boolean() }),
+    ),
+  }),
+  Base.extend({
+    type: z.literal('orchestration.group'),
+    name: z.string(),
+    members: z.array(z.string()),
+  }),
   Base.extend({
     type: z.literal('tool.started'),
     toolId: z.string(),

@@ -95,6 +95,12 @@ function fakeHost(parentProjectless = false) {
       prompts.push([id, text])
       return { state: 'queued' }
     },
+    recordPeerMessage: (message) => {
+      for (const sessionId of [message.senderId, message.recipientId])
+        append({ type: 'agent.message', sessionId, ...message })
+    },
+    recordPlan: append,
+    recordGroup: append,
     childrenOf: (id) =>
       [...logs.entries()]
         .filter(([, events]) => {
@@ -152,6 +158,208 @@ const call = async (t: AgentTools, session: string, name: string, args: object) 
 afterEach(() => vi.useRealTimers())
 
 describe('AgentTools', () => {
+  it('persists named peer groups for broadcasts and supports removal', async () => {
+    const { host, append, prompts } = fakeHost()
+    append({
+      type: 'session.created',
+      sessionId: 'peer',
+      at: 0,
+      title: 'Peer',
+      cwd: '/p',
+      projectPath: '/p',
+      instanceId: 'codex',
+      agentTools: true,
+    })
+    await call(tools(host), 'parent', 'set_peer_group', {
+      name: 'reviewers',
+      session_ids: ['peer', 'peer'],
+    })
+    const restarted = tools(host)
+    const groups = await restarted.call('parent', 'list_peer_groups', {})
+    expect(groups).toEqual([{ name: 'reviewers', session_ids: ['peer'] }])
+    expect(
+      await call(restarted, 'parent', 'broadcast_peer_message', {
+        group: 'reviewers',
+        text: 'Please review',
+      }),
+    ).toMatchObject({ outcomes: [{ session_id: 'peer', ok: true }] })
+    expect(prompts).toHaveLength(1)
+    await call(restarted, 'parent', 'set_peer_group', { name: 'reviewers', session_ids: [] })
+    expect(await restarted.call('parent', 'list_peer_groups', {})).toEqual([])
+  })
+  it('records plans and reconnects workers and results after the tools restart', async () => {
+    const { host, created } = fakeHost()
+    const initial = await call(tools(host), 'parent', 'create_orchestration_plan', {
+      goal: 'Ship the feature',
+      tasks: [{ agent: 'codex', prompt: 'Implement it', worktree: true }],
+    })
+    expect(initial).toMatchObject({
+      goal: 'Ship the feature',
+      tasks: [{ session_id: 'child-1', agent: 'codex' }],
+    })
+    expect(created[0]?.params.workspace).toEqual({ mode: 'worktree' })
+    expect(await tools(host).call('parent', 'list_orchestration_plans', {})).toEqual([
+      { plan_id: initial.plan_id, goal: 'Ship the feature' },
+    ])
+    host.report('child-1', 'done', 'Implemented')
+    const recovered = await call(tools(host), 'parent', 'get_orchestration_plan', {
+      plan_id: initial.plan_id,
+      start_pending: true,
+    })
+    expect(recovered).toMatchObject({
+      tasks: [{ session_id: 'child-1', status: 'done', result: { summary: 'Implemented' } }],
+    })
+    expect(created).toHaveLength(1)
+  })
+
+  it('keeps a failed assignment pending so it can be retried', async () => {
+    const { host, created } = fakeHost()
+    const initial = await call(tools(host), 'parent', 'create_orchestration_plan', {
+      goal: 'Investigate',
+      tasks: [{ agent: 'missing', prompt: 'Look' }],
+    })
+    expect(initial).toMatchObject({
+      tasks: [{ status: 'pending', error: expect.stringContaining('No agent') }],
+    })
+    const recovered = await call(tools(host), 'parent', 'get_orchestration_plan', {
+      plan_id: initial.plan_id,
+    })
+    expect(recovered).toMatchObject({ tasks: [{ status: 'pending' }] })
+    expect(created).toHaveLength(0)
+  })
+  it('broadcasts once per recipient and reports individual failures', async () => {
+    const { host, append, prompts } = fakeHost()
+    for (const id of ['one', 'two'])
+      append({
+        type: 'session.created',
+        sessionId: id,
+        at: 0,
+        title: id,
+        cwd: '/p',
+        projectPath: '/p',
+        instanceId: 'codex',
+        agentTools: true,
+      })
+    const result = await call(tools(host), 'parent', 'broadcast_peer_message', {
+      session_ids: ['one', 'one', 'missing', 'two'],
+      text: 'hello',
+    })
+    expect(result.outcomes).toMatchObject([
+      { session_id: 'one', ok: true },
+      { session_id: 'missing', ok: false },
+      { session_id: 'two', ok: true },
+    ])
+    expect(prompts.map(([id]) => id)).toEqual(['one', 'two'])
+  })
+
+  it('serializes concurrent replies so the thread limit cannot be exceeded', async () => {
+    const { host, append } = fakeHost()
+    append({
+      type: 'session.created',
+      sessionId: 'peer',
+      at: 0,
+      title: 'Peer',
+      cwd: '/p',
+      projectPath: '/p',
+      instanceId: 'codex',
+      agentTools: true,
+    })
+    for (let i = 0; i < 49; i++) {
+      for (const sessionId of ['parent', 'peer'])
+        append({
+          type: 'agent.message',
+          sessionId,
+          at: i,
+          messageId: String(i),
+          threadId: 'thread',
+          senderId: 'parent',
+          recipientId: 'peer',
+          text: 'x',
+        })
+    }
+    const t = tools(host)
+    const results = await Promise.allSettled([
+      call(t, 'parent', 'send_peer_message', {
+        session_id: 'peer',
+        thread_id: 'thread',
+        text: 'a',
+      }),
+      call(t, 'peer', 'send_peer_message', {
+        session_id: 'parent',
+        thread_id: 'thread',
+        text: 'b',
+      }),
+    ])
+    expect(results.map((r) => r.status)).toEqual(['fulfilled', 'rejected'])
+  })
+  it('records a reply in both inboxes and rejects replies to an unrelated thread', async () => {
+    const { host, append } = fakeHost()
+    append({
+      type: 'session.created',
+      sessionId: 'peer',
+      at: 0,
+      title: 'Peer',
+      cwd: '/p',
+      projectPath: '/p',
+      instanceId: 'codex',
+      agentTools: true,
+    })
+    const t = tools(host)
+    const sent = await call(t, 'parent', 'send_peer_message', {
+      session_id: 'peer',
+      text: 'Question',
+    })
+    await call(t, 'peer', 'send_peer_message', {
+      session_id: 'parent',
+      text: 'Answer',
+      thread_id: sent.thread_id,
+    })
+    const inbox = (await call(t, 'parent', 'read_peer_inbox', {})) as unknown as {
+      thread_id: string
+      text: string
+    }[]
+    expect(inbox.map((m) => m.text)).toEqual(['Question', 'Answer'])
+    expect(inbox.every((m) => m.thread_id === sent.thread_id)).toBe(true)
+    await expect(
+      call(t, 'peer', 'send_peer_message', {
+        session_id: 'parent',
+        text: 'x',
+        thread_id: 'unknown',
+      }),
+    ).rejects.toThrow('Thread')
+  })
+
+  it('stops a thread after 50 recorded messages', async () => {
+    const { host, append } = fakeHost()
+    append({
+      type: 'session.created',
+      sessionId: 'peer',
+      at: 0,
+      title: 'Peer',
+      cwd: '/p',
+      projectPath: '/p',
+      instanceId: 'codex',
+      agentTools: true,
+    })
+    for (let i = 0; i < 50; i++)
+      append({
+        type: 'agent.message',
+        sessionId: 'parent',
+        at: i,
+        messageId: String(i),
+        threadId: 'thread',
+        senderId: 'parent',
+        recipientId: 'peer',
+        text: 'x',
+      })
+    await expect(
+      call(tools(host), 'parent', 'send_peer_message', {
+        session_id: 'peer',
+        text: 'x',
+        thread_id: 'thread',
+      }),
+    ).rejects.toThrow('Thread message limit')
+  })
   it('discovers and messages opted-in peers only within the same project', async () => {
     const { host, append, prompts } = fakeHost()
     const t = tools(host)
@@ -182,9 +390,9 @@ describe('AgentTools', () => {
     expect(
       await call(t, 'parent', 'send_peer_message', { session_id: 'peer', text: 'hello' }),
     ).toMatchObject({ state: 'queued' })
-    expect(prompts).toEqual([
-      ['peer', 'Message from agent claude (session parent, "Parent"):\n\nhello'],
-    ])
+    expect(prompts[0]?.[0]).toBe('peer')
+    expect(prompts[0]?.[1]).toContain('Message from agent claude (session parent, "Parent")')
+    expect(prompts[0]?.[1]).toContain('\n\nhello')
     append({ type: 'session.deleted', sessionId: 'peer', at: 1 })
     await expect(
       call(t, 'parent', 'send_peer_message', { session_id: 'peer', text: 'hello' }),
@@ -335,8 +543,12 @@ describe('AgentTools', () => {
     )
     // The deepest level cannot start sessions, but can message peers and report.
     expect(await names('child-2')).toEqual([
+      'set_peer_group',
+      'list_peer_groups',
       'list_peer_sessions',
       'send_peer_message',
+      'read_peer_inbox',
+      'broadcast_peer_message',
       'report_result',
     ])
 
