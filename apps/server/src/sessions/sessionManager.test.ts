@@ -76,7 +76,10 @@ function resumableAdapter(opts: { resume: boolean; status?: ProviderInstance['st
   return { adapter, starts, closed, interrupted, prompts }
 }
 
-function setup(opts: Parameters<typeof resumableAdapter>[0], projectInstructions?: (folder: string) => string) {
+function setup(
+  opts: Parameters<typeof resumableAdapter>[0],
+  projectInstructions?: (folder: string) => string,
+) {
   const store = new EventStore(':memory:')
   const stub = resumableAdapter(opts)
   const manager = new SessionManager({
@@ -104,7 +107,12 @@ describe('SessionManager', () => {
     await vi.waitFor(() => expect(prompts[0]).toBeDefined())
     expect(prompts[0]?.text).toContain('Run the tests')
     expect(prompts[0]?.text).not.toContain('Changed later')
-    expect(store.readSession(sessionId).map(({ event }) => event).find((event) => event.type === 'message.delta')).toMatchObject({ text: 'Implement this' })
+    expect(
+      store
+        .readSession(sessionId)
+        .map(({ event }) => event)
+        .find((event) => event.type === 'message.delta'),
+    ).toMatchObject({ text: 'Implement this' })
     await manager.close()
   })
 
@@ -115,7 +123,12 @@ describe('SessionManager', () => {
     await vi.waitFor(() => expect(prompts[0]).toBeDefined())
     expect(prompts[0]?.text).toContain('editable canvas using the BeddCode design MCP tools')
     expect(prompts[0]?.text).toContain('Make a dashboard')
-    expect(store.readSession(design.sessionId).map(({ event }) => event).find((event) => event.type === 'message.delta')).toMatchObject({ text: 'Make a dashboard' })
+    expect(
+      store
+        .readSession(design.sessionId)
+        .map(({ event }) => event)
+        .find((event) => event.type === 'message.delta'),
+    ).toMatchObject({ text: 'Make a dashboard' })
     const normal = await manager.create({ instanceId: 'stub' })
     await manager.prompt(normal.sessionId, 'Make a dashboard')
     await vi.waitFor(() => expect(prompts[1]).toBeDefined())
