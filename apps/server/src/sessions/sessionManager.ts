@@ -50,7 +50,16 @@ export interface SessionManagerDeps {
   /** Remembers what agents offer for new sessions (see `previewAgent`). */
   previews?: PreviewCache
   /** MCP servers to add to a session that may use BeddCode's agent tools. */
-  agentToolServers?: (sessionId: string, features?: { agentTools?: boolean; browserTools?: boolean; designTools?: boolean; computerTools?: boolean; linearTools?: boolean }) => SessionMcpServer[]
+  agentToolServers?: (
+    sessionId: string,
+    features?: {
+      agentTools?: boolean
+      browserTools?: boolean
+      designTools?: boolean
+      computerTools?: boolean
+      linearTools?: boolean
+    },
+  ) => SessionMcpServer[]
   /** Shows the commands agents run in the Terminal pane (and runs ACP agents' commands there). */
   agentTerminals?: AgentTerminals
   /**
@@ -504,8 +513,6 @@ export class SessionManager {
       }
     }
     const queueId = randomUUID()
-    if (afterStop && turn.queue.length === 0) turn.sendAfterInterrupt = queueId
-    turn.queue.push({ queueId, text, attachments })
     this.deps.store.append({
       type: 'prompt.queued',
       sessionId,
@@ -514,6 +521,8 @@ export class SessionManager {
       text,
       attachments: attachments.length > 0 ? attachments : undefined,
     })
+    if (afterStop && turn.queue.length === 0) turn.sendAfterInterrupt = queueId
+    turn.queue.push({ queueId, text, attachments })
     return { state: 'queued', queueId }
   }
 
@@ -613,7 +622,9 @@ export class SessionManager {
 
   /** Supply design-pane context in the provider prompt even if MCP server instructions are ignored. */
   private providerPrompt(sessionId: string, text: string, attachments: { path: string }[]) {
-    const created = this.deps.store.readSession(sessionId).find(({ event }) => event.type === 'session.created')?.event
+    const created = this.deps.store
+      .readSession(sessionId)
+      .find(({ event }) => event.type === 'session.created')?.event
     const design = created?.type === 'session.created' && created.designTools === true
     const context = design
       ? 'This message comes from the BeddCode Design canvas. For design requests, create or edit the editable canvas using the BeddCode design MCP tools (design_list, design_read, design_add and related tools). Load design_skill for guidance. Match the requested style and density; align repeated rows, icon containers, text columns, padding and spacing. Inspect the whole frame and a representative panel with design_screenshot, correct visible clipping, tiny text, inconsistent icons or alignment, and inspect again. Use design_read for actual sizes; large screenshots may be downscaled. Do not substitute an HTML file or code unless the user explicitly asks for code. If the design tools are unavailable, tell the user; do not silently create a file instead. The user request follows:\n\n'
@@ -877,8 +888,8 @@ export class SessionManager {
     const live = this.live.get(sessionId)
     if (!live) return
     turn.sendAfterInterrupt = undefined
-    turn.queue.shift()
     this.dequeued(sessionId, next.queueId, 'sent')
+    turn.queue.shift()
     void this.startTurn(sessionId, live, next.text, next.attachments)
   }
 
@@ -1149,6 +1160,32 @@ export class SessionManager {
     return resumable
   }
 
+  /** Start messages left waiting when the host stopped. A failed resume leaves them queued. */
+  async resumeQueuedAfterRestart() {
+    const ids = new Set<string>()
+    let cursor = 0
+    for (;;) {
+      const events = this.deps.store.readAfter(cursor, 5000)
+      if (!events.length) break
+      for (const { event } of events) {
+        if (event.type === 'prompt.queued') ids.add(event.sessionId)
+        else if (event.type === 'session.deleted') ids.delete(event.sessionId)
+      }
+      cursor = events.at(-1)!.seq
+    }
+    for (const sessionId of ids) {
+      const turn = this.turnState(sessionId)
+      if (turn.busy || !turn.queue.length) continue
+      try {
+        await this.ensureLive(sessionId)
+        // Another request may have started a turn while the provider was opening.
+        if (!turn.busy) this.onTurnEnded(sessionId, 'done')
+      } catch (err) {
+        this.deps.log.error(`could not resume queued messages for ${sessionId}`, err)
+      }
+    }
+  }
+
   /** Restores active turns from the saved host-upgrade marker and resends their last user prompt. */
   async resumeAfterRestart(sessions: ResumeSession[]) {
     this.closing = false
@@ -1353,10 +1390,24 @@ export class SessionManager {
     })
   }
 
-  private toolServersFor(sessionId: string, wanted: boolean | undefined, design?: boolean, features?: { agentTools?: boolean; browserTools?: boolean; designTools?: boolean; computerTools?: boolean; linearTools?: boolean }) {
+  private toolServersFor(
+    sessionId: string,
+    wanted: boolean | undefined,
+    design?: boolean,
+    features?: {
+      agentTools?: boolean
+      browserTools?: boolean
+      designTools?: boolean
+      computerTools?: boolean
+      linearTools?: boolean
+    },
+  ) {
     if (!wanted || !this.deps.agentToolServers) return undefined
     // Sessions that work on designs also get the logo lookup server.
-    return [...this.deps.agentToolServers(sessionId, features), ...(design ? designMcpServers() : [])]
+    return [
+      ...this.deps.agentToolServers(sessionId, features),
+      ...(design ? designMcpServers() : []),
+    ]
   }
 
   /** A turn is running, or about to. */

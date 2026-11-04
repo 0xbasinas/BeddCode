@@ -91,6 +91,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
   }
 
   const store = openEventStore(path.join(home, 'beddcode.db'))
+  store.jobs.recover()
   recoverInterruptedTurns(store)
   const interruptedSessions = takeInterruptedSessions()
   const attachments = new AttachmentStore(path.join(home, 'attachments'))
@@ -127,8 +128,6 @@ export async function runServer(config: ServerConfig): Promise<void> {
     },
   )
 
-  if (interruptedSessions.length) void sessions.resumeAfterRestart(interruptedSessions)
-
   const hostId = loadHostId(home)
   const automation = createAutomation({
     home,
@@ -140,6 +139,10 @@ export async function runServer(config: ServerConfig): Promise<void> {
     browserImageDir: path.join(attachments.root, 'browser'),
   })
   agentTools = automation.agentTools
+  void (async () => {
+    await sessions.resumeAfterRestart(interruptedSessions)
+    await sessions.resumeQueuedAfterRestart()
+  })().catch((err: unknown) => log.error('could not recover queued messages', err))
   const { schedules, alerts, designs } = automation
   const tokens = new TokenStore(path.join(home, 'auth.json'))
   tokens.onRevoke((deviceId) => alerts.forgetDevice(deviceId))

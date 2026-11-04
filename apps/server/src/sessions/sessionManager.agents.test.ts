@@ -116,6 +116,36 @@ describe('queued and steered messages', () => {
     expect(userMessages).toEqual(['[slow] first', 'also this', 'later please'])
   })
 
+  it('starts queued messages after a restart in their saved order', async () => {
+    const { manager, store, dir, waitFor, events } = setup({ advanced: true })
+    const { sessionId } = await manager.create({ instanceId: 'fake', permissionMode: 'full' })
+    await manager.prompt(sessionId, 'initial')
+    await waitFor(() => events(sessionId).some((e) => e.type === 'turn.completed'), 'initial turn')
+    store.append({ type: 'prompt.queued', sessionId, at: 1, queueId: 'a', text: 'first waiting' })
+    store.append({ type: 'prompt.queued', sessionId, at: 2, queueId: 'b', text: 'second waiting' })
+    store.append({ type: 'prompt.reordered', sessionId, at: 3, queueIds: ['b', 'a'] })
+    await manager.close()
+    const restarted = new SessionManager({
+      store,
+      attachments: new AttachmentStore(path.join(dir, 'attachments')),
+      git: new GitService(),
+      adapters: [createFakeAdapter({ delayMs: 0, advanced: true })],
+      log: createLogger('test', 'error'),
+      defaultCwd: dir,
+    })
+    await restarted.resumeQueuedAfterRestart()
+    await waitFor(
+      () => events(sessionId).filter((e) => e.type === 'prompt.dequeued').length === 2,
+      'recovered messages',
+    )
+    expect(
+      events(sessionId)
+        .filter((e) => e.type === 'prompt.dequeued')
+        .map((e) => e.queueId),
+    ).toEqual(['b', 'a'])
+    await restarted.close()
+  })
+
   it('rebuilds waiting messages from the log after a restart', async () => {
     const { manager, store, dir, waitFor, turnsDone } = setup()
     const { sessionId } = await manager.create({ instanceId: 'fake', permissionMode: 'full' })
