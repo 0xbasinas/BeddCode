@@ -67,7 +67,8 @@ describe('TerminalManager (real pty)', () => {
     })
     const c = new Collector()
     m.attach(info.id, c)
-    await until(() => c.exit() !== undefined)
+    // The default shell (notably PowerShell on Windows CI) can take longer to start and exit.
+    await until(() => c.exit() !== undefined, 25_000)
     expect(c.text()).toContain('script-output')
     expect(m.list(cwd)[0]?.exited).toBe(3)
   })
