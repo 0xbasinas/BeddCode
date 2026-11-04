@@ -43,6 +43,16 @@ jobs:
       # is built on its own system. Linux builds on a fixed Ubuntu release, not "latest", so the glibc the
       # packages need does not change under us. Set CSC_LINK and CSC_KEY_PASSWORD (repository secrets) to sign
       # the Windows installer; unsigned builds still work but Windows warns on first run.
+      # Nightly builds get a version like 0.1.0-nightly.20261104.12 (commit date, run number). It is
+      # set for this build only and never committed. A prerelease version keeps stable users off it.
+      - name: Stamp the nightly version
+        if: github.ref == 'refs/heads/nightly-desktop'
+        shell: bash
+        run: |
+          base=$(node -p "require('./apps/desktop/package.json').version.split('-')[0]")
+          version="$base-nightly.$(git show -s --format=%cd --date=format:%Y%m%d HEAD).$GITHUB_RUN_NUMBER"
+          node -e "const f='apps/desktop/package.json',fs=require('fs'),p=JSON.parse(fs.readFileSync(f));p.version=process.argv[1];fs.writeFileSync(f,JSON.stringify(p,null,2)+'\n')" "$version"
+          echo "Nightly version $version"
       - run: pnpm --filter @beddcode/desktop ${{ matrix.target }} --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -116,10 +126,18 @@ jobs:
           TAG: ${{ github.ref == 'refs/heads/nightly-desktop' && 'nightly-desktop' || 'desktop-dev' }}
         run: |
           ls -lh installers
+          notes="Built from $GITHUB_SHA by run $GITHUB_RUN_NUMBER. Replaced by the next build."
+          title="$TAG"
+          if [ "$TAG" = nightly-desktop ]; then
+            base=$(gh api "repos/$GITHUB_REPOSITORY/contents/apps/desktop/package.json?ref=$GITHUB_SHA" -H 'Accept: application/vnd.github.raw' | jq -r '.version | split("-")[0]')
+            day=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA" --jq .commit.committer.date)
+            version="$base-nightly.$(date -u -d "$day" +%Y%m%d).$GITHUB_RUN_NUMBER"
+            title="Nightly desktop $version"
+            notes="Version $version, built $(date -u '+%Y-%m-%d %H:%M UTC') from $GITHUB_SHA by run $GITHUB_RUN_NUMBER. Replaced by the next build."
+          fi
           gh release delete "$TAG" --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || true
           gh release create "$TAG" installers/* --repo "$GITHUB_REPOSITORY" --prerelease --latest=false \
-            --target "$GITHUB_SHA" --title "$TAG" \
-            --notes "Built from $GITHUB_SHA by run $GITHUB_RUN_NUMBER. Replaced by the next build."
+            --target "$GITHUB_SHA" --title "$title" --notes "$notes"
 
   # The host alone, for Linux machines with no desktop (see scripts/install-host.sh; the Windows one
   # is built in the installers job above). It is built on the
