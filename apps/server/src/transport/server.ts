@@ -556,7 +556,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
           const replayStart = performance.now()
           // A client that resumed from another log (it did not wait for our welcome) starts over.
           const afterSeq =
-            frame.logId !== undefined && frame.logId !== store.logId ? 0 : frame.afterSeq
+            frame.logId !== undefined && frame.logId !== store.logId ? 0 : (frame.afterSeq ?? 0)
           const resume = afterSeq === 0 ? 'cold' : 'warm'
           // Streamed text goes out a few times a second, not once per token.
           // Through a relay each frame is encrypted and framed on its own, and the trip is long
@@ -568,11 +568,18 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
           const stop = replaySubscription({
             store,
             afterSeq,
+            sessionId: frame.sessionId,
+            reset:
+              frame.sessionId !== undefined &&
+              frame.afterSeq !== undefined &&
+              frame.logId !== undefined &&
+              frame.logId !== store.logId,
             compact: frame.compact,
             batch: frame.batch,
             send,
             backlog: () => ws.bufferedAmount,
-            live: (stored) => live.push(stored),
+            live: (stored) =>
+              frame.sessionId === undefined ? live.push(stored) : send({ t: 'event', stored }),
             failed: () => ws.terminate(),
             caughtUp: (replayed) => {
               options.telemetryRecorder?.('host.replay.ms', performance.now() - replayStart, {

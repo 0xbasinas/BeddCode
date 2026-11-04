@@ -40,6 +40,7 @@ export class ReplayCompactor {
           if (first.event.type === 'message.delta' && run.bytes + bytes <= 128 * 1024) {
             out[run.at] = {
               seq: first.seq,
+              ...(stored.sessionSeq !== undefined ? { sessionSeq: stored.sessionSeq } : {}),
               event: { ...first.event, text: first.event.text + e.text, at: e.at },
             }
             run.bytes += bytes

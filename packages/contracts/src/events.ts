@@ -352,5 +352,9 @@ export const SessionEvent = z.discriminatedUnion('type', [
 export type SessionEvent = z.infer<typeof SessionEvent>
 
 /** An event as stored in the log: carries the host-wide monotonic sequence number. */
-export const StoredEvent = z.object({ seq: z.number().int().nonnegative(), event: SessionEvent })
+export const StoredEvent = z.object({
+  seq: z.number().int().nonnegative(),
+  sessionSeq: z.number().int().positive().optional(),
+  event: SessionEvent,
+})
 export type StoredEvent = z.infer<typeof StoredEvent>

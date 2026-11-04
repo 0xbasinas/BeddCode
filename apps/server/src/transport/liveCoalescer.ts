@@ -39,6 +39,7 @@ export class LiveCoalescer {
       ) {
         this.held = {
           seq: stored.seq,
+          ...(stored.sessionSeq !== undefined ? { sessionSeq: stored.sessionSeq } : {}),
           event: { ...held.event, text: held.event.text + e.text, at: e.at },
         }
         this.heldBytes += bytes

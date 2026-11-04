@@ -32,4 +32,16 @@ export const migrations: (string | ((db: DatabaseSync) => void))[] = [
     db.exec('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
     db.prepare("INSERT INTO meta (key, value) VALUES ('logId', ?)").run(randomUUID())
   },
+  `
+  ALTER TABLE events ADD COLUMN session_seq INTEGER;
+  WITH numbered AS (SELECT seq, ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY seq) AS n FROM events)
+  UPDATE events SET session_seq = (SELECT n FROM numbered WHERE numbered.seq = events.seq);
+  CREATE UNIQUE INDEX events_session_seq ON events (session_id, session_seq);
+  CREATE TABLE session_cursors (session_id TEXT PRIMARY KEY, seq INTEGER NOT NULL);
+  INSERT INTO session_cursors SELECT session_id, MAX(session_seq) FROM events GROUP BY session_id;
+  CREATE TRIGGER events_cursor AFTER INSERT ON events BEGIN
+    INSERT INTO session_cursors (session_id, seq) VALUES (NEW.session_id, NEW.session_seq)
+    ON CONFLICT(session_id) DO UPDATE SET seq = excluded.seq;
+  END;
+  `,
 ]

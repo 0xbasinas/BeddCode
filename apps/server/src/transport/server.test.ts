@@ -602,6 +602,51 @@ describe('server', () => {
     expect(replayed[0]?.event.type).toBe('error')
   })
 
+  it('resumes a session over the socket and signals a missing cursor', async () => {
+    const { server, store } = await boot()
+    store.append({ type: 'error', sessionId: 's', at: 1, message: 'one' })
+    store.append({ type: 'error', sessionId: 'other', at: 2, message: 'other' })
+    store.append({ type: 'error', sessionId: 's', at: 3, message: 'two' })
+    const client = await Client.connect(server.port)
+    client.send({ t: 'subscribe', sessionId: 's', afterSeq: 1, batch: true })
+    await client.until((frames) => frames.some((f) => f.t === 'caught-up'))
+    expect(
+      client.frames.flatMap((f) => (f.t === 'events' ? f.events.map((e) => e.sessionSeq) : [])),
+    ).toEqual([2])
+    store.append({ type: 'error', sessionId: 's', at: 4, message: 'live' })
+    await client.until((frames) => frames.some((f) => f.t === 'event' && f.stored.sessionSeq === 3))
+    const gap = await Client.connect(server.port)
+    gap.send({ t: 'subscribe', sessionId: 's', afterSeq: 99 })
+    await gap.until((fs) => fs.some((f) => f.t === 'caught-up'))
+    expect(gap.frames).toContainEqual({ t: 'caught-up', sessionId: 's', seq: 3, truncated: true })
+    const legacy = await Client.connect(server.port)
+    legacy.send({ t: 'subscribe' })
+    await legacy.until((fs) => fs.some((f) => f.t === 'caught-up'))
+    expect(legacy.events()).toHaveLength(4)
+  })
+
+  it('signals a gap when the ring and the retained log cannot cover a cursor', async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'bc-resume-gap-'))
+    cleanup.push(() => removeDir(dir))
+    const file = path.join(dir, 'events.db')
+    const original = new EventStore(file)
+    for (let n = 0; n < 3; n++)
+      original.append({ type: 'error', sessionId: 's', at: n, message: String(n) })
+    original.purgeSession('s', 3)
+    original.close()
+    const { server } = await boot(new EventStore(file))
+    const client = await Client.connect(server.port)
+    client.send({ t: 'subscribe', sessionId: 's', afterSeq: 0 })
+    await client.until((frames) => frames.some((f) => f.t === 'caught-up'))
+    expect(client.frames).toContainEqual({
+      t: 'caught-up',
+      sessionId: 's',
+      seq: 3,
+      truncated: true,
+    })
+    expect(client.events()).toEqual([])
+  })
+
   it('replays from the start for a client that resumes from another log', async () => {
     const { server, store } = await boot()
     store.append({ type: 'error', sessionId: 's', at: 1, message: 'one' })

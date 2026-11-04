@@ -16,6 +16,28 @@ const turnStarted = (sessionId: string): SessionEvent => ({
 })
 
 describe('EventStore', () => {
+  it('persists independent session cursors across restart and purges', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'bc-session-seq-'))
+    const file = path.join(dir, 'events.db')
+    try {
+      let store = new EventStore(file)
+      expect([
+        store.append(turnStarted('a')).sessionSeq,
+        store.append(turnStarted('b')).sessionSeq,
+        store.append(turnStarted('a')).sessionSeq,
+      ]).toEqual([1, 1, 2])
+      store.purgeSession('a', 100)
+      store.close()
+      store = new EventStore(file)
+      expect(store.append(turnStarted('a')).sessionSeq).toBe(3)
+      expect(store.readSession('a')[0]?.sessionSeq).toBe(3)
+      expect(store.sessionReplayAvailable('a', 0, 3)).toBe(false)
+      expect(store.sessionReplayAvailable('a', 2, 3)).toBe(true)
+      store.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
   it('lists created sessions in activity order using a sequence cursor', () => {
     const store = new EventStore(':memory:')
     const created = (id: string): SessionEvent => ({
