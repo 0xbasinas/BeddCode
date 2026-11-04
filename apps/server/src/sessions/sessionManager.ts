@@ -1593,6 +1593,7 @@ export class SessionManager {
         ),
       ),
     )
+    await Promise.allSettled([...this.turns.values()].flatMap((t) => [t.taking, t.settling]))
     this.live.clear()
   }
 
@@ -2299,9 +2300,13 @@ export class SessionManager {
           if (turn.before || turn.taking || turn.coverageReason) {
             const settling = this.recordTurnChanges(sessionId, turn, event.turnId)
             turn.settling = settling
-            void settling.finally(() => {
-              if (turn.settling === settling) turn.settling = undefined
-            })
+            void settling
+              .finally(() => {
+                if (turn.settling === settling) turn.settling = undefined
+              })
+              .catch((err: unknown) =>
+                this.deps.log.warn(`could not record the changes of a turn in ${sessionId}`, err),
+              )
           }
           this.onTurnEnded(sessionId, event.reason)
         }
