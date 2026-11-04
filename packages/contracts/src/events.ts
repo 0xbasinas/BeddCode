@@ -74,6 +74,17 @@ export const TurnChangedFile = z.object({
 })
 export type TurnChangedFile = z.infer<typeof TurnChangedFile>
 
+/** One provider's continuous participation in a session. Provider is an instance ID. */
+export const SessionSegment = z.object({
+  provider: z.string(),
+  model: z.string().optional(),
+  nativeSessionId: z.string().optional(),
+  startedAt: z.number().int(),
+  endedAt: z.number().int().optional(),
+  handoffContext: z.string().max(100_000).optional(),
+})
+export type SessionSegment = z.infer<typeof SessionSegment>
+
 export const SessionEvent = z.discriminatedUnion('type', [
   Base.extend({
     type: z.literal('session.created'),
@@ -133,8 +144,17 @@ export const SessionEvent = z.discriminatedUnion('type', [
     agent: z.string(),
     reason: z.string().optional(),
   }),
+  Base.extend({ type: z.literal('session.notice'), message: z.string() }),
+  Base.extend({ type: z.literal('session.handoff-delivered') }),
   /** The provider's own session id, kept so a stopped session can be resumed later. */
   Base.extend({ type: z.literal('session.provider-session'), providerSessionId: z.string() }),
+  /** A successful in-session provider transition, recorded in transcript order. */
+  Base.extend({
+    type: z.literal('session.switched'),
+    instanceId: z.string(),
+    model: z.string().optional(),
+    handoff: z.string().max(100_000),
+  }),
   Base.extend({ type: z.literal('session.renamed'), title: z.string().trim().min(1).max(120) }),
   Base.extend({
     type: z.literal('session.notes'),

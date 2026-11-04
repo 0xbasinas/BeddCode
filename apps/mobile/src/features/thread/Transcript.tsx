@@ -378,6 +378,8 @@ const Row = memo(
           return <ApprovalCard item={item} cwd={cwd} onApprove={onApprove} />
         case 'question':
           return <QuestionCard item={item} onAnswer={onAnswer} />
+        case 'switch':
+          return <SwitchMarker item={item} />
         case 'notice':
           return (
             <Muted size={12.5} style={{ textAlign: 'center' }}>
@@ -593,3 +595,23 @@ const styles = StyleSheet.create({
     padding: 10,
   },
 })
+
+function SwitchMarker({ item }: { item: { from: string; to: string; handoff: string } }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Pressable
+      onPress={() => setOpen(!open)}
+      accessibilityRole="button"
+      accessibilityState={{ expanded: open }}
+    >
+      <Muted size={12.5} style={{ textAlign: 'center' }}>
+        Switched from {item.from} to {item.to}
+      </Muted>
+      {open ? (
+        <Text size={12} selectable>
+          {item.handoff}
+        </Text>
+      ) : null}
+    </Pressable>
+  )
+}

@@ -116,6 +116,55 @@ describe('handoffPrompt', () => {
     expect(text).toContain('Original goal: message number 0')
     expect(text).not.toContain('- I asked: message number 0 ')
   })
+
+  it('bounds even oversized fixed context and includes a pending message and diff when they fit', () => {
+    const text = handoffPrompt(view(), { pendingMessage: 'Please finish', diff: '+changed' })
+    expect(text).toContain('Pending user message: Please finish')
+    expect(text).toContain('Working tree diff:\n+changed')
+    expect(
+      handoffPrompt(view(), { maxChars: 80, diff: 'x'.repeat(5000) }).length,
+    ).toBeLessThanOrEqual(80)
+  })
+
+  it('formats a delta without repeating the original goal or session metadata', () => {
+    const text = handoffPrompt(view(), { delta: true })
+    expect(text).toContain('Since you last worked')
+    expect(text).toContain('Looking at it.')
+    expect(text).not.toContain('Original goal:')
+    expect(text).not.toContain('Folder:')
+  })
+
+  it('reconstructs provider segments from the event log', () => {
+    const state = fold([
+      session('s1', 'Work'),
+      { type: 'session.provider-session', sessionId: 's1', providerSessionId: 'native-1' },
+      {
+        type: 'session.switched',
+        sessionId: 's1',
+        instanceId: 'codex',
+        model: 'm',
+        handoff: 'context',
+      },
+      { type: 'session.provider-session', sessionId: 's1', providerSessionId: 'native-2' },
+    ])
+    expect(state.sessions.s1?.segments).toEqual([
+      {
+        provider: 'claude',
+        model: undefined,
+        startedAt: 1,
+        nativeSessionId: 'native-1',
+        endedAt: 3,
+      },
+      {
+        provider: 'codex',
+        model: 'm',
+        startedAt: 3,
+        handoffContext: 'context',
+        nativeSessionId: 'native-2',
+      },
+    ])
+    expect(state.sessions.s1?.instanceId).toBe('codex')
+  })
 })
 
 describe('searchSessions', () => {

@@ -690,6 +690,18 @@ export const RpcMethods = {
     }),
     result: z.object({}),
   },
+  'session.switchAgent': {
+    params: z.object({
+      sessionId: z.string(),
+      instanceId: z.string(),
+      model: z.string().optional(),
+      stop: z.boolean().optional(),
+      pendingMessage: z.string().optional(),
+      handoff: z.string().max(100_000).optional(),
+      preview: z.boolean().optional(),
+    }),
+    result: z.object({ ok: z.boolean(), draft: z.string(), error: z.string().optional() }),
+  },
   'sessions.interrupt': {
     /** `includeChildren` also stops the sessions this one's agent started. */
     params: z.object({ sessionId: z.string(), includeChildren: z.boolean().optional() }),

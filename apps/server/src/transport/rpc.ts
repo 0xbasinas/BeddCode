@@ -406,6 +406,7 @@ export function createRpcRouter(
       await (await sessions.mcp(p.instanceId)).remove(p.name, p.scope, p.cwd)
       return {}
     },
+    'session.switchAgent': (p) => sessions.switchAgent(p),
     'sessions.interrupt': async (p) => {
       await sessions.interrupt(p.sessionId, { includeChildren: p.includeChildren })
       return {}

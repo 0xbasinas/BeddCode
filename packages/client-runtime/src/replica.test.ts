@@ -615,3 +615,13 @@ it('files a turn’s changes card before a message queued behind it, not after',
     'second',
   ])
 })
+
+it('places switch markers in transcript order with the sent context', () => {
+  const state = fold([
+    created,
+    { type: 'session.switched', instanceId: 'other', handoff: 'reviewed context' },
+  ])
+  expect(state.sessions.s1?.items).toMatchObject([
+    { kind: 'switch', from: 'fake', to: 'other', handoff: 'reviewed context' },
+  ])
+})

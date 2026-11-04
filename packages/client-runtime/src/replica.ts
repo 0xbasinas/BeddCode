@@ -5,7 +5,9 @@ import type {
   SlashCommand,
   StoredEvent,
   TurnChangedFile,
+  SessionSegment,
 } from '@beddcode/contracts'
+import { projectSegmentEvent } from '@beddcode/contracts'
 import { sessionChanges } from './blocks.ts'
 
 export type SessionStatus = 'idle' | 'running' | 'needs-you' | 'failed'
@@ -96,9 +98,12 @@ export type TranscriptItem =
       tokensAfter?: number
     }
   | { kind: 'notice'; id: string; message: string }
+  | { kind: 'switch'; id: string; from: string; to: string; handoff: string }
   | { kind: 'error'; id: string; message: string }
 
 export interface SessionView {
+  /** Provider history, reconstructed from the durable event log. */
+  segments?: SessionSegment[]
   notes?: { text: string; version: number }
   id: string
   title: string
@@ -269,6 +274,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       title: e.title,
       cwd: e.cwd,
       instanceId: e.instanceId,
+      segments: projectSegmentEvent([], e),
       model: e.model,
       effort: e.effort,
       projectPath: e.projectPath ?? e.cwd,
@@ -382,6 +388,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     case 'session.model':
       next.model = e.model
       next.effort = e.effort
+      next.segments = projectSegmentEvent(current.segments ?? [], e)
       break
     case 'session.context':
       next.context = { used: e.used, size: e.size }
@@ -422,7 +429,24 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       }
       break
     case 'session.provider-session':
-      return { ...state, lastSeq: stored.seq }
+      next.updatedAt = current.updatedAt
+      next.segments = projectSegmentEvent(current.segments ?? [], e)
+      break
+    case 'session.switched': {
+      const segments = current.segments ?? [
+        { provider: current.instanceId, model: current.model, startedAt: current.createdAt },
+      ]
+      next.segments = projectSegmentEvent(segments, e)
+      next.items = [
+        ...current.items,
+        { kind: 'switch', id, from: current.instanceId, to: e.instanceId, handoff: e.handoff },
+      ]
+      next.instanceId = e.instanceId
+      next.model = e.model
+      next.effort = undefined
+      break
+    }
+    case 'session.notice':
     case 'host.updating':
       next.items = [...current.items, { kind: 'notice', id, message: e.message }]
       break

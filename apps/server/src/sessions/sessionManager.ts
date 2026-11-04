@@ -1,3 +1,5 @@
+import { applyEvents, emptyReplica } from '@beddcode/client-runtime/replica'
+import { handoffPrompt } from '@beddcode/client-runtime/handoff'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { performance } from 'node:perf_hooks'
@@ -168,6 +170,9 @@ const PREVIEW_REFRESH_WAIT_MS = 4_000
 
 export class SessionManager {
   private readonly live = new Map<string, LiveSession>()
+  private readonly switching = new Set<string>()
+  private readonly promptStarting = new Map<string, number>()
+  private readonly preambles = new Map<string, string>()
   private readonly resuming = new Map<string, Promise<LiveSession>>()
   private readonly turns = new Map<string, TurnState>()
   private readonly activity = new Map<string, Activity>()
@@ -511,14 +516,15 @@ export class SessionManager {
     mode: 'auto' | 'queue' = 'auto',
     clientMessageId?: string,
   ): Promise<RpcResult<'sessions.prompt'>> {
-    if (!clientMessageId) return this.sendPrompt(sessionId, text, attachmentIds, mode)
+    if (this.switching.has(sessionId)) throw new Error('Agent switch in progress')
+    if (!clientMessageId) return this.guardedPrompt(sessionId, text, attachmentIds, mode)
     const key = `${sessionId}\u0000${clientMessageId}`
     const sent = this.recentSends.get(key)
     if (sent) {
       this.deps.log.info(`${sessionId}: the same message was sent again; answering it once`)
       return sent
     }
-    const result = this.sendPrompt(sessionId, text, attachmentIds, mode)
+    const result = this.guardedPrompt(sessionId, text, attachmentIds, mode)
     this.recentSends.set(key, result)
     // Only a few minutes and a few hundred messages are remembered: a resend comes right away.
     setTimeout(() => this.recentSends.delete(key), 10 * 60_000).unref?.()
@@ -531,6 +537,257 @@ export class SessionManager {
       if (this.recentSends.get(key) === result) this.recentSends.delete(key)
     })
     return result
+  }
+
+  private async guardedPrompt(
+    sessionId: string,
+    text: string,
+    attachments: string[],
+    mode: 'auto' | 'queue',
+  ) {
+    this.promptStarting.set(sessionId, (this.promptStarting.get(sessionId) ?? 0) + 1)
+    try {
+      return await this.sendPrompt(sessionId, text, attachments, mode)
+    } finally {
+      const count = this.promptStarting.get(sessionId)! - 1
+      if (count) this.promptStarting.set(sessionId, count)
+      else this.promptStarting.delete(sessionId)
+    }
+  }
+
+  async switchAgent(
+    params: RpcParams<'session.switchAgent'>,
+  ): Promise<RpcResult<'session.switchAgent'>> {
+    const { sessionId, instanceId } = params
+    if (this.switching.has(sessionId) || this.promptStarting.has(sessionId))
+      return { ok: false, draft: '', error: 'Session is busy starting another operation' }
+    this.switching.add(sessionId)
+    let draft = ''
+    let old: LiveSession | undefined
+    let stopped = false
+    let replacement: ProviderSession | undefined
+    let restoreFailure: unknown
+    try {
+      const created = this.createdEvent(sessionId)
+      if (!created) throw new Error(`Unknown session: ${sessionId}`)
+      const turn = this.turnState(sessionId)
+      const view = applyEvents(emptyReplica(), this.deps.store.readSession(sessionId)).sessions[
+        sessionId
+      ]
+      if (!view) throw new Error('Cannot build session handoff')
+      let diff = ''
+      try {
+        const status = await this.deps.git.status(created.cwd)
+        for (const file of status.files.slice(0, 30)) {
+          const part = await this.deps.git.diff(created.cwd, file.path)
+          diff += `\n${part.path}\n${part.patch}`
+          if (diff.length >= 6000) break
+        }
+      } catch {
+        /* Non-repositories have no git diff. */
+      }
+      draft = handoffPrompt(view, {
+        agentLabel: this.live.get(sessionId)?.label,
+        pendingMessage: params.pendingMessage ?? turn.queue.map((q) => q.text).join('\n'),
+        diff,
+      })
+      if (params.preview) return { ok: true, draft }
+      const target = await this.findInstance(instanceId)
+      if (turn.busy && !params.stop) throw new Error('A turn is running; stop it before switching')
+      const pending = new Map<string, Extract<SessionEvent, { type: 'approval.requested' }>>()
+      for (const { event } of this.deps.store.readSession(sessionId)) {
+        if (event.type === 'approval.requested') pending.set(event.requestId, event)
+        if (event.type === 'approval.resolved') pending.delete(event.requestId)
+        if (event.type === 'turn.completed') pending.clear()
+      }
+      old = await this.ensureLive(sessionId)
+      if (turn.busy) {
+        await this.interruptOne(sessionId)
+        await withTimeout(
+          (async () => {
+            while (turn.busy) await new Promise((resolve) => setTimeout(resolve, 10))
+          })(),
+          10_000,
+          'stopping the turn',
+        )
+      }
+      this.dropAsks(sessionId)
+      for (const request of pending.values()) {
+        if (
+          this.deps.store
+            .readSession(sessionId)
+            .some(
+              ({ event }) =>
+                event.type === 'approval.resolved' && event.requestId === request.requestId,
+            )
+        )
+          continue
+        const deny = request.options.find((o) => o.kind === 'deny')
+        if (deny)
+          await old.session.respondToApproval(request.requestId, deny.id).catch(() => undefined)
+        this.deps.store.append({
+          type: 'approval.resolved',
+          sessionId,
+          at: Date.now(),
+          requestId: request.requestId,
+          optionId: deny?.id ?? 'cancelled',
+        })
+      }
+      if (pending.size)
+        this.deps.store.append({
+          type: 'session.notice',
+          sessionId,
+          at: Date.now(),
+          message: 'Pending approvals were cancelled because the agent was switched.',
+        })
+      this.closedOnPurpose.add(old.session)
+      if (this.live.get(sessionId) === old) this.live.delete(sessionId)
+      stopped = true
+      await withTimeout(old.session.close(), 5_000, 'closing the agent')
+      // Capture anything the interrupted provider wrote while it was stopping.
+      const finalView = applyEvents(emptyReplica(), this.deps.store.readSession(sessionId))
+        .sessions[sessionId]
+      if (finalView) {
+        let finalDiff = ''
+        try {
+          const status = await this.deps.git.status(created.cwd)
+          for (const file of status.files.slice(0, 30)) {
+            const part = await this.deps.git.diff(created.cwd, file.path)
+            finalDiff += `\n${part.path}\n${part.patch}`
+            if (finalDiff.length >= 6000) break
+          }
+        } catch {
+          /* Non-repositories have no git diff. */
+        }
+        draft = handoffPrompt(finalView, {
+          agentLabel: old.label,
+          pendingMessage: params.pendingMessage ?? turn.queue.map((q) => q.text).join('\n'),
+          diff: finalDiff,
+        })
+      }
+      const fullDraft = draft
+      const events = this.deps.store.readSession(sessionId)
+      const segments = this.deps.store.sessionSegments(sessionId)
+      const previousIndex = segments.findLastIndex(
+        (segment, index) =>
+          index < segments.length - 1 &&
+          segment.provider === instanceId &&
+          !!segment.nativeSessionId,
+      )
+      const previous = previousIndex >= 0 ? segments[previousIndex] : undefined
+      let resumeId = target.adapter.capabilities(instanceId).resume
+        ? previous?.nativeSessionId
+        : undefined
+      if (resumeId) {
+        const boundaries = events
+          .map((entry, index) => (entry.event.type === 'session.switched' ? index : -1))
+          .filter((index) => index >= 0)
+        const deltaEvents = [events[0]!, ...events.slice(boundaries[previousIndex]! + 1)]
+        const deltaView = applyEvents(emptyReplica(), deltaEvents).sessions[sessionId]
+        if (deltaView)
+          draft = handoffPrompt(deltaView, {
+            delta: true,
+            pendingMessage: params.pendingMessage ?? turn.queue.map((q) => q.text).join('\n'),
+          })
+      }
+      if (params.handoff !== undefined) draft = params.handoff
+      const input: StartSessionInput = {
+        sessionId,
+        cwd: created.cwd,
+        model: params.model,
+        additionalDirectories: [this.deps.attachments.root],
+        terminalHost: this.agentTerminal(
+          sessionId,
+          created.cwd,
+          target.adapter,
+          target.instance,
+          created.title,
+        ),
+        mcpServers: this.toolServersFor(
+          sessionId,
+          created.agentTools ||
+            created.browserTools ||
+            created.designTools ||
+            created.computerTools ||
+            created.linearTools,
+          created.designTools,
+        ),
+      }
+      try {
+        replacement = await target.adapter.startSession(instanceId, { ...input, resumeId })
+      } catch (err) {
+        if (!resumeId) throw err
+        resumeId = undefined
+        draft = params.handoff ?? fullDraft
+        replacement = await target.adapter.startSession(instanceId, input)
+      }
+      this.deps.store.append({
+        type: 'session.switched',
+        sessionId,
+        at: Date.now(),
+        instanceId,
+        model: params.model,
+        handoff: draft,
+      })
+      if (resumeId)
+        this.deps.store.append({
+          type: 'session.provider-session',
+          sessionId,
+          at: Date.now(),
+          providerSessionId: resumeId,
+        })
+      this.live.set(sessionId, {
+        session: replacement,
+        adapter: target.adapter,
+        instanceId,
+        label: target.instance.label,
+        input,
+        resumedFrom: resumeId,
+      })
+      this.preambles.set(sessionId, draft)
+      try {
+        this.announceModes(sessionId, target.adapter, instanceId, undefined)
+      } catch (err) {
+        this.deps.log.warn(`Could not announce modes for ${sessionId}`, err)
+      }
+      void this.pump(sessionId, replacement)
+      return { ok: true, draft }
+    } catch (err) {
+      if (replacement) await replacement.close().catch(() => undefined)
+      if (stopped && old) {
+        try {
+          await this.resume(sessionId)
+        } catch {
+          try {
+            const created = this.createdEvent(sessionId)!
+            const input = old.input ?? {
+              sessionId,
+              cwd: created.cwd,
+              additionalDirectories: [this.deps.attachments.root],
+            }
+            const session = await old.adapter.startSession(old.instanceId!, {
+              ...input,
+              resumeId: undefined,
+            })
+            this.live.set(sessionId, { ...old, session, input })
+            this.preambles.set(sessionId, draft)
+            void this.pump(sessionId, session)
+          } catch (restoreError) {
+            restoreFailure = restoreError
+            this.deps.log.error(`Could not restore ${sessionId}`, restoreError)
+          }
+        }
+      }
+      return {
+        ok: false,
+        draft,
+        error: restoreFailure
+          ? `${errorText(err)}; could not restore the previous provider: ${errorText(restoreFailure)}`
+          : errorText(err),
+      }
+    } finally {
+      this.switching.delete(sessionId)
+    }
   }
 
   private async sendPrompt(
@@ -734,7 +991,19 @@ export class SessionManager {
         await turn.settling
         await turn.taking
         await this.checkpointBefore(sessionId, turn)
-        session.prompt(this.providerPrompt(sessionId, text, attachments)).catch(failed)
+        const preamble = this.preambles.get(sessionId)
+        const sent = session.prompt(
+          this.providerPrompt(sessionId, preamble ? `${preamble}\n\n${text}` : text, attachments),
+        )
+        if (preamble) {
+          this.preambles.delete(sessionId)
+          this.deps.store.append({ type: 'session.handoff-delivered', sessionId, at: Date.now() })
+        }
+        sent.catch((err) => {
+          if (preamble && this.live.get(sessionId)?.session === session)
+            this.preambles.set(sessionId, preamble)
+          failed(err)
+        })
       } catch (err) {
         failed(err)
       }
@@ -939,7 +1208,7 @@ export class SessionManager {
     const turn = this.turnState(sessionId)
     turn.busy = false
     const next = turn.queue[0]
-    if (!next) return
+    if (!next || this.switching.has(sessionId)) return
     const wanted = reason === 'done' || turn.sendAfterInterrupt === next.queueId
     if (!wanted) return
     const live = this.live.get(sessionId)
@@ -1306,8 +1575,10 @@ export class SessionManager {
         e.event.type === 'session.created',
     )
     if (!created) throw new Error(`Unknown session: ${sessionId}`)
+    const segment = this.deps.store.sessionSegments(sessionId).at(-1)
     const providerSession = events
       .map((e) => e.event)
+      .slice(events.map((e) => e.event.type).lastIndexOf('session.switched') + 1)
       .findLast((e) => e.type === 'session.provider-session')
     const resumeId =
       providerSession?.type === 'session.provider-session'
@@ -1323,8 +1594,10 @@ export class SessionManager {
           : `This session's folder no longer exists (${created.event.cwd}). Restore it, or start a new session.`,
       )
     }
-    const { adapter, instance } = await this.findInstance(created.event.instanceId)
-    if (!adapter.capabilities(instance.id).resume || !resumeId) {
+    const { adapter, instance } = await this.findInstance(
+      segment?.provider ?? created.event.instanceId,
+    )
+    if ((!adapter.capabilities(instance.id).resume || !resumeId) && !segment?.handoffContext) {
       throw new Error(`${instance.label} cannot resume this session`)
     }
 
@@ -1352,7 +1625,7 @@ export class SessionManager {
       ),
       additionalDirectories: [this.deps.attachments.root],
       permissionMode: mode,
-      model: chosen.model,
+      model: segment?.model ?? chosen.model,
       effort: chosen.effort,
       mcpServers: this.toolServersFor(
         sessionId,
@@ -1368,6 +1641,14 @@ export class SessionManager {
     let resumedFrom: string | undefined = resumeId
     try {
       session = await adapter.startSession(instance.id, { ...input, resumeId })
+      const afterSwitch = events.slice(
+        events.map((e) => e.event.type).lastIndexOf('session.switched') + 1,
+      )
+      if (
+        segment?.handoffContext &&
+        !afterSwitch.some(({ event }) => event.type === 'session.handoff-delivered')
+      )
+        this.preambles.set(sessionId, segment.handoffContext)
     } catch (err) {
       // The agent lost its copy of the conversation (cleaned up, or cut short by a crash mid-write).
       // Keep the session usable: continue in a new conversation and say what was lost.
@@ -1375,6 +1656,10 @@ export class SessionManager {
       this.deps.log.warn(`${instance.label} could not resume ${sessionId}; starting fresh`, err)
       session = await adapter.startSession(instance.id, input)
       resumedFrom = undefined
+      if (this.deps.store.sessionSegments(sessionId).length > 1) {
+        const view = applyEvents(emptyReplica(), events).sessions[sessionId]
+        if (view) this.preambles.set(sessionId, handoffPrompt(view))
+      }
       this.deps.store.append({
         type: 'error',
         sessionId,
@@ -1807,7 +2092,11 @@ export class SessionManager {
     })
     try {
       for await (const raw of session.events) {
-        if (this.lostStreams.has(session)) continue
+        if (
+          this.lostStreams.has(session) ||
+          (this.closedOnPurpose.has(session) && this.live.get(sessionId)?.session !== session)
+        )
+          continue
         const live = this.live.get(sessionId)
         if (live?.session === session && live.resumedFrom && !live.confirmed) {
           // Some agents (Claude) only find out at the first message that the conversation they
@@ -1933,6 +2222,11 @@ export class SessionManager {
         return
       }
       const resend = turn.busy ? turn.lastPrompt : undefined
+      const view =
+        this.deps.store.sessionSegments(sessionId).length > 1
+          ? applyEvents(emptyReplica(), this.deps.store.readSession(sessionId)).sessions[sessionId]
+          : undefined
+      const fullContext = view ? handoffPrompt(view) : undefined
       const live: LiveSession = { ...old, session, resumedFrom: undefined, skipTurnStart: !!resend }
       this.live.set(sessionId, live)
       void this.pump(sessionId, session)
@@ -1943,11 +2237,18 @@ export class SessionManager {
         message: lostConversationText(label, reason),
       })
       if (resend) {
+        this.preambles.delete(sessionId)
         this.touch(sessionId)
         session
-          .prompt(this.providerPrompt(sessionId, resend.text, resend.attachments))
+          .prompt(
+            this.providerPrompt(
+              sessionId,
+              fullContext ? `${fullContext}\n\n${resend.text}` : resend.text,
+              resend.attachments,
+            ),
+          )
           .catch((err: unknown) => this.promptFailed(sessionId, session, err))
-      }
+      } else if (fullContext) this.preambles.set(sessionId, fullContext)
     } catch (err) {
       this.deps.log.error(`could not continue ${sessionId} in a new conversation`, err)
       if (this.live.get(sessionId) === old) {

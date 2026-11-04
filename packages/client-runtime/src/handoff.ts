@@ -12,7 +12,13 @@ const compact = (text: string, max: number) => {
  */
 export function handoffPrompt(
   view: SessionView,
-  options: { agentLabel?: string; maxChars?: number } = {},
+  options: {
+    agentLabel?: string
+    maxChars?: number
+    pendingMessage?: string
+    diff?: string
+    delta?: boolean
+  } = {},
 ): string {
   const maxChars = options.maxChars ?? 6_000
   const where = [
@@ -20,12 +26,14 @@ export function handoffPrompt(
     view.branch ? `Branch: ${view.branch}` : undefined,
   ].filter(Boolean)
   const original = view.items.find((item) => item.kind === 'message' && item.role === 'user')
-  const head = [
-    `I am continuing work that was started with ${options.agentLabel ?? 'another agent'} in "${view.title}".`,
-    ...where,
-    `Original goal: ${compact(original?.kind === 'message' ? original.text : view.title, 500)}`,
-    'Here is what happened so far (oldest first):',
-  ].join('\n')
+  const head = options.delta
+    ? ['Since you last worked on this session, the following happened (oldest first):'].join('\n')
+    : [
+        `I am continuing work that was started with ${options.agentLabel ?? 'another agent'} in "${view.title}".`,
+        ...where,
+        `Original goal: ${compact(original?.kind === 'message' ? original.text : view.title, 500)}`,
+        'Here is what happened so far (oldest first):',
+      ].join('\n')
 
   const lines: string[] = []
   const changed = new Set<string>()
@@ -72,6 +80,14 @@ export function handoffPrompt(
       `Files changed so far: ${files.slice(0, 30).join(', ')}${files.length > 30 ? ` and ${files.length - 30} more` : ''}`,
     )
   }
+  if (options.pendingMessage?.trim())
+    tail.push(
+      `Pending user message: ${compact(options.pendingMessage, Math.max(1, Math.min(1_000, Math.floor(maxChars / 4))))}`,
+    )
+  if (options.diff?.trim())
+    tail.push(
+      `Working tree diff:\n${options.diff.trim().slice(0, Math.max(0, Math.floor(maxChars / 3)))}`,
+    )
   tail.push('Look at the current state of the files before changing anything. Next:')
 
   const fixed = head.length + tail.join('\n').length + 4
@@ -86,5 +102,6 @@ export function handoffPrompt(
     kept.unshift(line)
     used += line.length + 1
   }
-  return [head, ...kept, '', ...tail, ''].join('\n')
+  // Fixed sections can themselves exceed the budget (for example a very long path or diff).
+  return [head, ...kept, '', ...tail, ''].join('\n').slice(0, Math.max(0, maxChars))
 }

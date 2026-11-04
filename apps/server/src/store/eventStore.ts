@@ -1,7 +1,7 @@
 import { mkdirSync, renameSync } from 'node:fs'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { SessionEvent, type StoredEvent } from '@beddcode/contracts'
+import { SessionEvent, projectSessionSegments, type StoredEvent } from '@beddcode/contracts'
 import { createLogger, type Logger } from '@beddcode/shared'
 import { migrations } from './migrations.ts'
 import { SUPERSEDED_TYPES } from './compact.ts'
@@ -236,6 +236,11 @@ export class EventStore {
     return this.parseRows(rows)
   }
 
+  /** Ordered provider segments, reconstructed from the same durable log sent to clients. */
+  sessionSegments(sessionId: string) {
+    return projectSessionSegments(this.readSession(sessionId))
+  }
+
   /** Session IDs with recorded creation events, ordered by their most recent activity. */
   listSessionIds(before = Number.MAX_SAFE_INTEGER, limit = 101): { id: string; latest: number }[] {
     const rows = this.db
@@ -279,7 +284,7 @@ export class EventStore {
       { title: string; branch?: string; instanceId: string; model?: string }
     >()
     const created = this.db.prepare(
-      "SELECT seq, payload FROM events WHERE session_id = ? AND type IN ('session.created', 'session.renamed', 'session.model') ORDER BY seq",
+      "SELECT seq, payload FROM events WHERE session_id = ? AND type IN ('session.created', 'session.renamed', 'session.model', 'session.switched') ORDER BY seq",
     )
     for (const id of sessionIds) {
       for (const { event: e } of this.parseRows(
@@ -297,7 +302,13 @@ export class EventStore {
           if (current) current.title = e.title
         } else if (e.type === 'session.model') {
           const current = out.get(id)
-          if (current && e.model) current.model = e.model
+          if (current) current.model = e.model
+        } else if (e.type === 'session.switched') {
+          const current = out.get(id)
+          if (current) {
+            current.instanceId = e.instanceId
+            current.model = e.model
+          }
         }
       }
     }

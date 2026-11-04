@@ -45,6 +45,7 @@ export function Composer({
   onRemoveAttachment,
   hostKey,
   commands,
+  onDraftChange,
 }: {
   placeholder: string
   onSend(text: string, attachmentIds: string[]): Promise<void> | void
@@ -64,6 +65,7 @@ export function Composer({
   hostKey?: string
   /** The agent's slash commands, offered while the message is a half-typed `/command`. */
   commands?: SlashCommand[]
+  onDraftChange?(text: string): void
 }) {
   const [text, setText] = useState(initial)
   const [busy, setBusy] = useState(false)
@@ -82,6 +84,7 @@ export function Composer({
     try {
       await onSend(text.trim(), ready)
       setText('')
+      onDraftChange?.('')
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -190,7 +193,10 @@ export function Composer({
         )}
         <TextInput
           value={text}
-          onChangeText={setText}
+          onChangeText={(value) => {
+            setText(value)
+            onDraftChange?.(value)
+          }}
           placeholder={placeholder}
           placeholderTextColor={colors.faint}
           multiline

@@ -71,6 +71,7 @@ import { downloadSession } from './exportSession.ts'
 import { sessionArchive } from './sessionArchive.ts'
 import { usePane, type PaneInfo } from '../split/paneContext.ts'
 import { DiffStat } from '../../ui/DiffStat.tsx'
+import { SwitchAgent } from './SwitchAgent.tsx'
 
 export function ThreadView({ sessionId }: { sessionId: string }) {
   const navigate = useNavigate()
@@ -343,6 +344,12 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
           </div>
         </div>
         <div className="thread-actions">
+          <SwitchAgent
+            session={session}
+            hostKey={hostKey}
+            providers={providers}
+            pendingMessage={() => useComposerDrafts.getState().drafts[memoryKey] ?? ''}
+          />
           <OpenInEditor hostKey={hostKey} cwd={session.cwd} />
           <EnvironmentButton session={session} hostKey={hostKey} stats={stats} />
           <Dropdown
@@ -573,7 +580,10 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             ? `quote-${quoteFocus}:decline-${endedByDecline(session) ? session.completedTurns : ''}`
             : undefined
         }
-        commands={session.commands}
+        commands={[
+          { name: 'switch', description: 'Switch to a ready agent', hint: '<agent>' },
+          ...session.commands.filter((c) => c.name !== 'switch'),
+        ]}
         above={
           <>
             {session.agentTools && <ChildAgentsBar sessionId={sessionId} hostKey={hostKey} />}
@@ -617,6 +627,17 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
         }}
         canSteer={canSteer}
         onSend={async (value, attachments, delivery) => {
+          const switchCommand = /^\/switch\s+(.+)$/i.exec(value.trim())
+          if (switchCommand) {
+            await new Promise<void>((resolve, reject) =>
+              window.dispatchEvent(
+                new CustomEvent('switch-agent', {
+                  detail: { sessionId, agent: switchCommand[1]!.trim(), resolve, reject },
+                }),
+              ),
+            )
+            return
+          }
           followEnd()
           try {
             await prompt(sessionId, value, attachments, delivery)

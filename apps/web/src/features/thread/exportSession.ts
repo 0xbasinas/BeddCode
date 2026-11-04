@@ -26,6 +26,8 @@ function itemText(item: TranscriptItem): string {
       return `### Context compaction · ${item.state}`
     case 'error':
       return `### Error\n\n${item.message}`
+    case 'switch':
+      return `### Switched from ${item.from} to ${item.to}\n\n${fenced(item.handoff)}`
     case 'notice':
       return `### Notice\n\n${item.message}`
   }

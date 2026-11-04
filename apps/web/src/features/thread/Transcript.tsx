@@ -418,6 +418,15 @@ function ItemView({
       return <div className="msg error">{item.message}</div>
     case 'compaction':
       return <CompactionRow item={item} />
+    case 'switch':
+      return (
+        <details className="turn-notice">
+          <summary>
+            Switched from {item.from} to {item.to}
+          </summary>
+          <pre style={{ whiteSpace: 'pre-wrap' }}>{item.handoff}</pre>
+        </details>
+      )
     case 'notice':
       return (
         <div className="turn-notice">

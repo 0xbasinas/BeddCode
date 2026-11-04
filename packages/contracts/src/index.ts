@@ -1,5 +1,6 @@
 export * from './providers.ts'
 export * from './events.ts'
+export * from './segments.ts'
 export * from './git.ts'
 export * from './workspace.ts'
 export * from './hosts.ts'
