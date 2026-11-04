@@ -227,7 +227,7 @@ describe('OpenCode adapter', () => {
                 },
               }),
             )
-            reply({ sessionId: 'oc-1' })
+            reply({ sessionId: 'oc-1', configOptions: [] })
           })
         if (message.method === 'session/close') queueMicrotask(() => reply({}))
       },
@@ -262,6 +262,32 @@ describe('OpenCode adapter', () => {
         expect.objectContaining({ id: 'plan' }),
       ]),
     )
+  })
+
+  it('applies the selected model before its effort, honoring explicit config', async () => {
+    const agent = fakeOpenCode()
+    const adapter = createOpenCodeAdapter({
+      executablePath: process.execPath,
+      log: createLogger('test', 'error'),
+      createTransport: () => agent.transport,
+    })
+    const session = await adapter.startSession('opencode', {
+      sessionId: 'selected',
+      cwd: '/work',
+      model: 'provider/old',
+      effort: 'low',
+      config: { model: 'provider/new', effort: 'high' },
+    })
+    await session.prompt({ text: 'hello' })
+    expect(
+      agent.messages
+        .filter((message) => message.method === 'session/set_config_option')
+        .map((message) => message.params),
+    ).toEqual([
+      expect.objectContaining({ configId: 'model', value: 'provider/new' }),
+      expect.objectContaining({ configId: 'effort', value: 'high' }),
+    ])
+    await session.close()
   })
 
   it('passes the BeddCode MCP gateway servers into new OpenCode sessions', async () => {
