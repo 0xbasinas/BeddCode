@@ -66,8 +66,8 @@ import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { folderName } from '../../ui/format.ts'
 import { Transcript } from './Transcript.tsx'
 import { ChildAgentsBar, StartedByBanner } from './AgentToolCard.tsx'
-import { endedByDecline, handoffPrompt } from '@beddcode/client-runtime'
-import { setHandoff } from '../../stores/handoff.ts'
+import { endedByDecline } from '@beddcode/client-runtime'
+import { prepareHandoff } from '../../stores/handoff.ts'
 import { useFollowEnd } from './useFollowEnd.ts'
 import { JumpToLatest } from './JumpToLatest.tsx'
 import { MessageNav } from './MessageNav.tsx'
@@ -326,6 +326,18 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                 </Link>
               </>
             )}
+            {session.handoffFrom && (
+              <>
+                {' · '}
+                <Link
+                  to="/session/$sessionId"
+                  params={{ sessionId: session.handoffFrom.sessionId }}
+                  className="thread-fork-link"
+                >
+                  Continued from {session.handoffFrom.title ?? 'another session'}
+                </Link>
+              </>
+            )}
             {session.imported ? ' · Imported' : ''}
           </div>
         </div>
@@ -399,9 +411,9 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                 <button
                   className="menu-row"
                   title="Start a new session with a summary of this one, so another agent can pick it up"
-                  onClick={() => {
+                  onClick={async () => {
                     close()
-                    setHandoff(hostKey, handoffPrompt(session, { agentLabel: provider?.label }))
+                    await prepareHandoff(hostKey, session, provider?.label)
                     void navigate({
                       to: '/',
                       search: session.projectless
@@ -411,7 +423,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
                   }}
                 >
                   <ArrowRightLeft size={14} />
-                  Continue with another agent
+                  Hand off to another agent…
                 </button>
                 {canFork && (
                   <button

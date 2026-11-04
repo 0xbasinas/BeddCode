@@ -336,13 +336,25 @@ export class SessionManager {
     params: RpcParams<'sessions.create'>,
     origin: SessionOrigin = {},
   ): Promise<{ sessionId: string }> {
+    const source = params.handoffFrom
+      ? this.deps.store
+          .readSession(params.handoffFrom)
+          .find(({ event }) => event.type === 'session.created')?.event
+      : undefined
+    if (params.handoffFrom && source?.type !== 'session.created')
+      throw new Error(`Unknown session: ${params.handoffFrom}`)
+    if (source && (params.cwd !== undefined || params.projectless || params.workspace))
+      throw new Error('A handoff must use the source session folder')
     if (params.projectless && (params.cwd !== undefined || params.workspace?.mode === 'worktree'))
       throw new Error('A session without a project cannot use a project folder or a worktree')
     const { adapter, instance } = await this.findInstance(params.instanceId)
     const sessionId = randomUUID()
-    const folder = params.projectless
-      ? await this.scratchFolder(sessionId)
-      : (params.cwd ?? this.deps.defaultCwd)
+    const folder =
+      source?.type === 'session.created'
+        ? source.cwd
+        : params.projectless
+          ? await this.scratchFolder(sessionId)
+          : (params.cwd ?? this.deps.defaultCwd)
     if (!isDirectory(folder)) throw new Error(`Folder does not exist: ${folder}`)
 
     // Where the agent actually works: the folder itself, or a fresh worktree of its repository.
@@ -405,7 +417,12 @@ export class SessionManager {
     }
     this.live.set(sessionId, { session, adapter, instanceId: instance.id, label: instance.label })
 
-    const projectPath = info?.isRepo ? (info.mainRoot ?? info.root ?? folder) : folder
+    const projectPath =
+      source?.type === 'session.created'
+        ? (source.projectPath ?? source.cwd)
+        : info?.isRepo
+          ? (info.mainRoot ?? info.root ?? folder)
+          : folder
     this.deps.store.append({
       type: 'session.created',
       sessionId,
@@ -413,7 +430,12 @@ export class SessionManager {
       title: params.title ?? (params.projectless ? 'New session' : defaultTitle(projectPath)),
       cwd,
       projectPath,
-      projectless: params.projectless || undefined,
+      projectless:
+        source?.type === 'session.created' ? source.projectless : params.projectless || undefined,
+      handoffFrom:
+        source?.type === 'session.created'
+          ? { sessionId: source.sessionId, title: source.title }
+          : undefined,
       branch,
       worktree,
       instanceId: instance.id,

@@ -101,6 +101,7 @@ export function NewSession({
     Object.values(s.runtimes).some((r) => r.replica.order.length > 0),
   )
   const [setupSkipped, setSetupSkipped] = useState(setupWasSkipped)
+  const [handoff] = useState(() => peekHandoff(hostKey)?.source)
   const [instanceId, setInstanceId] = useState<string>()
   const defaults = usePreferences((s) => hostDefaults(s.hosts, host?.hostId ?? hostKey))
   const [selection, setSelection] = useState<{
@@ -130,7 +131,9 @@ export function NewSession({
 
   const ready = readyProviders(providers)
   const agent =
-    ready.find((p) => p.id === instanceId) ?? defaultAgent(providers, defaults.instanceId)
+    ready.find((p) => p.id === instanceId) ??
+    (handoff ? ready.find((p) => p.id !== handoff.instanceId) : undefined) ??
+    defaultAgent(providers, defaults.instanceId)
   const saved = agentDefaults(defaults, agent)
   const selectionKey = `${host?.hostId ?? hostKey}:${agent?.id ?? ''}`
   const modeId = selection?.key === selectionKey ? selection.modeId : saved.permissionMode
@@ -168,7 +171,7 @@ export function NewSession({
     // An explicit handoff supplies the starting message once; returning restores the edited draft.
     const handoff = peekHandoff(hostKey)
     if (handoff !== undefined) {
-      useComposerDrafts.getState().setDraft(memoryKey, handoff)
+      useComposerDrafts.getState().setDraft(memoryKey, handoff.text)
       clearHandoff()
     }
     return () => {
@@ -307,26 +310,29 @@ export function NewSession({
     try {
       const sessionId = await createSession(hostKey, {
         instanceId: agent.id,
-        cwd: (workspace.existing?.path ?? folder) || undefined,
-        projectless: !folder || undefined,
+        handoffFrom: handoff?.sessionId,
+        cwd: handoff ? undefined : (workspace.existing?.path ?? folder) || undefined,
+        projectless: handoff ? undefined : !folder || undefined,
         permissionMode: validModeId,
         model: choice.model,
         effort: choice.effort,
         config: Object.keys(configValues).length > 0 ? configValues : undefined,
-        workspace: useWorktree
-          ? {
-              mode: 'worktree',
-              baseBranch: workspace.baseBranch,
-              branch: workspace.branch,
-              name: workspace.name?.trim() || undefined,
-            }
-          : folder && repo && repo !== 'loading' && workspace.newBranch?.trim()
+        workspace: handoff
+          ? undefined
+          : useWorktree
             ? {
-                mode: 'local',
+                mode: 'worktree',
                 baseBranch: workspace.baseBranch,
-                newBranch: workspace.newBranch.trim(),
+                branch: workspace.branch,
+                name: workspace.name?.trim() || undefined,
               }
-            : undefined,
+            : folder && repo && repo !== 'loading' && workspace.newBranch?.trim()
+              ? {
+                  mode: 'local',
+                  baseBranch: workspace.baseBranch,
+                  newBranch: workspace.newBranch.trim(),
+                }
+              : undefined,
         agentTools: agentTools || undefined,
         browserTools: browserTools || undefined,
         designTools: designTools || undefined,
@@ -362,29 +368,35 @@ export function NewSession({
       <div className="new-body">
         <h2>
           {agent ? `What should ${agent.label} work on` : 'What should we work on'}{' '}
-          <FolderChip
-            value={folder}
-            recent={recentFolders}
-            onChange={pickFolder}
-            onAdd={async () => {
-              const added = await chooseFolder(hostKey)
-              if (added) pickFolder(added.path)
-            }}
-            inline
-          />
+          {handoff ? (
+            <span> in {handoff.cwd}</span>
+          ) : (
+            <FolderChip
+              value={folder}
+              recent={recentFolders}
+              onChange={pickFolder}
+              onAdd={async () => {
+                const added = await chooseFolder(hostKey)
+                if (added) pickFolder(added.path)
+              }}
+              inline
+            />
+          )}
           ?
         </h2>
         <p>
-          {connection !== 'connected'
-            ? 'Connecting to your host…'
-            : agent
-              ? 'Describe a task, paste an issue link, or ask a question.'
-              : loadError && providers.length === 0
-                ? `${loadError}. Trying again…`
-                : 'No agent is ready on this host yet. Install and sign in to Claude Code, Codex, Grok, Pi or OpenCode, or add an ACP agent.'}
+          {handoff
+            ? `Review and edit the handoff below, then choose an agent and send. The session uses the same folder and branch.${handoff.active ? ' The original agent is still active and may change these files.' : ''}`
+            : connection !== 'connected'
+              ? 'Connecting to your host…'
+              : agent
+                ? 'Describe a task, paste an issue link, or ask a question.'
+                : loadError && providers.length === 0
+                  ? `${loadError}. Trying again…`
+                  : 'No agent is ready on this host yet. Install and sign in to Claude Code, Codex, Grok, Pi or OpenCode, or add an ACP agent.'}
         </p>
         <Composer
-          cwd={(workspace.existing?.path ?? folder) || undefined}
+          cwd={handoff?.cwd ?? ((workspace.existing?.path ?? folder) || undefined)}
           memoryKey={memoryKey}
           placeholder="Describe a task, or paste an issue link…"
           busy={false}
@@ -448,24 +460,28 @@ export function NewSession({
             <div className="footer-bar">
               <AgentChip agents={providers} current={agent} onPick={setInstanceId} />
               <span className="sep" />
-              <FolderChip
-                value={folder}
-                recent={recentFolders}
-                onChange={pickFolder}
-                onAdd={async () => {
-                  const added = await chooseFolder(hostKey)
-                  if (added) pickFolder(added.path)
-                }}
-              />
-              <HostChip
-                hostKey={hostKey}
-                onPick={(key) => {
-                  carryText(key, '')
-                  setHostKey(key)
-                  setChosenFolder('')
-                  setInstanceId(undefined)
-                }}
-              />
+              {!handoff && (
+                <>
+                  <FolderChip
+                    value={folder}
+                    recent={recentFolders}
+                    onChange={pickFolder}
+                    onAdd={async () => {
+                      const added = await chooseFolder(hostKey)
+                      if (added) pickFolder(added.path)
+                    }}
+                  />
+                  <HostChip
+                    hostKey={hostKey}
+                    onPick={(key) => {
+                      carryText(key, '')
+                      setHostKey(key)
+                      setChosenFolder('')
+                      setInstanceId(undefined)
+                    }}
+                  />
+                </>
+              )}
               <span className="spacer" />
               <div className="capability-toggles" role="group" aria-label="Agent capabilities">
                 <button
@@ -514,7 +530,7 @@ export function NewSession({
                   <ListChecks size={14} aria-hidden="true" />
                 </button>
               </div>
-              {repo && repo !== 'loading' && (
+              {repo && repo !== 'loading' && !handoff && (
                 <WorkspaceChip repo={repo} workspace={workspace} onChange={setWorkspace} />
               )}
             </div>

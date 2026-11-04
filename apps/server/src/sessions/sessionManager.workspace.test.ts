@@ -95,6 +95,33 @@ const created = (store: EventStore, sessionId: string) =>
   >
 
 describe('SessionManager: workspaces', () => {
+  it('continues in the source folder and records a durable link', async () => {
+    const { manager, store, starts } = setup()
+    try {
+      const source = await manager.create({
+        instanceId: 'rec',
+        projectless: true,
+        title: 'Original',
+      })
+      const next = await manager.create({ instanceId: 'rec', handoffFrom: source.sessionId })
+      expect(starts[1]?.cwd).toBe(starts[0]?.cwd)
+      expect(created(store, next.sessionId)).toMatchObject({
+        cwd: starts[0]?.cwd,
+        projectless: true,
+        handoffFrom: { sessionId: source.sessionId, title: 'Original' },
+      })
+      await expect(
+        manager.create({ instanceId: 'rec', handoffFrom: source.sessionId, cwd: tmp() }),
+      ).rejects.toThrow('source session folder')
+      await expect(manager.create({ instanceId: 'rec', handoffFrom: 'missing' })).rejects.toThrow(
+        'Unknown session',
+      )
+    } finally {
+      await manager.close()
+      store.close()
+    }
+  })
+
   it('gives sessions without a project separate persistent folders and skips repository discovery', async () => {
     const { manager, store, git, starts } = setup()
     const info = vi.spyOn(git, 'info')
