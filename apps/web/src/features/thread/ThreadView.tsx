@@ -24,7 +24,16 @@ import {
   BellRing,
 } from 'lucide-react'
 import { openWaitingDialog } from '../shell/WaitingMarkDialog.tsx'
-import type { SessionView } from '@beddcode/client-runtime'
+import {
+  CAUGHT_UP_FADE_MS,
+  CAUGHT_UP_SHOW_MS,
+  clearStreamNote,
+  initialStreamNote,
+  nextStreamNote,
+  type SessionView,
+  type StreamNote,
+  type StreamState,
+} from '@beddcode/client-runtime'
 import { StatusTimer } from '../../ui/StatusTimer.tsx'
 import { Composer } from '../composer/Composer.tsx'
 import { ModelBadge, ModelMenu } from '../composer/Menus.tsx'
@@ -811,20 +820,32 @@ function WorktreeChip({ session, hostKey }: { session: SessionView; hostKey: str
   )
 }
 
-function StreamIndicator({ state }: { state: import('@beddcode/client-runtime').StreamState }) {
-  const [visible, setVisible] = useState(state !== 'live')
+function StreamIndicator({ state }: { state: StreamState }) {
+  const [note, setNote] = useState<StreamNote>(() => nextStreamNote(initialStreamNote, state))
+  const [fading, setFading] = useState(false)
   useEffect(() => {
-    if (state !== 'live') {
-      setVisible(true)
-      return
-    }
-    const timer = setTimeout(() => setVisible(false), 1200)
-    return () => clearTimeout(timer)
+    setNote((prev) => nextStreamNote(prev, state))
   }, [state])
-  if (!visible) return null
+  const caughtUp = note.note === 'caught-up'
+  useEffect(() => {
+    setFading(false)
+    if (!caughtUp) return
+    const fade = setTimeout(() => setFading(true), CAUGHT_UP_SHOW_MS)
+    const hide = setTimeout(() => setNote(clearStreamNote), CAUGHT_UP_SHOW_MS + CAUGHT_UP_FADE_MS)
+    return () => {
+      clearTimeout(fade)
+      clearTimeout(hide)
+    }
+  }, [caughtUp])
+  if (note.note === 'none') return null
   return (
-    <span style={{ opacity: state === 'live' ? 0 : 0.8, transition: 'opacity 1.2s' }}>
-      {state === 'live' ? 'Caught up' : 'Reconnecting…'} ·{' '}
+    <span
+      style={{
+        opacity: fading ? 0 : 0.8,
+        transition: `opacity ${CAUGHT_UP_FADE_MS}ms`,
+      }}
+    >
+      {caughtUp ? 'Caught up' : 'Reconnecting…'} ·{' '}
     </span>
   )
 }
