@@ -49,14 +49,12 @@ describe('MCP library', () => {
   })
   it('does not persist environment values in agent configuration', async () => {
     const source = agent('one', {
-      get: vi
-        .fn()
-        .mockResolvedValue({
-          name: 'example',
-          transport: 'stdio',
-          command: 'node',
-          env: { TOKEN: 'secret' },
-        }),
+      get: vi.fn().mockResolvedValue({
+        name: 'example',
+        transport: 'stdio',
+        command: 'node',
+        env: { TOKEN: 'secret' },
+      }),
     })
     const target = agent('two', {})
     await expect(copyMcpServer([source, target], 'one', 'example')).rejects.toThrow(
