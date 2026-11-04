@@ -265,5 +265,7 @@ describe('Codex MCP through its CLI', () => {
 })
 
 it('passes the bearer environment variable to codex', () => {
-  expect(addArgs({ name: 'r', transport: 'http', url: 'https://x', bearerToken: 'TOKEN' })).toEqual(['mcp', 'add', 'r', '--url', 'https://x', '--bearer-token-env-var', 'TOKEN'])
+  expect(addArgs({ name: 'r', transport: 'http', url: 'https://x', bearerToken: 'TOKEN' })).toEqual(
+    ['mcp', 'add', 'r', '--url', 'https://x', '--bearer-token-env-var', 'TOKEN'],
+  )
 })

@@ -586,6 +586,16 @@ describe('switching models', () => {
 })
 
 it('uses environment references in remote header arguments', () => {
-  expect(addArgs({ name: 'r', transport: 'http', url: 'https://x', headers: { 'X-Key': '${KEY}' }, bearerToken: '${TOKEN}' })).toContain('Authorization: Bearer ${TOKEN}')
-  expect(addArgs({ name: 'r', transport: 'http', url: 'https://x', headers: { 'X-Key': '${KEY}' } })).toContain('X-Key: ${KEY}')
+  expect(
+    addArgs({
+      name: 'r',
+      transport: 'http',
+      url: 'https://x',
+      headers: { 'X-Key': '${KEY}' },
+      bearerToken: '${TOKEN}',
+    }),
+  ).toContain('Authorization: Bearer ${TOKEN}')
+  expect(
+    addArgs({ name: 'r', transport: 'http', url: 'https://x', headers: { 'X-Key': '${KEY}' } }),
+  ).toContain('X-Key: ${KEY}')
 })

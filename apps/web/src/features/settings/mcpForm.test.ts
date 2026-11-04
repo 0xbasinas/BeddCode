@@ -79,7 +79,31 @@ describe('mcpInputFromForm', () => {
 })
 
 it('parses remote headers and never includes a bad value in errors', () => {
-  expect(mcpInputFromForm(form({ name: 'r', kind: 'http', url: 'https://example.com', headers: 'X-Key: abc:123', bearerToken: 'token' }))).toMatchObject({ headers: { 'X-Key': 'abc:123' }, bearerToken: 'token' })
-  expect(() => mcpInputFromForm(form({ name: 'r', kind: 'http', url: 'https://example.com', headers: 'bad name: secret' }))).toThrow('Invalid header name')
-  expect(() => mcpInputFromForm(form({ name: 'r', kind: 'http', url: 'https://example.com', headers: 'Authorization: secret', bearerToken: 'token' }))).toThrow('either')
+  expect(
+    mcpInputFromForm(
+      form({
+        name: 'r',
+        kind: 'http',
+        url: 'https://example.com',
+        headers: 'X-Key: abc:123',
+        bearerToken: 'token',
+      }),
+    ),
+  ).toMatchObject({ headers: { 'X-Key': 'abc:123' }, bearerToken: 'token' })
+  expect(() =>
+    mcpInputFromForm(
+      form({ name: 'r', kind: 'http', url: 'https://example.com', headers: 'bad name: secret' }),
+    ),
+  ).toThrow('Invalid header name')
+  expect(() =>
+    mcpInputFromForm(
+      form({
+        name: 'r',
+        kind: 'http',
+        url: 'https://example.com',
+        headers: 'Authorization: secret',
+        bearerToken: 'token',
+      }),
+    ),
+  ).toThrow('either')
 })

@@ -133,11 +133,30 @@ export function AddMcpDialog({
                   disabled={busy}
                   onChange={(e) => setForm({ ...form, url: e.target.value })}
                 />
-                <label htmlFor="mcp-token">Bearer token <small>Optional. Stored privately on this host.</small></label>
-                <input id="mcp-token" type="password" autoComplete="off" value={form.bearerToken} disabled={busy} onChange={(e) => setForm({ ...form, bearerToken: e.target.value })} />
-                <label htmlFor="mcp-headers">Headers <small>Optional. One Name: value per line.</small></label>
-                <textarea id="mcp-headers" rows={3} value={form.headers} disabled={busy} onChange={(e) => setForm({ ...form, headers: e.target.value })} />
-                <p>Agents launched outside BeddCode need the referenced environment variables set.</p>
+                <label htmlFor="mcp-token">
+                  Bearer token <small>Optional. Stored privately on this host.</small>
+                </label>
+                <input
+                  id="mcp-token"
+                  type="password"
+                  autoComplete="off"
+                  value={form.bearerToken}
+                  disabled={busy}
+                  onChange={(e) => setForm({ ...form, bearerToken: e.target.value })}
+                />
+                <label htmlFor="mcp-headers">
+                  Headers <small>Optional. One Name: value per line.</small>
+                </label>
+                <textarea
+                  id="mcp-headers"
+                  rows={3}
+                  value={form.headers}
+                  disabled={busy}
+                  onChange={(e) => setForm({ ...form, headers: e.target.value })}
+                />
+                <p>
+                  Agents launched outside BeddCode need the referenced environment variables set.
+                </p>
                 {kind === 'claude' && (
                   <>
                     <label htmlFor="mcp-transport">Transport</label>

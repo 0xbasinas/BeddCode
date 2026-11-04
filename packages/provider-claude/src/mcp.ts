@@ -45,7 +45,8 @@ export function addArgs(server: McpServerInput): string[] {
   const args = ['mcp', 'add', '--scope', server.scope ?? 'user']
   if (server.transport !== 'stdio') args.push('--transport', server.transport)
   for (const [key, value] of Object.entries(server.env ?? {})) args.push('-e', `${key}=${value}`)
-  for (const [key, value] of Object.entries(server.headers ?? {})) args.push('--header', `${key}: ${value}`)
+  for (const [key, value] of Object.entries(server.headers ?? {}))
+    args.push('--header', `${key}: ${value}`)
   if (server.bearerToken) args.push('--header', `Authorization: Bearer ${server.bearerToken}`)
   args.push(server.name)
   if (server.transport === 'stdio') {

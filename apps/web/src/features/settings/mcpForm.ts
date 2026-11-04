@@ -50,8 +50,10 @@ export function parseHeaders(text: string): Record<string, string> {
   for (const line of lines(text)) {
     const at = line.indexOf(':')
     const name = at > 0 ? line.slice(0, at).trim() : ''
-    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name)) throw new Error('Invalid header name; use Name: value')
-    if (Object.keys(headers).some((key) => key.toLowerCase() === name.toLowerCase())) throw new Error('Duplicate header name')
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name))
+      throw new Error('Invalid header name; use Name: value')
+    if (Object.keys(headers).some((key) => key.toLowerCase() === name.toLowerCase()))
+      throw new Error('Duplicate header name')
     headers[name] = line.slice(at + 1).trim()
   }
   return headers
@@ -90,11 +92,18 @@ export function mcpInputFromForm(form: McpForm): McpServerInput {
     throw new Error('The address must start with https:// or http://')
   }
   const headers = parseHeaders(form.headers)
-  if (form.bearerToken && Object.keys(headers).some((key) => key.toLowerCase() === 'authorization')) {
+  if (
+    form.bearerToken &&
+    Object.keys(headers).some((key) => key.toLowerCase() === 'authorization')
+  ) {
     throw new Error('Use either a bearer token or an Authorization header')
   }
-  return { name, transport: form.kind, url, scope: form.scope,
+  return {
+    name,
+    transport: form.kind,
+    url,
+    scope: form.scope,
     ...(Object.keys(headers).length ? { headers } : {}),
-    ...(form.bearerToken ? { bearerToken: form.bearerToken } : {}) }
-
+    ...(form.bearerToken ? { bearerToken: form.bearerToken } : {}),
+  }
 }

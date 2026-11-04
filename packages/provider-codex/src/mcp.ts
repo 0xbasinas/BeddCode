@@ -81,8 +81,13 @@ export function createCodexMcp(
       await must(addArgs(server), cwd)
       if (server.headers && Object.keys(server.headers).length) {
         const table = `\n[mcp_servers.${JSON.stringify(server.name)}.env_http_headers]\n`
-        const entries = Object.entries(server.headers).map(([key, value]) => `${JSON.stringify(key)} = ${JSON.stringify(value)}\n`).join('')
-        await appendFile(join(env.CODEX_HOME ?? join(homedir(), '.codex'), 'config.toml'), table + entries)
+        const entries = Object.entries(server.headers)
+          .map(([key, value]) => `${JSON.stringify(key)} = ${JSON.stringify(value)}\n`)
+          .join('')
+        await appendFile(
+          join(env.CODEX_HOME ?? join(homedir(), '.codex'), 'config.toml'),
+          table + entries,
+        )
       }
     },
     async remove(_instanceId, name, _scope, cwd) {
