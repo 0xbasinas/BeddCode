@@ -1060,6 +1060,31 @@ describe('automation', () => {
     })
   })
 
+  it('lets the fake agent act as a lead and plan two workers with [orchestrate]', async () => {
+    const { server, store } = await boot()
+    const c = await Client.connect(server.port)
+    await c.until((fs) => fs.some((f) => f.t === 'welcome'))
+    const { sessionId } = (await c.rpc('sessions.create', { instanceId: 'fake', agentTools: true })).result as {
+      sessionId: string
+    }
+    await c.rpc('sessions.prompt', { sessionId, text: '[orchestrate]' })
+    const planned = () =>
+      store
+        .readSession(sessionId)
+        .flatMap(({ event }) => (event.type === 'orchestration.plan' ? [event] : []))
+    await vi.waitFor(() => expect(planned()).toHaveLength(1))
+    expect(planned()[0]).toMatchObject({ goal: expect.any(String), tasks: [{}, {}] })
+    await vi.waitFor(() => expect(store.childrenOf(sessionId)).toHaveLength(2))
+    // Each worker reports its result to the lead.
+    await vi.waitFor(() =>
+      expect(
+        store
+          .childrenOf(sessionId)
+          .filter((id) => store.readSession(id).some(({ event }) => event.type === 'session.result')),
+      ).toHaveLength(2),
+    )
+  })
+
   it('lets a session with agent tools start a child, wait for it, and the user approves it', async () => {
     const { server, store, automation } = await boot()
     const c = await Client.connect(server.port)
