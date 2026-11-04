@@ -124,16 +124,19 @@ export async function layoutTree(el: DesignElement): Promise<DesignElement> {
   // after the reflowed content. Bound passes for conflicting sizing constraints.
   for (let pass = 0; pass < 4; pass++) {
     const res = computeAutoLayout(cur)
-    const placed = await Promise.all(res.children.map(async (child, i) => {
-      const before = cur.children?.find((k) => k.id === child.id) ?? cur.children?.[i]
-      const resized = before && (before.width !== child.width || before.height !== child.height)
-      if (!resized) return child
-      if (child.type === 'text' && child.textAutoResize === 'grow') return sizeText(child)
-      if (child.children?.length) return layoutTree(child)
-      return child
-    }))
-    const needsAnotherPass = placed.some((child, i) =>
-      child.width !== res.children[i]?.width || child.height !== res.children[i]?.height,
+    const placed = await Promise.all(
+      res.children.map(async (child, i) => {
+        const before = cur.children?.find((k) => k.id === child.id) ?? cur.children?.[i]
+        const resized = before && (before.width !== child.width || before.height !== child.height)
+        if (!resized) return child
+        if (child.type === 'text' && child.textAutoResize === 'grow') return sizeText(child)
+        if (child.children?.length) return layoutTree(child)
+        return child
+      }),
+    )
+    const needsAnotherPass = placed.some(
+      (child, i) =>
+        child.width !== res.children[i]?.width || child.height !== res.children[i]?.height,
     )
     cur = { ...cur, children: placed, width: res.width, height: res.height }
     if (!needsAnotherPass) break
