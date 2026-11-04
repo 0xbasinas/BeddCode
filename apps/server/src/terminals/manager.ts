@@ -528,7 +528,7 @@ function commandArgs(shell: ShellSpec, command: string): string[] {
     return [
       ...shell.args,
       '-Command',
-      `& { ${command}\n}; if (-not $?) { if ($LASTEXITCODE) { exit $LASTEXITCODE }; exit 1 }`,
+      `${command}\nif (-not $?) { if ($LASTEXITCODE) { exit $LASTEXITCODE }; exit 1 }`,
     ]
   return [...shell.args, '-c', command]
 }
