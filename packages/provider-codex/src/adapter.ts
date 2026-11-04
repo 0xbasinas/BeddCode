@@ -118,54 +118,57 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): CodexAdap
     return { ...base, capabilities, status, version }
   }
 
-  return {
-    async prepareSession(cwd) {
-      const exe = executable()
-      if (!exe) throw new Error('Codex is not installed on this host')
-      const transport =
-        options.createTransport?.(cwd) ?? spawnTransport(exe, ['app-server'], { env, cwd }, log)
-      const prepared = await prepareCodexProcess({ transport, log })
-      return {
-        healthy: async () => prepared.healthy(),
-        memoryBytes: async () => {
-          if (!transport.pid) return null
-          try {
-            const result =
-              process.platform === 'win32'
-                ? await runCommand('powershell.exe', [
-                    '-NoProfile',
-                    '-NonInteractive',
-                    '-Command',
-                    "Get-CimInstance Win32_Process | ForEach-Object { '{0} {1} {2}' -f $_.ProcessId, $_.ParentProcessId, [math]::Floor($_.WorkingSetSize / 1024) }",
-                  ])
-                : await runCommand('ps', ['-A', '-o', 'pid=,ppid=,rss='])
-            if (result.code !== 0) return null
-            const rows = result.stdout
-              .trim()
-              .split('\n')
-              .map((line) => line.trim().split(/\s+/).map(Number))
-            const pids = new Set([transport.pid])
-            let previous = 0
-            while (previous !== pids.size) {
-              previous = pids.size
-              for (const [pid, parent] of rows) if (pid && parent && pids.has(parent)) pids.add(pid)
-            }
-            const matched = rows.filter(([pid]) => pid && pids.has(pid))
-            return matched.length && matched.every((row) => Number.isFinite(row[2]) && row[2]! >= 0)
-              ? matched.reduce((sum, row) => sum + (row[2] ?? 0) * 1024, 0)
-              : null
-          } catch {
-            return null
+  async function prepareSession(cwd: string): Promise<CodexWarmSession> {
+    const exe = executable()
+    if (!exe) throw new Error('Codex is not installed on this host')
+    const transport =
+      options.createTransport?.(cwd) ?? spawnTransport(exe, ['app-server'], { env, cwd }, log)
+    const prepared = await prepareCodexProcess({ transport, log })
+    return {
+      healthy: async () => prepared.healthy(),
+      memoryBytes: async () => {
+        if (!transport.pid) return null
+        try {
+          const result =
+            process.platform === 'win32'
+              ? await runCommand('powershell.exe', [
+                  '-NoProfile',
+                  '-NonInteractive',
+                  '-Command',
+                  "Get-CimInstance Win32_Process | ForEach-Object { '{0} {1} {2}' -f $_.ProcessId, $_.ParentProcessId, [math]::Floor($_.WorkingSetSize / 1024) }",
+                ])
+              : await runCommand('ps', ['-A', '-o', 'pid=,ppid=,rss='])
+          if (result.code !== 0) return null
+          const rows = result.stdout
+            .trim()
+            .split('\n')
+            .map((line) => line.trim().split(/\s+/).map(Number))
+          const pids = new Set([transport.pid])
+          let previous = 0
+          while (previous !== pids.size) {
+            previous = pids.size
+            for (const [pid, parent] of rows) if (pid && parent && pids.has(parent)) pids.add(pid)
           }
-        },
-        activate: async (input) => {
-          if (input.cwd !== cwd)
-            throw new Error('Prepared Codex process has a different working directory')
-          return prepared.start(input)
-        },
-        close: async () => prepared.close(),
-      }
-    },
+          const matched = rows.filter(([pid]) => pid && pids.has(pid))
+          return matched.length && matched.every((row) => Number.isFinite(row[2]) && row[2]! >= 0)
+            ? matched.reduce((sum, row) => sum + (row[2] ?? 0) * 1024, 0)
+            : null
+        } catch {
+          return null
+        }
+      },
+      activate: async (input) => {
+        if (input.cwd !== cwd)
+          throw new Error('Prepared Codex process has a different working directory')
+        return prepared.start(input)
+      },
+      close: async () => prepared.close(),
+    }
+  }
+
+  return {
+    prepareSession,
+    warmPool: { supported: true, prepareSession },
     generateText: async (input) => {
       const exe = executable()
       if (!exe) throw new Error('Codex is not installed on this host')

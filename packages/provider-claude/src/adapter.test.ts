@@ -79,3 +79,7 @@ describe('Claude adapter model capabilities', () => {
     expect(queryFn).not.toHaveBeenCalled()
   })
 })
+
+it('marks warm preparation unsupported', () => {
+  expect(createClaudeAdapter().warmPool).toEqual({ supported: false })
+})

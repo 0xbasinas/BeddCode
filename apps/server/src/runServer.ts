@@ -101,7 +101,7 @@ export async function runServer(
   const attachments = new AttachmentStore(path.join(home, 'attachments'))
   const hostPool = options.warmPool
     ? undefined
-    : createHostWarmPool(config.warmPool, codex, attachments.root)
+    : createHostWarmPool(config.warmPool, adapters, attachments.root)
   const git = new GitService()
   const workspace = {
     git,

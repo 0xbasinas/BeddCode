@@ -128,6 +128,18 @@ export interface ProviderMcp {
 /** One adapter per provider kind; instances come from `detect`. */
 export interface ProviderAdapter {
   readonly kind: ProviderInstance['kind']
+  /** Whether this adapter can prepare a process before session inputs are known. */
+  readonly warmPool?:
+    | { supported: false }
+    | {
+        supported: true
+        prepareSession(cwd: string): Promise<{
+          healthy(): Promise<boolean>
+          memoryBytes(): Promise<number | null>
+          activate(input: StartSessionInput): Promise<ProviderSession>
+          close(): Promise<void>
+        }>
+      }
   /** Cheap check: installed? signed in? Must not start sessions that run hooks or MCP servers. */
   detect(): Promise<ProviderInstance[]>
   capabilities(instanceId: string): ProviderCapabilities

@@ -98,3 +98,7 @@ describe('listGrokCommands', () => {
     expect(await listGrokCommands(() => null, run(inspect), {})).toEqual([])
   })
 })
+
+it('marks warm preparation unsupported', () => {
+  expect(createGrokAdapter().warmPool).toEqual({ supported: false })
+})

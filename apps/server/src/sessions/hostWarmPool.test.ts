@@ -3,6 +3,8 @@ import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { createFakeAdapter } from '@beddcode/provider-core'
 import type { CodexAdapter } from '@beddcode/provider-codex'
+import { createClaudeAdapter } from '@beddcode/provider-claude'
+import { createGrokAdapter } from '@beddcode/provider-grok'
 import { createLogger } from '@beddcode/shared'
 import { AttachmentStore } from '../attachments/store.ts'
 import { EventStore } from '../store/eventStore.ts'
@@ -33,11 +35,12 @@ describe('host warm pool', () => {
           id: 'codex',
         })),
       prepareSession,
+      warmPool: { supported: true, prepareSession },
     } as CodexAdapter
-    expect(createHostWarmPool(undefined, adapter, attachments.root)).toBeUndefined()
-    expect(createHostWarmPool({ enabled: false }, adapter, attachments.root)).toBeUndefined()
+    expect(createHostWarmPool(undefined, [adapter], attachments.root)).toBeUndefined()
+    expect(createHostWarmPool({ enabled: false }, [adapter], attachments.root)).toBeUndefined()
     expect(prepareSession).not.toHaveBeenCalled()
-    const host = createHostWarmPool({ enabled: true }, adapter, attachments.root)!
+    const host = createHostWarmPool({ enabled: true }, [adapter], attachments.root)!
     host.warmProject(cwd)
     await vi.waitFor(() => expect(prepareSession).toHaveBeenCalledWith(cwd))
     await vi.waitFor(() => expect(healthy).toHaveBeenCalled())
@@ -54,6 +57,45 @@ describe('host warm pool', () => {
     try {
       await manager.create({ instanceId: 'codex', cwd })
       expect(activate).toHaveBeenCalledOnce()
+    } finally {
+      await manager.close()
+      await host.pool.close()
+      store.close()
+    }
+  })
+  it.each([
+    ['claude', createClaudeAdapter],
+    ['grok', createGrokAdapter],
+  ] as const)('starts %s cold without warming it', async (kind, createAdapter) => {
+    const cwd = os.tmpdir()
+    const attachments = new AttachmentStore(path.join(cwd, 'host-warm-unsupported-test'))
+    const fake = createFakeAdapter({ delayMs: 0 })
+    const real = createAdapter()
+    const startSession = vi.fn((_id, input) => fake.startSession('fake', input))
+    const adapter = {
+      ...real,
+      detect: async () =>
+        (await fake.detect()).map((instance) => ({ ...instance, kind, id: kind })),
+      startSession,
+    }
+    const host = createHostWarmPool({ enabled: true }, [adapter], attachments.root)!
+    host.warmProject(cwd)
+    const take = vi.spyOn(host.pool, 'take')
+    const store = new EventStore(':memory:')
+    const manager = new SessionManager({
+      store,
+      attachments,
+      git: new GitService(),
+      adapters: [adapter],
+      log: createLogger('test', 'error'),
+      defaultCwd: cwd,
+      warmPool: host.pool,
+    })
+    try {
+      await manager.create({ instanceId: kind, cwd })
+      expect(startSession).toHaveBeenCalledOnce()
+      expect(take).toHaveBeenCalledOnce()
+      await expect(take.mock.results[0]!.value).resolves.toBeNull()
     } finally {
       await manager.close()
       await host.pool.close()
