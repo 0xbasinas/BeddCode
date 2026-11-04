@@ -37,6 +37,7 @@ import type {
 
 import { readReplica, writeReplica } from './replicaFile'
 import { readHosts, writeHosts } from './storage'
+import { startOfflineQueue } from './offlineQueue'
 
 /** Everything the app knows about one host: its connection, its sessions, its capabilities. */
 export interface HostRuntime {
@@ -268,6 +269,7 @@ function startHost(entry: HostEntry) {
     onState(connection, host) {
       patchRuntime(entry.key, (r) => ({
         connection,
+        synced: connection === 'connected' ? r.synced : false,
         host: host ?? r.host,
         epoch: connection === 'connected' ? r.epoch + 1 : r.epoch,
       }))
@@ -295,6 +297,7 @@ export async function startHosts() {
   if (started) return
   started = true
   // `loadRemoteHosts` reads through a synchronous storage; the phone's is asynchronous, so read first.
+  await startOfflineQueue().catch(() => {})
   const raw = await readHosts()
   const saved = loadRemoteHosts({ getItem: () => raw, setItem: () => {} })
   useHostStore.setState({ entries: saved, ready: true })

@@ -43,6 +43,8 @@ import { StartedByBanner } from './AgentToolCard'
 import { QueueControls } from './QueueControls'
 import { SessionNotes } from './SessionNotes'
 import { Button } from '@/ui/Button'
+import { OfflineMessages } from './OfflineMessages'
+import { enqueueMessage, useOfflineQueue } from '@/host/offlineQueue'
 
 /** The conversation with the agent: transcript, anything it waits on, and the composer. */
 export function ThreadPane({
@@ -61,6 +63,8 @@ export function ThreadPane({
   // does not redraw this one.
   const providers = useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.providers : undefined))
   const streamState = useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.streamState : undefined))
+  const connection = useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.connection : undefined))
+  const hasQueued = useOfflineQueue((s) => s.items.some((item) => item.hostKey === hostKey))
   const synced = useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.synced : false))
   const hostName =
     useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.host?.name : undefined)) ?? 'Host'
@@ -248,6 +252,7 @@ export function ThreadPane({
         {notesOpen && (
           <SessionNotes key={`${hostKey}:${session.id}`} session={session} hostKey={hostKey!} />
         )}
+        <OfflineMessages sessionId={session.id} />
         {session.queue.length > 0 && <QueueControls session={session} hostKey={hostKey!} />}
         <View style={styles.composer}>
           {running && (
@@ -265,7 +270,19 @@ export function ThreadPane({
             running={running}
             onStop={() => void interrupt(session.id)}
             onSend={async (text, ids) => {
-              await prompt(session.id, text, ids, running && queueOnly ? 'queue' : 'auto')
+              const mode = running && queueOnly ? 'queue' : 'auto'
+              if (hostKey && (connection !== 'connected' || !synced || hasQueued)) {
+                await enqueueMessage({
+                  hostKey,
+                  sessionId: session.id,
+                  text,
+                  attachments: ids,
+                  mode,
+                  turns: session.turns,
+                })
+              } else {
+                await prompt(session.id, text, ids, mode)
+              }
               useAttachments.getState().remove(
                 session.id,
                 draft.filter((a) => a.id && ids.includes(a.id)).map((a) => a.key),
