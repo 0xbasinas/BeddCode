@@ -410,6 +410,15 @@ export function createRpcRouter(
       await sessions.interrupt(p.sessionId, { includeChildren: p.includeChildren })
       return {}
     },
+    'sessions.interrupted': async () => sessions.interruptedSessions(),
+    'sessions.resumeInterrupted': async (p) => {
+      await sessions.resumeInterrupted(p.sessionId)
+      return {}
+    },
+    'sessions.dismissInterrupted': async (p) => {
+      sessions.dismissInterrupted(p.sessionId)
+      return {}
+    },
     'sessions.setPinned': async (p) => {
       sessions.setPinned(p.sessionId, p.pinned)
       return {}

@@ -692,6 +692,25 @@ export const RpcMethods = {
     params: z.object({ sessionId: z.string(), includeChildren: z.boolean().optional() }),
     result: z.object({}),
   },
+  'sessions.interrupted': {
+    params: z.object({}),
+    result: z.array(
+      z.object({
+        sessionId: z.string(),
+        turnId: z.string().optional(),
+        at: z.number(),
+        message: z.string(),
+      }),
+    ),
+  },
+  'sessions.resumeInterrupted': {
+    params: z.object({ sessionId: z.string() }),
+    result: z.object({}),
+  },
+  'sessions.dismissInterrupted': {
+    params: z.object({ sessionId: z.string() }),
+    result: z.object({}),
+  },
   /**
    * What a session is doing on the desktop, for the Desktop pane: its latest window picture (left out
    * when `since` is already the newest), whether the user holds the controls, and its last actions.
