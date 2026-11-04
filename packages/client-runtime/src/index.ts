@@ -36,3 +36,5 @@ export * from './textLinks.ts'
 export * from './messageIds.ts'
 
 export * from './terminalCursor.ts'
+
+export * from './cursorStore.ts'

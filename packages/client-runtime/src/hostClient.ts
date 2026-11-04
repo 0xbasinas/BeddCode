@@ -1,3 +1,4 @@
+import type { CursorStore, CursorPosition } from './cursorStore.ts'
 import {
   PROTOCOL_VERSION,
   type BrowserUseCall,
@@ -48,6 +49,10 @@ export interface HostClientOptions {
   /** Replace a session's history after a replay gap. */
   onSessionReload?(sessionId: string, page: RpcResult<'session.events.page'>): void
   onSessionReloadError?(sessionId: string, error: unknown): void
+  hasCachedSession?(sessionId: string): boolean
+  cursorStore?: CursorStore
+  cursorHostKey?: string
+  cursorSaveDelayMs?: number
   sessionPageSize?: number
   onStreamState?(state: StreamState): void
   /** Terminal output and file-change notifications: live data that is not part of the event log. */
@@ -116,6 +121,12 @@ export class HostClient {
   private readonly mismatched = new Set<number>()
   private lastSeq: number
   private readonly sessionCursors = new Map<string, number>()
+  private readonly cursorPositions = new Map<string, CursorPosition>()
+  private cursorTimer: ReturnType<typeof setTimeout> | null = null
+  private cursorWrites: Promise<void> = Promise.resolve()
+  private startGeneration = 0
+  private loadingCursors = false
+  private cursorsLoaded = false
   private readonly oldestSessionSeq = new Map<string, number>()
   private readonly reloading = new Map<string, StoredEvent[]>()
   /** The log being followed; learned at the first welcome, or given by a restored copy. */
@@ -182,12 +193,44 @@ export class HostClient {
   }
 
   start() {
-    if (this.ws || this.timer || this.state === 'denied') return
+    if (this.ws || this.timer || this.loadingCursors || this.state === 'denied') return
     this.setState('connecting')
-    this.open()
+    const generation = ++this.startGeneration
+    const store = this.options.cursorStore
+    const host = this.options.cursorHostKey
+    if (!store || !host) {
+      this.open()
+      return
+    }
+    this.loadingCursors = true
+    void store
+      .load(host)
+      .catch(() => null)
+      .then((saved) => {
+        if (generation !== this.startGeneration || this.state === 'stopped') return
+        this.loadingCursors = false
+        this.cursorsLoaded = true
+        // A cursor is safe only when the restored replica contains everything through its global seq.
+        if (saved && this.logId && saved.logId === this.logId) {
+          if (Object.keys(saved.sessions).some((id) => !this.options.hasCachedSession?.(id))) {
+            this.lastSeq = 0
+            this.options.onReset?.()
+          }
+          for (const [id, position] of Object.entries(saved.sessions)) {
+            if (position.seq <= this.lastSeq && (this.options.hasCachedSession?.(id) ?? false)) {
+              this.sessionCursors.set(id, position.sessionSeq)
+              this.cursorPositions.set(id, position)
+            }
+          }
+        }
+        this.open()
+      })
   }
 
   stop() {
+    this.startGeneration++
+    this.loadingCursors = false
+    if (this.cursorsLoaded) this.saveCursorsNow()
     this.setStreamState('reconnecting')
     this.setState('stopped')
     if (this.timer) clearTimeout(this.timer)
@@ -205,7 +248,7 @@ export class HostClient {
    * the wait for the second.
    */
   reconnectNow() {
-    if (this.state === 'stopped' || this.state === 'denied') return
+    if (this.state === 'stopped' || this.state === 'denied' || this.loadingCursors) return
     if (this.state === 'connected' && this.ws) {
       if (this.probeTimer) return
       this.awaitingPong = true
@@ -251,6 +294,7 @@ export class HostClient {
 
   private async reloadSession(sessionId: string) {
     if (this.reloading.has(sessionId)) return
+    this.clearSessionCursor(sessionId)
     const pending: StoredEvent[] = []
     this.reloading.set(sessionId, pending)
     try {
@@ -267,6 +311,10 @@ export class HostClient {
             sessionId,
             Math.max(this.sessionCursors.get(sessionId) ?? 0, stored.sessionSeq),
           )
+      for (const stored of page.events) {
+        if (stored.sessionSeq !== undefined)
+          this.recordCursor(sessionId, stored.sessionSeq, stored.seq)
+      }
       this.options.onSessionReload?.(sessionId, page)
       this.reloading.delete(sessionId)
       for (const stored of pending) this.take(stored)
@@ -465,6 +513,8 @@ export class HostClient {
         if (this.logId !== undefined && frame.host.logId !== this.logId) {
           this.lastSeq = 0
           this.sessionCursors.clear()
+          this.cursorPositions.clear()
+          this.saveCursorsNow()
           this.oldestSessionSeq.clear()
           this.restored = false
           this.options.onReset?.()
@@ -595,10 +645,44 @@ export class HostClient {
     if (stored.sessionSeq !== undefined) {
       if (stored.sessionSeq <= (this.sessionCursors.get(id) ?? 0)) return
       this.sessionCursors.set(id, stored.sessionSeq)
+      if (stored.event.type === 'session.deleted') this.clearSessionCursor(id)
+      else this.recordCursor(id, stored.sessionSeq, stored.seq)
       this.rememberPage(id, [stored])
     } else if (stored.seq <= this.lastSeq) return
+    if (stored.event.type === 'session.deleted' && stored.sessionSeq === undefined)
+      this.clearSessionCursor(id)
     this.lastSeq = Math.max(this.lastSeq, stored.seq)
     this.options.onEvent(stored)
+  }
+
+  /** Forget a deleted session or a cursor invalidated by a replay gap. */
+  clearSessionCursor(id: string) {
+    this.sessionCursors.delete(id)
+    this.cursorPositions.delete(id)
+    this.oldestSessionSeq.delete(id)
+    this.saveCursorsNow()
+  }
+
+  private recordCursor(id: string, sessionSeq: number, seq: number) {
+    this.cursorPositions.delete(id)
+    this.cursorPositions.set(id, { sessionSeq, seq })
+    while (this.cursorPositions.size > 200)
+      this.cursorPositions.delete(this.cursorPositions.keys().next().value!)
+    if (this.cursorTimer) clearTimeout(this.cursorTimer)
+    this.cursorTimer = setTimeout(
+      () => this.saveCursorsNow(),
+      this.options.cursorSaveDelayMs ?? 1000,
+    )
+  }
+
+  private saveCursorsNow() {
+    if (this.cursorTimer) clearTimeout(this.cursorTimer)
+    this.cursorTimer = null
+    const store = this.options.cursorStore
+    const host = this.options.cursorHostKey
+    if (!store || !host) return
+    const snapshot = { logId: this.logId, sessions: Object.fromEntries(this.cursorPositions) }
+    this.cursorWrites = this.cursorWrites.catch(() => {}).then(() => store.save(host, snapshot))
   }
 
   private scheduleReconnect(incompatible = false) {

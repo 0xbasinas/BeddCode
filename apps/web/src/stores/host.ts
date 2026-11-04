@@ -2,6 +2,8 @@ import { useMemo } from 'react'
 import { create } from 'zustand'
 import {
   HostClient,
+  createCursorStore,
+  type StreamState,
   startTelemetry,
   applyEvents,
   retryWhileCurrent,
@@ -55,6 +57,7 @@ export interface UploadedFile {
 /** Everything the app knows about one host: its connection, its sessions, its capabilities. */
 export interface HostRuntime {
   connection: ConnectionState
+  streamState: StreamState
   host: HostInfo | null
   providers: ProviderInstance[]
   projects: Project[]
@@ -69,6 +72,7 @@ export interface HostRuntime {
 
 const emptyRuntime = (): HostRuntime => ({
   connection: 'connecting',
+  streamState: 'reconnecting',
   host: null,
   providers: [],
   projects: [],
@@ -97,6 +101,11 @@ export const useHostStore = create<HostsState>(() => ({
   entries: [localEntry, ...loadRemoteHosts(storage())],
   runtimes: {},
 }))
+
+const cursorStore = createCursorStore({
+  getItem: (key) => storage()?.getItem(key) ?? null,
+  setItem: (key, value) => storage()?.setItem(key, value),
+})
 
 const clients = new Map<string, HostClient>()
 /** Stops sending a host's speed measurements (see startTelemetry). */
@@ -232,6 +241,38 @@ function startHost(entry: HostEntry) {
 
   const client = new HostClient({
     url: entry.routes,
+    cursorStore,
+    cursorHostKey: entry.key,
+    hasCachedSession: (id) => !!useHostStore.getState().runtimes[entry.key]?.replica.sessions[id],
+    onStreamState: (streamState) => patchRuntime(entry.key, () => ({ streamState })),
+    onSessionReload(sessionId, page) {
+      flush()
+      patchRuntime(entry.key, (r) => {
+        const current = r.replica.sessions[sessionId]
+        if (!current) return {}
+        const base = {
+          ...r.replica,
+          lastSeq: 0,
+          sessions: { [sessionId]: { ...current, items: [] } },
+          order: [sessionId],
+        }
+        const rebuilt = applyEvents(base, page.events).sessions[sessionId]
+        if (!rebuilt) {
+          const { [sessionId]: _, ...sessions } = r.replica.sessions
+          return {
+            replica: {
+              ...r.replica,
+              sessions,
+              order: r.replica.order.filter((id) => id !== sessionId),
+            },
+          }
+        }
+        return {
+          replica: { ...r.replica, sessions: { ...r.replica.sessions, [sessionId]: rebuilt } },
+        }
+      })
+      saver.touch()
+    },
     token: entry.token,
     expectedHostId: entry.key === LOCAL_HOST_KEY ? undefined : entry.key,
     onEvent(stored) {
@@ -606,7 +647,10 @@ export async function setSessionDone(sessionId: string, done: boolean) {
 export async function deleteSession(sessionId: string) {
   const hostKey = hostKeyOfSession(sessionId)
   await sessionRequest(sessionId, 'sessions.delete', { sessionId })
-  if (hostKey) useComposerDrafts.getState().dropDrafts([composerDraftKey(hostKey, sessionId)])
+  if (hostKey) {
+    clients.get(hostKey)?.clearSessionCursor(sessionId)
+    useComposerDrafts.getState().dropDrafts([composerDraftKey(hostKey, sessionId)])
+  }
 }
 
 export async function setSessionPinned(sessionId: string, pinned: boolean) {

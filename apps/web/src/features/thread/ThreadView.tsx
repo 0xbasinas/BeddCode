@@ -79,7 +79,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
   const pane = usePane()
   const paneActive = pane?.active ?? true
   const hostKey = useSessionHostKey(sessionId) ?? LOCAL_HOST_KEY
-  const { providers, host } = useRuntime(hostKey)
+  const { providers, host, streamState } = useRuntime(hostKey)
   const multiHost = useHostStore((s) => s.entries.length > 1)
   const hostName = multiHost ? (host?.name ?? hostKey) : undefined
   // Still waiting on a host that has not replied yet, or one that is away.
@@ -281,6 +281,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             {session.title}
           </h1>
           <div className="thread-meta" title={session.cwd}>
+            <StreamIndicator state={streamState} />
             {session.mcpGateway && <>Remote MCP · </>}
             {session.telegram && <>Telegram · </>}
             {hostKey === LOCAL_HOST_KEY ? 'This PC' : (host?.name ?? hostKey)} ·{' '}
@@ -807,5 +808,23 @@ function WorktreeChip({ session, hostKey }: { session: SessionView; hostKey: str
         </>
       )}
     </Dropdown>
+  )
+}
+
+function StreamIndicator({ state }: { state: import('@beddcode/client-runtime').StreamState }) {
+  const [visible, setVisible] = useState(state !== 'live')
+  useEffect(() => {
+    if (state !== 'live') {
+      setVisible(true)
+      return
+    }
+    const timer = setTimeout(() => setVisible(false), 1200)
+    return () => clearTimeout(timer)
+  }, [state])
+  if (!visible) return null
+  return (
+    <span style={{ opacity: state === 'live' ? 0 : 0.8, transition: 'opacity 1.2s' }}>
+      {state === 'live' ? 'Caught up' : 'Reconnecting…'} ·{' '}
+    </span>
   )
 }

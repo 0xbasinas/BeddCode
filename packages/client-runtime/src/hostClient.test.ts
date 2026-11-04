@@ -55,6 +55,80 @@ function makeClient(onEvent: (e: StoredEvent) => void) {
 }
 
 describe('HostClient', () => {
+  it('loads safe cursors before subscribing and replays without cached history', async () => {
+    const store = {
+      load: vi.fn(async () => ({ logId: 'log', sessions: { s: { sessionSeq: 3, seq: 10 } } })),
+      save: vi.fn(async () => {}),
+    }
+    const reset = vi.fn()
+    const options = {
+      url: 'ws://host/ws',
+      onEvent: vi.fn(),
+      cursorStore: store,
+      cursorHostKey: 'h',
+      createSocket: (url: string) => new FakeSocket(url) as unknown as WebSocket,
+    }
+    const client = new HostClient({
+      ...options,
+      initialSeq: 10,
+      resumeLogId: 'log',
+      hasCachedSession: () => true,
+    })
+    client.start()
+    expect(FakeSocket.instances).toHaveLength(0)
+    await vi.waitFor(() => expect(FakeSocket.instances).toHaveLength(1))
+    FakeSocket.instances[0]!.open()
+    expect(FakeSocket.instances[0]!.sent[1]).toMatchObject({
+      afterSeq: 10,
+      sessionCursors: { s: 3 },
+    })
+    client.stop()
+    const cold = new HostClient({
+      ...options,
+      initialSeq: 10,
+      resumeLogId: 'log',
+      hasCachedSession: () => false,
+      onReset: reset,
+    })
+    cold.start()
+    await vi.waitFor(() => expect(FakeSocket.instances).toHaveLength(2))
+    FakeSocket.instances[1]!.open()
+    expect(reset).toHaveBeenCalledOnce()
+    expect(FakeSocket.instances[1]!.sent[1]).toMatchObject({ afterSeq: 0, sessionCursors: {} })
+    cold.stop()
+  })
+
+  it('debounces cursor saves and clears a deleted session', async () => {
+    const store = { load: vi.fn(async () => null), save: vi.fn(async () => {}) }
+    const client = new HostClient({
+      url: 'ws://host/ws',
+      onEvent: () => {},
+      cursorStore: store,
+      cursorHostKey: 'h',
+      createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
+    })
+    client.start()
+    await vi.waitFor(() => expect(FakeSocket.instances).toHaveLength(1))
+    const socket = FakeSocket.instances[0]!
+    socket.open()
+    socket.receive(welcome)
+    socket.receive({ t: 'event', stored: { ...ev(1), sessionSeq: 1 } })
+    socket.receive({ t: 'event', stored: { ...ev(2), sessionSeq: 2 } })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(store.save).toHaveBeenCalledTimes(1)
+    expect(store.save).toHaveBeenLastCalledWith(
+      'h',
+      expect.objectContaining({ sessions: { s: { sessionSeq: 2, seq: 2 } } }),
+    )
+    socket.receive({
+      t: 'event',
+      stored: { seq: 3, sessionSeq: 3, event: { type: 'session.deleted', sessionId: 's', at: 3 } },
+    })
+    await vi.waitFor(() => expect(store.save).toHaveBeenCalledTimes(2))
+    expect(store.save).toHaveBeenLastCalledWith('h', expect.objectContaining({ sessions: {} }))
+    client.stop()
+  })
+
   it('exposes stream progress across a reconnect', () => {
     const states: string[] = []
     const client = new HostClient({

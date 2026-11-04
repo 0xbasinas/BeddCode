@@ -1,8 +1,11 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useMemo } from 'react'
 import { AppState } from 'react-native'
 import { create } from 'zustand'
 import {
   HostClient,
+  createCursorStore,
+  type StreamState,
   startTelemetry,
   applyEvents,
   retryWhileCurrent,
@@ -38,6 +41,7 @@ import { readHosts, writeHosts } from './storage'
 /** Everything the app knows about one host: its connection, its sessions, its capabilities. */
 export interface HostRuntime {
   connection: ConnectionState
+  streamState: StreamState
   host: HostInfo | null
   providers: ProviderInstance[]
   projects: Project[]
@@ -52,6 +56,7 @@ export interface HostRuntime {
 
 const emptyRuntime = (): HostRuntime => ({
   connection: 'connecting',
+  streamState: 'reconnecting',
   host: null,
   providers: [],
   projects: [],
@@ -73,6 +78,8 @@ export const useHostStore = create<HostsState>(() => ({
   entries: [],
   runtimes: {},
 }))
+
+const cursorStore = createCursorStore(AsyncStorage)
 
 const clients = new Map<string, HostClient>()
 /** Stops sending a host's speed measurements (see startTelemetry). */
@@ -205,6 +212,38 @@ function startHost(entry: HostEntry) {
 
   const client = new HostClient({
     url: entry.routes,
+    cursorStore,
+    cursorHostKey: entry.key,
+    hasCachedSession: (id) => !!useHostStore.getState().runtimes[entry.key]?.replica.sessions[id],
+    onStreamState: (streamState) => patchRuntime(entry.key, () => ({ streamState })),
+    onSessionReload(sessionId, page) {
+      flush()
+      patchRuntime(entry.key, (r) => {
+        const current = r.replica.sessions[sessionId]
+        if (!current) return {}
+        const base = {
+          ...r.replica,
+          lastSeq: 0,
+          sessions: { [sessionId]: { ...current, items: [] } },
+          order: [sessionId],
+        }
+        const rebuilt = applyEvents(base, page.events).sessions[sessionId]
+        if (!rebuilt) {
+          const { [sessionId]: _, ...sessions } = r.replica.sessions
+          return {
+            replica: {
+              ...r.replica,
+              sessions,
+              order: r.replica.order.filter((id) => id !== sessionId),
+            },
+          }
+        }
+        return {
+          replica: { ...r.replica, sessions: { ...r.replica.sessions, [sessionId]: rebuilt } },
+        }
+      })
+      saver.touch()
+    },
     token: entry.token,
     expectedHostId: entry.key,
     onEvent(stored) {
@@ -460,7 +499,9 @@ export async function interrupt(sessionId: string) {
 
 /** Moves a session into the Done section, or back out of it. */
 export async function deleteSession(sessionId: string) {
+  const hostKey = hostKeyOfSession(sessionId)
   await sessionRequest(sessionId, 'sessions.delete', { sessionId })
+  if (hostKey) clients.get(hostKey)?.clearSessionCursor(sessionId)
 }
 
 export async function setSessionDone(sessionId: string, done: boolean) {
