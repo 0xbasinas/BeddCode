@@ -190,6 +190,7 @@ describe('TerminalManager (output handling)', () => {
     const info = m.create({ cwd: '/x', shell: node('') })
     const c = new Collector()
     m.attach(info.id, c)
+    c.frames.length = 0 // Ignore the initial empty history.
 
     for (let i = 0; i < 50; i++) f.emit(`line ${i}\n`)
     expect(c.frames).toHaveLength(0)
@@ -205,6 +206,7 @@ describe('TerminalManager (output handling)', () => {
     const info = m.create({ cwd: '/x', shell: node('') })
     const c = new Collector()
     m.attach(info.id, c)
+    c.frames.length = 0 // Ignore the initial empty history.
     f.emit('x'.repeat(40_000))
     expect(c.frames).toHaveLength(1)
   })
@@ -387,5 +389,69 @@ describe('TerminalManager (script runs and ended terminals)', () => {
     expect(m.rename(t.id, '   ').name).toBeUndefined()
     expect(changes).toEqual([undefined, 'api server', 'x'.repeat(40), undefined])
     expect(() => m.rename('nope', 'a')).toThrow()
+  })
+})
+
+describe('resumable terminal output', () => {
+  it('replays only missed output and resets when the buffer cannot cover the cursor', () => {
+    const m = track(new TerminalManager())
+    const id = m.agentTerminal({ cwd: '/tmp', sessionId: 's', label: 'Agent', mode: 'mirror' })
+    m.feed(id, 'hello')
+    const first = new Collector()
+    m.attach(id, first)
+    expect(first.frames[0]).toMatchObject({ data: 'hello', replay: true, seq: 5 })
+    m.feed(id, ' world')
+    const resumed = new Collector()
+    m.attach(id, resumed, 5)
+    expect(resumed.frames).toEqual([{ t: 'term.out', id, data: ' world', seq: 11 }])
+    const current = new Collector()
+    m.attach(id, current, 11)
+    expect(current.frames).toEqual([])
+    m.feed(id, 'x'.repeat(200_001))
+    const expired = new Collector()
+    m.attach(id, expired, 5)
+    expect(expired.frames[0]).toMatchObject({
+      replay: true,
+      truncated: true,
+      seq: 200_012,
+      data: 'x'.repeat(200_000),
+    })
+    const future = new Collector()
+    m.attach(id, future, 999_999)
+    expect(future.frames[0]).toMatchObject({ replay: true, seq: 200_012 })
+  })
+
+  it('keeps subscribers independent across attach and detach, including pending output', () => {
+    const m = track(new TerminalManager())
+    const id = m.agentTerminal({ cwd: '/tmp', sessionId: 's', label: 'Agent', mode: 'mirror' })
+    const a = new Collector()
+    const detach = m.attach(id, a)
+    expect(a.frames).toEqual([{ t: 'term.out', id, data: '', replay: true, seq: 0 }])
+    a.frames.length = 0
+    m.feed(id, 'one')
+    const b = new Collector()
+    m.attach(id, b, 0)
+    expect(a.frames).toEqual([{ t: 'term.out', id, data: 'one', seq: 3 }])
+    expect(b.frames).toEqual([{ t: 'term.out', id, data: 'one', seq: 3 }])
+    detach()
+    m.feed(id, 'two')
+    const c = new Collector()
+    m.attach(id, c, 3)
+    expect(b.frames.at(-1)).toEqual({ t: 'term.out', id, data: 'two', seq: 6 })
+    expect(c.frames).toEqual([{ t: 'term.out', id, data: 'two', seq: 6 }])
+    expect(a.frames).toHaveLength(1)
+  })
+
+  it('does not begin truncated history in the middle of a surrogate pair', () => {
+    const m = track(new TerminalManager())
+    const id = m.agentTerminal({ cwd: '/tmp', sessionId: 's', label: 'Agent', mode: 'mirror' })
+    m.feed(id, '😀' + 'x'.repeat(199_999))
+    const client = new Collector()
+    m.attach(id, client)
+    expect(client.frames[0]).toMatchObject({
+      data: 'x'.repeat(199_999),
+      seq: 200_001,
+      truncated: true,
+    })
   })
 })

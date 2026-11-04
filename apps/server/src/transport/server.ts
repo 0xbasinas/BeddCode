@@ -510,7 +510,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
           try {
             terminalDetach.set(
               frame.id,
-              options.workspace.terminals.attach(frame.id, terminalClient),
+              options.workspace.terminals.attach(frame.id, terminalClient, frame.afterSeq),
             )
           } catch {
             // The terminal was closed meanwhile; tell the client so it stops waiting.
