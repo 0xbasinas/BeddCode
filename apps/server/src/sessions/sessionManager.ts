@@ -120,6 +120,7 @@ interface TurnState {
   sendAfterInterrupt?: string
   /** The snapshot taken as the running turn started (see `turn.changes`). */
   before?: { hash: string; refBase: string }
+  coverageReason?: string
   /** The message is answered but not yet with the agent: the snapshot comes first. */
   starting?: Promise<void>
   /** The starting snapshot, still being taken after the message was already sent. */
@@ -1172,6 +1173,7 @@ export class SessionManager {
 
   private async checkpointBefore(sessionId: string, turn: TurnState): Promise<void> {
     turn.before = undefined
+    turn.coverageReason = undefined
     const cwd = await this.checkpointFolder(sessionId)
     if (!cwd) return
     const refBase = `refs/beddcode/checkpoints/${sessionId}/${Date.now().toString(36)}`
@@ -1180,6 +1182,9 @@ export class SessionManager {
       .then((hash) => ({ hash, refBase }))
       .catch((err: unknown) => {
         this.deps.log.debug(`no checkpoint for ${sessionId}: ${String(err)}`)
+        turn.coverageReason = /Too many untracked files/.test(String(err))
+          ? 'Too many untracked files to snapshot.'
+          : 'The starting snapshot could not be taken.'
         return undefined
       })
     let timer: NodeJS.Timeout | undefined
@@ -1192,6 +1197,8 @@ export class SessionManager {
       turn.before = first
       return
     }
+    turn.coverageReason =
+      'The starting snapshot finished after the turn began, so early edits may be missing.'
     const finishing = taking.then((snapshot) => {
       turn.before = snapshot
     })
@@ -1206,13 +1213,28 @@ export class SessionManager {
     await turn.taking
     const before = turn.before
     turn.before = undefined
-    if (!before) return
+    if (!before) {
+      this.deps.store.append({
+        type: 'turn.changes',
+        sessionId,
+        turnId,
+        at: Date.now(),
+        before: '',
+        after: '',
+        files: [],
+        coverage: {
+          state: 'skipped',
+          reason: turn.coverageReason ?? 'The starting snapshot was unavailable.',
+        },
+      })
+      return
+    }
     const cwd = await this.checkpointFolder(sessionId)
     if (!cwd) return
     try {
       const after = await this.deps.git.snapshot(cwd, `${before.refBase}-after`)
       const { files, truncated } = await this.deps.git.snapshotChanges(cwd, before.hash, after)
-      if (files.length === 0) {
+      if (files.length === 0 && !turn.coverageReason && !truncated) {
         await this.deps.git.dropSnapshots(cwd, `${before.refBase}-`)
         return
       }
@@ -1225,6 +1247,18 @@ export class SessionManager {
         after,
         files,
         truncated: truncated || undefined,
+        coverage:
+          truncated || turn.coverageReason
+            ? {
+                state: 'truncated',
+                reason: [
+                  turn.coverageReason,
+                  truncated ? 'The file list is incomplete.' : undefined,
+                ]
+                  .filter(Boolean)
+                  .join(' '),
+              }
+            : { state: 'full' },
       })
       // Only the latest turn can be undone; older ones keep their diffs for a while, then go.
       await this.deps.git
@@ -1232,6 +1266,16 @@ export class SessionManager {
         .catch((err: unknown) => this.deps.log.debug(`could not prune checkpoints: ${String(err)}`))
     } catch (err) {
       this.deps.log.warn(`could not record the changes of a turn in ${sessionId}`, err)
+      this.deps.store.append({
+        type: 'turn.changes',
+        sessionId,
+        turnId,
+        at: Date.now(),
+        before: '',
+        after: '',
+        files: [],
+        coverage: { state: 'skipped', reason: 'The ending snapshot or comparison failed.' },
+      })
     }
   }
 
@@ -1275,6 +1319,7 @@ export class SessionManager {
     const created = this.createdEvent(sessionId)
     if (!created) throw new Error(`Unknown session: ${sessionId}`)
     const { changes, isLatest, reverted } = this.turnChanges(sessionId, after)
+    if (!changes.after) throw new Error('No snapshot is available to undo')
     if (reverted) throw new Error('Those changes were already undone')
     if (!isLatest) throw new Error('Only the latest changes can be undone')
     const turn = this.turnState(sessionId)
@@ -2251,7 +2296,7 @@ export class SessionManager {
         if (event.type === 'turn.completed') {
           const turn = this.turnState(sessionId)
           turn.stopRequested = false
-          if (turn.before || turn.taking) {
+          if (turn.before || turn.taking || turn.coverageReason) {
             const settling = this.recordTurnChanges(sessionId, turn, event.turnId)
             turn.settling = settling
             void settling.finally(() => {

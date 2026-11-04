@@ -125,6 +125,7 @@ describe('SessionManager: turn changes and undo', () => {
     await manager.prompt(sessionId, 'edit')
     const changes = await changesOf(store, sessionId)
     expect(changes.turnId).toBe('t1')
+    expect(changes.coverage).toEqual({ state: 'full' })
     expect(changes.files).toEqual([
       { path: 'a.txt', status: 'M', added: 1, removed: 0 },
       { path: 'new.txt', status: 'A', added: 1, removed: 0 },
@@ -189,7 +190,7 @@ describe('SessionManager: turn changes and undo', () => {
     await until(() =>
       events(store, sessionId).some((e) => e.type === 'turn.completed') ? true : undefined,
     )
-    await new Promise((r) => setTimeout(r, 200))
+    expect(events(store, sessionId).at(-1)).toMatchObject({ type: 'turn.completed' })
     expect(events(store, sessionId).some((e) => e.type === 'turn.changes')).toBe(false)
 
     manager.setPinned(sessionId, true)

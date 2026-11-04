@@ -51,6 +51,8 @@ export function TurnChangesCard({
   const added = item.files.reduce((n, f) => n + f.added, 0)
   const removed = item.files.reduce((n, f) => n + f.removed, 0)
   const count = item.files.length
+  const coverage = item.coverage ?? { state: item.truncated ? 'truncated' : 'full' }
+  const unavailable = coverage.state === 'skipped' || coverage.state === 'expired'
   const pr = useSessionPr(hostKey, cwd)
   const openPr = pr && pr.state === 'OPEN' ? pr : null
   const mergedPr = pr && pr.state === 'MERGED' ? pr : null
@@ -85,15 +87,15 @@ export function TurnChangesCard({
           <History size={16} />
           <span>
             <strong>
-              {item.reverted ? 'Undone: ' : ''}Folder changes:{' '}
-              {count === 1 ? '1 file' : `${count} files`}
-              {item.truncated ? '+' : ''} during this turn
+              {item.reverted ? 'Undone: ' : ''}Folder changes during this turn:{' '}
+              {unavailable ? 'unavailable' : count === 1 ? '1 file' : `${count} files`}
+              {item.truncated ? '+' : ''}
             </strong>
             <DiffStat added={added} removed={removed} />
           </span>
           {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </button>
-        {offerPr && !item.reverted && !confirming && openPr && (
+        {offerPr && !unavailable && !item.reverted && !confirming && openPr && (
           <>
             <button
               className="turn-undo"
@@ -122,7 +124,7 @@ export function TurnChangesCard({
             </button>
           </>
         )}
-        {offerPr && !item.reverted && !confirming && mergedPr && (
+        {offerPr && !unavailable && !item.reverted && !confirming && mergedPr && (
           <button
             className="turn-undo"
             onClick={() => useUiStore.getState().showPr()}
@@ -131,7 +133,7 @@ export function TurnChangesCard({
             <GitPullRequest size={14} /> #{mergedPr.number} merged · Clean up
           </button>
         )}
-        {offerPr && !item.reverted && !confirming && !openPr && !mergedPr && (
+        {offerPr && !unavailable && !item.reverted && !confirming && !openPr && !mergedPr && (
           <button
             className="turn-undo"
             onClick={() => useUiStore.getState().showChanges()}
@@ -140,7 +142,7 @@ export function TurnChangesCard({
             <GitPullRequest size={14} /> Commit & PR
           </button>
         )}
-        {canUndo && !item.reverted && !confirming && (
+        {canUndo && !unavailable && !item.reverted && !confirming && (
           <button
             className="turn-undo"
             onClick={() => setConfirming(true)}
@@ -153,21 +155,25 @@ export function TurnChangesCard({
       {openPr?.checks === 'failure' && offerPr && (
         <CiFollowUp hostKey={hostKey} cwd={cwd} sessionId={sessionId} />
       )}
-      {open && (
+      {(open || coverage.state !== 'full') && (
         <p className="turn-diff-note muted">
-          Compared folder snapshots. Edits made by you or another session during this turn may be
-          included.
-          {item.truncated ? ' The file list is incomplete; additional changes may be omitted.' : ''}
+          {coverage.state === 'full'
+            ? 'Full snapshot coverage of tracked and non-ignored files. '
+            : ''}
+          {!unavailable &&
+            'Compared folder snapshots. Edits made by you or another session during this turn may be included.'}
+          {coverage.state !== 'full' &&
+            ` Coverage ${coverage.state}: ${coverage.reason ?? 'Some changes may be missing.'}`}
         </p>
       )}
       {confirming && (
         <div className="turn-undo-confirm" role="group" aria-label="Undo these changes">
           <span>
-            {count === 1
-              ? 'Put this file back the way it was before the turn?'
-              : `Put these ${count} files back the way they were before the turn?`}{' '}
-            Staged changes and commits stay as they are. This restores the recorded folder
-            differences, including any edits made by other sessions during the turn.
+            Put the recorded folder changes back the way they were before the turn? Staged changes
+            and commits stay as they are. This restores the recorded folder differences, including
+            any edits made by you or other sessions during the turn.
+            {coverage.state !== 'full' &&
+              ' Coverage is incomplete; some changes may be missing from the list.'}
           </span>
           <Button
             variant="app"

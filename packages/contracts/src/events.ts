@@ -435,6 +435,13 @@ export const SessionEvent = z.discriminatedUnion('type', [
     before: z.string(),
     after: z.string(),
     files: z.array(TurnChangedFile),
+    /** Older events may omit coverage. */
+    coverage: z
+      .object({
+        state: z.enum(['full', 'skipped', 'truncated', 'expired']),
+        reason: z.string().optional(),
+      })
+      .optional(),
     /** More files changed than are listed. */
     truncated: z.boolean().optional(),
   }),
