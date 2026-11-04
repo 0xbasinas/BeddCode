@@ -103,6 +103,7 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
     let status: ProviderStatus = 'ready'
     try {
       const v = await runCommand(exe, ['--version'], { env: runEnv })
+      if (v.code !== 0) throw new Error('Claude version check failed')
       version = /\d+\.\d+\.\d+/.exec(v.stdout)?.[0]
       // `auth status` only reads local credentials; it does not start a session.
       const auth = await runCommand(exe, ['auth', 'status'], { env: runEnv })

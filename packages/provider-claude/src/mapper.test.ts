@@ -11,6 +11,25 @@ function mapAll(messages: unknown[]) {
 }
 
 describe('ClaudeEventMapper', () => {
+  it('reports rejected subscription rate limits but ignores allowed warnings', () => {
+    const mapper = new ClaudeEventMapper('s1', { now: () => 1 })
+    expect(
+      mapper.map(msg({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning' } })),
+    ).toEqual([])
+    expect(
+      mapper.map(
+        msg({
+          type: 'rate_limit_event',
+          rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: 1700000000 },
+        }),
+      ),
+    ).toMatchObject([
+      {
+        type: 'error',
+        message: 'Claude rate limit reached (five hour). Resets at 2023-11-14T22:13:20.000Z.',
+      },
+    ])
+  })
   it('announces the provider session id from the init message', () => {
     const events = mapAll([{ type: 'system', subtype: 'init', session_id: 'abc' }])
     expect(events).toMatchObject([{ type: 'session.provider-session', providerSessionId: 'abc' }])
