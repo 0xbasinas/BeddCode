@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION } from '@beddcode/contracts'
+import { PROTOCOL_VERSION, type WarmPoolSettings } from '@beddcode/contracts'
 import type { HostEntry } from '@beddcode/client-runtime'
 import Constants from 'expo-constants'
 import { router } from 'expo-router'
@@ -7,12 +7,13 @@ import {
   FolderSimple,
   FolderSimplePlus,
   HardDrives,
+  Lightning,
   Plus,
   Robot,
   Trash,
   X,
 } from 'phosphor-react-native'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   Alert,
   Linking,
@@ -202,6 +203,8 @@ function HostCard({ entry }: { entry: HostEntry }) {
         })
       )}
 
+      <HostWarmPool hostKey={entry.key} online={online} epoch={runtime.epoch} />
+
       <HostAlerts hostKey={entry.key} online={online} />
 
       <Pressable style={styles.forget} onPress={forget}>
@@ -211,6 +214,58 @@ function HostCard({ entry }: { entry: HostEntry }) {
         </Text>
       </Pressable>
     </View>
+  )
+}
+
+/** The host's warm pool, read only: it is changed from the computer's own settings. */
+function HostWarmPool({
+  hostKey,
+  online,
+  epoch,
+}: {
+  hostKey: string
+  online: boolean
+  epoch?: number
+}) {
+  const [settings, setSettings] = useState<WarmPoolSettings>()
+  useEffect(() => {
+    if (!online) return
+    let live = true
+    hostRequest(hostKey, 'host.warmPool.get', {})
+      .then((next) => live && setSettings(next))
+      // An older host has no warm pool; the rows stay hidden.
+      .catch(() => live && setSettings(undefined))
+    return () => {
+      live = false
+    }
+  }, [hostKey, online, epoch])
+  if (!settings) return null
+  const details = [
+    ['Pool size', `${settings.size} per agent and project`],
+    ['Memory cap', `${settings.memoryCapMb} MB`],
+    ['Idle timeout', `${settings.idleTimeoutMinutes} min`],
+  ]
+  return (
+    <>
+      <Row>
+        <Icon icon={Lightning} size={18} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text size={13.5}>Warm pool</Text>
+          <Faint size={11.5}>Set on the computer. Agents kept ready for new sessions.</Faint>
+        </View>
+        <Muted size={12.5}>{settings.enabled ? 'On' : 'Off'}</Muted>
+      </Row>
+      {settings.enabled
+        ? details.map(([label, value]) => (
+            <Row key={label}>
+              <Text size={13} style={{ flex: 1, paddingLeft: 30 }}>
+                {label}
+              </Text>
+              <Muted size={12.5}>{value}</Muted>
+            </Row>
+          ))
+        : null}
+    </>
   )
 }
 

@@ -4,6 +4,7 @@ import { spawnProcess, stopProcess } from './process.ts'
 
 /** Line-oriented duplex channel; the real one wraps a child's stdio. */
 export interface Transport {
+  readonly pid?: number
   send(line: string): void
   onLine(handler: (line: string) => void): void
   onClose(handler: () => void): void
@@ -240,6 +241,7 @@ export function spawnTransport(
   })
 
   return {
+    pid: child.pid,
     send: (line) => {
       if (!child.stdin.writable) return
       try {

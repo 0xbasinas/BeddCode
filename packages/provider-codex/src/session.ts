@@ -32,6 +32,8 @@ type Obj = Record<string, unknown>
 export interface CodexSessionDeps {
   transport: Transport
   log: Logger
+  /** An app-server initialized before a conversation was created. */
+  initializedRpc?: JsonRpcClient
   clientVersion?: string
   /** Where custom prompts are read from (defaults to Codex's own folder). */
   promptsDir?: string
@@ -79,7 +81,7 @@ export class CodexSession implements ProviderSession {
     this.model = input.model
     this.effort = input.effort
     this.mapper = new CodexEventMapper(input.sessionId, input.cwd)
-    this.rpc = new JsonRpcClient(deps.transport, deps.log)
+    this.rpc = deps.initializedRpc ?? new JsonRpcClient(deps.transport, deps.log)
     this.rpc.onNotification((method, params) => this.onNotification(method, params))
     this.rpc.onRequest((method, params) => this.onServerRequest(method, params))
     this.rpc.onClose(() => this.fail('The Codex process ended unexpectedly'))
@@ -92,21 +94,17 @@ export class CodexSession implements ProviderSession {
     return this.queue
   }
 
+  started() {
+    return this.ready
+  }
+
   private emit(draft: Draft, turnId?: string) {
     this.queue.push({ ...draft, sessionId: this.sessionId, turnId, at: Date.now() } as SessionEvent)
   }
 
   private async init() {
     try {
-      await this.rpc.request('initialize', {
-        clientInfo: {
-          name: 'beddcode',
-          title: 'BeddCode',
-          version: this.deps.clientVersion ?? '0.0.0',
-        },
-        capabilities: null,
-      })
-      this.rpc.notify('initialized')
+      if (!this.deps.initializedRpc) await initializeCodex(this.rpc, this.deps.clientVersion)
 
       const mode = modeById(this.input.permissionMode)
       const common = {
@@ -483,6 +481,48 @@ export class CodexSession implements ProviderSession {
       this.emit({ type: 'turn.completed', reason: 'error' }, this.currentTurn())
     this.releaseTurns()
     this.queue.close()
+  }
+}
+
+/** Initialize the app-server without creating a thread or installing session callbacks. */
+export async function initializeCodex(rpc: JsonRpcClient, clientVersion = '0.0.0'): Promise<void> {
+  await rpc.request(
+    'initialize',
+    {
+      clientInfo: { name: 'beddcode', title: 'BeddCode', version: clientVersion },
+      capabilities: null,
+    },
+    { timeoutMs: 30_000 },
+  )
+  rpc.notify('initialized')
+}
+
+/** Owns an initialized process until its one permitted handoff to a session. */
+export async function prepareCodexProcess(deps: CodexSessionDeps) {
+  const rpc = new JsonRpcClient(deps.transport, deps.log)
+  let state: 'idle' | 'taken' | 'closed' = 'idle'
+  rpc.onClose(() => {
+    if (state === 'idle') state = 'closed'
+  })
+  try {
+    await initializeCodex(rpc, deps.clientVersion)
+  } catch (error) {
+    state = 'closed'
+    rpc.close()
+    throw error
+  }
+  return {
+    healthy: () => state === 'idle',
+    start(input: StartSessionInput): CodexSession {
+      if (state !== 'idle') throw new Error('Prepared Codex process is no longer available')
+      state = 'taken'
+      return new CodexSession(input, { ...deps, initializedRpc: rpc })
+    },
+    close(): void {
+      if (state !== 'idle') return
+      state = 'closed'
+      rpc.close()
+    },
   }
 }
 

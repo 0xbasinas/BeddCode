@@ -2,6 +2,19 @@ import { describe, expect, it } from 'vitest'
 import { isLoopbackHost, parseServeArgs, sanitizeConfig } from './config.ts'
 
 describe('parseServeArgs', () => {
+  it('passes the optional warm pool setting through from the host file', () => {
+    expect(parseServeArgs([], {}).warmPool?.enabled ?? false).toBe(false)
+    expect(parseServeArgs([], {}, { warmPool: { enabled: true } }).warmPool).toEqual({
+      enabled: true,
+    })
+    expect(sanitizeConfig({ warmPool: { enabled: 'yes' } }, () => {})).toEqual({})
+    expect(
+      sanitizeConfig(
+        { warmPool: { enabled: true, size: 3, memoryCapMb: 5, idleTimeoutMinutes: 20 } },
+        () => {},
+      ),
+    ).toEqual({ warmPool: { enabled: true, size: 3, idleTimeoutMinutes: 20 } })
+  })
   it('defaults to loopback, port 3773 and the safe guard', () => {
     const c = parseServeArgs([], {})
     expect(c).toMatchObject({ port: 3773, host: '127.0.0.1' })

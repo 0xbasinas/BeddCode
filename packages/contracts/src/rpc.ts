@@ -22,6 +22,8 @@ import {
   MetricRecord,
   PairingCode,
   RelaySettings,
+  WarmPoolChange,
+  WarmPoolSettings,
   McpGatewaySettings,
   TailnetStatus,
 } from './hosts.ts'
@@ -391,6 +393,10 @@ export const RpcMethods = {
   'host.pair': { params: z.object({}), result: PairingCode },
   /** The relay that lets devices on other networks reach this host. Loopback connections only. */
   'host.relay.get': { params: z.object({}), result: RelaySettings },
+  /** Idle agent processes kept ready for new sessions; any connection may read them. */
+  'host.warmPool.get': { params: z.object({}), result: WarmPoolSettings },
+  /** Changes them; takes effect at once. Loopback connections only. */
+  'host.warmPool.set': { params: WarmPoolChange, result: WarmPoolSettings },
   'host.mcpGateway.get': { params: z.object({}), result: McpGatewaySettings },
   'host.mcpGateway.set': {
     params: z.object({

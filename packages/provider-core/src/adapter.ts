@@ -81,6 +81,8 @@ export interface ProviderSession {
   readonly sessionId: string
   /** Normalized events for the whole session lifetime. */
   readonly events: AsyncIterable<SessionEvent>
+  /** Settles when the agent finished starting up; absent when the session is ready on return. */
+  started?(): Promise<void>
   prompt(input: PromptInput, signal?: AbortSignal): Promise<void>
   /**
    * Adds a message to the turn that is running, so the agent sees it at its next step. Only
@@ -128,6 +130,20 @@ export interface ProviderMcp {
 /** One adapter per provider kind; instances come from `detect`. */
 export interface ProviderAdapter {
   readonly kind: ProviderInstance['kind']
+  /** Whether this adapter can prepare a process before session inputs are known. */
+  readonly warmPool?:
+    | { supported: false }
+    | {
+        supported: true
+        /** A digest of inputs that affect a prepared process. Never includes secrets in plain text. */
+        fingerprint(): string
+        prepareSession(cwd: string): Promise<{
+          healthy(): Promise<boolean>
+          memoryBytes(): Promise<number | null>
+          activate(input: StartSessionInput): Promise<ProviderSession>
+          close(): Promise<void>
+        }>
+      }
   /** Cheap check: installed? signed in? Must not start sessions that run hooks or MCP servers. */
   detect(): Promise<ProviderInstance[]>
   capabilities(instanceId: string): ProviderCapabilities

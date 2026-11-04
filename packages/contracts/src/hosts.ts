@@ -23,6 +23,39 @@ export const RelaySettings = z.object({
 })
 export type RelaySettings = z.infer<typeof RelaySettings>
 
+/** Limits for the idle agent processes kept ready for new sessions. */
+export const WARM_POOL_LIMITS = {
+  size: { min: 0, max: 4 },
+  memoryCapMb: { min: 64, max: 16384 },
+  idleTimeoutMinutes: { min: 1, max: 1440 },
+} as const
+export const WARM_POOL_DEFAULTS = {
+  enabled: false,
+  size: 1,
+  memoryCapMb: 1024,
+  idleTimeoutMinutes: 10,
+} as const
+
+const warmField = (limit: { min: number; max: number }) =>
+  z.number().int().min(limit.min).max(limit.max)
+
+/** How many idle agent processes the host keeps ready, and how much memory they may use. */
+export const WarmPoolSettings = z.object({
+  /** Off by default: nothing is started ahead of time. */
+  enabled: z.boolean(),
+  /** Idle processes kept ready per agent and project (0 keeps none). */
+  size: warmField(WARM_POOL_LIMITS.size),
+  /** Total memory all idle processes may use together, in megabytes. */
+  memoryCapMb: warmField(WARM_POOL_LIMITS.memoryCapMb),
+  /** An idle process is closed after this many minutes. */
+  idleTimeoutMinutes: warmField(WARM_POOL_LIMITS.idleTimeoutMinutes),
+})
+export type WarmPoolSettings = z.infer<typeof WarmPoolSettings>
+
+/** A change: what is left out keeps its current value. */
+export const WarmPoolChange = WarmPoolSettings.partial()
+export type WarmPoolChange = z.infer<typeof WarmPoolChange>
+
 export const McpGatewaySettings = z.object({
   url: z.string().optional(),
   secretSet: z.boolean(),

@@ -129,6 +129,8 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
   }
 
   return {
+    // The SDK query starts with session-specific resume, permissions, and MCP options.
+    warmPool: { supported: false },
     generateText: (input) =>
       generateSessionText(
         new ClaudeSession(

@@ -8,6 +8,8 @@ import {
   type MetricRecord,
   type RelaySettings,
   type McpGatewaySettings,
+  type WarmPoolChange,
+  type WarmPoolSettings,
   type RpcMethodName,
   type RpcParams,
   type RpcResult,
@@ -118,6 +120,11 @@ export interface AccessServices {
       allowProjectRead?: boolean,
     ): Promise<McpGatewaySettings>
   }
+  /** The idle agent processes kept ready; absent when this host runs without a pool of its own. */
+  warmPool?: {
+    get(): WarmPoolSettings
+    set(change: WarmPoolChange): Promise<WarmPoolSettings>
+  }
   /** Where apps' speed measurements go (kept only while the owner has uploads switched on). */
   telemetry?: { report(platform: MetricPlatform, records: MetricRecord[]): boolean }
 }
@@ -149,6 +156,7 @@ const LOOPBACK_ONLY: ReadonlySet<RpcMethodName> = new Set([
   'host.relay.set',
   'host.mcpGateway.get',
   'host.mcpGateway.set',
+  'host.warmPool.set',
   'devices.list',
   'devices.revoke',
   'editors.open',
@@ -188,6 +196,14 @@ export function createRpcRouter(
     'host.relay.get': async () => {
       if (!access.relay) throw new Error('This host does not support relays')
       return access.relay.get()
+    },
+    'host.warmPool.get': async () => {
+      if (!access.warmPool) throw new Error('This host does not support the warm pool')
+      return access.warmPool.get()
+    },
+    'host.warmPool.set': (p) => {
+      if (!access.warmPool) throw new Error('This host does not support the warm pool')
+      return access.warmPool.set(p)
     },
     'host.mcpGateway.get': async () => {
       if (!access.mcpGateway) throw new Error('This host does not support the MCP gateway')

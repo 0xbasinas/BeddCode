@@ -41,7 +41,7 @@ import { findWebRoot } from './web/static.ts'
 import { TailscaleService } from './network/tailscale.ts'
 import { reachableRoutes } from './network/reachable.ts'
 import { extendUserPath } from './agents/userPath.ts'
-import { SessionManager } from './sessions/sessionManager.ts'
+import { SessionManager, type SessionManagerDeps } from './sessions/sessionManager.ts'
 import { recoverInterruptedTurns, takeInterruptedSessions } from './sessions/recovery.ts'
 import { openEventStore } from './store/eventStore.ts'
 import { startServer } from './transport/server.ts'
@@ -56,9 +56,13 @@ import { createShutdown, watchForCrashes } from './shutdown.ts'
 import type { AgentTools } from './automation/agentTools.ts'
 import { createAutomation } from './automation/index.ts'
 import { GatewayControl } from './mcpGateway/control.ts'
+import { createHostWarmPool } from './sessions/hostWarmPool.ts'
 
 /** Starts the host and keeps running until SIGINT/SIGTERM. */
-export async function runServer(config: ServerConfig): Promise<void> {
+export async function runServer(
+  config: ServerConfig,
+  options: { warmPool?: SessionManagerDeps['warmPool'] } = {},
+): Promise<void> {
   const log = createLogger('server')
   // Before any agent adapter copies process.env: a background host would otherwise miss CLIs
   // installed for the user (see userPath.ts).
@@ -76,9 +80,10 @@ export async function runServer(config: ServerConfig): Promise<void> {
   recordChildrenIn(ledger)
 
   const acpStore = new AcpAgentStore(path.join(home, 'acp-agents.json'))
+  const codex = createCodexAdapter({ log: createLogger('codex') })
   const adapters: ProviderAdapter[] = [
     createClaudeAdapter({ log: createLogger('claude') }),
-    createCodexAdapter({ log: createLogger('codex') }),
+    codex,
     createGrokAdapter({ log: createLogger('grok') }),
     createPiAdapter({ log: createLogger('pi'), sessionDir: path.join(home, 'sessions', 'pi') }),
     createOpenCodeAdapter({ log: createLogger('opencode') }),
@@ -95,11 +100,19 @@ export async function runServer(config: ServerConfig): Promise<void> {
   recoverInterruptedTurns(store)
   const interruptedSessions = takeInterruptedSessions()
   const attachments = new AttachmentStore(path.join(home, 'attachments'))
+  const hostPool = options.warmPool
+    ? undefined
+    : createHostWarmPool(config.warmPool, adapters, attachments.root, (warmPool) =>
+        writeConfigFile({ ...readConfigFile(), warmPool }),
+      )
   const git = new GitService()
   const workspace = {
     git,
     github: new GithubService(),
-    projects: new ProjectStore(path.join(home, 'projects.json'), git),
+    projects: new ProjectStore(path.join(home, 'projects.json'), git, (folder, added) => {
+      if (added) hostPool?.warmProject(folder)
+      else void hostPool?.removeProject(folder)
+    }),
     terminals: new TerminalManager(),
     files: new FileService(),
   }
@@ -119,7 +132,15 @@ export async function runServer(config: ServerConfig): Promise<void> {
     defaultCwd: process.cwd(),
     sessionRoot: path.join(home, 'sessions'),
     previews: new PreviewCache(path.join(home, 'agent-previews.json')),
+    warmPool: options.warmPool ?? hostPool?.pool,
   })
+  if (hostPool)
+    void workspace.projects
+      .list()
+      .then((projects) => {
+        for (const project of projects) hostPool.warmProject(project.path)
+      })
+      .catch((error: unknown) => log.warn('could not warm projects', error))
   const agents = new AgentCatalog(
     acpStore,
     new AcpRegistry(),
@@ -240,6 +261,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
       }),
       relay: relayControl,
       mcpGateway,
+      warmPool: hostPool?.settings,
       telemetry,
       telemetryRecorder: (name, value, tags) => telemetry.record(name, value, tags),
       automation: {
@@ -262,6 +284,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     telemetry.stop()
     automation.stop()
     await sessions.close().catch(() => {})
+    await hostPool?.pool.close()
     killAllChildren()
     store.close()
     recordChildrenIn(undefined)
@@ -289,6 +312,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
       mcpGateway.stop()
       telemetry.stop()
       automation.stop()
+      await hostPool?.pool.close()
       const resumable = await sessions.prepareForRestart()
       if (resumable.length)
         log.info(`saved ${resumable.length} active turn(s) for resume after host update`)

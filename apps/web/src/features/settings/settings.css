@@ -952,3 +952,8 @@
 .orchestration-settings button {
   justify-self: start;
 }
+
+.warm-pool-input {
+  width: calc(96px * var(--ui-scale));
+  text-align: right;
+}

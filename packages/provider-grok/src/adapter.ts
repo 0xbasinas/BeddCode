@@ -212,6 +212,8 @@ export function createGrokAdapter(options: GrokAdapterOptions = {}): ProviderAda
     })
 
   return {
+    // The agent process receives the session permission mode in its launch arguments.
+    warmPool: { supported: false },
     kind: 'grok',
     detect: async () => [await detectInstance()],
     capabilities: () => capabilities,

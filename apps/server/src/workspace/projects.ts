@@ -12,6 +12,7 @@ export class ProjectStore {
   constructor(
     private readonly file: string,
     private readonly git: GitService,
+    private readonly onChange?: (path: string, added: boolean) => void,
   ) {}
 
   private read(): {
@@ -125,6 +126,7 @@ export class ProjectStore {
     const root = info.isRepo ? (info.mainRoot ?? info.root ?? resolved) : resolved
     const paths = this.paths()
     if (!paths.some((p) => samePath(p, root))) this.write([...paths, root])
+    this.onChange?.(root, true)
     return this.describe(root)
   }
 
@@ -146,6 +148,7 @@ export class ProjectStore {
     const next = paths.filter((p) => !samePath(p, folder))
     if (next.length === paths.length) return false
     this.write(next)
+    this.onChange?.(folder, false)
     return true
   }
 

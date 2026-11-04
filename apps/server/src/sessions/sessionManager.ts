@@ -38,6 +38,26 @@ import type { EventStore } from '../store/eventStore.ts'
 import { summarizeUsage } from '../usage/summary.ts'
 import type { GitService } from '../workspace/git.ts'
 import type { AgentTerminals } from '../terminals/agentTerminals.ts'
+import type { WarmPool, WarmResource } from './warmPool.ts'
+
+/** An idle provider process that can bind all session-specific inputs when checked out. */
+export interface WarmSession extends WarmResource {
+  activate(input: StartSessionInput): Promise<ProviderSession>
+}
+
+/** Stable identity for resources that can serve the same provider and settings. */
+export function warmSessionKey(instance: ProviderInstance, input: StartSessionInput): string {
+  return JSON.stringify([
+    instance.kind,
+    instance.id,
+    input.cwd,
+    input.model ?? null,
+    input.effort ?? null,
+    input.permissionMode ?? null,
+    Object.entries(input.config ?? {}).sort(([a], [b]) => a.localeCompare(b)),
+    input.additionalDirectories ?? [],
+  ])
+}
 
 export interface SessionManagerDeps {
   store: EventStore
@@ -67,6 +87,10 @@ export interface SessionManagerDeps {
   ) => SessionMcpServer[]
   /** Shows the commands agents run in the Terminal pane (and runs ACP agents' commands there). */
   agentTerminals?: AgentTerminals
+  /** Optional pool of processes capable of binding a new session at checkout. */
+  warmPool?: Pick<WarmPool<WarmSession>, 'take'>
+  /** Maximum time spent checking out and activating a warm process. */
+  warmPoolTimeoutMs?: number
   /**
    * A running turn whose agent sends nothing for this long, while no tool is running and nothing
    * waits for the user, is stopped with an explanation. Agents on stdio can hang mid-stream
@@ -385,6 +409,7 @@ export class SessionManager {
       throw new Error('A handoff must use the source session folder')
     if (params.projectless && (params.cwd !== undefined || params.workspace?.mode === 'worktree'))
       throw new Error('A session without a project cannot use a project folder or a worktree')
+    const startedAt = now()
     const { adapter, instance } = await this.findInstance(params.instanceId)
     const sessionId = randomUUID()
     const folder =
@@ -425,8 +450,9 @@ export class SessionManager {
     }
 
     let session: ProviderSession
+    let warm = false
     try {
-      session = await adapter.startSession(instance.id, {
+      const input: StartSessionInput = {
         sessionId,
         cwd,
         terminalHost: this.agentTerminal(sessionId, cwd, adapter, instance, params.title),
@@ -445,7 +471,18 @@ export class SessionManager {
           params.designTools,
           params,
         ),
-      })
+      }
+      const reused = await this.takeWarmSession(instance, input)
+      warm = reused !== null
+      session = reused ?? (await adapter.startSession(instance.id, input))
+      // Starting is async inside the provider; a failure is reported through its events.
+      // Wait at most 20 s so a stuck start never blocks creating the session.
+      const ready = session.started?.().catch(() => {})
+      if (ready) {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        await Promise.race([ready, new Promise((r) => (timer = setTimeout(r, 20_000)))])
+        clearTimeout(timer)
+      }
     } catch (err) {
       // Do not leave an unused worktree behind when the agent could not start.
       if (worktree) await this.deps.git.removeWorktree(cwd).catch(() => false)
@@ -495,6 +532,7 @@ export class SessionManager {
       computerTools:
         (params.computerTools && this.deps.agentToolServers !== undefined) || undefined,
       linearTools: (params.linearTools && this.deps.agentToolServers !== undefined) || undefined,
+      start: { warm, ms: Math.max(0, Math.round(now() - startedAt)) },
     })
     if (source?.type === 'session.created') {
       this.record({
@@ -509,6 +547,53 @@ export class SessionManager {
     this.announceModes(sessionId, adapter, instance.id, params.permissionMode)
     void this.pump(sessionId, session)
     return { sessionId }
+  }
+
+  private async takeWarmSession(
+    instance: ProviderInstance,
+    input: StartSessionInput,
+  ): Promise<ProviderSession | null> {
+    const pool = this.deps.warmPool
+    if (!pool) return null
+    let abandoned = false
+    let checkedOut: WarmSession | null = null
+    let disposing = false
+    const dispose = () => {
+      if (checkedOut && !disposing) {
+        disposing = true
+        const resource = checkedOut
+        void Promise.resolve()
+          .then(() => resource.close())
+          .catch(() => {})
+      }
+    }
+    const attempt = (async () => {
+      const resource = await pool.take(warmSessionKey(instance, input))
+      if (!resource) return null
+      checkedOut = resource
+      if (abandoned) {
+        dispose()
+        return null
+      }
+      try {
+        const session = await resource.activate(input)
+        if (abandoned) {
+          await session.close().catch(() => {})
+          return null
+        }
+        return session
+      } catch (err) {
+        dispose()
+        throw err
+      }
+    })()
+    try {
+      return await withTimeout(attempt, this.deps.warmPoolTimeoutMs ?? 3_000, 'warm pool')
+    } catch {
+      abandoned = true
+      dispose()
+      return null
+    }
   }
 
   private async scratchFolder(name: string): Promise<string> {
