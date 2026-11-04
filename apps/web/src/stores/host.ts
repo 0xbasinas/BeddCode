@@ -614,10 +614,15 @@ export async function setConfigOption(
 }
 
 /** Starts a session that continues this one, keeping its first `throughTurn` turns (all if omitted). */
-export async function forkSession(sessionId: string, throughTurn?: number): Promise<string> {
+export async function forkSession(
+  sessionId: string,
+  throughTurn?: number,
+  side?: boolean,
+): Promise<string> {
   const { sessionId: forked } = await sessionRequest(sessionId, 'sessions.fork', {
     sessionId,
     throughTurn,
+    side,
   })
   createdOn.set(forked, hostKeyOfSession(sessionId) ?? LOCAL_HOST_KEY)
   return forked

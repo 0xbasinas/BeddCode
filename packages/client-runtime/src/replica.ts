@@ -211,6 +211,7 @@ export interface SessionView {
   forkedFrom?: { sessionId: string; title?: string }
   handoffFrom?: { sessionId: string; title?: string }
   handoffsTo?: { sessionId: string; agent: string; reason?: string; at: number }[]
+  sideThread?: boolean
   /** Started outside BeddCode and brought in. */
   imported?: boolean
   /** Modes reported by the agent for this session, when it reports any. */
@@ -345,6 +346,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       config: [],
       forkedFrom: e.forkedFrom,
       handoffFrom: e.handoffFrom,
+      sideThread: e.sideThread,
       imported: e.imported,
       parent: e.parent,
       schedule: e.schedule,

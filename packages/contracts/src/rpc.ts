@@ -671,6 +671,7 @@ export const RpcMethods = {
       /** Keep the first N turns; omit to keep everything. */
       throughTurn: z.number().int().min(1).optional(),
       title: z.string().optional(),
+      side: z.boolean().optional(),
     }),
     result: z.object({ sessionId: z.string() }),
   },

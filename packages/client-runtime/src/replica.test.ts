@@ -520,7 +520,12 @@ describe('replica: queue, plan, questions and agent extras', () => {
 
   it('carries a plan on an approval and the fork/import markers on a session', () => {
     const s = fold([
-      { ...created, forkedFrom: { sessionId: 'orig', title: 'Original' }, imported: true },
+      {
+        ...created,
+        forkedFrom: { sessionId: 'orig', title: 'Original' },
+        imported: true,
+        sideThread: true,
+      },
       {
         type: 'approval.requested',
         requestId: 'a1',
@@ -531,6 +536,7 @@ describe('replica: queue, plan, questions and agent extras', () => {
     ])
     const view = s.sessions.s1!
     expect(view.forkedFrom).toEqual({ sessionId: 'orig', title: 'Original' })
+    expect(view.sideThread).toBe(true)
     expect(view.imported).toBe(true)
     expect(view.items[0]).toMatchObject({ kind: 'approval', plan: '1. Do it' })
   })

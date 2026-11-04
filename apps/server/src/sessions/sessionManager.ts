@@ -2015,6 +2015,9 @@ export class SessionManager {
 
   /** A new session that continues an existing one, optionally only its first `throughTurn` turns. */
   async fork(params: RpcParams<'sessions.fork'>): Promise<{ sessionId: string }> {
+    if (params.side && this.isBusy(params.sessionId)) {
+      throw new Error('Wait for the current turn to finish before opening a side thread')
+    }
     const events = this.deps.store.readSession(params.sessionId)
     const created = events.find((e) => e.event.type === 'session.created')?.event
     if (created?.type !== 'session.created') throw new Error(`Unknown session: ${params.sessionId}`)
@@ -2027,6 +2030,13 @@ export class SessionManager {
     const { adapter, instance } = await this.findInstance(created.instanceId)
     if (!adapter.forkHistory || !adapter.capabilities(instance.id).fork) {
       throw new Error(`${instance.label} cannot fork a conversation`)
+    }
+
+    if (
+      params.side &&
+      !adapter.capabilities(instance.id).permissionModes.some((m) => m.id === 'read-only')
+    ) {
+      throw new Error(`${instance.label} does not support read-only side threads`)
     }
 
     // Keep everything up to the end of the chosen turn.
@@ -2051,7 +2061,18 @@ export class SessionManager {
       ...created,
       sessionId,
       at: Date.now(),
-      title: params.title ?? `${created.title} (fork)`,
+      title: params.title ?? `${created.title} (${params.side ? 'side thread' : 'fork'})`,
+      sideThread: params.side || undefined,
+      permissionMode: params.side ? 'read-only' : created.permissionMode,
+      ...(params.side
+        ? {
+            agentTools: false,
+            browserTools: false,
+            designTools: false,
+            computerTools: false,
+            linearTools: false,
+          }
+        : {}),
       forkedFrom: { sessionId: params.sessionId, title: created.title },
       imported: undefined,
     })
@@ -2080,7 +2101,11 @@ export class SessionManager {
       sessionId,
       adapter,
       instance.id,
-      lastModes?.type === 'session.modes' ? lastModes.currentModeId : created.permissionMode,
+      params.side
+        ? 'read-only'
+        : lastModes?.type === 'session.modes'
+          ? lastModes.currentModeId
+          : created.permissionMode,
     )
     return { sessionId }
   }
