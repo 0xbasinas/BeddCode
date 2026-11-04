@@ -30,6 +30,8 @@ export function SwitchAgent({
   )
   const [handoff, setHandoff] = useState('')
   const [stop, setStop] = useState(false)
+  // With review on, Switch first opens the note for editing; only its own button sends it.
+  const [reviewing, setReviewing] = useState(false)
   const [error, setError] = useState('')
   const [sending, setSending] = useState(false)
   const [loadingPreview, setLoadingPreview] = useState(false)
@@ -50,6 +52,7 @@ export function SwitchAgent({
     setTarget(match.id)
     setModel('')
     setStop(false)
+    setReviewing(false)
     setError('')
     setHandoff(
       handoffPrompt(session, {
@@ -100,6 +103,10 @@ export function SwitchAgent({
     setCompletion(undefined)
   }
   const submit = async () => {
+    if (review && !reviewing) {
+      setReviewing(true)
+      return
+    }
     setSending(true)
     setError('')
     try {
@@ -109,7 +116,7 @@ export function SwitchAgent({
         model: model || undefined,
         stop,
         pendingMessage: completion ? undefined : pendingMessage() || undefined,
-        handoff: review ? handoff : undefined,
+        handoff: reviewing ? handoff : undefined,
       })
       if (!result.ok) throw new Error(result.error ?? 'Could not switch agent')
       completion?.resolve()
@@ -141,35 +148,39 @@ export function SwitchAgent({
           }}
         >
           <div className="session-panel-heading">Switch agent</div>
-          <label>
-            Agent{' '}
-            <select
-              value={target}
-              onChange={(e) => {
-                setTarget(e.target.value)
-                setModel('')
-              }}
-            >
-              {targets.map(({ provider: p, ready, reason }) => (
-                <option key={p.id} value={p.id} disabled={!ready}>
-                  {ready ? p.label : `${p.label} (${reason})`}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            {' '}
-            Model{' '}
-            <select value={model} onChange={(e) => setModel(e.target.value)}>
-              <option value="">Default</option>
-              {selected?.capabilities.models?.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {busy && (
+          {!reviewing && (
+            <>
+              <label>
+                Agent{' '}
+                <select
+                  value={target}
+                  onChange={(e) => {
+                    setTarget(e.target.value)
+                    setModel('')
+                  }}
+                >
+                  {targets.map(({ provider: p, ready, reason }) => (
+                    <option key={p.id} value={p.id} disabled={!ready}>
+                      {ready ? p.label : `${p.label} (${reason})`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {' '}
+                Model{' '}
+                <select value={model} onChange={(e) => setModel(e.target.value)}>
+                  <option value="">Default</option>
+                  {selected?.capabilities.models?.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
+          {!reviewing && busy && (
             <p>
               A turn is running. Wait for it to finish, or stop it to switch.{' '}
               <label>
@@ -178,33 +189,44 @@ export function SwitchAgent({
               </label>
             </p>
           )}
-          <p>
-            <label>
-              <input
-                type="checkbox"
-                checked={review}
-                onChange={(e) => {
-                  setReview(e.target.checked)
-                  localStorage.setItem('review-switch-handoff', String(e.target.checked))
-                }}
-              />{' '}
-              Review handoff before sending
-            </label>
-          </p>
-          {review && (
-            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-small)' }}>
-              The note is sent as written, with the next message. Sections you delete are left out.
-            </p>
+          {!reviewing && (
+            <>
+              <p>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={review}
+                    onChange={(e) => {
+                      setReview(e.target.checked)
+                      localStorage.setItem('review-switch-handoff', String(e.target.checked))
+                    }}
+                  />{' '}
+                  Review handoff before sending
+                </label>
+              </p>
+              {review && (
+                <p style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-small)' }}>
+                  The note is sent as written, with the next message. Sections you delete are left
+                  out.
+                </p>
+              )}
+            </>
           )}
-          {review && (
-            <textarea
-              aria-label="Handoff context"
-              disabled={loadingPreview}
-              value={handoff}
-              onChange={(e) => setHandoff(e.target.value)}
-              rows={10}
-              style={{ width: '100%' }}
-            />
+          {reviewing && (
+            <>
+              <p style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-small)' }}>
+                The note is sent as written, with the next message. Sections you delete are left
+                out.
+              </p>
+              <textarea
+                aria-label="Handoff context"
+                disabled={loadingPreview}
+                value={handoff}
+                onChange={(e) => setHandoff(e.target.value)}
+                rows={10}
+                style={{ width: '100%' }}
+              />
+            </>
           )}
           {error && (
             <p role="alert" className="composer-error">
@@ -214,11 +236,18 @@ export function SwitchAgent({
           <button onClick={cancel} disabled={sending}>
             Cancel
           </button>{' '}
+          {reviewing && (
+            <>
+              <button onClick={() => setReviewing(false)} disabled={sending}>
+                Back
+              </button>{' '}
+            </>
+          )}
           <button
             onClick={() => void submit()}
             disabled={sending || loadingPreview || (busy && !stop)}
           >
-            Switch
+            {review && !reviewing ? 'Review handoff' : reviewing ? 'Send and switch' : 'Switch'}
           </button>
         </div>
       )}

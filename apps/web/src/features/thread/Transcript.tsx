@@ -1,4 +1,4 @@
-import { elapsedLabel, parseHandoffNote } from '@beddcode/client-runtime'
+import { agentLabel, elapsedLabel, parseHandoffNote } from '@beddcode/client-runtime'
 import {
   memo,
   startTransition,
@@ -27,6 +27,7 @@ import type { TranscriptItem } from '@beddcode/client-runtime'
 import { Markdown } from '../../ui/Markdown.tsx'
 import { INLINE_PATCH_LINES, PatchView } from '../../ui/PatchView.tsx'
 import { createBlockBuilder, totalChanges, type EditedFile } from '@beddcode/client-runtime'
+import { useHostStore } from '../../stores/host.ts'
 import { folderName } from '../../ui/format.ts'
 import { FileIcon } from '../files/FileIcon.tsx'
 import { ApprovalCard } from './ApprovalCard.tsx'
@@ -419,14 +420,7 @@ function ItemView({
     case 'compaction':
       return <CompactionRow item={item} />
     case 'switch':
-      return (
-        <details className="turn-notice handoff-marker">
-          <summary>
-            Switched from {item.from} to {item.to}
-          </summary>
-          <HandoffNote note={item.handoff} />
-        </details>
-      )
+      return <SwitchMarker item={item} hostKey={hostKey} />
     case 'notice':
       return (
         <div className="turn-notice">
@@ -547,6 +541,24 @@ function ReplyText({
 const tokens = (n: number) => (n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n))
 
 /** A line across the thread where the agent shrank its conversation to make room. */
+function SwitchMarker({
+  item,
+  hostKey,
+}: {
+  item: Extract<Item, { kind: 'switch' }>
+  hostKey?: string
+}) {
+  const providers = useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.providers : undefined))
+  return (
+    <details className="turn-notice handoff-marker">
+      <summary>
+        Switched from {agentLabel(providers, item.from)} to {agentLabel(providers, item.to)}
+      </summary>
+      <HandoffNote note={item.handoff} />
+    </details>
+  )
+}
+
 function CompactionRow({ item }: { item: Extract<Item, { kind: 'compaction' }> }) {
   const running = item.state === 'running'
   const sizes =

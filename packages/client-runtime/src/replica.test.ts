@@ -645,3 +645,41 @@ it('shows the target agent model and effort after a switch, and restores them on
     fold([created, { type: 'session.switched', instanceId: 'other', handoff: 'h' }]).sessions.s1,
   ).toMatchObject({ instanceId: 'other', model: undefined, effort: undefined })
 })
+
+it('drops the previous agent options, modes and commands when the session is switched', () => {
+  const state = fold([
+    created,
+    { type: 'session.model', model: 'claude-sonnet-5-5', effort: 'high' },
+    { type: 'session.switched', instanceId: 'other', handoff: 'h' },
+    { type: 'session.modes', modes: [{ id: 'plan', label: 'Plan' }], currentModeId: 'plan' },
+    { type: 'session.commands', commands: [{ name: 'review' }] },
+    {
+      type: 'session.config',
+      options: [
+        {
+          id: 'model',
+          name: 'Model',
+          type: 'select',
+          value: 'grok-4.7',
+          choices: [{ value: 'grok-4.7', name: 'Grok 4.7' }],
+        },
+      ],
+    },
+    {
+      type: 'session.switched',
+      instanceId: 'fake',
+      model: 'claude-sonnet-5-5',
+      effort: 'high',
+      handoff: 'h',
+    },
+  ]).sessions.s1
+  expect(state).toMatchObject({
+    instanceId: 'fake',
+    model: 'claude-sonnet-5-5',
+    effort: 'high',
+    config: [],
+    modes: [],
+    commands: [],
+    currentModeId: undefined,
+  })
+})

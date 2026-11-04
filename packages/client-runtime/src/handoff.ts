@@ -122,14 +122,34 @@ export function handoffPrompt(view: SessionView, options: HandoffOptions = {}): 
         ?.trim(),
     }
   }
+  // Agents report absolute paths and git reports relative ones; one file gets one line.
+  const relative = (path: string) => {
+    const root = view.cwd.replace(/\/+$/, '')
+    const stripped = root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
+    return stripped.replace(/^\.\//, '')
+  }
+  const put = (summary: FileSummary) => {
+    const known = files.get(summary.path)
+    files.set(
+      summary.path,
+      known
+        ? {
+            path: summary.path,
+            counts: summary.counts ?? known.counts,
+            hunk: summary.hunk ?? known.hunk,
+          }
+        : summary,
+    )
+  }
+  const touchedRelative = new Set([...touched].map(relative))
   for (const path of touched) {
     const counts = itemCounts.get(path)
-    files.set(path, summarize({ path, ...counts }))
+    put({ ...summarize({ path: relative(path), ...counts }) })
   }
   for (const file of options.files ?? []) {
-    if (delta && touched.size > 0 && !touched.has(file.path)) continue
-    if (delta && touched.size === 0) continue
-    files.set(file.path, summarize(file))
+    const path = relative(file.path)
+    if (delta && !touchedRelative.has(path)) continue
+    put(summarize({ ...file, path }))
   }
   const fileList = [...files.values()]
 

@@ -1,4 +1,5 @@
 import {
+  agentLabel,
   isAgentTool,
   buildBlocks,
   createBlockBuilder,
@@ -34,6 +35,7 @@ import { ActivityIndicator, Animated, FlatList, Pressable, StyleSheet, View } fr
 
 import { colors, radius } from '@/theme/tokens'
 import { AttachmentImage, isImageName } from '@/features/composer/AttachmentImage'
+import { useHostStore } from '@/host/store'
 import { Message } from './Message'
 import { Diffstat } from '@/ui/Diffstat'
 import { FadeIn } from '@/ui/FadeIn'
@@ -380,7 +382,7 @@ const Row = memo(
         case 'question':
           return <QuestionCard item={item} onAnswer={onAnswer} />
         case 'switch':
-          return <SwitchMarker item={item} />
+          return <SwitchMarker item={item} hostKey={hostKey} />
         case 'notice':
           return (
             <Muted size={12.5} style={{ textAlign: 'center' }}>
@@ -597,8 +599,15 @@ const styles = StyleSheet.create({
   },
 })
 
-function SwitchMarker({ item }: { item: { from: string; to: string; handoff: string } }) {
+function SwitchMarker({
+  item,
+  hostKey,
+}: {
+  item: { from: string; to: string; handoff: string }
+  hostKey?: string
+}) {
   const [open, setOpen] = useState(false)
+  const providers = useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.providers : undefined))
   return (
     <Pressable
       onPress={() => setOpen(!open)}
@@ -606,7 +615,7 @@ function SwitchMarker({ item }: { item: { from: string; to: string; handoff: str
       accessibilityState={{ expanded: open }}
     >
       <Muted size={12.5} style={{ textAlign: 'center' }}>
-        Switched from {item.from} to {item.to}
+        Switched from {agentLabel(providers, item.from)} to {agentLabel(providers, item.to)}
       </Muted>
       {open
         ? parseHandoffNote(item.handoff).map((part, i) => (

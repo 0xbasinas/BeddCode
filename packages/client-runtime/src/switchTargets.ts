@@ -42,3 +42,8 @@ export function findSwitchTarget(
   if (!match.ready) return { error: `${match.provider.label} is not ready: ${match.reason}` }
   return { provider: match.provider }
 }
+
+/** An agent's display name (e.g. "Claude Code"); an unknown id is shown as is. */
+export function agentLabel(providers: ProviderInstance[] | undefined, id: string): string {
+  return providers?.find((p) => p.id === id)?.label ?? id
+}

@@ -444,6 +444,12 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.instanceId = e.instanceId
       next.model = e.model
       next.effort = e.effort
+      // Options, modes and commands belong to the agent that offered them; the new one announces
+      // its own, and until then the composer must not show the old agent's.
+      next.config = []
+      next.modes = []
+      next.currentModeId = undefined
+      next.commands = []
       break
     }
     case 'session.notice':

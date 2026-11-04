@@ -62,6 +62,29 @@ describe('turn changes in the replica', () => {
   })
 })
 
+describe('handoffPrompt changed files', () => {
+  it('lists a file once when the agent reports it absolute and git relative', () => {
+    const view = fold([
+      { ...session('s1', 'Tests'), cwd: '/tmp/repo' },
+      { type: 'message.delta', sessionId: 's1', role: 'user', text: 'Add a test' },
+      {
+        type: 'diff',
+        sessionId: 's1',
+        path: '/tmp/repo/sum.test.mjs',
+        added: 1,
+        removed: 0,
+        patch: '',
+      },
+    ]).sessions.s1!
+    const note = handoffPrompt(view, {
+      files: [{ path: 'sum.test.mjs', patch: '@@ -2,3 +2,4 @@ ctx\n+x' }],
+    })
+    expect(note.match(/sum\.test\.mjs/g)).toHaveLength(1)
+    expect(note).toContain('- sum.test.mjs (+1/-0) @@ -2,3 +2,4 @@ ctx')
+    expect(note).not.toContain('/tmp/repo/sum.test.mjs')
+  })
+})
+
 describe('handoffPrompt', () => {
   const view = (): SessionView =>
     fold([
