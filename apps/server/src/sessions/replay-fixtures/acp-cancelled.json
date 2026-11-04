@@ -1,0 +1,5 @@
+{
+  "initialize": { "result": { "protocolVersion": 1, "agentCapabilities": {} } },
+  "session/new": { "result": { "sessionId": "fixture-acp" } },
+  "session/prompt": { "result": { "stopReason": "cancelled" } }
+}
