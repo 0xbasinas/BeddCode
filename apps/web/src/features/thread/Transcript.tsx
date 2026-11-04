@@ -1,4 +1,5 @@
-import { agentLabel, elapsedLabel, parseHandoffNote } from '@beddcode/client-runtime'
+import { elapsedLabel } from '@beddcode/client-runtime'
+import { SwitchMarkerView } from './SwitchMarker.tsx'
 import {
   memo,
   startTransition,
@@ -435,20 +436,6 @@ function ItemView({
   }
 }
 
-/** The note that was sent on a switch, one labelled block per section. */
-function HandoffNote({ note }: { note: string }) {
-  return (
-    <div className="handoff-note">
-      {parseHandoffNote(note).map((part, i) => (
-        <section key={i}>
-          {part.title && <h4>{part.title}</h4>}
-          <p>{part.body}</p>
-        </section>
-      ))}
-    </div>
-  )
-}
-
 function ReplyText({
   item,
   live,
@@ -540,7 +527,6 @@ function ReplyText({
 
 const tokens = (n: number) => (n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n))
 
-/** A line across the thread where the agent shrank its conversation to make room. */
 function SwitchMarker({
   item,
   hostKey,
@@ -549,14 +535,7 @@ function SwitchMarker({
   hostKey?: string
 }) {
   const providers = useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.providers : undefined))
-  return (
-    <details className="turn-notice handoff-marker">
-      <summary>
-        Switched from {agentLabel(providers, item.from)} to {agentLabel(providers, item.to)}
-      </summary>
-      <HandoffNote note={item.handoff} />
-    </details>
-  )
+  return <SwitchMarkerView item={item} providers={providers} />
 }
 
 function CompactionRow({ item }: { item: Extract<Item, { kind: 'compaction' }> }) {

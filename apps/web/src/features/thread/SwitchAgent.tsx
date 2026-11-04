@@ -7,7 +7,33 @@ import {
   type SessionView,
 } from '@beddcode/client-runtime'
 import type { ProviderInstance } from '@beddcode/contracts'
+import { Button } from '@/components/ui/button'
 import { hostRequest } from '../../stores/host.ts'
+
+/** The switch request; only a reviewed note overrides the handoff the host builds. */
+export function switchRequest(args: {
+  sessionId: string
+  instanceId: string
+  model: string
+  stop: boolean
+  pendingMessage?: string
+  reviewing: boolean
+  handoff: string
+}) {
+  return {
+    sessionId: args.sessionId,
+    instanceId: args.instanceId,
+    model: args.model || undefined,
+    stop: args.stop,
+    pendingMessage: args.pendingMessage || undefined,
+    handoff: args.reviewing ? args.handoff : undefined,
+  }
+}
+
+/** The label of the footer's primary action for the current step. */
+export function primaryLabel(review: boolean, reviewing: boolean) {
+  return review && !reviewing ? 'Review handoff' : reviewing ? 'Send and switch' : 'Switch'
+}
 
 export function SwitchAgent({
   session,
@@ -122,14 +148,19 @@ export function SwitchAgent({
     setSending(true)
     setError('')
     try {
-      const result = await hostRequest(hostKey, 'session.switchAgent', {
-        sessionId: session.id,
-        instanceId: target,
-        model: model || undefined,
-        stop,
-        pendingMessage: completion ? undefined : pendingMessage() || undefined,
-        handoff: reviewing ? handoff : undefined,
-      })
+      const result = await hostRequest(
+        hostKey,
+        'session.switchAgent',
+        switchRequest({
+          sessionId: session.id,
+          instanceId: target,
+          model,
+          stop,
+          pendingMessage: completion ? undefined : pendingMessage(),
+          reviewing,
+          handoff,
+        }),
+      )
       if (!result.ok) throw new Error(result.error ?? 'Could not switch agent')
       completion?.resolve()
       setCompletion(undefined)
@@ -245,22 +276,28 @@ export function SwitchAgent({
               {error}
             </p>
           )}
-          <button onClick={cancel} disabled={sending}>
-            Cancel
-          </button>{' '}
-          {reviewing && (
-            <>
-              <button onClick={() => setReviewing(false)} disabled={sending}>
+          <div className="switch-agent-footer">
+            <Button type="button" variant="ghost" onClick={cancel} disabled={sending}>
+              Cancel
+            </Button>
+            {reviewing && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setReviewing(false)}
+                disabled={sending}
+              >
                 Back
-              </button>{' '}
-            </>
-          )}
-          <button
-            onClick={() => void submit()}
-            disabled={sending || loadingPreview || (busy && !stop)}
-          >
-            {review && !reviewing ? 'Review handoff' : reviewing ? 'Send and switch' : 'Switch'}
-          </button>
+              </Button>
+            )}
+            <Button
+              type="button"
+              onClick={() => void submit()}
+              disabled={sending || loadingPreview || (busy && !stop)}
+            >
+              {primaryLabel(review, reviewing)}
+            </Button>
+          </div>
         </div>
       )}
     </>
