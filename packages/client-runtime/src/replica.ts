@@ -98,7 +98,10 @@ export type TranscriptItem =
   | { kind: 'notice'; id: string; message: string }
   | { kind: 'error'; id: string; message: string }
 
+export type BoardStage = 'pending' | 'in-progress' | 'review' | 'done'
+
 export interface SessionView {
+  boardStage?: BoardStage
   notes?: { text: string; version: number }
   id: string
   title: string
@@ -333,6 +336,10 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       break
     case 'session.notes':
       next.notes = { text: e.text, version: e.version }
+      next.updatedAt = current.updatedAt
+      break
+    case 'session.board-stage':
+      next.boardStage = e.stage
       next.updatedAt = current.updatedAt
       break
     case 'session.done':

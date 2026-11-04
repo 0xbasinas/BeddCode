@@ -1,5 +1,5 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router'
-import { CalendarClock, House, PenTool, Settings } from 'lucide-react'
+import { CalendarClock, House, PenTool, Settings, Columns3 } from 'lucide-react'
 import './leftRail.css'
 
 /** A Linear-style mark (a ring with diagonal bands); lucide has no brand icons. */
@@ -27,6 +27,7 @@ export function LeftRail() {
   const path = useRouterState({ select: (s) => s.location.pathname })
   const onHome = path === '/'
   const onSchedules = path === '/schedules'
+  const onBoard = path === '/board'
   const onDesign = path === '/design'
   const onLinear = path === '/linear'
   return (
@@ -41,6 +42,16 @@ export function LeftRail() {
           onClick={() => void navigate({ to: '/' })}
         >
           <House size={18} />
+        </button>
+        <button
+          type="button"
+          className={`rail-item ${onBoard ? 'on' : ''}`}
+          title="Task board"
+          aria-label="Task board"
+          aria-current={onBoard ? 'page' : undefined}
+          onClick={() => void navigate({ to: '/board' })}
+        >
+          <Columns3 size={18} />
         </button>
         <button
           type="button"

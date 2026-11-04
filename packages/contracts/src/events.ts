@@ -133,6 +133,11 @@ export const SessionEvent = z.discriminatedUnion('type', [
     text: z.string().max(100_000),
     version: z.number().int().positive(),
   }),
+  /** The user's task board stage, independent of execution status. */
+  Base.extend({
+    type: z.literal('session.board-stage'),
+    stage: z.enum(['pending', 'in-progress', 'review', 'done']),
+  }),
   /** The user moved the session to, or back out of, the sidebar's Done section. */
   Base.extend({ type: z.literal('session.done'), done: z.boolean() }),
   /** A session started by another agent says how its task ended (its report_result tool). */

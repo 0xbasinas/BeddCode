@@ -5,6 +5,7 @@ import {
   createRoute,
   createRouter,
 } from '@tanstack/react-router'
+import { BoardPage } from './features/board/BoardPage.tsx'
 import { AppShell } from './features/shell/AppShell.tsx'
 import { NewSession } from './features/newsession/NewSession.tsx'
 import { ThreadView } from './features/thread/ThreadView.tsx'
@@ -91,10 +92,17 @@ const linearRoute = createRoute({
   component: LinearPage,
 })
 
+const boardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/board',
+  component: BoardPage,
+})
+
 // Hash history so the Electron build works when loaded from file://.
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     indexRoute,
+    boardRoute,
     sessionRoute,
     designRoute,
     linearRoute,

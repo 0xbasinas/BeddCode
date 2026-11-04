@@ -953,6 +953,11 @@ export class SessionManager {
     this.deps.store.append({ type: 'session.renamed', sessionId, at: Date.now(), title })
   }
 
+  setBoardStage(sessionId: string, stage: 'pending' | 'in-progress' | 'review' | 'done'): void {
+    if (!this.createdEvent(sessionId)) throw new Error(`Unknown session: ${sessionId}`)
+    this.deps.store.append({ type: 'session.board-stage', sessionId, at: Date.now(), stage })
+  }
+
   /** Moves a session to the Done section (or back); only the sidebar looks at it. */
   setDone(sessionId: string, done: boolean): void {
     if (!this.createdEvent(sessionId)) throw new Error(`Unknown session: ${sessionId}`)

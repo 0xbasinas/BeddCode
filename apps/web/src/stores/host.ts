@@ -598,6 +598,13 @@ export async function interrupt(sessionId: string, includeChildren?: boolean) {
   })
 }
 
+export async function setSessionBoardStage(
+  sessionId: string,
+  stage: SessionView['boardStage'] & string,
+) {
+  await sessionRequest(sessionId, 'sessions.setBoardStage', { sessionId, stage })
+}
+
 /** Moves a session into the sidebar's Done section, or back out of it. */
 export async function setSessionDone(sessionId: string, done: boolean) {
   await sessionRequest(sessionId, 'sessions.setDone', { sessionId, done })
