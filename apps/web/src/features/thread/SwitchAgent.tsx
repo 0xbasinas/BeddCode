@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   defaultSwitchTarget,
   findSwitchTarget,
@@ -35,6 +35,7 @@ export function SwitchAgent({
   const [error, setError] = useState('')
   const [sending, setSending] = useState(false)
   const [loadingPreview, setLoadingPreview] = useState(false)
+  const previewRequest = useRef(0)
   const [completion, setCompletion] = useState<{ resolve(): void; reject(error: Error): void }>()
   const busy = session.status === 'running' || session.status === 'needs-you'
   const selected = targets.find((t) => t.ready && t.provider.id === target)?.provider
@@ -62,19 +63,29 @@ export function SwitchAgent({
     )
     setCompletion(callbacks)
     setOpen(true)
+    loadPreview(match.id, !callbacks)
+  }
+  // The note names the target agent, so it is rebuilt for whichever agent is picked when review opens.
+  const loadPreview = (instanceId: string, withPending: boolean) => {
+    const request = ++previewRequest.current
     setLoadingPreview(true)
     void hostRequest(hostKey, 'session.switchAgent', {
       sessionId: session.id,
-      instanceId: match.id,
-      pendingMessage: callbacks ? undefined : pendingMessage() || undefined,
+      instanceId,
+      pendingMessage: withPending ? pendingMessage() || undefined : undefined,
       preview: true,
     })
       .then((result) => {
+        if (request !== previewRequest.current) return
         if (!result.ok) throw new Error(result.error ?? 'Could not prepare handoff')
         setHandoff(result.draft)
       })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoadingPreview(false))
+      .catch((e: unknown) => {
+        if (request === previewRequest.current) setError(e instanceof Error ? e.message : String(e))
+      })
+      .finally(() => {
+        if (request === previewRequest.current) setLoadingPreview(false)
+      })
   }
   useEffect(() => {
     const listener = (event: Event) => {
@@ -105,6 +116,7 @@ export function SwitchAgent({
   const submit = async () => {
     if (review && !reviewing) {
       setReviewing(true)
+      loadPreview(target, !completion)
       return
     }
     setSending(true)
