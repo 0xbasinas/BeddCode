@@ -176,6 +176,7 @@ export const SessionEvent = z.discriminatedUnion('type', [
     type: z.literal('session.notes'),
     text: z.string().max(100_000),
     version: z.number().int().positive(),
+    operationId: z.string().uuid().optional(),
   }),
   /** The user's task board stage, independent of execution status. */
   Base.extend({

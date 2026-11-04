@@ -779,6 +779,7 @@ export const RpcMethods = {
       sessionId: z.string(),
       text: z.string().max(100_000),
       expectedVersion: z.number().int().nonnegative(),
+      operationId: z.string().uuid().optional(),
     }),
     result: z.object({ text: z.string(), version: z.number().int() }),
   },
@@ -788,6 +789,12 @@ export const RpcMethods = {
       stage: z.enum(['pending', 'in-progress', 'review', 'done']),
     }),
     result: z.object({}),
+  },
+  'sessions.notes.receipt': {
+    params: z.object({ sessionId: z.string(), operationId: z.string().uuid() }),
+    result: z.object({
+      saved: z.object({ text: z.string(), version: z.number().int() }).nullable(),
+    }),
   },
   /** Moves a session into the sidebar's Done section, or back out of it. */
   'sessions.setDone': {

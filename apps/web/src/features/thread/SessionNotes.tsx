@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { SessionView } from '@beddcode/client-runtime'
 import { hostRequest, useRuntime } from '../../stores/host.ts'
 
 /** Host-backed notes use optimistic concurrency. Local drafts are never silently overwritten. */
 export function SessionNotes({ session, hostKey }: { session: SessionView; hostKey: string }) {
   const key = `beddcode.session-notes:${hostKey}:${session.id}`
+  const receiptKey = `${key}:operation`
   const remote = session.notes ?? { text: '', version: 0 }
   const { connection } = useRuntime(hostKey)
   const [base, setBase] = useState(() => {
@@ -25,7 +26,15 @@ export function SessionNotes({ session, hostKey }: { session: SessionView; hostK
       return remote.text
     }
   })
+  const [operationId, setOperationId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(receiptKey)
+    } catch {
+      return null
+    }
+  })
   const [saving, setSaving] = useState(false)
+  const [checking, setChecking] = useState(false)
   const [error, setError] = useState<string>()
   const dirty = draft !== base.text
   const changed = remote.version > base.version
@@ -34,6 +43,32 @@ export function SessionNotes({ session, hostKey }: { session: SessionView; hostK
     setBase(remote)
     setDraft(remote.text)
   }
+  useEffect(() => {
+    if (!operationId || saving || connection !== 'connected') return
+    let active = true
+    setChecking(true)
+    void hostRequest(hostKey, 'sessions.notes.receipt', { sessionId: session.id, operationId })
+      .then(({ saved }) => {
+        if (!active || !saved) return
+        setBase(saved)
+        setOperationId(null)
+        try {
+          localStorage.removeItem(receiptKey)
+        } catch {
+          /* Keep the draft. */
+        }
+        setError(undefined)
+      })
+      .catch(() => {
+        /* A missing or unreachable receipt leaves the outcome unknown. */
+      })
+      .finally(() => {
+        if (active) setChecking(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [connection, hostKey, operationId, receiptKey, session.id, saving])
   const storeDraft = (text: string) => {
     setDraft(text)
     try {
@@ -45,6 +80,14 @@ export function SessionNotes({ session, hostKey }: { session: SessionView; hostK
     }
   }
   const save = async () => {
+    const id = crypto.randomUUID()
+    try {
+      localStorage.setItem(receiptKey, id)
+    } catch {
+      setError('Could not save the operation locally. Please check browser storage and try again.')
+      return
+    }
+    setOperationId(id)
     setSaving(true)
     setError(undefined)
     try {
@@ -52,15 +95,31 @@ export function SessionNotes({ session, hostKey }: { session: SessionView; hostK
         sessionId: session.id,
         text: draft,
         expectedVersion: base.version,
+        operationId: id,
       })
       setBase(saved)
+      setOperationId(null)
       try {
+        localStorage.removeItem(receiptKey)
         localStorage.removeItem(key)
       } catch {
         /* Host copy has been saved. */
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      const message = err instanceof Error ? err.message : String(err)
+      if (
+        message !== 'connection lost' &&
+        !message.includes('too long to answer') &&
+        message !== 'client stopped'
+      ) {
+        setOperationId(null)
+        try {
+          localStorage.removeItem(receiptKey)
+        } catch {
+          /* No receipt to reconcile. */
+        }
+        setError(message)
+      }
     } finally {
       setSaving(false)
     }
@@ -75,6 +134,28 @@ export function SessionNotes({ session, hostKey }: { session: SessionView; hostK
         onChange={(event) => storeDraft(event.target.value)}
         disabled={saving}
       />
+      {operationId && !saving && (
+        <div className="banner" role="status">
+          {checking
+            ? 'Checking the save outcome…'
+            : 'Save outcome unknown. Compare your draft with the latest notes before saving again.'}
+          <textarea aria-label="Latest saved notes for comparison" value={remote.text} readOnly />
+          {!checking && (
+            <button
+              onClick={() => {
+                setOperationId(null)
+                try {
+                  localStorage.removeItem(receiptKey)
+                } catch {
+                  /* Draft remains available. */
+                }
+              }}
+            >
+              I have checked the notes
+            </button>
+          )}
+        </div>
+      )}
       {changed && dirty && (
         <div className="banner" role="status">
           Notes changed on another device. Your draft is preserved.
@@ -91,7 +172,7 @@ export function SessionNotes({ session, hostKey }: { session: SessionView; hostK
         </div>
       )}
       <button
-        disabled={saving || !dirty || changed || connection !== 'connected'}
+        disabled={saving || !!operationId || !dirty || changed || connection !== 'connected'}
         onClick={() => void save()}
       >
         {saving ? 'Saving…' : 'Save notes'}

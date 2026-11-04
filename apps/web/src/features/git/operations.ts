@@ -8,6 +8,7 @@ export interface GitOperation {
   hash?: string
   pushed?: boolean
   error?: string
+  unknown?: boolean
 }
 
 interface Entry {
@@ -52,12 +53,21 @@ async function perform<T>(
     return value
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    const unknown =
+      message === 'connection lost' ||
+      message === 'client stopped' ||
+      message.includes('too long to answer')
     save(
       key,
       {
         ...operation,
         pending: false,
-        error: kind === 'push' ? `Push failed: ${message}` : message,
+        unknown,
+        error: unknown
+          ? 'Outcome unknown. Check the repository and remote before trying again.'
+          : kind === 'push'
+            ? `Push failed: ${message}`
+            : message,
       },
       true,
     )
