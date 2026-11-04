@@ -85,7 +85,11 @@ describe('Git operations across panes', () => {
     await expect(pushBranch('local', '/project')).rejects.toThrow('connection lost')
     expect(useGitOperations.getState().entries[key]).toMatchObject({
       revision: 1,
-      operation: { pending: false, unknown: true, error: 'Outcome unknown. Check the repository and remote before trying again.' },
+      operation: {
+        pending: false,
+        unknown: true,
+        error: 'Outcome unknown. Check the repository and remote before trying again.',
+      },
     })
     dismissGitOperation('local', '/project')
     expect(useGitOperations.getState().entries[key]).toEqual({ revision: 1 })

@@ -737,7 +737,9 @@ export const RpcMethods = {
   },
   'sessions.notes.receipt': {
     params: z.object({ sessionId: z.string(), operationId: z.string().uuid() }),
-    result: z.object({ saved: z.object({ text: z.string(), version: z.number().int() }).nullable() }),
+    result: z.object({
+      saved: z.object({ text: z.string(), version: z.number().int() }).nullable(),
+    }),
   },
   /** Moves a session into the sidebar's Done section, or back out of it. */
   'sessions.setDone': {

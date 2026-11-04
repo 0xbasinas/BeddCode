@@ -32,15 +32,18 @@ export function GitOperationStatus({
         <div className="git-operation-message">
           {operation.pending ? pendingText : (operation.error ?? completeText)}
         </div>
-        {!operation.pending && operation.error && !operation.unknown && (operation.hash || operation.kind === 'push') && (
-          <Button
-            variant="app"
-            className="link-btn"
-            onClick={() => void pushBranch(hostKey, cwd).catch(() => {})}
-          >
-            Retry push
-          </Button>
-        )}
+        {!operation.pending &&
+          operation.error &&
+          !operation.unknown &&
+          (operation.hash || operation.kind === 'push') && (
+            <Button
+              variant="app"
+              className="link-btn"
+              onClick={() => void pushBranch(hostKey, cwd).catch(() => {})}
+            >
+              Retry push
+            </Button>
+          )}
       </div>
       {!operation.pending && (
         <Button

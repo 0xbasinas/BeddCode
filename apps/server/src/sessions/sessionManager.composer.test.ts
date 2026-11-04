@@ -105,8 +105,14 @@ describe('SessionManager: composer features', () => {
     try {
       const { sessionId } = await manager.create({ instanceId: 'rec', projectless: true })
       const operationId = '9de2e768-2e0d-4b84-a49f-cc0726f59d55'
-      expect(manager.setNotes(sessionId, 'first', 0, operationId)).toEqual({ text: 'first', version: 1 })
-      expect(manager.setNotes(sessionId, 'first', 0, operationId)).toEqual({ text: 'first', version: 1 })
+      expect(manager.setNotes(sessionId, 'first', 0, operationId)).toEqual({
+        text: 'first',
+        version: 1,
+      })
+      expect(manager.setNotes(sessionId, 'first', 0, operationId)).toEqual({
+        text: 'first',
+        version: 1,
+      })
       expect(() => manager.setNotes(sessionId, 'different', 0, operationId)).toThrow('Operation ID')
       expect(manager.notesReceipt(sessionId, 'missing')).toBeNull()
       expect(() => manager.setNotes(sessionId, 'stale overwrite', 0)).toThrow('another device')
