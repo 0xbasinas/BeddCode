@@ -26,6 +26,7 @@ export * from './browserTools.ts'
 export * from './pullRequests.ts'
 export * from './pairLink.ts'
 export * from './perf.ts'
+export * from './streamNote.ts'
 export * from './relayCrypto.ts'
 export * from './relaySocket.ts'
 export * from './relayCrypto.ts'
@@ -36,3 +37,5 @@ export * from './textLinks.ts'
 export * from './messageIds.ts'
 
 export * from './terminalCursor.ts'
+
+export * from './cursorStore.ts'

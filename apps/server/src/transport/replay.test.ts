@@ -6,6 +6,43 @@ import { replaySubscription } from './replay.ts'
 afterEach(() => vi.useRealTimers())
 
 describe('chunked replay', () => {
+  it('splits session replay into bounded frames', async () => {
+    vi.useFakeTimers()
+    const store = new EventStore(':memory:')
+    store.appendMany(
+      Array.from({ length: 100 }, (_, n) => ({
+        type: 'error' as const,
+        sessionId: 's',
+        at: n,
+        message: 'é'.repeat(4096),
+      })),
+    )
+    const frames: ServerFrame[] = []
+    const subscribe = (afterSeq: number) =>
+      replaySubscription({
+        store,
+        sessionId: 's',
+        afterSeq,
+        batch: true,
+        send: (f) => frames.push(f),
+        backlog: () => 0,
+        live: () => {},
+        failed: () => {
+          throw new Error('unexpected failure')
+        },
+        caughtUp: () => {},
+      })
+    let stop = subscribe(10)
+    await vi.runAllTimersAsync()
+    const batches = frames.filter((f) => f.t === 'events')
+    expect(batches.length).toBeGreaterThan(1)
+    expect(batches.every((f) => Buffer.byteLength(JSON.stringify(f)) <= 256 * 1024)).toBe(true)
+    expect(batches.flatMap((f) => f.events.map((e) => e.sessionSeq))).toEqual(
+      Array.from({ length: 90 }, (_, i) => i + 11),
+    )
+    stop()
+    store.close()
+  })
   it.each([false, true])('budgets UTF-8 replay frames with compaction=%s', async (compact) => {
     vi.useFakeTimers()
     const store = new EventStore(':memory:')

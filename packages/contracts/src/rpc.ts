@@ -25,7 +25,7 @@ import {
   McpGatewaySettings,
   TailnetStatus,
 } from './hosts.ts'
-import { ConfigOption, SlashCommand } from './events.ts'
+import { ConfigOption, SlashCommand, StoredEvent } from './events.ts'
 import { PermissionModeOption, ProviderInstance } from './providers.ts'
 import { FileContent, FileEntry, FileMedia, FolderListing, TerminalInfo } from './workspace.ts'
 import { Design, DesignProject, DesignSummary } from './design.ts'
@@ -123,6 +123,14 @@ export type McpServerInput = z.infer<typeof McpServerInput>
 
 /** Request/response methods carried in `req`/`res` frames. */
 export const RpcMethods = {
+  'session.events.page': {
+    params: z.object({
+      sessionId: z.string(),
+      beforeSeq: z.number().int().positive().optional(),
+      limit: z.number().int().min(1).max(1000),
+    }),
+    result: z.object({ events: z.array(StoredEvent), hasMore: z.boolean() }),
+  },
   'providers.list': {
     params: z.object({}),
     result: z.array(ProviderInstance),

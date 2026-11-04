@@ -1,8 +1,8 @@
 import { doneMenuAction, effortLabel, endedByDecline, folderName } from '@beddcode/client-runtime'
 import { Checks, DotsThree, Stop as StopIcon, ArrowUUpLeft } from 'phosphor-react-native'
 import { now } from '@beddcode/client-runtime'
-import { useRef, useState } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { Animated, Pressable, StyleSheet, View } from 'react-native'
 
 import { Composer } from '@/features/composer/Composer'
 import { ModelPicker } from '@/features/composer/ModelPicker'
@@ -49,6 +49,7 @@ export function ThreadPane({
   // Only the parts of the host this screen shows, so another session streaming on the same host
   // does not redraw this one.
   const providers = useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.providers : undefined))
+  const streamState = useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.streamState : undefined))
   const synced = useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.synced : false))
   const hostName =
     useHostStore((s) => (hostKey ? s.runtimes[hostKey]?.host?.name : undefined)) ?? 'Host'
@@ -155,6 +156,7 @@ export function ThreadPane({
           </Pressable>
         }
       />
+      <StreamIndicator state={streamState} />
       <View style={{ flex: 1 }}>
         <Transcript
           onFirstLayout={() => {
@@ -326,3 +328,35 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
 })
+
+function StreamIndicator({
+  state,
+}: {
+  state: import('@beddcode/client-runtime').StreamState | undefined
+}) {
+  const opacity = useRef(new Animated.Value(0)).current
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    if (!state) return
+    if (state !== 'live') {
+      setVisible(true)
+      opacity.setValue(1)
+      return
+    }
+    const animation = Animated.timing(opacity, {
+      toValue: 0,
+      duration: 1200,
+      useNativeDriver: true,
+    })
+    animation.start(({ finished }) => {
+      if (finished) setVisible(false)
+    })
+    return () => animation.stop()
+  }, [state, opacity])
+  if (!visible) return null
+  return (
+    <Animated.View style={{ opacity, paddingHorizontal: 16, paddingTop: 4 }}>
+      <Muted size={11}>{state === 'live' ? 'Caught up' : 'Reconnecting…'}</Muted>
+    </Animated.View>
+  )
+}

@@ -16,9 +16,16 @@ const silent: Logger = { debug() {}, info() {}, warn() {}, error() {} }
  * damaged on disk) is skipped rather than failing the whole read: one bad event must not stop
  * every device from catching up, or the host from starting.
  */
-function parseRow(row: { seq: number; payload: string }, log: Logger): StoredEvent | null {
+function parseRow(
+  row: { seq: number; session_seq?: number; payload: string },
+  log: Logger,
+): StoredEvent | null {
   try {
-    return { seq: row.seq, event: SessionEvent.parse(JSON.parse(row.payload)) }
+    return {
+      seq: row.seq,
+      ...(row.session_seq != null ? { sessionSeq: row.session_seq } : {}),
+      event: SessionEvent.parse(JSON.parse(row.payload)),
+    }
   } catch (err) {
     log.warn(
       `skipping unreadable event ${row.seq}: ${err instanceof Error ? err.message.slice(0, 200) : String(err)}`,
@@ -48,6 +55,7 @@ export class EventStore {
   private readonly log: Logger
   /** Rows already reported as unreadable, so each is logged once. */
   private readonly badRows = new Set<number>()
+  private readonly recent = new Map<string, { events: StoredEvent[]; bytes: number }>()
 
   /** `file` is a path, or ':memory:' for tests. */
   constructor(
@@ -71,13 +79,13 @@ export class EventStore {
       this.db.prepare("SELECT value FROM meta WHERE key = 'logId'").get() as { value: string }
     ).value
     this.insert = this.db.prepare(
-      'INSERT INTO events (session_id, type, at, payload) VALUES (?, ?, ?, ?) RETURNING seq',
+      'INSERT INTO events (session_id, type, at, payload, session_seq) VALUES (?, ?, ?, ?, COALESCE((SELECT seq FROM session_cursors WHERE session_id = ?), 0) + 1) RETURNING seq, session_seq',
     )
     this.readStmt = this.db.prepare(
-      'SELECT seq, payload FROM events WHERE seq > ? AND seq <= ? ORDER BY seq LIMIT ?',
+      'SELECT seq, session_seq, payload FROM events WHERE seq > ? AND seq <= ? ORDER BY seq LIMIT ?',
     )
     this.bySessionStmt = this.db.prepare(
-      'SELECT seq, payload FROM events WHERE session_id = ? ORDER BY seq',
+      'SELECT seq, session_seq, payload FROM events WHERE session_id = ? ORDER BY seq',
     )
     this.lastSeqStmt = this.db.prepare('SELECT COALESCE(MAX(seq), 0) AS seq FROM events')
     this.lastSnapshotStmt = this.db.prepare(
@@ -153,15 +161,22 @@ export class EventStore {
       if (previous?.key === key) return { seq: previous.seq, event: parsed }
       snapshot = { slot, key }
     }
-    let row: { seq: number }
+    let row: { seq: number; session_seq: number }
     try {
-      row = this.insert.get(parsed.sessionId, parsed.type, parsed.at, JSON.stringify(parsed)) as {
+      row = this.insert.get(
+        parsed.sessionId,
+        parsed.type,
+        parsed.at,
+        JSON.stringify(parsed),
+        parsed.sessionId,
+      ) as {
         seq: number
+        session_seq: number
       }
     } catch (err) {
       throw storageError(err, this.file)
     }
-    const stored: StoredEvent = { seq: row.seq, event: parsed }
+    const stored: StoredEvent = { seq: row.seq, sessionSeq: row.session_seq, event: parsed }
     if (snapshot) this.snapshots.set(snapshot.slot, { seq: row.seq, key: snapshot.key })
     if (this.notificationBatch) this.notificationBatch.push(stored)
     else this.notify(stored)
@@ -173,6 +188,15 @@ export class EventStore {
    * socket gone bad, an automation bug) must neither fail the append nor starve the others.
    */
   private notify(stored: StoredEvent) {
+    const id = stored.event.sessionId
+    const ring = this.recent.get(id) ?? { events: [], bytes: 0 }
+    const bytes = Buffer.byteLength(JSON.stringify(stored))
+    ring.events.push(stored)
+    ring.bytes += bytes
+    while (ring.events.length > 1000 || ring.bytes > 1024 * 1024) {
+      ring.bytes -= Buffer.byteLength(JSON.stringify(ring.events.shift()))
+    }
+    this.recent.set(id, ring)
     for (const listener of this.listeners) {
       try {
         listener(stored)
@@ -206,7 +230,7 @@ export class EventStore {
     return this.parseRows(rows)
   }
 
-  private parseRows(rows: { seq: number; payload: string }[]): StoredEvent[] {
+  private parseRows(rows: { seq: number; session_seq?: number; payload: string }[]): StoredEvent[] {
     const out: StoredEvent[] = []
     for (const row of rows) {
       const parsed = parseRow(row, this.badRows.has(row.seq) ? silent : this.log)
@@ -236,6 +260,60 @@ export class EventStore {
     return this.parseRows(rows)
   }
 
+  pageSession(sessionId: string, beforeSeq: number | undefined, limit: number) {
+    const rows = this.db
+      .prepare(
+        'SELECT seq, session_seq, payload FROM events WHERE session_id = ? AND session_seq < ? ORDER BY session_seq DESC LIMIT ?',
+      )
+      .all(sessionId, beforeSeq ?? Number.MAX_SAFE_INTEGER, limit + 1) as {
+      seq: number
+      session_seq: number
+      payload: string
+    }[]
+    const events = this.parseRows(rows)
+    return { events: events.slice(0, limit).reverse(), hasMore: rows.length > limit }
+  }
+
+  sessionLastSeq(sessionId: string): number {
+    return (
+      (
+        this.db.prepare('SELECT seq FROM session_cursors WHERE session_id = ?').get(sessionId) as
+          { seq: number } | undefined
+      )?.seq ?? 0
+    )
+  }
+
+  readSessionAfter(
+    sessionId: string,
+    after: number,
+    through: number,
+    limit: number,
+  ): StoredEvent[] {
+    const ring = this.recent.get(sessionId)?.events
+    if (ring?.length && ring[0]!.sessionSeq! <= after + 1 && ring.at(-1)!.sessionSeq! >= through)
+      return ring.filter((e) => e.sessionSeq! > after && e.sessionSeq! <= through).slice(0, limit)
+    const rows = this.db
+      .prepare(
+        'SELECT seq, session_seq, payload FROM events WHERE session_id = ? AND session_seq > ? AND session_seq <= ? ORDER BY session_seq LIMIT ?',
+      )
+      .all(sessionId, after, through, limit) as {
+      seq: number
+      session_seq: number
+      payload: string
+    }[]
+    return this.parseRows(rows)
+  }
+
+  sessionReplayAvailable(sessionId: string, after: number, through: number): boolean {
+    if (after > through) return false
+    while (after < through) {
+      const rows = this.readSessionAfter(sessionId, after, through, 1000)
+      if (!rows.length || rows.some((row, i) => row.sessionSeq !== after + i + 1)) return false
+      after = rows.at(-1)!.sessionSeq!
+    }
+    return true
+  }
+
   /** Session IDs with recorded creation events, ordered by their most recent activity. */
   listSessionIds(before = Number.MAX_SAFE_INTEGER, limit = 101): { id: string; latest: number }[] {
     const rows = this.db
@@ -249,6 +327,7 @@ export class EventStore {
   /** Removes a session's events before `beforeSeq`; the log keeps its numbers, with a gap. */
   purgeSession(sessionId: string, beforeSeq: number): void {
     this.db.prepare('DELETE FROM events WHERE session_id = ? AND seq < ?').run(sessionId, beforeSeq)
+    this.recent.delete(sessionId)
     for (const slot of [...this.snapshots.keys()]) {
       if (
         slot.startsWith(`${sessionId}

@@ -55,6 +55,163 @@ function makeClient(onEvent: (e: StoredEvent) => void) {
 }
 
 describe('HostClient', () => {
+  it('loads safe cursors before subscribing and replays without cached history', async () => {
+    const store = {
+      load: vi.fn(async () => ({ logId: 'log', sessions: { s: { sessionSeq: 3, seq: 10 } } })),
+      save: vi.fn(async () => {}),
+    }
+    const reset = vi.fn()
+    const options = {
+      url: 'ws://host/ws',
+      onEvent: vi.fn(),
+      cursorStore: store,
+      cursorHostKey: 'h',
+      createSocket: (url: string) => new FakeSocket(url) as unknown as WebSocket,
+    }
+    const client = new HostClient({
+      ...options,
+      initialSeq: 10,
+      resumeLogId: 'log',
+      hasCachedSession: () => true,
+    })
+    client.start()
+    expect(FakeSocket.instances).toHaveLength(0)
+    await vi.waitFor(() => expect(FakeSocket.instances).toHaveLength(1))
+    FakeSocket.instances[0]!.open()
+    expect(FakeSocket.instances[0]!.sent[1]).toMatchObject({
+      afterSeq: 10,
+      sessionCursors: { s: 3 },
+    })
+    client.stop()
+    const cold = new HostClient({
+      ...options,
+      initialSeq: 10,
+      resumeLogId: 'log',
+      hasCachedSession: () => false,
+      onReset: reset,
+    })
+    cold.start()
+    await vi.waitFor(() => expect(FakeSocket.instances).toHaveLength(2))
+    FakeSocket.instances[1]!.open()
+    expect(reset).toHaveBeenCalledOnce()
+    expect(FakeSocket.instances[1]!.sent[1]).toMatchObject({ afterSeq: 0, sessionCursors: {} })
+    cold.stop()
+  })
+
+  it('debounces cursor saves and clears a deleted session', async () => {
+    const store = { load: vi.fn(async () => null), save: vi.fn(async () => {}) }
+    const client = new HostClient({
+      url: 'ws://host/ws',
+      onEvent: () => {},
+      cursorStore: store,
+      cursorHostKey: 'h',
+      createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
+    })
+    client.start()
+    await vi.waitFor(() => expect(FakeSocket.instances).toHaveLength(1))
+    const socket = FakeSocket.instances[0]!
+    socket.open()
+    socket.receive(welcome)
+    socket.receive({ t: 'event', stored: { ...ev(1), sessionSeq: 1 } })
+    socket.receive({ t: 'event', stored: { ...ev(2), sessionSeq: 2 } })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(store.save).toHaveBeenCalledTimes(1)
+    expect(store.save).toHaveBeenLastCalledWith(
+      'h',
+      expect.objectContaining({ sessions: { s: { sessionSeq: 2, seq: 2 } } }),
+    )
+    socket.receive({
+      t: 'event',
+      stored: { seq: 3, sessionSeq: 3, event: { type: 'session.deleted', sessionId: 's', at: 3 } },
+    })
+    await vi.waitFor(() => expect(store.save).toHaveBeenCalledTimes(2))
+    expect(store.save).toHaveBeenLastCalledWith('h', expect.objectContaining({ sessions: {} }))
+    client.stop()
+  })
+
+  it('exposes stream progress across a reconnect', () => {
+    const states: string[] = []
+    const client = new HostClient({
+      url: 'ws://host/ws',
+      onEvent: () => {},
+      onStreamState: (state) => states.push(state),
+      createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
+      backoff: { minMs: 100, maxMs: 100 },
+    })
+    expect(client.streamState).toBe('reconnecting')
+    client.start()
+    const first = FakeSocket.instances[0]!
+    first.open()
+    first.receive(welcome)
+    expect(client.streamState).toBe('catching-up')
+    first.receive({ t: 'caught-up', seq: 0 })
+    expect(client.streamState).toBe('live')
+    first.drop()
+    expect(client.streamState).toBe('reconnecting')
+    vi.advanceTimersByTime(200)
+    const second = FakeSocket.instances[1]!
+    second.open()
+    second.receive(welcome)
+    second.receive({ t: 'caught-up', seq: 0 })
+    expect(states).toEqual(['catching-up', 'live', 'reconnecting', 'catching-up', 'live'])
+    client.stop()
+  })
+
+  it('resumes session cursors, reloads a gap and pages older events', async () => {
+    const seen: StoredEvent[] = []
+    const reload = vi.fn()
+    const client = new HostClient({
+      url: 'ws://host/ws',
+      onEvent: (e) => seen.push(e),
+      onSessionReload: reload,
+      createSocket: (url) => new FakeSocket(url) as unknown as WebSocket,
+      backoff: { minMs: 100, maxMs: 100 },
+    })
+    client.start()
+    const first = FakeSocket.instances[0]!
+    first.open()
+    first.receive(welcome)
+    first.receive({ t: 'event', stored: { ...ev(10), sessionSeq: 1 } })
+    first.receive({ t: 'event', stored: { ...ev(10), sessionSeq: 1 } })
+    first.drop()
+    vi.advanceTimersByTime(200)
+    const second = FakeSocket.instances[1]!
+    second.open()
+    second.receive(welcome)
+    expect(second.sent[1]).toMatchObject({ sessionCursors: { s: 1 } })
+    second.receive({ t: 'caught-up', sessionId: 's', seq: 4, latestSeq: 4, truncated: true })
+    const request = second.sent.at(-1)!
+    expect(request).toMatchObject({
+      method: 'session.events.page',
+      params: { sessionId: 's', limit: 200 },
+    })
+    second.receive({ t: 'event', stored: { ...ev(15), sessionSeq: 5 } })
+    second.receive({
+      t: 'res',
+      id: request.id as string,
+      ok: true,
+      result: { events: [{ ...ev(14), sessionSeq: 4 }], hasMore: true },
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(reload).toHaveBeenCalledOnce()
+    expect(seen.map((e) => e.seq)).toEqual([10, 15])
+    const older = client.loadOlder('s')
+    const next = second.sent.at(-1)!
+    expect(next).toMatchObject({
+      method: 'session.events.page',
+      params: { sessionId: 's', beforeSeq: 4, limit: 200 },
+    })
+    second.receive({
+      t: 'res',
+      id: next.id as string,
+      ok: true,
+      result: { events: [{ ...ev(13), sessionSeq: 3 }], hasMore: false },
+    })
+    expect((await older).events[0]?.sessionSeq).toBe(3)
+    client.stop()
+  })
+
   it('measures how long the connection and the catch-up took', () => {
     const client = makeClient(() => {})
     client.start()
@@ -187,7 +344,13 @@ describe('HostClient', () => {
     const second = FakeSocket.instances[1]!
     second.open()
     second.receive(welcome)
-    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 7, compact: true, batch: true })
+    expect(second.sent.at(-1)).toEqual({
+      t: 'subscribe',
+      afterSeq: 7,
+      sessionCursors: {},
+      compact: true,
+      batch: true,
+    })
     client.stop()
   })
 
@@ -219,7 +382,13 @@ describe('HostClient', () => {
     const ws = FakeSocket.instances[0]!
     ws.open()
     ws.receive(welcome)
-    expect(ws.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 0, compact: true, batch: true })
+    expect(ws.sent.at(-1)).toEqual({
+      t: 'subscribe',
+      afterSeq: 0,
+      sessionCursors: {},
+      compact: true,
+      batch: true,
+    })
 
     ws.receive({ t: 'event', stored: ev(1) })
     ws.receive({ t: 'event', stored: ev(2) })
@@ -255,7 +424,13 @@ describe('HostClient', () => {
     const second = FakeSocket.instances[1]!
     second.open()
     second.receive(welcome)
-    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 3, compact: true, batch: true })
+    expect(second.sent.at(-1)).toEqual({
+      t: 'subscribe',
+      afterSeq: 3,
+      sessionCursors: {},
+      compact: true,
+      batch: true,
+    })
     client.stop()
   })
 
@@ -304,7 +479,13 @@ describe('HostClient', () => {
     const second = FakeSocket.instances[1]!
     second.open()
     second.receive(welcome)
-    expect(second.sent.at(-1)).toEqual({ t: 'subscribe', afterSeq: 5, compact: true, batch: true })
+    expect(second.sent.at(-1)).toEqual({
+      t: 'subscribe',
+      afterSeq: 5,
+      sessionCursors: {},
+      compact: true,
+      batch: true,
+    })
     second.receive({ t: 'event', stored: ev(5) })
     second.receive({ t: 'event', stored: ev(6) })
     expect(seen).toEqual([5, 6])
@@ -484,6 +665,7 @@ describe('HostClient', () => {
     expect(socket.sent.find((f) => f.t === 'subscribe')).toEqual({
       t: 'subscribe',
       afterSeq: 40,
+      sessionCursors: {},
       compact: true,
       batch: true,
       logId: 'log-1',

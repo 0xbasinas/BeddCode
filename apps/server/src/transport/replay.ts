@@ -13,6 +13,9 @@ const STALL_MS = 15_000
 export function replaySubscription(options: {
   store: EventStore
   afterSeq: number
+  sessionId?: string
+  sessionCursors?: Record<string, number>
+  reset?: boolean
   compact?: boolean
   batch?: boolean
   send(frame: ServerFrame): void
@@ -22,11 +25,24 @@ export function replaySubscription(options: {
   caughtUp(events: number): void
 }): () => void {
   const { store } = options
-  const through = Math.max(options.afterSeq, store.lastSeq())
-  const compactor = options.compact
-    ? new ReplayCompactor(store.latestStateSeqs(options.afterSeq, through))
-    : undefined
-  let cursor = options.afterSeq
+  const through =
+    options.sessionId === undefined
+      ? Math.max(options.afterSeq, store.lastSeq())
+      : store.sessionLastSeq(options.sessionId)
+  const gap =
+    options.sessionId !== undefined &&
+    (options.reset || !store.sessionReplayAvailable(options.sessionId, options.afterSeq, through))
+  const cursors = options.sessionId === undefined ? options.sessionCursors : undefined
+  const gaps = new Map<string, number>()
+  for (const [id, after] of Object.entries(cursors ?? {})) {
+    const latest = store.sessionLastSeq(id)
+    if (!store.sessionReplayAvailable(id, after, latest)) gaps.set(id, latest)
+  }
+  const compactor =
+    options.compact && options.sessionId === undefined && !Object.keys(cursors ?? {}).length
+      ? new ReplayCompactor(store.latestStateSeqs(options.afterSeq, through))
+      : undefined
+  let cursor = cursors && Object.keys(cursors).length ? 0 : options.afterSeq
   let pending: StoredEvent[] = []
   let pendingBytes = 0
   let replaying = true
@@ -36,8 +52,9 @@ export function replaySubscription(options: {
   let timer: ReturnType<typeof setTimeout> | undefined
   let ready: StoredEvent[] = []
   let offset = 0
-  let exhausted = false
+  let exhausted = !!gap
   const stop = store.subscribe((stored) => {
+    if (options.sessionId !== undefined && stored.event.sessionId !== options.sessionId) return
     if (!replaying) return options.live(stored)
     pending.push(stored)
     pendingBytes += Buffer.byteLength(JSON.stringify(stored))
@@ -86,15 +103,34 @@ export function replaySubscription(options: {
       return schedule()
     }
     if (!exhausted) {
-      const rows = store.readAfter(cursor, READ_BATCH, through)
-      ready = compactor ? compactor.compact(rows) : rows
+      const rows =
+        options.sessionId === undefined
+          ? store.readAfter(cursor, READ_BATCH, through)
+          : store.readSessionAfter(options.sessionId, cursor, through, READ_BATCH)
+      const selected = cursors
+        ? rows.filter((row) => {
+            const id = row.event.sessionId
+            return Object.hasOwn(cursors, id)
+              ? !gaps.has(id) && (row.sessionSeq ?? 0) > cursors[id]!
+              : row.seq > options.afterSeq
+          })
+        : rows
+      ready = compactor ? compactor.compact(selected) : selected
       offset = 0
-      cursor = rows.at(-1)?.seq ?? cursor
+      cursor =
+        (options.sessionId === undefined ? rows.at(-1)?.seq : rows.at(-1)?.sessionSeq) ?? cursor
       exhausted = rows.length < READ_BATCH || cursor >= through
       count += ready.length
       return schedule()
     }
-    options.send({ t: 'caught-up', seq: through })
+    for (const [sessionId, latestSeq] of gaps)
+      options.send({ t: 'caught-up', seq: latestSeq, sessionId, latestSeq, truncated: true })
+    options.send({
+      t: 'caught-up',
+      seq: through,
+      ...(options.sessionId !== undefined ? { sessionId: options.sessionId } : {}),
+      ...(gap ? { truncated: true } : {}),
+    })
     replaying = false
     // No await between the marker and live delivery, so a new event cannot overtake this queue.
     for (const stored of pending) {

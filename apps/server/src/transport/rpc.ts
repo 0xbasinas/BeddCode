@@ -1,3 +1,4 @@
+import type { EventStore } from '../store/eventStore.ts'
 import { existsSync, statSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -157,10 +158,12 @@ export function createRpcRouter(
   workspace: WorkspaceServices,
   access: AccessServices,
   automation: AutomationServices,
+  store: EventStore,
 ) {
   const { git, github, projects, terminals, files } = workspace
   const { schedules, alerts, designs } = automation
   const handlers: Handlers = {
+    'session.events.page': async (p) => store.pageSession(p.sessionId, p.beforeSeq, p.limit),
     'host.pair': () => createPairing(access.pairing, access.reachable),
     'host.relay.get': async () => {
       if (!access.relay) throw new Error('This host does not support relays')

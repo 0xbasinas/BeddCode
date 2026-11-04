@@ -24,7 +24,16 @@ import {
   BellRing,
 } from 'lucide-react'
 import { openWaitingDialog } from '../shell/WaitingMarkDialog.tsx'
-import type { SessionView } from '@beddcode/client-runtime'
+import {
+  CAUGHT_UP_FADE_MS,
+  CAUGHT_UP_SHOW_MS,
+  clearStreamNote,
+  initialStreamNote,
+  nextStreamNote,
+  type SessionView,
+  type StreamNote,
+  type StreamState,
+} from '@beddcode/client-runtime'
 import { StatusTimer } from '../../ui/StatusTimer.tsx'
 import { Composer } from '../composer/Composer.tsx'
 import { ModelBadge, ModelMenu } from '../composer/Menus.tsx'
@@ -79,7 +88,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
   const pane = usePane()
   const paneActive = pane?.active ?? true
   const hostKey = useSessionHostKey(sessionId) ?? LOCAL_HOST_KEY
-  const { providers, host } = useRuntime(hostKey)
+  const { providers, host, streamState } = useRuntime(hostKey)
   const multiHost = useHostStore((s) => s.entries.length > 1)
   const hostName = multiHost ? (host?.name ?? hostKey) : undefined
   // Still waiting on a host that has not replied yet, or one that is away.
@@ -207,6 +216,27 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
     return () => document.removeEventListener('keydown', onKey)
   }, [pending, sessionId, paneActive])
 
+  const stopEditingQueued = () => {
+    const stashed = stashedDraft.current
+    if (stashed !== undefined) useComposerDrafts.getState().setDraft(memoryKey, stashed)
+    stashedDraft.current = undefined
+    setEditingQueue(undefined)
+  }
+  // The message went out or was removed while it was open: the box goes back to what it held.
+  const stillQueued =
+    !editingQueue || (session?.queue.some((q) => q.queueId === editingQueue.queueId) ?? true)
+  useEffect(() => {
+    if (!stillQueued) stopEditingQueued()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stillQueued])
+  // Leaving the session mid-edit must not leave the edited text behind as its draft.
+  useEffect(
+    () => () => {
+      const stashed = stashedDraft.current
+      if (stashed !== undefined) useComposerDrafts.getState().setDraft(memoryKey, stashed)
+    },
+    [memoryKey],
+  )
   if (!session) {
     return (
       <main className="panel thread-empty">
@@ -239,26 +269,6 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
     setEditingQueue({ queueId, original: queued.text })
     setQuoteFocus((n) => n + 1)
   }
-  const stopEditingQueued = () => {
-    const stashed = stashedDraft.current
-    if (stashed !== undefined) useComposerDrafts.getState().setDraft(memoryKey, stashed)
-    stashedDraft.current = undefined
-    setEditingQueue(undefined)
-  }
-  // The message went out or was removed while it was open: the box goes back to what it held.
-  const stillQueued = !editingQueue || session.queue.some((q) => q.queueId === editingQueue.queueId)
-  useEffect(() => {
-    if (!stillQueued) stopEditingQueued()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stillQueued])
-  // Leaving the session mid-edit must not leave the edited text behind as its draft.
-  useEffect(
-    () => () => {
-      const stashed = stashedDraft.current
-      if (stashed !== undefined) useComposerDrafts.getState().setDraft(memoryKey, stashed)
-    },
-    [memoryKey],
-  )
   const report = (err: unknown) => setActionError(err instanceof Error ? err.message : String(err))
 
   return (
@@ -281,6 +291,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             {session.title}
           </h1>
           <div className="thread-meta" title={session.cwd}>
+            <StreamIndicator state={streamState} />
             {session.mcpGateway && <>Remote MCP · </>}
             {session.telegram && <>Telegram · </>}
             {hostKey === LOCAL_HOST_KEY ? 'This PC' : (host?.name ?? hostKey)} ·{' '}
@@ -807,5 +818,35 @@ function WorktreeChip({ session, hostKey }: { session: SessionView; hostKey: str
         </>
       )}
     </Dropdown>
+  )
+}
+
+function StreamIndicator({ state }: { state: StreamState }) {
+  const [note, setNote] = useState<StreamNote>(() => nextStreamNote(initialStreamNote, state))
+  const [fading, setFading] = useState(false)
+  useEffect(() => {
+    setNote((prev) => nextStreamNote(prev, state))
+  }, [state])
+  const caughtUp = note.note === 'caught-up'
+  useEffect(() => {
+    setFading(false)
+    if (!caughtUp) return
+    const fade = setTimeout(() => setFading(true), CAUGHT_UP_SHOW_MS)
+    const hide = setTimeout(() => setNote(clearStreamNote), CAUGHT_UP_SHOW_MS + CAUGHT_UP_FADE_MS)
+    return () => {
+      clearTimeout(fade)
+      clearTimeout(hide)
+    }
+  }, [caughtUp])
+  if (note.note === 'none') return null
+  return (
+    <span
+      style={{
+        opacity: fading ? 0 : 0.8,
+        transition: `opacity ${CAUGHT_UP_FADE_MS}ms`,
+      }}
+    >
+      {caughtUp ? 'Caught up' : 'Reconnecting…'} ·{' '}
+    </span>
   )
 }

@@ -48,7 +48,10 @@ export const ClientFrame = z.discriminatedUnion('t', [
   /** Subscribe to the event log, resuming after `afterSeq`. */
   z.object({
     t: z.literal('subscribe'),
-    afterSeq: z.number().int().nonnegative(),
+    afterSeq: z.number().int().nonnegative().optional(),
+    /** Scope the cursor and event stream to one session. */
+    sessionId: z.string().optional(),
+    sessionCursors: z.record(z.string(), z.number().int().nonnegative()).optional(),
     /**
      * The client understands a compact replay: streamed text joined into one event and superseded
      * state left out. The state it builds is the same; far fewer frames cross the wire.
@@ -168,7 +171,14 @@ export const ServerFrame = z.discriminatedUnion('t', [
   /** Files changed under a watched folder (paths relative to it, forward slashes). */
   z.object({ t: z.literal('fs.changed'), cwd: z.string(), paths: z.array(z.string()) }),
   /** Sent once the requested replay is complete; later `event` frames are live. */
-  z.object({ t: z.literal('caught-up'), seq: z.number().int().nonnegative() }),
+  z.object({
+    t: z.literal('caught-up'),
+    seq: z.number().int().nonnegative(),
+    sessionId: z.string().optional(),
+    /** The requested session cursor cannot be replayed; discard the cached session. */
+    truncated: z.boolean().optional(),
+    latestSeq: z.number().int().nonnegative().optional(),
+  }),
   /** An agent's browser tool call for this client to run (only sent to clients that offered). */
   /** A design canvas was saved or changed (by a client or an agent); fetch it with `design.get`. */
   z.object({
