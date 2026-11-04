@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionEvent, StoredEvent } from '@beddcode/contracts'
-import { handoffPrompt } from './handoff.ts'
+import { handoffPrompt, parseHandoffNote } from './handoff.ts'
 import { applyEvent, emptyReplica, type ReplicaState, type SessionView } from './replica.ts'
 import { searchSessions, snippetAround } from './sessionSearch.ts'
 
@@ -79,17 +79,71 @@ describe('handoffPrompt', () => {
       { type: 'turn.completed', sessionId: 's1', reason: 'done' },
     ]).sessions.s1!
 
-  it('summarizes messages, commands and changed files with the folder and branch', () => {
-    const text = handoffPrompt(view(), { agentLabel: 'Claude' })
-    expect(text).toContain('started with Claude in "Rate limiter"')
-    expect(text).toContain('Original goal: Fix the rate limiter')
+  const rich = (): SessionView =>
+    fold([
+      session('s1', 'Rate limiter'),
+      { type: 'message.delta', sessionId: 's1', role: 'user', text: 'Fix the  rate\nlimiter' },
+      {
+        type: 'message.delta',
+        sessionId: 's1',
+        role: 'assistant',
+        text: 'Looking at it.\nDecided to use a token bucket.',
+      },
+      {
+        type: 'plan.updated',
+        sessionId: 's1',
+        steps: [{ text: 'Add bucket', status: 'completed' }],
+      },
+      { type: 'tool.started', sessionId: 's1', toolId: 't1', kind: 'command', title: 'pnpm test' },
+      { type: 'diff', sessionId: 's1', path: 'src/a.ts', added: 1, removed: 1, patch: '' },
+      { type: 'turn.completed', sessionId: 's1', reason: 'done' },
+    ]).sessions.s1!
+
+  it('writes labelled sections with no empty gaps', () => {
+    const text = handoffPrompt(rich(), {
+      agentLabel: 'Claude',
+      targetLabel: 'Codex',
+      pendingMessage: 'Please finish',
+      files: [{ path: 'src/b.ts', patch: '@@ -1,2 +1,3 @@ fn\n+x\n+y\n-z\n' }],
+    })
+    const titles = [...text.matchAll(/^## (.*)$/gm)].map((m) => m[1])
+    expect(titles).toEqual([
+      'Reason for the switch',
+      'Goal',
+      'Plan',
+      'Decisions',
+      'Changed files',
+      'Recent turns',
+      'Pending message',
+    ])
+    expect(text).toContain('switched this session from Claude to Codex')
+    expect(text).toContain('Fix the rate limiter')
     expect(text).toContain('Folder: /work/s1')
-    expect(text).toContain('Branch: topic')
-    expect(text).toContain('- I asked: Fix the rate limiter')
-    expect(text).toContain('- The agent said: Looking at it.')
+    expect(text).toContain('- [completed] Add bucket')
+    expect(text).toContain('- Decided to use a token bucket.')
+    expect(text).toContain('- src/a.ts (+1/-1)')
+    expect(text).toContain('- src/b.ts (+2/-1) @@ -1,2 +1,3 @@ fn')
+    expect(text).toContain('- You asked: Fix the rate limiter')
     expect(text).toContain('- Ran: pnpm test')
-    expect(text).toContain('Files changed so far: src/a.ts')
-    expect(text.trimEnd().endsWith('Next:')).toBe(true)
+    expect(text).toContain('Please finish')
+    expect(text).not.toMatch(/\n\n\n/)
+    expect(text).not.toMatch(/^## .*\n\n/m)
+  })
+
+  it('omits sections that have nothing in them', () => {
+    const text = handoffPrompt(view())
+    expect(text).not.toContain('## Plan')
+    expect(text).not.toContain('## Decisions')
+    expect(text).not.toContain('## Pending message')
+    expect(text).toContain('## Changed files')
+    expect(text).toContain('Fix the rate limiter')
+    expect(text).toContain('Reason for the switch')
+  })
+
+  it('uses an explicit reason', () => {
+    expect(handoffPrompt(view(), { reason: 'Automatic handoff: rate limit' })).toContain(
+      'Automatic handoff: rate limit',
+    )
   })
 
   it('retains the continuation link in the replica', () => {
@@ -99,39 +153,96 @@ describe('handoffPrompt', () => {
     expect(state.sessions.s2?.handoffFrom).toEqual({ sessionId: 's1', title: 'Original' })
   })
 
-  it('keeps the latest context when it has to cut', () => {
-    const long = fold([
+  const long = () =>
+    fold([
       session('s1', 'Long'),
       ...Array.from({ length: 60 }, (_, i) => ({
         type: 'message.delta' as const,
         sessionId: 's1',
-        role: 'user' as const,
+        role: i % 2 ? ('assistant' as const) : ('user' as const),
         text: `message number ${i} ${'x'.repeat(100)}`,
       })),
     ]).sessions.s1!
-    const text = handoffPrompt(long, { maxChars: 1_500 })
+
+  it('drops the oldest turns first and marks the section trimmed', () => {
+    const text = handoffPrompt(long(), { maxChars: 1_500, pendingMessage: 'finish' })
     expect(text.length).toBeLessThanOrEqual(1_500)
-    expect(text).toContain('(earlier messages left out)')
+    expect(text).toContain('## Recent turns (trimmed)')
     expect(text).toContain('message number 59')
-    expect(text).toContain('Original goal: message number 0')
-    expect(text).not.toContain('- I asked: message number 0 ')
+    expect(text).toContain('Goal')
+    expect(text).toContain('message number 0 ')
+    expect(text.match(/message number 0 /g)).toHaveLength(1) // only the goal
+    expect(text).toContain('## Pending message\nfinish')
   })
 
-  it('bounds even oversized fixed context and includes a pending message and diff when they fit', () => {
-    const text = handoffPrompt(view(), { pendingMessage: 'Please finish', diff: '+changed' })
-    expect(text).toContain('Pending user message: Please finish')
-    expect(text).toContain('Working tree diff:\n+changed')
+  it('trims turns, then diff detail, then decisions, but keeps reason, goal and pending', () => {
+    const files = Array.from({ length: 10 }, (_, i) => ({
+      path: `src/file-${i}.ts`,
+      patch: `@@ -1,1 +1,1 @@ section ${i}\n+a\n-b`,
+    }))
+    const base = { files, pendingMessage: 'finish it' }
+    const full = handoffPrompt(rich(), base)
+    // Just under the full size: only turns shrink.
+    const a = handoffPrompt(rich(), { ...base, maxChars: full.length - 20 })
+    expect(a).toContain('## Recent turns (trimmed)')
+    expect(a).toContain('section 0')
+    expect(a).toContain('Decided to use a token bucket')
+    // Tighter: hunk headers go before decisions.
+    const tight = full.indexOf('## Recent turns') + 20
+    const b = handoffPrompt(rich(), { ...base, maxChars: tight })
+    expect(b).toContain('## Changed files (trimmed)')
+    expect(b).not.toContain('section 0')
+    expect(b).toContain('Decided to use a token bucket')
+    // Tighter still: decisions are next.
+    const c = handoffPrompt(rich(), { ...base, maxChars: full.length - 700 })
+    expect(c).toContain('## Decisions (trimmed)')
+    expect(c).not.toContain('Decided to use')
+    // Always: the essentials.
+    const d = handoffPrompt(rich(), { ...base, maxChars: 500 })
+    expect(d.length).toBeLessThanOrEqual(500)
+    for (const kept of ['Reason for the switch', '## Goal', 'Fix the rate limiter', 'finish it'])
+      expect(d).toContain(kept)
+  })
+
+  it('bounds even a tiny budget', () => {
     expect(
-      handoffPrompt(view(), { maxChars: 80, diff: 'x'.repeat(5000) }).length,
+      handoffPrompt(view(), { maxChars: 80, files: [{ path: 'x'.repeat(5000) }] }).length,
     ).toBeLessThanOrEqual(80)
   })
 
-  it('formats a delta without repeating the original goal or session metadata', () => {
-    const text = handoffPrompt(view(), { delta: true })
-    expect(text).toContain('Since you last worked')
+  it('formats a delta without the goal, and with only files touched since then', () => {
+    const text = handoffPrompt(view(), {
+      delta: true,
+      agentLabel: 'Codex',
+      pendingMessage: 'next',
+      files: [
+        { path: 'src/a.ts', patch: '@@ -1 +1 @@\n+a\n-b' },
+        { path: 'old/untouched.ts', patch: '+x' },
+      ],
+    })
+    expect(text).toContain('# Handoff update')
+    expect(text).toContain('switched back to you from Codex')
+    expect(text).toContain('## What happened meanwhile')
     expect(text).toContain('Looking at it.')
-    expect(text).not.toContain('Original goal:')
-    expect(text).not.toContain('Folder:')
+    expect(text).toContain('src/a.ts (+1/-1)')
+    expect(text).not.toContain('untouched')
+    expect(text).not.toContain('## Goal')
+    expect(text).toContain('## Pending message\nnext')
+  })
+
+  it('parses a note back into its sections', () => {
+    const parts = parseHandoffNote(handoffPrompt(rich(), { pendingMessage: 'go' }))
+    expect(parts.map((p) => p.title)).toEqual([
+      'Reason for the switch',
+      'Goal',
+      'Plan',
+      'Decisions',
+      'Changed files',
+      'Recent turns',
+      'Pending message',
+    ])
+    expect(parts.at(-1)?.body).toBe('go')
+    expect(parseHandoffNote('just text')).toEqual([{ body: 'just text' }])
   })
 
   it('reconstructs provider segments from the event log', () => {

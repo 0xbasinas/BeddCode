@@ -1,4 +1,4 @@
-import { elapsedLabel } from '@beddcode/client-runtime'
+import { elapsedLabel, parseHandoffNote } from '@beddcode/client-runtime'
 import {
   memo,
   startTransition,
@@ -420,11 +420,11 @@ function ItemView({
       return <CompactionRow item={item} />
     case 'switch':
       return (
-        <details className="turn-notice">
+        <details className="turn-notice handoff-marker">
           <summary>
             Switched from {item.from} to {item.to}
           </summary>
-          <pre style={{ whiteSpace: 'pre-wrap' }}>{item.handoff}</pre>
+          <HandoffNote note={item.handoff} />
         </details>
       )
     case 'notice':
@@ -439,6 +439,20 @@ function ItemView({
     case 'changes':
       return null // drawn by Transcript, which knows the host
   }
+}
+
+/** The note that was sent on a switch, one labelled block per section. */
+function HandoffNote({ note }: { note: string }) {
+  return (
+    <div className="handoff-note">
+      {parseHandoffNote(note).map((part, i) => (
+        <section key={i}>
+          {part.title && <h4>{part.title}</h4>}
+          <p>{part.body}</p>
+        </section>
+      ))}
+    </div>
+  )
 }
 
 function ReplyText({

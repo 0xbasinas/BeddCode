@@ -4,6 +4,7 @@ import {
   createBlockBuilder,
   defaultOpen,
   formatDuration,
+  parseHandoffNote,
   summarizeTools,
   toolDetails,
   toolDuration,
@@ -607,11 +608,20 @@ function SwitchMarker({ item }: { item: { from: string; to: string; handoff: str
       <Muted size={12.5} style={{ textAlign: 'center' }}>
         Switched from {item.from} to {item.to}
       </Muted>
-      {open ? (
-        <Text size={12} selectable>
-          {item.handoff}
-        </Text>
-      ) : null}
+      {open
+        ? parseHandoffNote(item.handoff).map((part, i) => (
+            <View key={i} style={{ marginTop: 8 }}>
+              {part.title ? (
+                <Muted size={12} style={{ fontWeight: '600' }}>
+                  {part.title}
+                </Muted>
+              ) : null}
+              <Text size={12} selectable>
+                {part.body}
+              </Text>
+            </View>
+          ))
+        : null}
     </Pressable>
   )
 }

@@ -15,6 +15,10 @@
 - Added the mobile agent/model picker and expandable switch markers on both clients. Switch events project into their original transcript positions, survive snapshot replay, and appear in exported transcripts. Added replay and reviewed-handoff tests; bumped the snapshot version.
 - Verified workspace typecheck, mobile typecheck, focused replica/cache and switch tests, and oxlint on changed UI files. The local web app loaded without page errors; no connected host was available to exercise the switching flow in the browser. Expo lint could not run because its cache directory is read-only in the sandbox.
 
+- Replaced the loose-prose handoff with one structured builder (`handoffPrompt`): labelled `##` sections (reason, goal, plan, decisions, changed files with `+N/-M` and the first hunk header, recent turns, pending message), empty sections omitted. Over the cap (6000 chars) it trims older turns, then hunk headers, then decisions, plan and file lines, marking sections `(trimmed)`; reason, goal and pending message are never dropped. Decisions are heuristic (assistant lines starting "Decided/Decision/Going with…").
+- Switch-back to an agent with an earlier native segment that can resume sends a delta note (`# Handoff update`: reason, files changed since, turns by the other agent, pending message; no goal). Otherwise the full note. The preview shows whichever will be sent. Covered by the A→B→A fake-provider test and the unsupported/lost-resume fallbacks.
+- The web and mobile switch markers render the sent note by section (`parseHandoffNote`); the review step edits the same text. The manual and automatic web handoffs use the same builder (patches are summarized, not pasted).
+
 ## Left
 
 - Review the budget policy so essential context remains useful even with oversized fixed fields.

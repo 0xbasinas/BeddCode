@@ -91,11 +91,15 @@ it('resumes A after A to B to A and sends only the intervening context', async (
   expect(result.ok).toBe(true)
   expect(starts.at(-1)?.resumeId).toBe(store.sessionSegments(sessionId)[0]?.nativeSessionId)
   expect(result.draft).toContain('new B request')
-  expect(result.draft).not.toContain('\n- I asked: old A request')
+  expect(result.draft).toContain('# Handoff update')
+  expect(result.draft).toContain('switched back to you from Target')
+  expect(result.draft).not.toMatch(/^## Goal/m)
+  expect(result.draft).not.toContain('You asked: old A request')
   expect(store.sessionSegments(sessionId)[2]?.nativeSessionId).toBe(starts.at(-1)?.resumeId)
   await manager.prompt(sessionId, 'continue')
   await vi.waitFor(() => expect(prompts.at(-1)).toContain('new B request'))
-  expect(prompts.at(-1)).not.toContain('\n- I asked: old A request')
+  expect(prompts.at(-1)).toContain('# Handoff update')
+  expect(prompts.at(-1)).not.toContain('You asked: old A request')
 })
 
 it.each(['unsupported', 'lost'] as const)(
@@ -117,7 +121,8 @@ it.each(['unsupported', 'lost'] as const)(
     expect(result.ok).toBe(true)
     expect(starts.at(-1)?.resumeId).toBeUndefined()
     expect(result.draft).toContain('original request')
-    expect(result.draft).toContain('Original goal:')
+    expect(result.draft).toContain('# Handoff note')
+    expect(result.draft).toContain('## Goal')
   },
 )
 
@@ -129,7 +134,7 @@ it('switches in the same session and supplies hidden bounded context with the ne
     pendingMessage: 'finish it',
   })
   expect(result).toMatchObject({ ok: true })
-  expect(result.draft).toContain('Pending user message: finish it')
+  expect(result.draft).toContain('## Pending message\nfinish it')
   expect(result.draft.length).toBeLessThanOrEqual(6000)
   expect(store.sessionSegments(sessionId).map((s) => s.provider)).toEqual(['fake', 'target'])
   await manager.prompt(sessionId, 'continue')
@@ -139,9 +144,7 @@ it('switches in the same session and supplies hidden bounded context with the ne
       .readSession(sessionId)
       .some(
         ({ event }) =>
-          event.type === 'message.delta' &&
-          event.role === 'user' &&
-          event.text.includes('Original goal:'),
+          event.type === 'message.delta' && event.role === 'user' && event.text.includes('## Goal'),
       ),
   ).toBe(false)
 })
@@ -159,7 +162,8 @@ it('restores the old provider if the new provider fails to start', async () => {
   const { manager, store, sessionId } = await setup(true)
   const result = await manager.switchAgent({ sessionId, instanceId: 'target' })
   expect(result).toMatchObject({ ok: false, error: 'target failed' })
-  expect(result.draft).toContain('Original goal:')
+  expect(result.draft).toContain('# Handoff note')
+  expect(result.draft).toContain('## Goal')
   expect(store.sessionSegments(sessionId)).toHaveLength(1)
   await expect(manager.prompt(sessionId, 'still working')).resolves.toEqual({ state: 'started' })
 })
@@ -178,7 +182,7 @@ it('delivers a pending handoff after the host closes and resumes the active segm
 it('previews without switching and sends the edited handoff', async () => {
   const { manager, store, sessionId, prompts } = await setup()
   const preview = await manager.switchAgent({ sessionId, instanceId: 'target', preview: true })
-  expect(preview.draft).toContain('Original goal:')
+  expect(preview.draft).toContain('## Goal')
   expect(store.sessionSegments(sessionId)).toHaveLength(1)
   const result = await manager.switchAgent({
     sessionId,

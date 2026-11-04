@@ -189,6 +189,29 @@ a {
   font-size: var(--fs-body);
   line-height: 1.6;
 }
+.handoff-marker {
+  display: block;
+}
+.handoff-marker summary {
+  cursor: pointer;
+}
+.handoff-note {
+  display: flex;
+  flex-direction: column;
+  gap: calc(10px * var(--ui-scale));
+  margin-top: calc(10px * var(--ui-scale));
+}
+.handoff-note h4 {
+  margin: 0 0 calc(2px * var(--ui-scale));
+  color: var(--text);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+.handoff-note p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .turn-notice svg {
   flex-shrink: 0;
   margin-top: calc(2px * var(--ui-scale));

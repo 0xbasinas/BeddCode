@@ -381,7 +381,7 @@ describe('SessionManager robustness', () => {
     await until(() => events(sessionId).some((e) => e.type === 'turn.completed'))
     expect(prompts).toHaveLength(2)
     expect(prompts[1]).toContain('original request')
-    expect(prompts[1]).toContain('Original goal:')
+    expect(prompts[1]).toContain('## Goal\noriginal request')
     expect(prompts[1]).toContain('continue')
     await manager.close()
   })

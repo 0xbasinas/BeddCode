@@ -99,7 +99,13 @@ export function AutoHandoff() {
     let cancelled = false
     void (async () => {
       try {
-        const note = `${await prepareHandoff(pending.hostKey, pending.session, undefined, false)}\nHandoff reason: ${pending.reason}\nContinue from the latest state and decisions above.`
+        const note = await prepareHandoff(
+          pending.hostKey,
+          pending.session,
+          undefined,
+          false,
+          `Automatic handoff: ${pending.reason}`,
+        )
         // Keep a copy even if creation or sending fails.
         const draftKey = composerDraftKey(pending.hostKey, `handoff:${pending.session.id}`)
         useComposerDrafts.getState().setDraft(draftKey, note)

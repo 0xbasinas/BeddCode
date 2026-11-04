@@ -192,6 +192,11 @@ export function SwitchAgent({
             </label>
           </p>
           {review && (
+            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-small)' }}>
+              The note is sent as written, with the next message. Sections you delete are left out.
+            </p>
+          )}
+          {review && (
             <textarea
               aria-label="Handoff context"
               disabled={loadingPreview}

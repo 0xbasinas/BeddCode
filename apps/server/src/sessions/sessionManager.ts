@@ -1,5 +1,5 @@
 import { applyEvents, emptyReplica, type SessionView } from '@beddcode/client-runtime/replica'
-import { handoffPrompt } from '@beddcode/client-runtime/handoff'
+import { handoffPrompt, type HandoffFile } from '@beddcode/client-runtime/handoff'
 import { lastUsedModel } from '@beddcode/contracts'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
@@ -158,6 +158,10 @@ export interface ResumeSession {
  * snapshot matters: an agent that starts first can edit files the snapshot would then include,
  * and the turn's changes and undo would miss them.
  */
+/** The note's reason when a conversation could not be resumed and starts over with the history. */
+const LOST = {
+  reason: 'Your earlier conversation in this session was lost, so this is the full history.',
+}
 const CHECKPOINT_GRACE_MS = 4_000
 /** Folders with more untracked (and not ignored) files than this get no turn snapshots. */
 const CHECKPOINT_MAX_UNTRACKED = 5_000
@@ -556,20 +560,19 @@ export class SessionManager {
     }
   }
 
-  /** The working-tree diff for a handoff, capped; the files are read in parallel. */
-  private async workingDiff(cwd: string): Promise<string> {
+  /** The working tree's changed files for a handoff; the patches are read in parallel. */
+  private async workingFiles(cwd: string): Promise<HandoffFile[]> {
     try {
       const status = await this.deps.git.status(cwd)
-      const parts = await Promise.all(
-        status.files.slice(0, 30).map((file) => this.deps.git.diff(cwd, file.path)),
+      return await Promise.all(
+        status.files.slice(0, 30).map(async (file) => {
+          const { patch } = await this.deps.git.diff(cwd, file.path)
+          return { path: file.path, status: file.status, patch }
+        }),
       )
-      return parts
-        .map((part) => `\n${part.path}\n${part.patch}`)
-        .join('')
-        .slice(0, 6000)
     } catch {
       /* Non-repositories have no git diff. */
-      return ''
+      return []
     }
   }
 
@@ -595,20 +598,55 @@ export class SessionManager {
       ]
       if (!view) throw new Error('Cannot build session handoff')
       const pendingMessage = params.pendingMessage ?? turn.queue.map((q) => q.text).join('\n')
-      const buildDraft = async (from: SessionView, agentLabel?: string) =>
-        handoffPrompt(from, {
-          agentLabel,
-          pendingMessage,
-          diff: await this.workingDiff(created.cwd),
-        })
+      const targetInstance = await this.findInstance(instanceId)
+      // Switching back to an agent that can resume its earlier conversation sends only what changed
+      // since then; everything else gets the full note.
+      const plan = async (agentLabel?: string) => {
+        const events = this.deps.store.readSession(sessionId)
+        const segments = this.deps.store.sessionSegments(sessionId)
+        const previousIndex = segments.findLastIndex(
+          (segment, index) =>
+            index < segments.length - 1 &&
+            segment.provider === instanceId &&
+            !!segment.nativeSessionId,
+        )
+        const resumeId = targetInstance.adapter.capabilities(instanceId).resume
+          ? segments[previousIndex]?.nativeSessionId
+          : undefined
+        const files = await this.workingFiles(created.cwd)
+        const note = (from: SessionView, delta: boolean) =>
+          handoffPrompt(from, {
+            agentLabel,
+            targetLabel: targetInstance.instance.label,
+            pendingMessage,
+            files,
+            delta,
+          })
+        const full = applyEvents(emptyReplica(), events).sessions[sessionId]
+        let deltaDraft: string | undefined
+        if (resumeId) {
+          const boundaries = events
+            .map((entry, index) => (entry.event.type === 'session.switched' ? index : -1))
+            .filter((index) => index >= 0)
+          const deltaEvents = [events[0]!, ...events.slice(boundaries[previousIndex]! + 1)]
+          const deltaView = applyEvents(emptyReplica(), deltaEvents).sessions[sessionId]
+          if (deltaView) deltaDraft = note(deltaView, true)
+        }
+        return {
+          segments,
+          resumeId,
+          fullDraft: note(full ?? view, false),
+          draft: deltaDraft ?? note(full ?? view, false),
+        }
+      }
       // Only a preview (or a failure before the agent stops) needs this early; a real switch builds
       // the handoff once, after the old agent has stopped writing.
       if (params.preview) {
-        draft = await buildDraft(view, this.live.get(sessionId)?.label)
+        draft = (await plan(this.live.get(sessionId)?.label)).draft
         return { ok: true, draft }
       }
       switchTimer = performance.now()
-      const target = await this.findInstance(instanceId)
+      const target = targetInstance
       if (turn.busy && !params.stop) throw new Error('A turn is running; stop it before switching')
       const pending = new Map<string, Extract<SessionEvent, { type: 'approval.requested' }>>()
       for (const { event } of this.deps.store.readSession(sessionId)) {
@@ -660,35 +698,11 @@ export class SessionManager {
       if (this.live.get(sessionId) === old) this.live.delete(sessionId)
       stopped = true
       await withTimeout(old.session.close(), 5_000, 'closing the agent')
-      // Capture anything the interrupted provider wrote while it was stopping.
-      const finalView = applyEvents(emptyReplica(), this.deps.store.readSession(sessionId))
-        .sessions[sessionId]
-      draft = await buildDraft(finalView ?? view, old.label)
-      const fullDraft = draft
-      const events = this.deps.store.readSession(sessionId)
-      const segments = this.deps.store.sessionSegments(sessionId)
-      const previousIndex = segments.findLastIndex(
-        (segment, index) =>
-          index < segments.length - 1 &&
-          segment.provider === instanceId &&
-          !!segment.nativeSessionId,
-      )
-      const previous = previousIndex >= 0 ? segments[previousIndex] : undefined
-      let resumeId = target.adapter.capabilities(instanceId).resume
-        ? previous?.nativeSessionId
-        : undefined
-      if (resumeId) {
-        const boundaries = events
-          .map((entry, index) => (entry.event.type === 'session.switched' ? index : -1))
-          .filter((index) => index >= 0)
-        const deltaEvents = [events[0]!, ...events.slice(boundaries[previousIndex]! + 1)]
-        const deltaView = applyEvents(emptyReplica(), deltaEvents).sessions[sessionId]
-        if (deltaView)
-          draft = handoffPrompt(deltaView, {
-            delta: true,
-            pendingMessage: params.pendingMessage ?? turn.queue.map((q) => q.text).join('\n'),
-          })
-      }
+      // Built after the close, so it holds anything the interrupted provider wrote while stopping.
+      const planned = await plan(old.label)
+      draft = planned.draft
+      const { fullDraft, segments } = planned
+      let resumeId = planned.resumeId
       if (params.handoff !== undefined) draft = params.handoff
       // The target starts from its own last-used model for this session (never the agent being
       // left), or its default model when it has not run here yet.
@@ -1682,7 +1696,7 @@ export class SessionManager {
       resumedFrom = undefined
       if (this.deps.store.sessionSegments(sessionId).length > 1) {
         const view = applyEvents(emptyReplica(), events).sessions[sessionId]
-        if (view) this.preambles.set(sessionId, handoffPrompt(view))
+        if (view) this.preambles.set(sessionId, handoffPrompt(view, LOST))
       }
       this.deps.store.append({
         type: 'error',
@@ -2250,7 +2264,7 @@ export class SessionManager {
         this.deps.store.sessionSegments(sessionId).length > 1
           ? applyEvents(emptyReplica(), this.deps.store.readSession(sessionId)).sessions[sessionId]
           : undefined
-      const fullContext = view ? handoffPrompt(view) : undefined
+      const fullContext = view ? handoffPrompt(view, LOST) : undefined
       const live: LiveSession = { ...old, session, resumedFrom: undefined, skipTurnStart: !!resend }
       this.live.set(sessionId, live)
       void this.pump(sessionId, session)

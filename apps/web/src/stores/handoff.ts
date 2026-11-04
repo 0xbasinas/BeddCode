@@ -1,5 +1,5 @@
 import type { SessionView } from '@beddcode/client-runtime'
-import { handoffPrompt } from '@beddcode/client-runtime'
+import { handoffPrompt, type HandoffFile } from '@beddcode/client-runtime'
 import { hostRequest } from './host.ts'
 
 interface PendingHandoff {
@@ -28,31 +28,24 @@ export async function prepareHandoff(
   session: SessionView,
   agentLabel?: string,
   savePending = true,
+  reason?: string,
 ) {
-  let changes = ''
+  let files: HandoffFile[] = []
   try {
     const status = await hostRequest(hostKey, 'git.status', { cwd: session.cwd })
-    const files = status.files.slice(0, 30)
-    const diffs = await Promise.all(
-      files.map((file) =>
-        hostRequest(hostKey, 'git.diff', { cwd: session.cwd, path: file.path }).catch(() => null),
-      ),
+    files = await Promise.all(
+      status.files.slice(0, 30).map(async (file) => {
+        const diff = await hostRequest(hostKey, 'git.diff', {
+          cwd: session.cwd,
+          path: file.path,
+        }).catch(() => undefined)
+        return { path: file.path, status: file.status, patch: diff?.patch }
+      }),
     )
-    let remaining = 24_000
-    const patches = files
-      .map((file, i) => {
-        const diff = diffs[i]
-        const patch = diff?.patch ?? ''
-        const included = patch.slice(0, Math.max(0, remaining))
-        remaining -= included.length
-        return `\n### ${file.path} (${file.status})\n${included}${!diff || diff.truncated || included.length < patch.length ? '\n[Diff unavailable or truncated; inspect the working tree.]' : ''}`
-      })
-      .join('\n')
-    changes = `\n\nCurrent uncommitted changes:${files.length ? patches : '\nNone.'}${status.files.length > files.length ? '\n[Additional files omitted; inspect the working tree.]' : ''}`
   } catch {
-    changes = '\n\nCurrent uncommitted changes: unavailable; inspect the working tree.'
+    /* Without Git the note simply has no changed-files section. */
   }
-  const text = handoffPrompt(session, { agentLabel }) + changes
+  const text = handoffPrompt(session, { agentLabel, reason, files })
   if (savePending)
     setHandoff(hostKey, text, {
       sessionId: session.id,
