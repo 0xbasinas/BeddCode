@@ -47,6 +47,7 @@ import {
   LoaderCircle,
   Columns2,
   BellRing,
+  MoreHorizontal,
 } from 'lucide-react'
 import {
   isWaitingOnYou,
@@ -153,6 +154,31 @@ function readSorts(): Record<string, Sort> {
 
 const OPEN_DONE_KEY = 'beddcode.done-open'
 const COLLAPSED_PROJECTS_KEY = 'beddcode.collapsed-projects'
+const PROJECT_LAYOUT_KEY = 'beddcode.project-layout'
+type ProjectLayout = { order: string[]; hidden: string[]; groups: Record<string, string> }
+function readProjectLayout(): ProjectLayout {
+  try {
+    const value = JSON.parse(localStorage.getItem(PROJECT_LAYOUT_KEY) ?? '{}')
+    return {
+      order: Array.isArray(value.order)
+        ? value.order.filter((v: unknown) => typeof v === 'string')
+        : [],
+      hidden: Array.isArray(value.hidden)
+        ? value.hidden.filter((v: unknown) => typeof v === 'string')
+        : [],
+      groups:
+        value.groups && typeof value.groups === 'object' && !Array.isArray(value.groups)
+          ? Object.fromEntries(
+              Object.entries(value.groups).filter(
+                (entry): entry is [string, string] => typeof entry[1] === 'string',
+              ),
+            )
+          : {},
+    }
+  } catch {
+    return { order: [], hidden: [], groups: {} }
+  }
+}
 
 /** Section choices remembered per host and folder between runs. */
 function useRememberedSections(storageKey: string): [Set<string>, (key: string) => void] {
@@ -188,6 +214,20 @@ export function Sidebar() {
   const navigate = useNavigate()
   const entries = useHostStore((s) => s.entries)
   const runtimes = useHostStore((s) => s.runtimes)
+  const [layout, setLayout] = useState<ProjectLayout>(readProjectLayout)
+  const [collapsedGroups, toggleGroup] = useRememberedSections('beddcode.collapsed-project-groups')
+  const [draggedProject, setDraggedProject] = useState<string | null>(null)
+  const updateLayout = (change: (current: ProjectLayout) => ProjectLayout) => {
+    setLayout((current) => {
+      const next = change(current)
+      try {
+        localStorage.setItem(PROJECT_LAYOUT_KEY, JSON.stringify(next))
+      } catch {
+        /* Keep this window usable. */
+      }
+      return next
+    })
+  }
   const [filter, setFilter] = useState<Filter>('all')
   const [hostsOpen, setHostsOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -338,9 +378,11 @@ export function Sidebar() {
 ${s.projectless ? 'no-project' : s.projectPath}`
   // Pinned sessions sit in their own section at the top (outside the Done tab and searches).
   const showPinned = filter !== 'done' && !searching
-  const pinned = showPinned ? visible.filter((s) => s.pinned) : []
+  const pinned = showPinned
+    ? visible.filter((s) => s.pinned && !layout.hidden.includes(groupKey(s)))
+    : []
   for (const s of visible) {
-    if (showPinned && s.pinned) continue
+    if (layout.hidden.includes(groupKey(s)) || (showPinned && s.pinned)) continue
     const key = groupKey(s)
     const group = groups.get(key)
     if (group) group.push(s)
@@ -365,6 +407,47 @@ ${s.projectless ? 'no-project' : s.projectPath}`
           sessionGroups,
         )
       : []
+  const folders = [
+    ...sessionGroups.map((g) => ({
+      ...g,
+      project: projectsOf(g.hostKey).find((p) => samePath(p.path, g.projectPath)),
+    })),
+    ...emptyFolders.map(({ hostKey, project }) => ({
+      key: `${hostKey}\n${project.path}`,
+      hostKey,
+      projectPath: project.path,
+      projectless: false,
+      list: [] as SessionView[],
+      project,
+    })),
+  ]
+    .filter((folder) => !layout.hidden.includes(folder.key))
+    .sort((a, b) => {
+      const ai = layout.order.indexOf(a.key),
+        bi = layout.order.indexOf(b.key)
+      return (ai < 0 ? Infinity : ai) - (bi < 0 ? Infinity : bi)
+    })
+  const knownFolders = new Map<string, string>()
+  for (const entry of entries.filter((e) => selectedHost === 'all' || e.key === selectedHost)) {
+    for (const project of projectsOf(entry.key))
+      knownFolders.set(`${entry.key}\n${project.path}`, project.name || folderName(project.path))
+  }
+  for (const item of hosted.filter((h) => selectedHost === 'all' || h.hostKey === selectedHost)) {
+    const key = `${item.hostKey}\n${item.session.projectless ? 'no-project' : item.session.projectPath}`
+    knownFolders.set(
+      key,
+      item.session.projectless ? 'No project' : folderName(item.session.projectPath),
+    )
+  }
+  const hiddenFolders = layout.hidden.filter((key) => knownFolders.has(key))
+  const folderSections = new Map<string, typeof folders>()
+  for (const folder of folders) {
+    const label = layout.groups[folder.key] ?? ''
+    const sectionKey = label ? `${folder.hostKey}\n${label}` : ''
+    const section = folderSections.get(sectionKey) ?? []
+    section.push(folder)
+    folderSections.set(sectionKey, section)
+  }
   const hasFolders = entries.some((e) => projectsOf(e.key).length > 0)
   const hostLabel = (hostKey: string) =>
     hostKey === LOCAL_HOST_KEY ? 'This PC' : (runtimes[hostKey]?.host?.name ?? 'Remote host')
@@ -954,7 +1037,7 @@ ${s.projectless ? 'no-project' : s.projectPath}`
             {pinned.map((s) => sessionRow(s))}
           </section>
         )}
-        {sessionGroups.length === 0 && emptyFolders.length === 0 && pinned.length === 0 && (
+        {folders.length === 0 && hiddenFolders.length === 0 && pinned.length === 0 && (
           <div className="sidebar-empty">
             <span className="empty-icon">
               {(searchOpen && query) || filterCount > 0 ? (
@@ -994,33 +1077,100 @@ ${s.projectless ? 'no-project' : s.projectPath}`
             )}
           </div>
         )}
-        {sessionGroups.map(({ key, hostKey, projectPath, projectless, list }) => (
-          <FolderGroup
-            key={key}
-            hostKey={hostKey}
-            path={projectPath}
-            projectless={projectless}
-            project={projectsOf(hostKey).find((p) => samePath(p.path, projectPath))}
-            hostName={entries.length > 1 ? hostLabel(hostKey) : undefined}
-            collapsed={!searching && collapsedProjects.has(key)}
-            onToggle={() => toggleProject(key)}
-            sessionCount={list.length}
-            workingCount={list.filter((s) => s.status === 'running').length}
-          >
-            {renderGroup(list, key)}
-          </FolderGroup>
+        {[...folderSections].map(([sectionKey, section]) => (
+          <div key={sectionKey || 'ungrouped'}>
+            {sectionKey && (
+              <button
+                className="project-group-heading"
+                onClick={() => toggleGroup(sectionKey)}
+                aria-expanded={!collapsedGroups.has(sectionKey)}
+              >
+                <ChevronRight
+                  size={12}
+                  className={`folder-chevron ${collapsedGroups.has(sectionKey) ? '' : 'open'}`}
+                />
+                {sectionKey.split('\n').slice(1).join('\n')}
+                {entries.length > 1 ? ` · ${hostLabel(section[0]!.hostKey)}` : ''}
+              </button>
+            )}
+            {(!sectionKey || !collapsedGroups.has(sectionKey)) &&
+              section.map(({ key, hostKey, projectPath, projectless, list, project }) => (
+                <FolderGroup
+                  key={key}
+                  hostKey={hostKey}
+                  path={projectPath}
+                  projectless={projectless}
+                  project={project}
+                  hostName={entries.length > 1 ? hostLabel(hostKey) : undefined}
+                  collapsed={!searching && collapsedProjects.has(key)}
+                  onToggle={() => toggleProject(key)}
+                  sessionCount={list.length}
+                  workingCount={list.filter((s) => s.status === 'running').length}
+                  onDragStart={() => setDraggedProject(key)}
+                  onDragEnd={() => setDraggedProject(null)}
+                  onDrop={() => {
+                    if (
+                      !draggedProject ||
+                      draggedProject === key ||
+                      !draggedProject.startsWith(`${hostKey}\n`)
+                    )
+                      return
+                    updateLayout((current) => {
+                      const order = [
+                        ...new Set([...current.order, ...folders.map((f) => f.key)]),
+                      ].filter((k) => k !== draggedProject)
+                      order.splice(order.indexOf(key), 0, draggedProject)
+                      return {
+                        ...current,
+                        order,
+                        groups: { ...current.groups, [draggedProject]: current.groups[key] ?? '' },
+                      }
+                    })
+                    setDraggedProject(null)
+                  }}
+                  onHide={() =>
+                    updateLayout((current) => ({ ...current, hidden: [...current.hidden, key] }))
+                  }
+                  onGroup={() => {
+                    const name = window.prompt(
+                      'Group name (leave empty for no group)',
+                      layout.groups[key] ?? '',
+                    )
+                    if (name !== null)
+                      updateLayout((current) => ({
+                        ...current,
+                        groups: { ...current.groups, [key]: name.trim() },
+                      }))
+                  }}
+                >
+                  {list.length > 0 ? renderGroup(list, key) : undefined}
+                </FolderGroup>
+              ))}
+          </div>
         ))}
-        {emptyFolders.map(({ hostKey, project }) => (
-          <FolderGroup
-            key={`${hostKey}\n${project.path}`}
-            hostKey={hostKey}
-            path={project.path}
-            project={project}
-            hostName={entries.length > 1 ? hostLabel(hostKey) : undefined}
-            collapsed={collapsedProjects.has(`${hostKey}\n${project.path}`)}
-            onToggle={() => toggleProject(`${hostKey}\n${project.path}`)}
-          />
-        ))}
+        {hiddenFolders.length > 0 && (
+          <div className="hidden-projects">
+            <div className="filter-head">Hidden projects</div>
+            {hiddenFolders.map((key) => (
+              <button
+                key={key}
+                className="menu-row"
+                onClick={() =>
+                  updateLayout((current) => ({
+                    ...current,
+                    hidden: current.hidden.filter((k) => k !== key),
+                  }))
+                }
+              >
+                <span className="menu-text">
+                  {knownFolders.get(key)}
+                  {entries.length > 1 ? ` · ${hostLabel(key.split('\n')[0]!)}` : ''}
+                </span>{' '}
+                Show
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {hostsOpen && <HostsDialog onClose={() => setHostsOpen(false)} />}
@@ -1113,6 +1263,11 @@ function FolderGroup({
   sessionCount,
   workingCount = 0,
   children,
+  onHide,
+  onGroup,
+  onDragStart,
+  onDragEnd,
+  onDrop,
 }: {
   hostKey: string
   path: string
@@ -1124,6 +1279,11 @@ function FolderGroup({
   sessionCount?: number
   workingCount?: number
   children?: ReactNode
+  onHide(): void
+  onGroup(): void
+  onDragStart(): void
+  onDragEnd(): void
+  onDrop(): void
 }) {
   const navigate = useNavigate()
   const contentId = useId()
@@ -1152,7 +1312,27 @@ function FolderGroup({
       ref={ref}
       className={`folder-group ${flashing ? 'flash' : fresh && empty ? 'fresh' : ''}`}
     >
-      <div className="group-title" title={projectless ? 'Sessions without a project folder' : path}>
+      <div
+        className="group-title"
+        draggable
+        onDragStart={(e) => {
+          e.stopPropagation()
+          e.dataTransfer.effectAllowed = 'move'
+          e.dataTransfer.setData('application/x-beddcode-project', path)
+          onDragStart()
+        }}
+        onDragEnd={onDragEnd}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes('application/x-beddcode-session')) return
+          e.preventDefault()
+        }}
+        onDrop={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          onDrop()
+        }}
+        title={projectless ? 'Sessions without a project folder' : path}
+      >
         <button
           className="folder-toggle"
           aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${projectless ? 'sessions without a project' : `project ${name}`}`}
@@ -1193,6 +1373,43 @@ function FolderGroup({
             <span className="folder-host-name">{hostName}</span>
           </span>
         )}
+        <Dropdown
+          placement="bottom"
+          align="end"
+          trigger={({ open, toggle }) => (
+            <button
+              className="icon-btn small"
+              aria-label={`Organize ${name}`}
+              aria-expanded={open}
+              onClick={toggle}
+            >
+              <MoreHorizontal size={14} />
+            </button>
+          )}
+        >
+          {(close) => (
+            <>
+              <button
+                className="menu-row"
+                onClick={() => {
+                  close()
+                  onGroup()
+                }}
+              >
+                Set group…
+              </button>
+              <button
+                className="menu-row"
+                onClick={() => {
+                  close()
+                  onHide()
+                }}
+              >
+                Hide from sidebar
+              </button>
+            </>
+          )}
+        </Dropdown>
         <Button
           variant="app"
           className="icon-btn small"

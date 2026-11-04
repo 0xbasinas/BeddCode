@@ -14,10 +14,16 @@ export class ProjectStore {
     private readonly git: GitService,
   ) {}
 
-  private read(): { paths: string[]; scripts: Record<string, ProjectScript[]> } {
-    const read = readJsonFile<{ paths?: unknown; scripts?: Record<string, ProjectScript[]> }>(
-      this.file,
-    )
+  private read(): {
+    paths: string[]
+    scripts: Record<string, ProjectScript[]>
+    instructions: Record<string, string>
+  } {
+    const read = readJsonFile<{
+      paths?: unknown
+      scripts?: Record<string, ProjectScript[]>
+      instructions?: Record<string, string>
+    }>(this.file)
     if (read.status === 'corrupt') {
       createLogger('projects').error(
         `${this.file} is damaged (${read.error}); starting with no projects.` +
@@ -25,13 +31,15 @@ export class ProjectStore {
       )
     }
     if (read.status !== 'ok' || !read.value || typeof read.value !== 'object')
-      return { paths: [], scripts: {} }
+      return { paths: [], scripts: {}, instructions: {} }
     const data = read.value
     return {
       paths: Array.isArray(data.paths)
         ? data.paths.filter((p): p is string => typeof p === 'string')
         : [],
       scripts: data.scripts && typeof data.scripts === 'object' ? data.scripts : {},
+      instructions:
+        data.instructions && typeof data.instructions === 'object' ? data.instructions : {},
     }
   }
 
@@ -39,15 +47,29 @@ export class ProjectStore {
     return this.read().paths
   }
 
-  private write(paths: string[], scripts = this.read().scripts) {
+  private write(
+    paths: string[],
+    scripts = this.read().scripts,
+    instructions = this.read().instructions,
+  ) {
     // Scripts of folders no longer in the list are dropped.
     const kept = Object.fromEntries(
       Object.entries(scripts).filter(
         ([folder, list]) => list.length > 0 && paths.some((p) => samePath(p, folder)),
       ),
     )
-    const data =
-      Object.keys(kept).length > 0 ? { version: 1, paths, scripts: kept } : { version: 1, paths }
+    const rules = Object.fromEntries(
+      Object.entries(instructions).filter(
+        ([folder, value]) =>
+          typeof value === 'string' && value.length > 0 && paths.some((p) => samePath(p, folder)),
+      ),
+    )
+    const data = {
+      version: 1,
+      paths,
+      ...(Object.keys(kept).length ? { scripts: kept } : {}),
+      ...(Object.keys(rules).length ? { instructions: rules } : {}),
+    }
     writeFileAtomic(this.file, JSON.stringify(data, null, 2))
   }
 
@@ -68,6 +90,24 @@ export class ProjectStore {
     const next = Object.fromEntries(Object.entries(scripts).filter(([p]) => !samePath(p, stored)))
     next[stored] = list
     this.write(paths, next)
+    return this.describe(stored)
+  }
+
+  instructionsFor(folder: string): string {
+    const { instructions } = this.read()
+    const key = Object.keys(instructions).find((p) => samePath(p, folder))
+    return key && typeof instructions[key] === 'string' ? instructions[key] : ''
+  }
+
+  async setInstructions(folder: string, value: string): Promise<Project> {
+    const { paths, scripts, instructions } = this.read()
+    const stored = paths.find((p) => samePath(p, folder))
+    if (!stored) throw new Error(`Not an added folder: ${folder}`)
+    const next = Object.fromEntries(
+      Object.entries(instructions).filter(([p]) => !samePath(p, stored)),
+    )
+    next[stored] = value
+    this.write(paths, scripts, next)
     return this.describe(stored)
   }
 
@@ -115,6 +155,7 @@ export class ProjectStore {
       path: folder,
       name: path.basename(folder) || folder,
       isRepo: info?.isRepo ?? false,
+      instructions: this.instructionsFor(folder),
       branch: info?.branch,
       ...(this.scriptsFor(folder).length > 0 ? { scripts: this.scriptsFor(folder) } : {}),
     }

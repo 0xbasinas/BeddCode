@@ -24,6 +24,7 @@ import { useHostStore } from '../../stores/host.ts'
 import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { HostsDialog, type HostDialogView } from '../hosts/HostsDialog.tsx'
 import { HostsOverview } from '../hosts/HostsOverview.tsx'
+import { ProjectInstructionsSettings } from './ProjectInstructionsSettings.tsx'
 import { AgentsSettings } from './AgentsSettings.tsx'
 import { BrowserSettings } from './BrowserSettings.tsx'
 import { PreferencesSettings } from './PreferencesSettings.tsx'
@@ -43,6 +44,7 @@ export type SettingsSection =
   | 'appearance'
   | 'notifications'
   | 'shortcuts'
+  | 'project-instructions'
   | 'agents'
   | 'permissions'
   | 'tools'
@@ -66,6 +68,7 @@ const SECTIONS = [
   { id: 'remote-mcp', label: 'Remote MCP', group: 'Agents', icon: Server },
   { id: 'orchestration', label: 'Orchestration', group: 'Automation', icon: SlidersHorizontal },
   { id: 'alerts', label: 'Phone alerts', group: 'Automation', icon: BellRing },
+  { id: 'project-instructions', label: 'Project instructions', group: 'Workspace', icon: Code2 },
   { id: 'hosts', label: 'Hosts', group: 'Workspace', icon: Server },
   { id: 'git', label: 'Git', group: 'Workspace', icon: GitBranch },
   { id: 'editor', label: 'Editor', group: 'Workspace', icon: Code2 },
@@ -175,6 +178,7 @@ export function SettingsPage({ section }: { section: SettingsSection }) {
             {(['general', 'appearance', 'shortcuts', 'git', 'editor'] as const).map((page) =>
               section === page ? <PreferencesSettings key={page} section={page} /> : null,
             )}
+            {section === 'project-instructions' && <ProjectInstructionsSettings />}
             {section === 'browser' && <BrowserSettings />}
             {(section === 'agents' ||
               section === 'permissions' ||

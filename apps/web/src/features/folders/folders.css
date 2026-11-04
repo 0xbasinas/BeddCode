@@ -535,3 +535,17 @@
 .setup-button .fb-spin {
   margin: 0;
 }
+
+.project-group-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-align: left;
+}
+.hidden-projects {
+  padding: 8px 12px;
+}

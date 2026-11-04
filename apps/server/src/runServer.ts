@@ -107,6 +107,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
   let port = config.port
   let agentTools: AgentTools | undefined
   const sessions = new SessionManager({
+    projectInstructions: (folder) => workspace.projects.instructionsFor(folder),
     agentTerminals: new AgentTerminals(workspace.terminals),
     agentToolServers: (sessionId, features) => agentTools?.serversFor(sessionId, features) ?? [],
     store,

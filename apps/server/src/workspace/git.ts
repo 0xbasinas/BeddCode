@@ -262,25 +262,45 @@ export class GitService {
   async diff(cwd: string, file: string): Promise<GitDiff> {
     const root = await this.root(cwd)
     assertRelative(file)
-    return this.diffAtRoot(root, file)
+    const oldPath = (await this.status(root)).files.find((entry) => entry.path === file)?.oldPath
+    return this.diffAtRoot(root, file, undefined, oldPath)
   }
 
   private async diffAtRoot(
     root: string,
     file: string,
     known?: { baseline: string; tracked: boolean },
+    oldPath?: string,
   ): Promise<GitDiff> {
     const abs = path.join(root, file)
 
     const tracked =
       known?.tracked ??
       (await this.gitRaw(root, ['ls-files', '--error-unmatch', '--', file])).code === 0
+    const indexEntry = await this.gitRaw(root, ['ls-files', '--stage', '--', file])
+    const submodule = /^160000 /m.test(indexEntry.stdout)
     if (!tracked && existsSync(abs)) {
       // Untracked: the whole file is new.
       const text = readText(abs)
-      if (text === null) return { path: file, patch: '', added: 0, removed: 0, truncated: true }
+      if (text === null) {
+        let reason: 'oversized' | 'binary' | 'unavailable' = 'unavailable'
+        try {
+          reason = statSync(abs).size > MAX_FILE_BYTES ? 'oversized' : 'binary'
+        } catch {
+          // The file may have disappeared or become inaccessible since status was read.
+        }
+        return { path: file, patch: '', added: 0, removed: 0, truncated: true, reason }
+      }
       const d = diffText(null, text)
-      return { path: file, ...d, truncated: false }
+      const lines = d.patch.split('\n')
+      const truncated = d.added > lines.length || lines.length > MAX_PATCH_LINES
+      return {
+        path: file,
+        ...d,
+        patch: lines.slice(0, MAX_PATCH_LINES).join('\n'),
+        truncated,
+        ...(truncated ? { reason: 'oversized' as const } : {}),
+      }
     }
 
     const out = await this.git(root, [
@@ -290,10 +310,15 @@ export class GitService {
       '--no-ext-diff',
       '--no-textconv',
       '--unified=3',
+      '--submodule=short',
       '--',
+      ...(oldPath ? [oldPath] : []),
       file,
     ])
-    return patchOf(file, out)
+    const result = patchOf(file, out)
+    return submodule || /^\s*(?:old|new|deleted file) mode 160000$/m.test(out)
+      ? { ...result, truncated: true, reason: 'submodule' }
+      : result
   }
 
   /**
@@ -1040,7 +1065,7 @@ function assertHash(hash: string) {
 
 function patchOf(file: string, out: string): GitDiff {
   if (/^Binary files /m.test(out))
-    return { path: file, patch: '', added: 0, removed: 0, truncated: true }
+    return { path: file, patch: '', added: 0, removed: 0, truncated: true, reason: 'binary' }
   const lines = out.split('\n')
   const start = lines.findIndex((l) => l.startsWith('@@'))
   const body = start === -1 ? [] : lines.slice(start)
@@ -1048,5 +1073,12 @@ function patchOf(file: string, out: string): GitDiff {
   const added = body.filter((l) => l.startsWith('+')).length
   const removed = body.filter((l) => l.startsWith('-')).length
   const truncated = body.length > MAX_PATCH_LINES
-  return { path: file, patch: body.slice(0, MAX_PATCH_LINES).join('\n'), added, removed, truncated }
+  return {
+    path: file,
+    patch: body.slice(0, MAX_PATCH_LINES).join('\n'),
+    added,
+    removed,
+    truncated,
+    ...(truncated ? { reason: 'oversized' as const } : {}),
+  }
 }

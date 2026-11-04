@@ -22,6 +22,7 @@ export const Project = z.object({
   name: z.string(),
   isRepo: z.boolean(),
   branch: z.string().optional(),
+  instructions: z.string().optional(),
   /** Saved commands for this project. */
   scripts: z.array(ProjectScript).optional(),
 })
@@ -71,8 +72,9 @@ export const GitDiff = z.object({
   patch: z.string(),
   added: z.number().int(),
   removed: z.number().int(),
-  /** True when the file is binary or the diff was cut short. */
+  /** True when content cannot be fully reviewed in this diff. */
   truncated: z.boolean(),
+  reason: z.enum(['binary', 'oversized', 'submodule', 'unavailable']).optional(),
 })
 export type GitDiff = z.infer<typeof GitDiff>
 

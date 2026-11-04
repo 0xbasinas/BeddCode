@@ -137,6 +137,35 @@ describe('GitService.status and diff', () => {
     expect(await git.diff(dir, 'img.bin')).toMatchObject({ truncated: true, patch: '' })
   })
 
+  it('reports truncated untracked text and preserves rename diffs', async () => {
+    const dir = repo()
+    writeFileSync(
+      path.join(dir, 'large.txt'),
+      Array.from({ length: 500 }, (_, i) => `line ${i}`).join('\n'),
+    )
+    expect(await git.diff(dir, 'large.txt')).toMatchObject({
+      truncated: true,
+      reason: 'oversized',
+      added: 500,
+    })
+    sh(dir, 'mv', 'a.txt', 'renamed.txt')
+    writeFileSync(path.join(dir, 'renamed.txt'), 'one\nTWO\nthree\n')
+    const renamed = await git.diff(dir, 'renamed.txt')
+    expect(renamed.patch).toContain('-two')
+    expect(renamed.patch).toContain('+TWO')
+  })
+
+  it('identifies submodule changes as incomplete', async () => {
+    const dir = repo()
+    const child = repo()
+    sh(dir, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', child, 'child')
+    sh(dir, 'commit', '-qm', 'add submodule')
+    writeFileSync(path.join(dir, 'child', 'a.txt'), 'dirty\n')
+    const diff = await git.diff(dir, 'child')
+    expect(diff).toMatchObject({ truncated: true, reason: 'submodule' })
+    expect(diff.patch).toContain('-dirty')
+  })
+
   it('refuses paths outside the repository', async () => {
     await expect(git.diff(repo(), '../secret')).rejects.toThrow('inside the repository')
   })

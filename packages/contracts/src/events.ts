@@ -97,6 +97,7 @@ export const SessionEvent = z.discriminatedUnion('type', [
     effort: z.string().optional(),
     /** Repository root (or folder) the session belongs to, for grouping. Equals `cwd` outside worktrees. */
     projectPath: z.string().optional(),
+    projectInstructions: z.string().optional(),
     /** Uses a host-managed session folder and belongs to no project. */
     projectless: z.boolean().optional(),
     branch: z.string().optional(),

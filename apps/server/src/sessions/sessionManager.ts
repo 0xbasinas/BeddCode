@@ -41,6 +41,7 @@ import type { AgentTerminals } from '../terminals/agentTerminals.ts'
 
 export interface SessionManagerDeps {
   store: EventStore
+  projectInstructions?: (folder: string) => string
   attachments: AttachmentStore
   git: GitService
   adapters: ProviderAdapter[]
@@ -466,6 +467,11 @@ export class SessionManager {
       title: params.title ?? (params.projectless ? 'New session' : defaultTitle(projectPath)),
       cwd,
       projectPath,
+      projectInstructions: (
+        source?.type === 'session.created' ? source.projectless : params.projectless
+      )
+        ? undefined
+        : this.deps.projectInstructions?.(projectPath) || undefined,
       projectless:
         source?.type === 'session.created' ? source.projectless : params.projectless || undefined,
       handoffFrom:
@@ -1022,7 +1028,12 @@ export class SessionManager {
     const context = design
       ? 'This message comes from the BeddCode Design canvas. For design requests, create or edit the editable canvas using the BeddCode design MCP tools (design_list, design_read, design_add and related tools). Load design_skill for guidance. Match the requested style and density; align repeated rows, icon containers, text columns, padding and spacing. Inspect the whole frame and a representative panel with design_screenshot, correct visible clipping, tiny text, inconsistent icons or alignment, and inspect again. Use design_read for actual sizes; large screenshots may be downscaled. Do not substitute an HTML file or code unless the user explicitly asks for code. If the design tools are unavailable, tell the user; do not silently create a file instead. The user request follows:\n\n'
       : ''
-    return promptInput(context + text, attachments)
+    const instructions =
+      created?.type === 'session.created' ? created.projectInstructions : undefined
+    const rules = instructions
+      ? `Project instructions (provided by the user):\n${instructions}\n\n`
+      : ''
+    return promptInput(rules + context + text, attachments)
   }
 
   private appendUserMessage(
