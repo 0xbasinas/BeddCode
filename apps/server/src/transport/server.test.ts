@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } fro
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import WebSocket from 'ws'
+import WebSocket, { WebSocketServer } from 'ws'
 import { ServerFrame, type StoredEvent } from '@beddcode/contracts'
 import { AcpAgentStore, AcpRegistry, createAcpAdapter } from '@beddcode/provider-acp'
 import { createFakeAdapter } from '@beddcode/provider-core'
@@ -62,7 +62,7 @@ async function boot(
   store = new EventStore(':memory:'),
   guard?: GuardOptions,
   hostId = 'host-1',
-  extra: { idleTimeoutMs?: number } = {},
+  extra: { idleTimeoutMs?: number; fakeDelayMs?: number } = {},
 ) {
   cleanup.push(() => store.close())
   const log = createLogger('test', 'error')
@@ -90,7 +90,10 @@ async function boot(
     attachments,
     git,
     store,
-    adapters: [createFakeAdapter({ delayMs: 0 }), createAcpAdapter({ store: acpStore, log })],
+    adapters: [
+      createFakeAdapter({ delayMs: extra.fakeDelayMs ?? 0 }),
+      createAcpAdapter({ store: acpStore, log }),
+    ],
     log,
     defaultCwd: os.tmpdir(),
   })
@@ -1369,5 +1372,203 @@ describe('automation', () => {
     })
     expect((preview.result as { times: number[] }).times).toHaveLength(3)
     expect((await c.rpc('schedules.remove', { id })).ok).toBe(true)
+  })
+})
+
+describe('resumable chat integration', () => {
+  function runtime(
+    port: number,
+    options: Partial<ConstructorParameters<typeof HostClient>[0]> = {},
+  ) {
+    const events: StoredEvent[] = []
+    const sockets: WebSocket[] = []
+    const frames: Record<string, unknown>[] = []
+    const subscriptions: Record<string, unknown>[] = []
+    const client = new HostClient({
+      url: `ws://127.0.0.1:${port}/ws`,
+      onEvent: (event) => events.push(event),
+      createSocket: (url) => {
+        const socket = new WebSocket(url)
+        sockets.push(socket)
+        socket.on('message', (data) => frames.push(JSON.parse(String(data))))
+        const send = socket.send.bind(socket)
+        socket.send = ((data: string) => {
+          const frame = JSON.parse(data)
+          if (frame.t === 'subscribe') subscriptions.push(frame)
+          send(data)
+        }) as typeof socket.send
+        return socket as unknown as globalThis.WebSocket
+      },
+      backoff: { minMs: 2000, maxMs: 2000 },
+      ...options,
+    })
+    cleanup.push(() => client.stop())
+    client.start()
+    return { client, events, sockets, frames, subscriptions }
+  }
+
+  it('resumes the exact stored turn after a mid-stream socket drop', async () => {
+    const { server, store } = await boot(undefined, undefined, 'host-1', { fakeDelayMs: 80 })
+    const r = runtime(server.port)
+    await vi.waitFor(() => expect(r.client.streamState).toBe('live'))
+    const { sessionId } = await r.client.request('sessions.create', {
+      instanceId: 'fake',
+      permissionMode: 'full',
+    })
+    await r.client.request('sessions.prompt', { sessionId, text: 'resume a turn' })
+    await vi.waitFor(
+      () => expect(r.events.some((e) => e.event.type === 'turn.started')).toBe(true),
+      { interval: 5 },
+    )
+    r.sockets[0]!.terminate()
+    const cursor = r.events.at(-1)!.sessionSeq!
+    await vi.waitFor(() =>
+      expect(store.readSession(sessionId).some((e) => e.event.type === 'turn.completed')).toBe(
+        true,
+      ),
+    )
+    expect(store.sessionLastSeq(sessionId)).toBeGreaterThan(cursor)
+    r.client.reconnectNow()
+    await vi.waitFor(() => expect(r.sockets.length).toBeGreaterThan(1))
+    await vi.waitFor(() => expect(r.events.at(-1)?.event.type).toBe('turn.completed'))
+    expect(r.subscriptions[1]).toMatchObject({ sessionCursors: { [sessionId]: cursor } })
+    expect(r.events).toEqual(store.readSession(sessionId))
+  })
+
+  it('replaces a stale session with the retained window and pages older events', async () => {
+    const { server, store } = await boot()
+    const reloads: StoredEvent[][] = []
+    const transcript: StoredEvent[] = []
+    const r = runtime(server.port, {
+      sessionPageSize: 2,
+      onEvent: (event) => transcript.push(event),
+      onSessionReload: (_id, page) => {
+        transcript.splice(0, transcript.length, ...page.events)
+        reloads.push(page.events)
+      },
+    })
+    await vi.waitFor(() => expect(r.client.streamState).toBe('live'))
+    store.append({ type: 'error', sessionId: 's', at: 1, message: 'old' })
+    await vi.waitFor(() => expect(transcript).toHaveLength(1))
+    r.sockets[0]!.terminate()
+    for (let n = 2; n <= 8; n++)
+      store.append({ type: 'error', sessionId: 's', at: n, message: String(n) })
+    store.purgeSession('s', 4)
+    await vi.waitFor(() => expect(r.client.connectionState).toBe('reconnecting'))
+    r.client.reconnectNow()
+    await vi.waitFor(() => expect(reloads).toHaveLength(1))
+    expect(r.frames).toContainEqual(
+      expect.objectContaining({ t: 'caught-up', sessionId: 's', truncated: true }),
+    )
+    expect(reloads[0]).toEqual(store.readSession('s').slice(-2))
+    expect(transcript).toEqual(store.readSession('s').slice(-2))
+    const older = await r.client.loadOlder('s')
+    expect(older.events).toEqual(store.readSession('s').slice(1, 3))
+    expect(older.hasMore).toBe(true)
+    expect((await r.client.loadOlder('s')).events).toEqual(store.readSession('s').slice(0, 1))
+  })
+
+  it('serves an old subscriber with no cursor fields', async () => {
+    const { server, store } = await boot()
+    const old = await Client.connect(server.port)
+    old.send({ t: 'subscribe' })
+    await old.until((frames) => frames.some((f) => f.t === 'caught-up'))
+    const { result } = await old.rpc('sessions.create', {
+      instanceId: 'fake',
+      permissionMode: 'full',
+    })
+    const { sessionId } = result as { sessionId: string }
+    await old.rpc('sessions.prompt', { sessionId, text: 'legacy' })
+    await old.until((frames) =>
+      frames.some((f) => f.t === 'event' && f.stored.event.type === 'turn.completed'),
+    )
+    expect(old.events().at(-1)).toEqual(store.readSession(sessionId).at(-1))
+    expect(
+      old.events().some((e) => e.event.type === 'message.delta' && e.event.role === 'assistant'),
+    ).toBe(true)
+  })
+
+  it('accepts legacy host events without session sequences or a page API', async () => {
+    const { server, store } = await boot()
+    const proxy = new WebSocketServer({ port: 0, host: '127.0.0.1' })
+    await new Promise<void>((resolve) => proxy.once('listening', resolve))
+    cleanup.push(() => new Promise<void>((resolve) => proxy.close(() => resolve())))
+    proxy.on('connection', (downstream) => {
+      const upstream = new WebSocket(`ws://127.0.0.1:${server.port}/ws`)
+      const queued: string[] = []
+      upstream.on('open', () => queued.forEach((data) => upstream.send(data)))
+      downstream.on('message', (data) => {
+        const frame = JSON.parse(String(data))
+        if (frame.t === 'req' && frame.method === 'session.events.page') {
+          downstream.send(
+            JSON.stringify({ t: 'res', id: frame.id, ok: false, error: 'unknown method' }),
+          )
+          return
+        }
+        if (frame.t === 'subscribe') delete frame.sessionCursors
+        const encoded = JSON.stringify(frame)
+        if (upstream.readyState === WebSocket.OPEN) upstream.send(encoded)
+        else queued.push(encoded)
+      })
+      upstream.on('message', (data) => {
+        const frame = JSON.parse(String(data))
+        if (frame.t === 'event') delete frame.stored.sessionSeq
+        if (frame.t === 'events') for (const event of frame.events) delete event.sessionSeq
+        if (downstream.readyState === WebSocket.OPEN) downstream.send(JSON.stringify(frame))
+      })
+      downstream.on('close', () => upstream.close())
+      upstream.on('close', () => downstream.close())
+    })
+    const r = runtime((proxy.address() as { port: number }).port)
+    await vi.waitFor(() => expect(r.client.streamState).toBe('live'))
+    store.append({ type: 'error', sessionId: 's', at: 1, message: 'one' })
+    await vi.waitFor(() => expect(r.events).toHaveLength(1))
+    r.sockets[0]!.terminate()
+    store.append({ type: 'error', sessionId: 's', at: 2, message: 'two' })
+    await vi.waitFor(() => expect(r.client.connectionState).toBe('reconnecting'))
+    r.client.reconnectNow()
+    await vi.waitFor(() => expect(r.events).toHaveLength(2))
+    expect(r.events.map((e) => e.event)).toEqual(store.readSession('s').map((e) => e.event))
+    await expect(r.client.loadOlder('s')).rejects.toThrow('unknown method')
+    store.append({ type: 'error', sessionId: 's', at: 3, message: 'three' })
+    await vi.waitFor(() => expect(r.events).toHaveLength(3))
+  })
+
+  it('resumes a saved cursor after the host and event store restart', async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'bc-restart-'))
+    cleanup.push(() => removeDir(dir))
+    const file = path.join(dir, 'events.db')
+    const first = await boot(new EventStore(file))
+    let saved:
+      import('../../../../packages/client-runtime/src/cursorStore.ts').CursorSnapshot | null = null
+    const cursorStore = {
+      load: async () => saved,
+      save: async (_host: string, value: NonNullable<typeof saved>) => {
+        saved = value
+      },
+    }
+    const r = runtime(first.server.port, {
+      cursorStore,
+      cursorHostKey: 'host-1',
+      cursorSaveDelayMs: 0,
+    })
+    await vi.waitFor(() => expect(r.client.streamState).toBe('live'))
+    const one = first.store.append({ type: 'error', sessionId: 's', at: 1, message: 'before' })
+    await vi.waitFor(() => expect(saved?.sessions.s?.sessionSeq).toBe(1))
+    r.client.stop()
+    await first.server.close()
+    const second = await boot(new EventStore(file))
+    const two = second.store.append({ type: 'error', sessionId: 's', at: 2, message: 'after' })
+    expect(two.seq).toBe(one.seq + 1)
+    expect(two.sessionSeq).toBe(one.sessionSeq! + 1)
+    const resumed = runtime(second.server.port, {
+      cursorStore,
+      cursorHostKey: 'host-1',
+      initialSeq: one.seq,
+      resumeLogId: first.store.logId,
+      hasCachedSession: () => true,
+    })
+    await vi.waitFor(() => expect(resumed.events).toEqual([two]))
+    expect(resumed.subscriptions[0]).toMatchObject({ afterSeq: one.seq, sessionCursors: { s: 1 } })
   })
 })
