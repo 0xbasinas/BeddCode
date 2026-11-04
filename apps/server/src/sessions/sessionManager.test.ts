@@ -8,6 +8,7 @@ import { AttachmentStore } from '../attachments/store.ts'
 import { EventStore } from '../store/eventStore.ts'
 import { GitService } from '../workspace/git.ts'
 import { SessionManager } from './sessionManager.ts'
+import { deliverPeer, recoverPeerDeliveries } from '../automation/peerDelivery.ts'
 
 const attachments = new AttachmentStore(path.join(os.tmpdir(), 'beddcode-manager-test'))
 
@@ -54,6 +55,12 @@ function resumableAdapter(opts: { resume: boolean; status?: ProviderInstance['st
         async prompt(prompt) {
           prompts.push(prompt)
           queue.push({
+            type: 'turn.started',
+            sessionId: input.sessionId,
+            at: at(),
+            turnId: `turn-${prompts.length}`,
+          })
+          queue.push({
             type: 'turn.completed',
             sessionId: input.sessionId,
             at: at(),
@@ -94,6 +101,77 @@ function setup(opts: Parameters<typeof resumableAdapter>[0]) {
 const tick = () => new Promise((r) => setTimeout(r, 5))
 
 describe('SessionManager', () => {
+  it('recovers a peer prompt removed from memory before it reaches the provider', async () => {
+    const { store, manager, prompts, adapter } = setup({ resume: true })
+    const { sessionId } = await manager.create({ instanceId: 'stub', projectless: true })
+    const message = {
+      messageId: 'crash-delivery',
+      threadId: 'thread',
+      senderId: 'sender',
+      recipientId: sessionId,
+      text: 'hello',
+      prompt: 'peer hello',
+      at: Date.now(),
+    }
+    // Freeze the first host after the in-memory queue is shifted and before prompt().
+    let crash!: (error: Error) => void
+    vi.spyOn(manager as never, 'checkpointBefore').mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          crash = reject
+        }),
+    )
+    store.enqueuePeerDelivery(message)
+    deliverPeer(store, message, (m) => {
+      void manager.wakePeerMessage(m.recipientId, m.messageId, m.prompt)
+    })
+    await vi.waitFor(() =>
+      expect(
+        (manager as unknown as { turns: Map<string, { queueStarting?: string }> }).turns.get(
+          sessionId,
+        )?.queueStarting,
+      ).toBe(message.messageId),
+    )
+    expect(prompts).toHaveLength(0)
+    expect(store.peerDeliveries(true)).toEqual([message])
+    expect(
+      store.readSession(sessionId).filter(({ event }) => event.type === 'prompt.dequeued'),
+    ).toHaveLength(0)
+
+    const restarted = new SessionManager({
+      store,
+      attachments,
+      git: new GitService(),
+      adapters: [adapter],
+      log: createLogger('test', 'error'),
+      defaultCwd: os.tmpdir(),
+      agentToolServers: () => [],
+    })
+    const wake = (m: typeof message) => {
+      void restarted.wakePeerMessage(m.recipientId, m.messageId, m.prompt)
+    }
+    recoverPeerDeliveries(store, wake, (error) => {
+      throw error
+    })
+    recoverPeerDeliveries(store, wake, (error) => {
+      throw error
+    })
+    await vi.waitFor(() => expect(store.peerDeliveries(true)).toEqual([]))
+    recoverPeerDeliveries(store, wake, (error) => {
+      throw error
+    })
+    await vi.waitFor(() => expect(prompts).toHaveLength(1))
+    expect(prompts[0]?.text).toBe('peer hello')
+    expect(
+      store.readSession(sessionId).filter(({ event }) => event.type === 'prompt.queued'),
+    ).toHaveLength(1)
+    expect(
+      store.readSession(sessionId).filter(({ event }) => event.type === 'prompt.dequeued'),
+    ).toHaveLength(1)
+    await restarted.close()
+    crash(new Error('simulated host crash'))
+    await manager.close()
+  })
   it('directs design pane prompts to the canvas without changing the recorded message', async () => {
     const { store, manager, prompts } = setup({ resume: true })
     const design = await manager.create({ instanceId: 'stub', designTools: true })
@@ -101,7 +179,12 @@ describe('SessionManager', () => {
     await vi.waitFor(() => expect(prompts[0]).toBeDefined())
     expect(prompts[0]?.text).toContain('editable canvas using the BeddCode design MCP tools')
     expect(prompts[0]?.text).toContain('Make a dashboard')
-    expect(store.readSession(design.sessionId).map(({ event }) => event).find((event) => event.type === 'message.delta')).toMatchObject({ text: 'Make a dashboard' })
+    expect(
+      store
+        .readSession(design.sessionId)
+        .map(({ event }) => event)
+        .find((event) => event.type === 'message.delta'),
+    ).toMatchObject({ text: 'Make a dashboard' })
     const normal = await manager.create({ instanceId: 'stub' })
     await manager.prompt(normal.sessionId, 'Make a dashboard')
     await vi.waitFor(() => expect(prompts[1]).toBeDefined())

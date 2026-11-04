@@ -44,4 +44,10 @@ export const migrations: (string | ((db: DatabaseSync) => void))[] = [
     FROM events WHERE type = 'agent.message' AND json_valid(payload)
       AND json_type(payload, '$.threadId') = 'text' AND json_type(payload, '$.messageId') = 'text';
   `,
+  `
+  CREATE TABLE peer_outbox (
+    message_id TEXT PRIMARY KEY, payload TEXT NOT NULL, delivered INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE peer_receipts (message_id TEXT PRIMARY KEY);
+  `,
 ]

@@ -7,6 +7,16 @@ import { migrations } from './migrations.ts'
 import { SUPERSEDED_TYPES } from './compact.ts'
 import { isSnapshot, snapshotKey } from './snapshots.ts'
 
+export type PeerDelivery = {
+  messageId: string
+  threadId: string
+  senderId: string
+  recipientId: string
+  text: string
+  prompt: string
+  at: number
+}
+
 export type EventListener = (stored: StoredEvent) => void
 
 const silent: Logger = { debug() {}, info() {}, warn() {}, error() {} }
@@ -234,6 +244,68 @@ export class EventStore {
   readSession(sessionId: string): StoredEvent[] {
     const rows = this.bySessionStmt.all(sessionId) as { seq: number; payload: string }[]
     return this.parseRows(rows)
+  }
+
+  /** Write the intent before making it visible to either participant. */
+  enqueuePeerDelivery(message: PeerDelivery): void {
+    this.db
+      .prepare('INSERT INTO peer_outbox (message_id, payload) VALUES (?, ?)')
+      .run(message.messageId, JSON.stringify(message))
+  }
+
+  peerDeliveries(pendingOnly = false): PeerDelivery[] {
+    const rows = this.db
+      .prepare(
+        `SELECT payload FROM peer_outbox ${pendingOnly ? 'WHERE delivered = 0' : ''} ORDER BY rowid`,
+      )
+      .all() as { payload: string }[]
+    return rows.map((row) => JSON.parse(row.payload) as PeerDelivery)
+  }
+
+  /** Commit the recipient's dedupe receipt, queue entry and both timeline entries together. */
+  deliverPeerMessage(message: PeerDelivery): boolean {
+    const notifications: StoredEvent[] = []
+    this.db.exec('BEGIN IMMEDIATE')
+    this.notificationBatch = notifications
+    let inserted = false
+    try {
+      inserted =
+        Number(
+          this.db
+            .prepare('INSERT OR IGNORE INTO peer_receipts (message_id) VALUES (?)')
+            .run(message.messageId).changes,
+        ) === 1
+      if (inserted) {
+        const { prompt, ...event } = message
+        for (const sessionId of [message.senderId, message.recipientId])
+          this.writeEvent(SessionEvent.parse({ type: 'agent.message', sessionId, ...event }))
+        this.writeEvent(
+          SessionEvent.parse({
+            type: 'prompt.queued',
+            sessionId: message.recipientId,
+            at: message.at,
+            queueId: message.messageId,
+            text: prompt,
+          }),
+        )
+      }
+      this.db.exec('COMMIT')
+    } catch (err) {
+      try {
+        this.db.exec('ROLLBACK')
+      } catch {
+        /* SQLite may already have rolled back. */
+      }
+      throw storageError(err, this.file)
+    } finally {
+      this.notificationBatch = null
+    }
+    for (const event of notifications) this.notify(event)
+    return inserted
+  }
+
+  markPeerDelivered(messageId: string): void {
+    this.db.prepare('UPDATE peer_outbox SET delivered = 1 WHERE message_id = ?').run(messageId)
   }
 
   /** Reserve a project send before delivery, including across host restarts. */

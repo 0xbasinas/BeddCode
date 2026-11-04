@@ -19,6 +19,8 @@ import { LinearSync } from '../linear/linearSync.ts'
 import { LinearKeyStore, LinearTools } from '../linear/linearTools.ts'
 import { ScheduleService } from './schedules.ts'
 import { TelegramBridge } from '../telegram/bridge.ts'
+import { deliverPeer, recoverPeerDeliveries } from './peerDelivery.ts'
+import type { PeerDelivery } from '../store/eventStore.ts'
 
 /** The Desktop pane's view of a session's computer use. */
 export interface ComputerPane {
@@ -109,6 +111,11 @@ export function createAutomation(deps: AutomationDeps) {
   const linearKey = new LinearKeyStore(path.join(home, 'linear.json'))
   const sync = new LinearSync(path.join(home, 'linear-sync.json'), linearKey)
   linearSync = sync
+  const wakePeer = (message: PeerDelivery) => {
+    void sessions
+      .wakePeerMessage(message.recipientId, message.messageId, message.prompt)
+      .catch((err) => createLogger('agent-messaging').error('Could not wake recipient', err))
+  }
   const agentTools = new AgentTools(
     {
       create,
@@ -119,19 +126,14 @@ export function createAutomation(deps: AutomationDeps) {
       providers: () => sessions.listProviders(),
       readSession,
       recentSessionIds: (limit) => store.listSessionIds(undefined, limit).map((s) => s.id),
-      promptPeer: (id, text) => sessions.prompt(id, text, [], 'queue'),
+      deliverPeer: async (message) => {
+        store.enqueuePeerDelivery(message)
+        deliverPeer(store, message, wakePeer)
+        return { state: 'queued' }
+      },
       reservePeerSend: (project, now) => store.reservePeerSend(project, now),
       reservePeerThreadSend: (threadId, messageId) =>
         store.reservePeerThreadSend(threadId, messageId),
-      recordPeerMessage: (message) => {
-        store.appendMany(
-          [message.senderId, message.recipientId].map((sessionId) => ({
-            type: 'agent.message' as const,
-            sessionId,
-            ...message,
-          })),
-        )
-      },
       recordPlan: (plan) => void store.append(plan),
       recordGroup: (group) => void store.append(group),
       childrenOf: (id) => store.childrenOf(id),
@@ -152,6 +154,12 @@ export function createAutomation(deps: AutomationDeps) {
     computer,
     new LinearTools(linearKey),
   )
+  // Defer recovery until the host has installed the agent tool server on the session manager.
+  queueMicrotask(() => {
+    recoverPeerDeliveries(store, wakePeer, (err) =>
+      createLogger('agent-messaging').error('Could not recover peer message', err),
+    )
+  })
   const telegram = new TelegramBridge({
     file: path.join(home, 'telegram.json'),
     log: createLogger('telegram'),
