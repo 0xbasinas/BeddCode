@@ -330,7 +330,11 @@ export function usageFromEnd(end: Obj): Draft[] {
     })
   }
   return rows
-    .filter((r) => r.inputTokens + r.outputTokens + r.cacheReadTokens + (r.costUsd ?? 0) > 0)
+    .filter(
+      (r) =>
+        r.inputTokens + r.outputTokens + r.cacheReadTokens + r.cacheWriteTokens + (r.costUsd ?? 0) >
+        0,
+    )
     .map((r) => ({
       type: 'session.usage' as const,
       ...(r.model ? { model: r.model } : {}),

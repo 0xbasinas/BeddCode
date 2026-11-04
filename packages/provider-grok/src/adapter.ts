@@ -147,10 +147,11 @@ export function createGrokAdapter(options: GrokAdapterOptions = {}): ProviderAda
     const exe = executable()
     if (!exe) return { ...base, capabilities, status: 'not-installed' }
 
-    const runEnv = { ...process.env, ...env }
+    const runEnv: NodeJS.ProcessEnv = { ...process.env, ...env }
     let version: string | undefined
     try {
       const v = await run(exe, ['--version'], { env: runEnv })
+      if (v.code !== 0) return { ...base, capabilities, status: 'error' }
       version = /\d+\.\d+\.\d+/.exec(v.stdout)?.[0]
     } catch (err) {
       log.warn('grok detection failed', err)
@@ -164,7 +165,7 @@ export function createGrokAdapter(options: GrokAdapterOptions = {}): ProviderAda
       const found = parseModels(models.stdout)
       if (found.length > 0) capabilities = { ...grokCapabilities, models: found }
       const ok = signedIn(models.stdout, models.stderr)
-      if (ok === false && !process.env.XAI_API_KEY && !env) status = 'needs-sign-in'
+      if (ok === false && !runEnv.XAI_API_KEY?.trim()) status = 'needs-sign-in'
     } catch (err) {
       log.warn('Grok model discovery failed; the agent picks its own model', err)
     }

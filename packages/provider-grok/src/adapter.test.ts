@@ -70,6 +70,33 @@ describe('createGrokAdapter', () => {
       if (saved !== undefined) process.env.XAI_API_KEY = saved
     }
   })
+
+  it('checks sign-in in a custom Grok home', async () => {
+    const saved = process.env.XAI_API_KEY
+    delete process.env.XAI_API_KEY
+    try {
+      const adapter = createGrokAdapter({
+        executablePath: process.execPath,
+        grokHome: '/custom/grok',
+        run: (async (_f: string, args: string[]) => ({
+          code: 0,
+          stdout: args[0] === '--version' ? '1.0.70' : 'You are not logged in',
+          stderr: '',
+        })) as never,
+      })
+      expect((await adapter.detect())[0]).toMatchObject({ status: 'needs-sign-in' })
+    } finally {
+      if (saved !== undefined) process.env.XAI_API_KEY = saved
+    }
+  })
+
+  it('reports an error when the version command fails', async () => {
+    const adapter = createGrokAdapter({
+      executablePath: process.execPath,
+      run: (async () => ({ code: 1, stdout: '', stderr: 'failed' })) as never,
+    })
+    expect((await adapter.detect())[0]).toMatchObject({ status: 'error' })
+  })
 })
 
 describe('listGrokCommands', () => {

@@ -186,5 +186,8 @@ describe('helpers', () => {
       { type: 'session.usage', inputTokens: 5, outputTokens: 2 },
     ])
     expect(usageFromEnd({})).toEqual([])
+    expect(usageFromEnd({ usage: { cache_creation_input_tokens: 9 } })).toEqual([
+      { type: 'session.usage', inputTokens: 0, outputTokens: 0, cacheWriteTokens: 9 },
+    ])
   })
 })

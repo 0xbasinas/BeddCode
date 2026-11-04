@@ -243,6 +243,7 @@ export class GrokSession implements ProviderSession {
         return
       }
       case 'error':
+        for (const usage of usageFromEnd(line)) this.emit(usage, turnId)
         outcome.errorMessage =
           typeof line.message === 'string' && line.message ? line.message : 'Grok reported an error'
         return
