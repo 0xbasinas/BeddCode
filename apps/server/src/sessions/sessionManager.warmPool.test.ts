@@ -98,6 +98,11 @@ describe('session start with a warm pool', () => {
         config: { choice: 'a' },
       })
       expect(activated).toBe(1)
+      const warmStart = store
+        .readSession(created.sessionId)
+        .map(({ event }) => event)
+        .find((event) => event.type === 'session.created')
+      expect(warmStart).toMatchObject({ start: { warm: true } })
       await vi.waitFor(() => expect(starts).toHaveLength(2))
       await manager.prompt(created.sessionId, 'hello')
       await vi.waitFor(() =>
@@ -133,6 +138,12 @@ describe('session start with a warm pool', () => {
       pool.refill('different-provider-project-model-config')
       const first = await manager.create({ instanceId: 'fake', model: 'different' })
       expect(starts[0]?.sessionId).toBe(first.sessionId)
+      const coldStart = store
+        .readSession(first.sessionId)
+        .map(({ event }) => event)
+        .find((event) => event.type === 'session.created')
+      expect(coldStart).toMatchObject({ start: { warm: false } })
+      expect(coldStart?.type === 'session.created' && coldStart.start?.ms).toBeGreaterThanOrEqual(0)
       vi.spyOn(pool, 'take').mockRejectedValueOnce(new Error('pool failed'))
       const second = await manager.create({ instanceId: 'fake' })
       expect(starts[1]?.sessionId).toBe(second.sessionId)

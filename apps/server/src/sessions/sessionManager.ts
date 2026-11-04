@@ -352,6 +352,7 @@ export class SessionManager {
   ): Promise<{ sessionId: string }> {
     if (params.projectless && (params.cwd !== undefined || params.workspace?.mode === 'worktree'))
       throw new Error('A session without a project cannot use a project folder or a worktree')
+    const startedAt = now()
     const { adapter, instance } = await this.findInstance(params.instanceId)
     const sessionId = randomUUID()
     const folder = params.projectless
@@ -389,6 +390,7 @@ export class SessionManager {
     }
 
     let session: ProviderSession
+    let warm = false
     try {
       const input: StartSessionInput = {
         sessionId,
@@ -410,9 +412,9 @@ export class SessionManager {
           params,
         ),
       }
-      session =
-        (await this.takeWarmSession(instance, input)) ??
-        (await adapter.startSession(instance.id, input))
+      const reused = await this.takeWarmSession(instance, input)
+      warm = reused !== null
+      session = reused ?? (await adapter.startSession(instance.id, input))
     } catch (err) {
       // Do not leave an unused worktree behind when the agent could not start.
       if (worktree) await this.deps.git.removeWorktree(cwd).catch(() => false)
@@ -447,6 +449,7 @@ export class SessionManager {
       computerTools:
         (params.computerTools && this.deps.agentToolServers !== undefined) || undefined,
       linearTools: (params.linearTools && this.deps.agentToolServers !== undefined) || undefined,
+      start: { warm, ms: Math.max(0, Math.round(now() - startedAt)) },
     })
     this.announceModes(sessionId, adapter, instance.id, params.permissionMode)
     void this.pump(sessionId, session)

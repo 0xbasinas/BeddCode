@@ -124,6 +124,8 @@ export const SessionEvent = z.discriminatedUnion('type', [
     mcpGateway: z.boolean().optional(),
     /** Set when the user started this session from the Telegram bot. */
     telegram: z.boolean().optional(),
+    /** Time from the create request to the agent being ready, and whether a warm process served it. */
+    start: z.object({ warm: z.boolean(), ms: z.number().int().nonnegative() }).optional(),
   }),
   /** The provider's own session id, kept so a stopped session can be resumed later. */
   Base.extend({ type: z.literal('session.provider-session'), providerSessionId: z.string() }),

@@ -482,6 +482,9 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
               hour: '2-digit',
               minute: '2-digit',
             })}
+            {session.start
+              ? ` · ${session.start.warm ? 'warm' : 'cold'} start in ${session.start.ms.toLocaleString()} ms`
+              : ''}
             {session.worktree ? ` · worktree from ${session.worktree.baseBranch}` : ''}
             {session.worktree?.copiedFiles
               ? ` · ${session.worktree.copiedFiles} local ${session.worktree.copiedFiles === 1 ? 'file' : 'files'} copied from .worktreeinclude`

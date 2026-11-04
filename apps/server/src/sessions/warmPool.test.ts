@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { readProcessMemory } from '@beddcode/shared'
 import { WarmPool, type WarmResource } from './warmPool.ts'
 
 const options = { size: 1, idleTimeoutMs: 100, memoryCapBytes: 1000 }
@@ -86,6 +87,40 @@ describe('WarmPool', () => {
     await settle()
     expect(second.close).toHaveBeenCalledTimes(1)
     first.memoryBytes.mockResolvedValue(1001)
+    await pool.maintain()
+    expect(first.close).toHaveBeenCalledTimes(1)
+    await pool.close()
+  })
+
+  it('enforces the cap with values measured from /proc', async () => {
+    const status = (kb: number) => `VmRSS:\t${kb} kB\n`
+    const rss: Record<number, number> = { 1: 600, 2: 600 }
+    const measured = (pid: number) => ({
+      ...resource(),
+      memoryBytes: vi.fn(() =>
+        readProcessMemory(pid, {
+          platform: 'linux',
+          readFile: async (path) => {
+            if (path === `/proc/${pid}/status`) return status(rss[pid]!)
+            throw new Error('ENOENT')
+          },
+          readdir: async () => [],
+        }),
+      ),
+    })
+    const first = measured(1)
+    const second = measured(2)
+    const pool = new WarmPool(
+      { ...options, memoryCapBytes: 1000 * 1024 },
+      async (key) => (key === 'a' ? first : second),
+    )
+    pool.refill('a')
+    await settle()
+    pool.refill('b')
+    await settle()
+    expect(second.close).toHaveBeenCalledTimes(1)
+    expect(first.close).not.toHaveBeenCalled()
+    rss[1] = 1001
     await pool.maintain()
     expect(first.close).toHaveBeenCalledTimes(1)
     await pool.close()

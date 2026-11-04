@@ -167,6 +167,8 @@ export interface SessionView {
   computerTools?: boolean
   /** The agent may read the user's Linear issues. */
   linearTools?: boolean
+  /** How long the agent took to become ready, and whether a warm process was used. */
+  start?: { warm: boolean; ms: number }
   /** The agent's own per-session settings (model, thinking level, ...). */
   config: ConfigOption[]
   /** The session this one continues, when it was forked. */
@@ -296,6 +298,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       designTools: e.designTools,
       computerTools: e.computerTools,
       linearTools: e.linearTools,
+      start: e.start,
     }
     return {
       lastSeq: stored.seq,

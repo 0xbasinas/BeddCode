@@ -2,6 +2,7 @@ import type { ProviderCapabilities, ProviderInstance, ProviderStatus } from '@be
 import type { ProviderAdapter } from '@beddcode/provider-core'
 import {
   createLogger,
+  measureProcessMemory,
   resolveExecutable,
   runCommand,
   spawnTransport,
@@ -138,37 +139,8 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): CodexAdap
     const prepared = await prepareCodexProcess({ transport, log })
     return {
       healthy: async () => prepared.healthy(),
-      memoryBytes: async () => {
-        if (!transport.pid) return null
-        try {
-          const result =
-            process.platform === 'win32'
-              ? await runCommand('powershell.exe', [
-                  '-NoProfile',
-                  '-NonInteractive',
-                  '-Command',
-                  "Get-CimInstance Win32_Process | ForEach-Object { '{0} {1} {2}' -f $_.ProcessId, $_.ParentProcessId, [math]::Floor($_.WorkingSetSize / 1024) }",
-                ])
-              : await runCommand('ps', ['-A', '-o', 'pid=,ppid=,rss='])
-          if (result.code !== 0) return null
-          const rows = result.stdout
-            .trim()
-            .split('\n')
-            .map((line) => line.trim().split(/\s+/).map(Number))
-          const pids = new Set([transport.pid])
-          let previous = 0
-          while (previous !== pids.size) {
-            previous = pids.size
-            for (const [pid, parent] of rows) if (pid && parent && pids.has(parent)) pids.add(pid)
-          }
-          const matched = rows.filter(([pid]) => pid && pids.has(pid))
-          return matched.length && matched.every((row) => Number.isFinite(row[2]) && row[2]! >= 0)
-            ? matched.reduce((sum, row) => sum + (row[2] ?? 0) * 1024, 0)
-            : null
-        } catch {
-          return null
-        }
-      },
+      // A process that cannot be measured counts as an estimate, so the cap still applies.
+      memoryBytes: () => measureProcessMemory(transport.pid),
       activate: async (input) => {
         if (input.cwd !== cwd)
           throw new Error('Prepared Codex process has a different working directory')
