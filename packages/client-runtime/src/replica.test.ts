@@ -615,3 +615,23 @@ it('files a turn’s changes card before a message queued behind it, not after',
     'second',
   ])
 })
+
+it('clears the "Host is updating" notice once the interrupted turn resumes', () => {
+  const updating = {
+    type: 'host.updating' as const,
+    message: 'Host is updating, back in a moment',
+    providerSessionId: 'p',
+    prompt: { text: 'go', attachments: [] },
+  }
+  const notices = (events: Draft[]) =>
+    fold(events).sessions.s1?.items.filter((i) => i.kind === 'notice') ?? []
+  const before = [created, { type: 'turn.started' as const, turnId: 't' }, updating]
+  expect(notices(before)).toHaveLength(1)
+  const resumed = [
+    ...before,
+    { type: 'message.delta' as const, role: 'user' as const, text: 'go', turnId: 't' },
+  ]
+  expect(notices(resumed)).toHaveLength(0)
+  expect(fold(resumed).sessions.s1?.items.some((i) => i.kind === 'message')).toBe(true)
+  expect(notices([...before, { type: 'turn.started' as const, turnId: 't2' }])).toHaveLength(0)
+})

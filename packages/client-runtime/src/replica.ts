@@ -95,7 +95,7 @@ export type TranscriptItem =
       tokensBefore?: number
       tokensAfter?: number
     }
-  | { kind: 'notice'; id: string; message: string }
+  | { kind: 'notice'; id: string; message: string; hostUpdating?: true }
   | { kind: 'error'; id: string; message: string }
 
 export interface SessionView {
@@ -313,8 +313,22 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     }
   }
 
-  const current = state.sessions[e.sessionId]
-  if (!current) return { ...state, lastSeq: stored.seq }
+  const held = state.sessions[e.sessionId]
+  if (!held) return { ...state, lastSeq: stored.seq }
+  // "Host is updating" only holds until the host is back: once the interrupted turn resumes
+  // (or ends), the notice is stale and would contradict the "Caught up" indicator.
+  const resumed =
+    e.type === 'turn.started' ||
+    e.type === 'turn.completed' ||
+    e.type === 'error' ||
+    (e.type === 'message.delta' && e.role === 'user')
+  const current =
+    resumed && held.items.some((item) => item.kind === 'notice' && item.hostUpdating)
+      ? {
+          ...held,
+          items: held.items.filter((item) => !(item.kind === 'notice' && item.hostUpdating)),
+        }
+      : held
 
   let next: SessionView = { ...current, updatedAt: e.at }
   const id = `${stored.seq}`
@@ -326,7 +340,6 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       (e.type === 'message.delta' && e.role === 'assistant'))
   )
     next.declined = undefined
-
   switch (e.type) {
     case 'session.renamed':
       next.title = e.title
@@ -421,7 +434,10 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
     case 'session.provider-session':
       return { ...state, lastSeq: stored.seq }
     case 'host.updating':
-      next.items = [...current.items, { kind: 'notice', id, message: e.message }]
+      next.items = [
+        ...current.items,
+        { kind: 'notice', id, message: e.message, hostUpdating: true },
+      ]
       break
     case 'session.modes':
       next.modes = e.modes
