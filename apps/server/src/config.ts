@@ -4,6 +4,7 @@ import { defaultGuard, type GuardOptions } from './auth/guard.ts'
 import { dataHome } from './hostIdentity.ts'
 
 export interface ServerConfig {
+  claudeBackend?: 'sdk' | 'cli'
   port: number
   /** Address to listen on. Loopback unless the user opens the host to other machines. */
   host: string
@@ -18,6 +19,7 @@ export interface ServerConfig {
 
 /** Settings kept in `<data dir>/config.json` (see `beddcode config`); flags and variables win. */
 export interface ConfigFile {
+  claudeBackend?: 'sdk' | 'cli'
   port?: number
   host?: string
   allowLan?: boolean
@@ -87,6 +89,7 @@ export function sanitizeConfig(raw: unknown, warn: (message: string) => void): C
   if (config.relayPassword !== undefined && typeof config.relayPassword !== 'string') {
     drop('relayPassword', 'not text')
   }
+  if (config.claudeBackend !== undefined && config.claudeBackend !== 'sdk' && config.claudeBackend !== 'cli') drop('claudeBackend', 'expected sdk or cli')
   return config as ConfigFile
 }
 
@@ -147,6 +150,7 @@ export function parseServeArgs(
           .filter(Boolean)
       : [...(file.allowedOrigins ?? [])]
   const config: ServerConfig = {
+    claudeBackend: file.claudeBackend ?? 'sdk',
     port: Number(env.BEDDCODE_PORT ?? file.port ?? 3773),
     host: env.BEDDCODE_HOST ?? file.host ?? '127.0.0.1',
     guard,

@@ -177,6 +177,8 @@ export const RpcMethods = {
     params: z.object({ query: z.string().optional() }),
     result: z.array(RegistryEntry),
   },
+  'host.claudeBackend.get': { params: z.object({}), result: z.object({ claudeBackend: z.enum(['sdk', 'cli']) }) },
+  'host.claudeBackend.set': { params: z.object({ claudeBackend: z.enum(['sdk', 'cli']) }), result: z.object({ claudeBackend: z.enum(['sdk', 'cli']) }) },
   'projects.list': {
     params: z.object({}),
     result: z.array(Project),
@@ -192,6 +194,10 @@ export const RpcMethods = {
   /** Replaces the saved commands of an added folder. */
   'projects.setScripts': {
     params: z.object({ path: z.string().min(1), scripts: z.array(ProjectScript).max(20) }),
+    result: Project,
+  },
+  'projects.setClaudeBackend': {
+    params: z.object({ path: z.string().min(1), claudeBackend: z.enum(['sdk', 'cli']).nullable() }),
     result: Project,
   },
   /** Runs `git init` in a folder that was added but is not a repository yet. */

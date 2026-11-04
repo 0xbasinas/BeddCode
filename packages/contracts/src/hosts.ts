@@ -88,3 +88,9 @@ export const TailnetStatus = z.object({
   peers: z.array(TailnetPeer),
 })
 export type TailnetStatus = z.infer<typeof TailnetStatus>
+
+/** Host-wide provider preferences; absent values use the defaults. */
+export const HostSettings = z.object({
+  claudeBackend: z.enum(['sdk', 'cli']).default('sdk'),
+})
+export type HostSettings = z.infer<typeof HostSettings>

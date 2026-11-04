@@ -14,8 +14,8 @@ export class ProjectStore {
     private readonly git: GitService,
   ) {}
 
-  private read(): { paths: string[]; scripts: Record<string, ProjectScript[]> } {
-    const read = readJsonFile<{ paths?: unknown; scripts?: Record<string, ProjectScript[]> }>(
+  private read(): { paths: string[]; scripts: Record<string, ProjectScript[]>; backends: Record<string, 'sdk' | 'cli'> } {
+    const read = readJsonFile<{ paths?: unknown; scripts?: Record<string, ProjectScript[]>; backends?: Record<string, unknown> }>(
       this.file,
     )
     if (read.status === 'corrupt') {
@@ -25,13 +25,14 @@ export class ProjectStore {
       )
     }
     if (read.status !== 'ok' || !read.value || typeof read.value !== 'object')
-      return { paths: [], scripts: {} }
+      return { paths: [], scripts: {}, backends: {} }
     const data = read.value
     return {
       paths: Array.isArray(data.paths)
         ? data.paths.filter((p): p is string => typeof p === 'string')
         : [],
       scripts: data.scripts && typeof data.scripts === 'object' ? data.scripts : {},
+      backends: Object.fromEntries(Object.entries(data.backends ?? {}).filter(([, v]) => v === 'sdk' || v === 'cli')) as Record<string, 'sdk' | 'cli'>,
     }
   }
 
@@ -39,7 +40,7 @@ export class ProjectStore {
     return this.read().paths
   }
 
-  private write(paths: string[], scripts = this.read().scripts) {
+  private write(paths: string[], scripts = this.read().scripts, backends = this.read().backends) {
     // Scripts of folders no longer in the list are dropped.
     const kept = Object.fromEntries(
       Object.entries(scripts).filter(
@@ -48,7 +49,8 @@ export class ProjectStore {
     )
     const data =
       Object.keys(kept).length > 0 ? { version: 1, paths, scripts: kept } : { version: 1, paths }
-    writeFileAtomic(this.file, JSON.stringify(data, null, 2))
+    const keptBackends = Object.fromEntries(Object.entries(backends).filter(([p]) => paths.some((folder) => samePath(folder, p))))
+    writeFileAtomic(this.file, JSON.stringify({ ...data, ...(Object.keys(keptBackends).length ? { backends: keptBackends } : {}) }, null, 2))
   }
 
   /** The saved commands of a folder (of the repository a worktree belongs to, for a worktree). */
@@ -68,6 +70,22 @@ export class ProjectStore {
     const next = Object.fromEntries(Object.entries(scripts).filter(([p]) => !samePath(p, stored)))
     next[stored] = list
     this.write(paths, next)
+    return this.describe(stored)
+  }
+
+  backendFor(folder: string): 'sdk' | 'cli' | undefined {
+    const backends = this.read().backends
+    const key = Object.keys(backends).find((p) => samePath(p, folder))
+    return key ? backends[key] : undefined
+  }
+
+  async setClaudeBackend(folder: string, backend: 'sdk' | 'cli' | null): Promise<Project> {
+    const { paths, scripts, backends } = this.read()
+    const stored = paths.find((p) => samePath(p, folder))
+    if (!stored) throw new Error(`Not an added folder: ${folder}`)
+    const next = Object.fromEntries(Object.entries(backends).filter(([p]) => !samePath(p, stored)))
+    if (backend) next[stored] = backend
+    this.write(paths, scripts, next)
     return this.describe(stored)
   }
 
@@ -116,6 +134,7 @@ export class ProjectStore {
       name: path.basename(folder) || folder,
       isRepo: info?.isRepo ?? false,
       branch: info?.branch,
+      claudeBackend: this.backendFor(folder),
       ...(this.scriptsFor(folder).length > 0 ? { scripts: this.scriptsFor(folder) } : {}),
     }
   }

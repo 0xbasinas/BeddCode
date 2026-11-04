@@ -53,6 +53,9 @@ export const ProviderCapabilities = z.object({
 })
 export type ProviderCapabilities = z.infer<typeof ProviderCapabilities>
 
+export const ClaudeBackend = z.enum(['sdk', 'cli'])
+export type ClaudeBackend = z.infer<typeof ClaudeBackend>
+
 export const ProviderStatus = z.enum(['ready', 'needs-sign-in', 'not-installed', 'error'])
 export type ProviderStatus = z.infer<typeof ProviderStatus>
 
@@ -62,6 +65,7 @@ export const ProviderInstance = z.object({
   label: z.string(),
   status: ProviderStatus,
   version: z.string().optional(),
+  reason: z.string().optional(),
   capabilities: ProviderCapabilities,
 })
 export type ProviderInstance = z.infer<typeof ProviderInstance>

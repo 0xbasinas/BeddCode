@@ -77,7 +77,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
 
   const acpStore = new AcpAgentStore(path.join(home, 'acp-agents.json'))
   const adapters: ProviderAdapter[] = [
-    createClaudeAdapter({ log: createLogger('claude') }),
+    createClaudeAdapter({ log: createLogger('claude'), backend: config.claudeBackend ?? 'sdk' }),
     createCodexAdapter({ log: createLogger('codex') }),
     createGrokAdapter({ log: createLogger('grok') }),
     createPiAdapter({ log: createLogger('pi'), sessionDir: path.join(home, 'sessions', 'pi') }),
@@ -115,6 +115,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
     adapters,
     log,
     defaultCwd: process.cwd(),
+    claudeBackendFor: (folder) => (folder ? workspace.projects.backendFor(folder) : undefined) ?? readConfigFile().claudeBackend ?? 'sdk',
     sessionRoot: path.join(home, 'sessions'),
     previews: new PreviewCache(path.join(home, 'agent-previews.json')),
   })

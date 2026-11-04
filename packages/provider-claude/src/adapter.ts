@@ -7,6 +7,7 @@ import {
 import type { ProviderCapabilities, ProviderInstance, ProviderStatus } from '@beddcode/contracts'
 import type { ProviderAdapter } from '@beddcode/provider-core'
 import { createLogger, resolveExecutable, runCommand, type Logger } from '@beddcode/shared'
+import { ClaudeCliSession } from './cli/session.ts'
 import { ClaudeSession, type QueryFn } from './session.ts'
 import { discoverClaudeModels } from './models.ts'
 import { CLAUDE_BUILTINS, scanClaudeCommands } from './commands.ts'
@@ -61,6 +62,7 @@ export const claudeCapabilities: ProviderCapabilities = {
 }
 
 export interface ClaudeAdapterOptions {
+  backend?: 'sdk' | 'cli'
   /** Defaults to the first `claude` on PATH. */
   executablePath?: string
   /** Separate Claude account/config (sets CLAUDE_CONFIG_DIR). */
@@ -96,7 +98,7 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
       capabilities: claudeCapabilities,
     }
     const exe = executable()
-    if (!exe) return { ...base, status: 'not-installed' }
+    if (!exe) return { ...base, status: 'not-installed', ...(options.backend === 'cli' ? { reason: 'Claude CLI not found' } : {}) }
 
     const runEnv = { ...process.env, ...env }
     let version: string | undefined
@@ -104,18 +106,16 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
     try {
       const v = await runCommand(exe, ['--version'], { env: runEnv })
       version = /\d+\.\d+\.\d+/.exec(v.stdout)?.[0]
+      if (v.code !== 0 && options.backend === 'cli') return { ...base, status: 'not-installed', reason: 'Claude CLI not found' }
       // `auth status` only reads local credentials; it does not start a session.
-      const auth = await runCommand(exe, ['auth', 'status'], { env: runEnv })
-      if (auth.code !== 0) status = 'needs-sign-in'
-      else {
-        const parsed = safeJson(auth.stdout) as { loggedIn?: boolean } | null
-        if (parsed && parsed.loggedIn === false) status = 'needs-sign-in'
-      }
+      let auth = await runCommand(exe, options.backend === 'cli' ? ['auth', 'status', '--json'] : ['auth', 'status'], { env: runEnv })
+      if (options.backend === 'cli' && auth.code !== 0 && !safeJson(auth.stdout)) auth = await runCommand(exe, ['auth', 'status'], { env: runEnv })
+      if (!isClaudeSignedIn(auth.stdout, auth.code)) status = 'needs-sign-in'
     } catch (err) {
       log.warn('claude detection failed', err)
-      status = 'error'
+      status = options.backend === 'cli' ? 'not-installed' : 'error'
     }
-    if (status === 'ready') {
+    if (status === 'ready' && options.backend !== 'cli') {
       try {
         capabilities = {
           ...claudeCapabilities,
@@ -125,13 +125,14 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
         log.warn('Claude model discovery failed; using unversioned CLI aliases', err)
       }
     }
-    return { ...base, capabilities, status, version }
+    const reason = options.backend === 'cli' ? status === 'not-installed' ? 'Claude CLI not found' : status === 'needs-sign-in' ? 'Claude CLI not signed in' : undefined : undefined
+    return { ...base, capabilities, status, version, reason }
   }
 
   return {
     generateText: (input) =>
       generateSessionText(
-        new ClaudeSession(
+        new (options.backend === 'cli' ? ClaudeCliSession : ClaudeSession)(
           {
             sessionId: randomUUID(),
             cwd: input.cwd,
@@ -154,6 +155,7 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
     async startSession(_instanceId, input) {
       const exe = executable()
       if (!exe) throw new Error('Claude Code is not installed on this host')
+      if ((input.claudeBackend ?? options.backend ?? 'sdk') === 'cli') return new ClaudeCliSession(input, { log, executablePath: exe, env, modes: claudeCapabilities.permissionModes })
       return new ClaudeSession(input, {
         queryFn,
         log,
@@ -181,4 +183,11 @@ function safeJson(text: string): unknown {
   } catch {
     return null
   }
+}
+
+export function isClaudeSignedIn(output: string, code: number | null): boolean {
+  const parsed = safeJson(output) as { loggedIn?: boolean } | null
+  if (typeof parsed?.loggedIn === 'boolean') return parsed.loggedIn
+  if (/not (?:logged|signed) in|unauthenticated|logged out/i.test(output)) return false
+  return code === 0
 }

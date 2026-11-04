@@ -206,6 +206,8 @@ export class ClaudeEventMapper {
       case 'system':
         if (msg.subtype === 'init') {
           out.push({ type: 'session.provider-session', providerSessionId: msg.session_id })
+        } else if (msg.subtype === 'permission_denied') {
+          out.push({ type: 'error', message: msg.message || `Permission denied for ${msg.tool_name}` })
         } else if (msg.subtype === 'status') {
           if (msg.status === 'compacting')
             out.push({ type: 'session.compaction', state: 'started' })
@@ -221,6 +223,12 @@ export class ClaudeEventMapper {
             tokensBefore: meta.pre_tokens,
             ...(meta.post_tokens !== undefined ? { tokensAfter: meta.post_tokens } : {}),
           })
+        }
+        break
+
+      case 'rate_limit_event':
+        if (msg.rate_limit_info.status === 'rejected') {
+          out.push({ type: 'error', message: 'Claude rate limit reached.' })
         }
         break
 

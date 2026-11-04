@@ -8,6 +8,7 @@ import { agentDefaults, hostDefaults, usePreferences } from '../../stores/prefer
 import { AddAgentDialog } from './AddAgentDialog.tsx'
 import { modelChoice, modelEfforts } from '../../ui/models.ts'
 import { Select } from '../../ui/Select.tsx'
+import { ClaudeBackendSettings } from './ClaudeBackendSettings.tsx'
 
 const STATUS: Record<ProviderInstance['status'], string> = {
   ready: 'Ready',
@@ -25,7 +26,7 @@ const initials = (label: string) =>
     .toUpperCase()
 
 export function AgentsSettings({ hostKey }: { hostKey: string }) {
-  const { host, providers, connection, epoch } = useRuntime(hostKey)
+  const { host, providers, connection, epoch, projects } = useRuntime(hostKey)
   const hostId = host?.hostId ?? hostKey
   const defaults = usePreferences((s) => hostDefaults(s.hosts, hostId))
   const setDefaultAgent = usePreferences((s) => s.setDefaultAgent)
@@ -136,6 +137,7 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
           {error}
         </p>
       )}
+      <ClaudeBackendSettings hostKey={hostKey} projects={projects} online={online} />
       <div className="settings-section-head">
         <h3>Installed agents</h3>
         <div className="settings-actions">

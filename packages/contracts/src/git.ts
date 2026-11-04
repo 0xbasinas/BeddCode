@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ClaudeBackend } from './providers.ts'
 export const GitCommitText = z.object({ message: z.string().trim().min(1).max(8000) })
 export const GitPrText = z.object({
   title: z.string().trim().min(1).max(120),
@@ -24,6 +25,7 @@ export const Project = z.object({
   branch: z.string().optional(),
   /** Saved commands for this project. */
   scripts: z.array(ProjectScript).optional(),
+  claudeBackend: ClaudeBackend.optional(),
 })
 export type Project = z.infer<typeof Project>
 
