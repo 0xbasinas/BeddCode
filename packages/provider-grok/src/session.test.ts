@@ -206,6 +206,20 @@ describe('GrokSession', () => {
     await session.close()
   })
 
+  it('reports usage on a failed prompt before completing the turn', async () => {
+    const { session, runs } = setup()
+    const events = collect(session)
+    const turn = session.prompt({ text: 'x' })
+    const process = await run(runs, 0)
+    process.say({ type: 'error', message: 'failed', usage: { input_tokens: 42, output_tokens: 3 } })
+    process.finish(1)
+    await turn
+    await tick()
+    expect(events).toContainEqual(expect.objectContaining({ type: 'session.usage', inputTokens: 42, outputTokens: 3 }))
+    expect(events.at(-1)).toMatchObject({ type: 'turn.completed', reason: 'error' })
+    await session.close()
+  })
+
   it('does not resume a session that produced nothing', async () => {
     const { session, runs, argLists } = setup()
     const a = session.prompt({ text: 'x' })
