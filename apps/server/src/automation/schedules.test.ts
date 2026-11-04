@@ -217,7 +217,8 @@ describe('ScheduleService', () => {
       target: NEW,
       retryOnFailure: true,
     })
-    await svc.runNow(s.id)
+    t.advance(1440 * 60_000)
+    await svc.tick()
     t.finish('s1', 'error')
     expect(t.ended).toHaveLength(0)
     expect(svc.list().schedules[0]!.retryAt).toBe(t.now + 10 * 60_000)
@@ -233,6 +234,97 @@ describe('ScheduleService', () => {
     expect(t.ended.map(([r]) => [r.status, r.retry])).toEqual([['error', true]])
     expect(svc.list().schedules[0]!.retryAt).toBeUndefined()
     svc.stop()
+  })
+
+  it('keeps test runs independent of the interval across restart', async () => {
+    const t = setup()
+    const svc = t.make()
+    svc.start()
+    const s = svc.saveSchedule({
+      name: 'Test',
+      prompt: 'p',
+      trigger: { kind: 'every', minutes: 60 },
+      target: NEW,
+      retryOnFailure: true,
+    })
+    const next = s.nextRunAt
+    t.advance(20 * 60_000)
+    await svc.runNow(s.id)
+    t.finish('s1', 'error')
+    expect(s.nextRunAt).toBe(next)
+    expect(s.lastRunAt).toBeUndefined()
+    expect(s.retryAt).toBeUndefined()
+    svc.stop()
+    t.advance(50 * 60_000)
+    const again = t.make()
+    again.start()
+    expect(again.list().schedules[0]!.nextRunAt).toBe(next! + 60 * 60_000)
+    again.stop()
+  })
+
+  it('does not cancel a pending scheduled retry when a test finishes', async () => {
+    const t = setup()
+    const svc = t.make()
+    svc.start()
+    const s = svc.saveSchedule({
+      name: 'Retry',
+      prompt: 'p',
+      trigger: { kind: 'every', minutes: 60 },
+      target: NEW,
+      retryOnFailure: true,
+    })
+    t.advance(60 * 60_000)
+    await svc.tick()
+    t.finish('s1', 'error')
+    const retryAt = s.retryAt
+    await svc.runNow(s.id)
+    t.finish('s2')
+    expect(s.retryAt).toBe(retryAt)
+    t.advance(10 * 60_000)
+    await svc.tick()
+    expect(svc.list().runs[0]).toMatchObject({ retry: true, sessionId: 's3' })
+    svc.stop()
+  })
+
+  it('retains the session link if starting the prompt fails', async () => {
+    const t = setup()
+    t.host.prompt = async () => {
+      throw new Error('Prompt failed')
+    }
+    const svc = t.make()
+    const s = svc.saveSchedule({
+      name: 'Failed',
+      prompt: 'p',
+      trigger: { kind: 'every', minutes: 60 },
+      target: NEW,
+    })
+    expect(await svc.runNow(s.id)).toMatchObject({ status: 'error', sessionId: 's1' })
+  })
+
+  it('skips one upcoming occurrence and persists it', async () => {
+    const t = setup()
+    const svc = t.make()
+    svc.start()
+    const s = svc.saveSchedule({
+      name: 'Skip',
+      prompt: 'p',
+      trigger: { kind: 'every', minutes: 60 },
+      target: NEW,
+    })
+    const first = s.nextRunAt!
+    expect(svc.skipNext(s.id).nextRunAt).toBe(first + 60 * 60_000)
+    svc.stop()
+    const again = t.make()
+    again.start()
+    t.advance(60 * 60_000)
+    await again.tick()
+    expect(t.prompts).toHaveLength(0)
+    t.advance(60 * 60_000)
+    await again.tick()
+    expect(t.prompts).toHaveLength(1)
+    again.setPaused(s.id, true)
+    expect(() => again.skipNext(s.id)).toThrow('No upcoming run')
+    again.stop()
   })
 
   it('asks for a pull request, and alerts only as the schedule says', async () => {

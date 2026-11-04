@@ -859,6 +859,7 @@ export const RpcMethods = {
   },
   /** Fires a schedule now, whatever its timer says (still skipped while a run is going). */
   'schedules.runNow': { params: z.object({ id: z.string() }), result: ScheduleRun },
+  'schedules.skipNext': { params: z.object({ id: z.string() }), result: Schedule },
   /** Turns a cron expression or interval into its next few times, to check it before saving. */
   'schedules.preview': {
     params: z.object({

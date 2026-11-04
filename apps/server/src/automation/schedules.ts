@@ -203,6 +203,16 @@ export class ScheduleService {
     return this.fire(this.require(id), true)
   }
 
+  /** Skip exactly the next scheduled occurrence, without affecting pending retries. */
+  skipNext(id: string): Schedule {
+    const s = this.require(id)
+    if (s.paused || s.nextRunAt === undefined) throw new Error('No upcoming run to skip')
+    const skippedAt = s.nextRunAt
+    s.nextRunAt = nextRun(s.trigger, skippedAt, skippedAt)
+    this.save()
+    return s
+  }
+
   /** Fires every schedule that is due. */
   async tick() {
     const now = this.now()
@@ -226,6 +236,13 @@ export class ScheduleService {
 
   /** Tells the alerts a run ended, unless it failed and is about to be tried again. */
   private ended(run: ScheduleRun, schedule: Schedule) {
+    // A test run must not create, cancel, or postpone a scheduled retry.
+    if (run.manual) {
+      const notify = schedule.notify ?? 'always'
+      if (notify !== 'never' && (notify !== 'failure' || run.status !== 'done'))
+        this.options.onRunEnded?.(run, schedule)
+      return
+    }
     if (run.status === 'error' && schedule.retryOnFailure && !run.retry && !schedule.paused) {
       schedule.retryAt = this.now() + RETRY_MS
       this.save()
@@ -273,9 +290,9 @@ export class ScheduleService {
       return skip('The session was busy')
 
     this.firing.add(schedule.id)
-    schedule.lastRunAt = now
+    if (!manual && !retry) schedule.lastRunAt = now
+    let sessionId: string | undefined
     try {
-      let sessionId: string
       if (target.kind === 'new') {
         ;({ sessionId } = await this.options.host.create(
           {
@@ -307,6 +324,7 @@ export class ScheduleService {
         ...base,
         status: 'error',
         endedAt: this.now(),
+        sessionId,
         note: err instanceof Error ? err.message : String(err),
       }
       this.record(run)
