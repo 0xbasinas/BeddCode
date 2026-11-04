@@ -189,19 +189,23 @@ export class TerminalManager {
     cols?: number
     rows?: number
     shell?: ShellSpec
-    /** Typed into the shell once it starts, as if the user had (a project script). */
+    /** Run as a shell command whose exit status is retained by the terminal. */
     command?: string
     title?: string
-    /** Running a project script again replaces its earlier terminal in the same folder. */
+    /** A running script is reused within the same folder. */
     scriptId?: string
   }): TerminalInfo {
     if (params.scriptId) {
       for (const t of this.terminals.values()) {
-        if (t.info.scriptId === params.scriptId && sameFolder(t.info.cwd, params.cwd))
-          this.close(t.info.id)
+        if (
+          t.info.scriptId === params.scriptId &&
+          sameFolder(t.info.cwd, params.cwd) &&
+          t.info.exited === undefined
+        )
+          return snapshot(t)
       }
     }
-    const shell = params.shell ?? (this.options.shell ?? cachedDefaultShell)()
+    let shell = params.shell ?? (this.options.shell ?? cachedDefaultShell)()
     const cols = params.cols ?? 80
     const rows = params.rows ?? 24
     const env = {
@@ -210,7 +214,15 @@ export class TerminalManager {
       COLORTERM: 'truecolor',
     } as Record<string, string>
 
-    const pty = (this.options.pty ?? defaultPty)(shell.file, shell.args, {
+    if (
+      params.command &&
+      process.platform === 'win32' &&
+      /^(powershell|pwsh)(\.exe)?$/i.test(path.win32.basename(shell.file))
+    ) {
+      shell = { file: env.COMSPEC ?? 'cmd.exe', args: [], name: 'cmd' }
+    }
+    const args = params.command ? commandArgs(shell, params.command) : shell.args
+    const pty = (this.options.pty ?? defaultPty)(shell.file, args, {
       cwd: params.cwd,
       env,
       cols,
@@ -242,9 +254,6 @@ export class TerminalManager {
 
     pty.onData((data) => this.onData(term, data))
     pty.onExit(({ exitCode }) => this.onExit(term, exitCode))
-    // The shell reads it once it is ready, so it shows up in the terminal like typed input and the
-    // shell stays open afterwards for the output and a rerun.
-    if (params.command) pty.write(`${params.command.replace(/\r?\n/g, ' ')}\r`)
     return { ...term.info }
   }
 
@@ -542,6 +551,21 @@ export class TerminalManager {
     term.timer = null
     term.poll = null
   }
+}
+
+function commandArgs(shell: ShellSpec, command: string): string[] {
+  const name = path
+    .basename(shell.file)
+    .toLowerCase()
+    .replace(/\.exe$/, '')
+  if (name === 'cmd') return [...shell.args, '/d', '/s', '/c', command]
+  if (name === 'powershell' || name === 'pwsh')
+    return [
+      ...shell.args,
+      '-Command',
+      `${command}\nif (-not $?) { if ($LASTEXITCODE) { exit $LASTEXITCODE }; exit 1 }`,
+    ]
+  return [...shell.args, '-c', command]
 }
 
 function sameFolder(a: string, b: string) {

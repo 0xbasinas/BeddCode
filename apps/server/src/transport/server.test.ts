@@ -77,7 +77,8 @@ async function boot(
       file: process.execPath,
       args: [
         '-e',
-        'console.log("ready"); process.stdin.setEncoding("utf8"); process.stdin.on("data", d => console.log("ECHO:" + d.trim().toUpperCase()))',
+        'if (process.argv[1] === "-c") { console.log("ECHO:" + process.argv[2].toUpperCase()); process.exit(0) }; console.log("ready"); process.stdin.setEncoding("utf8"); process.stdin.on("data", d => console.log("ECHO:" + d.trim().toUpperCase()))',
+        '--',
       ],
       name: 'node',
     }),

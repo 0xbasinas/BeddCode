@@ -57,6 +57,22 @@ async function until(pred: () => boolean, ms = 8000) {
 const node = (script: string) => ({ file: process.execPath, args: ['-e', script], name: 'node' })
 
 describe('TerminalManager (real pty)', () => {
+  it('retains a project command failure and its output', async () => {
+    const m = track(new TerminalManager())
+    const cwd = tmp()
+    const info = m.create({
+      cwd,
+      command: 'echo script-output && exit 3',
+      scriptId: 'test',
+    })
+    const c = new Collector()
+    m.attach(info.id, c)
+    // The default shell (notably PowerShell on Windows CI) can take longer to start and exit.
+    await until(() => c.exit() !== undefined, 25_000)
+    expect(c.text()).toContain('script-output')
+    expect(m.list(cwd)[0]?.exited).toBe(3)
+  })
+
   it('runs a command in the folder and reports its output and exit code', async () => {
     const m = track(new TerminalManager())
     const cwd = tmp()
@@ -332,7 +348,7 @@ describe('TerminalManager (script runs and ended terminals)', () => {
     return { factory, made }
   }
 
-  it('replaces the earlier terminal of a script run again in the same folder', () => {
+  it('reuses a running script in the same folder but allows another folder and a retry', () => {
     const p = ptys()
     const m = track(new TerminalManager({ pty: p.factory }))
     const plain = m.create({ cwd: '/x', shell: node('') })
@@ -349,8 +365,6 @@ describe('TerminalManager (script runs and ended terminals)', () => {
       command: 'npm test',
       scriptId: 'test',
     })
-    const watcher = new Collector()
-    m.attach(first.id, watcher)
     const again = m.create({
       cwd: '/x',
       shell: node(''),
@@ -358,11 +372,14 @@ describe('TerminalManager (script runs and ended terminals)', () => {
       title: 'Test',
       scriptId: 'test',
     })
-    expect(again.scriptId).toBe('test')
-    expect(p.made[1]!.killed).toBe(true)
-    expect(watcher.frames.at(-1)).toMatchObject({ t: 'term.exit', id: first.id })
-    expect(m.list().map((t) => t.id)).toEqual([plain.id, elsewhere.id, again.id])
-    expect(p.made[3]!.writes).toEqual(['npm test\r'])
+    expect(again.id).toBe(first.id)
+    expect(p.made[1]!.killed).toBe(false)
+    expect(m.list().map((t) => t.id)).toEqual([plain.id, first.id, elsewhere.id])
+    p.made[1]!.exit(1)
+    expect(m.list('/x').find((t) => t.id === first.id)?.exited).toBe(1)
+    const retry = m.create({ cwd: '/x', shell: node(''), command: 'npm test', scriptId: 'test' })
+    expect(retry.id).not.toBe(first.id)
+    expect(m.list('/x').map((t) => t.id)).toEqual([plain.id, first.id, retry.id])
   })
 
   it('forgets the oldest ended terminals past the limit, never running ones', () => {
