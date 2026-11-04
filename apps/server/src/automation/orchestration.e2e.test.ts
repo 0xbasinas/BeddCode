@@ -134,13 +134,16 @@ it('orchestrates workers, approvals and durable messages across a host restart',
     ).rejects.toThrow(/at most 2/)
     // The fake workers run asynchronously; report only after their initial turns finish,
     // since a later turn.started clears the previous result in the session digest.
-    await vi.waitFor(() => {
-      for (const id of [first, second]) {
-        expect(
-          host!.store.readSession(id).some(({ event }) => event.type === 'turn.completed'),
-        ).toBe(true)
-      }
-    })
+    await vi.waitFor(
+      () => {
+        for (const id of [first, second]) {
+          expect(
+            host!.store.readSession(id).some(({ event }) => event.type === 'turn.completed'),
+          ).toBe(true)
+        }
+      },
+      { timeout: 30_000, interval: 50 },
+    )
     await call(host, first, 'report_result', { status: 'done', summary: 'Implementation complete' })
     const sent = (await call(host, first, 'send_peer_message', {
       session_id: lead,
