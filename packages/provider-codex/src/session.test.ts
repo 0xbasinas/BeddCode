@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import type { SessionEvent } from '@beddcode/contracts'
 import { createLogger, type Transport } from '@beddcode/shared'
 import { createCodexAdapter } from './adapter.ts'
-import { CodexSession, mcpConfig } from './session.ts'
+import { CodexSession, mcpConfig, prepareCodexProcess } from './session.ts'
 
 type Msg = { id?: number; method?: string; params?: Record<string, unknown>; result?: unknown }
 
@@ -90,6 +90,45 @@ const completeTurn = (s: ReturnType<typeof fakeServer>, status = 'completed') =>
   s.notify('turn/completed', { threadId: 'th1', turn: { id: 'tu1', status } })
 
 describe('CodexSession', () => {
+  it('hands an initialized process to exactly one new conversation', async () => {
+    const server = fakeServer()
+    const prepared = await prepareCodexProcess({ transport: server.transport, log })
+    expect(prepared.healthy()).toBe(true)
+    expect(server.sent('initialize')).toHaveLength(1)
+    expect(server.sent('thread/start')).toHaveLength(0)
+
+    const session = prepared.start({ sessionId: 'warm', cwd: '/work', permissionMode: 'read-only' })
+    await nextEvent(session, (event) => event.type === 'session.provider-session')
+    expect(server.sent('initialize')).toHaveLength(1)
+    expect(server.sent('thread/start')).toHaveLength(1)
+    expect(() => prepared.start({ sessionId: 'other', cwd: '/work' })).toThrow()
+    prepared.close()
+    await session.close()
+  })
+
+  it('does not hand off a prepared process that has died', async () => {
+    const server = fakeServer()
+    const prepared = await prepareCodexProcess({ transport: server.transport, log })
+    server.die()
+    expect(prepared.healthy()).toBe(false)
+    expect(() => prepared.start({ sessionId: 's', cwd: '/work' })).toThrow()
+  })
+
+  it('rejects and closes a process whose initialization fails', async () => {
+    const server = fakeServer()
+    server.auto.initialize = () => new Error('initialization failed')
+    let closed = false
+    const close = server.transport.close
+    server.transport.close = () => {
+      closed = true
+      close()
+    }
+    await expect(prepareCodexProcess({ transport: server.transport, log })).rejects.toThrow(
+      'initialization failed',
+    )
+    expect(closed).toBe(true)
+  })
+
   it('isolates metadata generation in an ephemeral read-only thread', async () => {
     const server = fakeServer()
     const session = start(server, { textOnly: true, effort: 'low' })
