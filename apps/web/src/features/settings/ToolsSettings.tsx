@@ -148,6 +148,7 @@ export function ToolsSettings({ hostKey }: { hostKey: string }) {
 
           {adding && current && (
             <AddMcpDialog
+              hostKey={hostKey}
               agent={current.label}
               kind={current.kind}
               form={form}

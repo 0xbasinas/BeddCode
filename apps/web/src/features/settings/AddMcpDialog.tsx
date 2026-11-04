@@ -1,10 +1,12 @@
 import { Select } from '../../ui/Select.tsx'
 import { Button } from '@/components/ui/button'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Globe, Terminal, X } from 'lucide-react'
+import { hostRequest } from '../../stores/host.ts'
 import type { McpForm } from './mcpForm.ts'
 
 export function AddMcpDialog({
+  hostKey,
   agent,
   kind,
   form,
@@ -14,6 +16,7 @@ export function AddMcpDialog({
   onAdd,
   onClose,
 }: {
+  hostKey: string
   agent: string
   kind: string
   form: McpForm
@@ -23,6 +26,8 @@ export function AddMcpDialog({
   onAdd(): void
   onClose(): void
 }) {
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ url: string; kind: string; text: string }>()
   const dialog = useRef<HTMLDialogElement>(null)
   useEffect(() => {
     const element = dialog.current!
@@ -171,6 +176,44 @@ export function AddMcpDialog({
                     </Select>
                   </>
                 )}
+                <div>
+                  <Button
+                    variant="app"
+                    type="button"
+                    className="settings-button"
+                    disabled={busy || testing || !form.url.trim()}
+                    onClick={() => {
+                      const url = form.url.trim()
+                      const transport = form.kind === 'sse' ? 'sse' : 'http'
+                      setTesting(true)
+                      setTestResult(undefined)
+                      void hostRequest(hostKey, 'mcp.test', { url, transport })
+                        .then(
+                          (result) => {
+                            setTestResult({
+                              url,
+                              kind: transport,
+                              text: result.ok
+                                ? `Connected to ${result.name} ${result.version} · ${result.toolCount} tools`
+                                : result.error,
+                            })
+                          },
+                          () =>
+                            setTestResult({
+                              url,
+                              kind: transport,
+                              text: 'Could not test the connection to this host.',
+                            }),
+                        )
+                        .finally(() => setTesting(false))
+                    }}
+                  >
+                    {testing ? 'Testing…' : 'Test connection'}
+                  </Button>
+                  {testResult &&
+                    testResult.url === form.url.trim() &&
+                    testResult.kind === form.kind && <p role="status">{testResult.text}</p>}
+                </div>
                 <div className="mcp-auth-note">
                   <strong>Authentication</strong>
                   <p>
