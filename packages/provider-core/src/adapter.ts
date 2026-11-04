@@ -121,6 +121,8 @@ export interface HistoryTurn {
 
 export interface ProviderMcp {
   list(instanceId: string, cwd?: string): Promise<McpServer[]>
+  /** Private configuration for host-side copying; never sent over RPC. */
+  get?(instanceId: string, name: string, cwd?: string): Promise<McpServerInput>
   add(instanceId: string, server: McpServerInput, cwd?: string): Promise<void>
   remove(instanceId: string, name: string, scope?: string, cwd?: string): Promise<void>
 }

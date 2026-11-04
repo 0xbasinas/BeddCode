@@ -1,3 +1,4 @@
+import { mcpOverview, copyMcpServer } from '../mcp/library.ts'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { performance } from 'node:perf_hooks'
@@ -1621,6 +1622,18 @@ export class SessionManager {
       (await adapter.listCommands?.(instanceId, cwd ?? (await this.scratchFolder('_preview')))) ??
       []
     )
+  }
+
+  private async mcpAgents() {
+    return (await this.detect()).filter(({ instance, adapter }) => instance.status !== 'not-installed' && instance.capabilities.mcp && adapter.mcp).map(({ instance, adapter }) => ({ instanceId: instance.id, label: instance.label, mcp: adapter.mcp! }))
+  }
+
+  async mcpOverview(cwd?: string) {
+    return mcpOverview(await this.mcpAgents(), cwd ?? this.deps.defaultCwd)
+  }
+
+  async copyMcpServer(instanceId: string, name: string, cwd?: string) {
+    return copyMcpServer(await this.mcpAgents(), instanceId, name, cwd ?? this.deps.defaultCwd)
   }
 
   async mcp(instanceId: string) {
