@@ -426,7 +426,6 @@ describe('server', () => {
 
     c.send({ t: 'term.input', id: info.id, data: 'hello\r\n' })
     await c.until(() => out().includes('ECHO:HELLO'))
-    c.send({ t: 'term.resize', id: info.id, cols: 120, rows: 40 })
 
     // A second connection attaching later gets the history.
     const other = await Client.connect(server.port)
@@ -444,6 +443,8 @@ describe('server', () => {
       expect(missed.data).not.toContain('ready')
     }
 
+    // ConPTY may redraw the screen on resize, including text before the cursor.
+    c.send({ t: 'term.resize', id: info.id, cols: 120, rows: 40 })
     expect((await c.rpc('terminals.close', { id: info.id })).ok).toBe(true)
     await c.until((fs) => fs.some((f) => f.t === 'term.exit'))
     expect(((await c.rpc('terminals.list', {})).result as unknown[]).length).toBe(0)
