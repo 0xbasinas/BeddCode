@@ -31,6 +31,8 @@ import {
   type LinearTools,
 } from '../linear/linearTools.ts'
 import { digest, reportedResult, transcript, type SessionDigest } from './digest.ts'
+import { expandTemplate } from './orchestrationTemplates.ts'
+import type { OrchestrationTemplate } from '@beddcode/contracts'
 
 /** How deep sessions may nest: a child (1) may start children of its own (2), and those none. */
 export const MAX_DEPTH = 2
@@ -89,6 +91,8 @@ export interface AgentToolsHost {
   }): void
   recordPlan?(plan: Extract<StoredEvent['event'], { type: 'orchestration.plan' }>): void
   recordGroup?(group: Extract<StoredEvent['event'], { type: 'orchestration.group' }>): void
+  templates?(): OrchestrationTemplate[]
+  watchBudget?(sessionId: string, budget: { turnCap?: number; timeBudgetSeconds?: number }): void
   childrenOf(sessionId: string): string[]
   /** Called with each new event, to wake waiting calls. Returns an unsubscribe function. */
   subscribe(listener: (stored: StoredEvent) => void): () => void
@@ -118,6 +122,18 @@ export function modeLevel(
 
 /** The tools, as MCP lists them. */
 export const TOOL_DEFINITIONS = [
+  {
+    name: 'start_template',
+    description: 'Start an orchestration template by id with launch tasks.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        template_id: { type: 'string' },
+        tasks: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['template_id', 'tasks'],
+    },
+  },
   {
     name: 'create_orchestration_plan',
     description:
@@ -646,6 +662,47 @@ export class AgentTools {
       case 'list_peer_groups':
         this.peerProject(sessionId)
         return [...this.peerGroups(sessionId)].map(([name, session_ids]) => ({ name, session_ids }))
+      case 'start_template': {
+        const template = this.host
+          .templates?.()
+          .find((item) => item.id === str(args, 'template_id', true))
+        if (
+          !template ||
+          !Array.isArray(args.tasks) ||
+          args.tasks.some((task) => typeof task !== 'string')
+        )
+          throw new Error('Template or tasks not found')
+        if (!this.host.recordPlan) throw new Error('Orchestration plans are unavailable')
+        const specs = expandTemplate(template, args.tasks as string[])
+        if (specs.length > this.limits(sessionId).maxTotalWorkers)
+          throw new Error('Template exceeds worker limit')
+        const planId = randomUUID()
+        const tasks = specs.map((spec, index) => ({
+          id: randomUUID(),
+          agent: spec.agent,
+          model: spec.model,
+          turnCap: spec.turnCap,
+          timeBudgetSeconds: spec.timeBudgetSeconds,
+          worktree: false,
+          prompt: `${spec.role}: ${spec.task}${index > 0 ? `\nUse the earlier ${specs[index - 1]!.role} step results before starting this task.` : ''}`,
+        }))
+        this.host.recordPlan({
+          type: 'orchestration.plan',
+          sessionId,
+          at: Date.now(),
+          planId,
+          goal: template.name,
+          tasks,
+        })
+        return this.serially(sessionId, () =>
+          this.plan(
+            sessionId,
+            planId,
+            true,
+            template.kind === 'plan-implement-review' ? 1 : specs.length - 1,
+          ),
+        )
+      }
       case 'create_orchestration_plan': {
         if (!this.host.recordPlan) throw new Error('Orchestration plans are unavailable')
         const goal = str(args, 'goal', true)!
@@ -843,14 +900,19 @@ export class AgentTools {
     return groups
   }
 
-  private async plan(sessionId: string, planId: string, startPending: boolean) {
+  private async plan(
+    sessionId: string,
+    planId: string,
+    startPending: boolean,
+    startLimit = Infinity,
+  ) {
     const event = this.host
       .readSession(sessionId)
       .map((e) => e.event)
       .find((e) => e.type === 'orchestration.plan' && e.planId === planId)
     if (!event || event.type !== 'orchestration.plan') throw new Error('Plan not found')
     const tasks = []
-    for (const task of event.tasks) {
+    for (const [index, task] of event.tasks.entries()) {
       const requestId = `plan:${planId}:${task.id}`
       let childId = this.host
         .childrenOf(sessionId)
@@ -862,12 +924,15 @@ export class AgentTools {
             ),
         )
       let error: string | undefined
-      if (!childId && startPending) {
+      if (!childId && startPending && index < startLimit) {
         try {
           const started = await this.start(sessionId, {
             agent: task.agent,
             prompt: task.prompt,
             worktree: task.worktree,
+            model: task.model,
+            turnCap: task.turnCap,
+            timeBudgetSeconds: task.timeBudgetSeconds,
             request_id: requestId,
           })
           childId = started.session_id
@@ -1130,6 +1195,11 @@ export class AgentTools {
       },
       { parent: { sessionId: parentId, depth, requestId } },
     )
+    if (typeof args.turnCap === 'number' || typeof args.timeBudgetSeconds === 'number')
+      this.host.watchBudget?.(sessionId, {
+        turnCap: args.turnCap as number | undefined,
+        timeBudgetSeconds: args.timeBudgetSeconds as number | undefined,
+      })
     try {
       await this.host.prompt(sessionId, str(args, 'prompt', true)!)
     } catch (err) {

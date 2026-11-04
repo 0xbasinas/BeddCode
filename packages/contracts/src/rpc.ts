@@ -33,6 +33,7 @@ import { UsageLimits, UsageSummary } from './usage.ts'
 import {
   OrchestrationSettings,
   OrchestrationApproval,
+  OrchestrationTemplate,
   AlertEvents,
   AlertSettings,
   TelegramStatus,
@@ -133,6 +134,13 @@ export const RpcMethods = {
     }),
     result: z.object({ events: z.array(StoredEvent), hasMore: z.boolean() }),
   },
+  'orchestration.templates.start': {
+    params: z.object({ sessionId: z.string(), templateId: z.string(), tasks: z.array(z.string()) }),
+    result: z.unknown(),
+  },
+  'orchestration.templates.list': { params: z.object({}), result: z.array(OrchestrationTemplate) },
+  'orchestration.templates.save': { params: OrchestrationTemplate, result: OrchestrationTemplate },
+  'orchestration.templates.delete': { params: z.object({ id: z.string() }), result: z.object({}) },
   'orchestration.settings.get': { params: z.object({}), result: OrchestrationSettings },
   'orchestration.settings.set': { params: OrchestrationSettings, result: OrchestrationSettings },
   'orchestration.approvals.list': { params: z.object({}), result: z.array(OrchestrationApproval) },

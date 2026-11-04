@@ -191,7 +191,7 @@ export interface SessionView {
   /** How much of the agent's context window is in use, when the agent says. */
   context?: { used: number; size: number }
   /** How a session another agent started said its task ended (its report_result), this task. */
-  result?: { status: 'done' | 'blocked' | 'failed'; summary: string }
+  result?: { status: 'done' | 'blocked' | 'failed' | 'stopped'; summary: string }
   /** Everything the agent has used so far, as it reports it: all tokens, and cost when it says. */
   usage?: { tokens: number; costUsd: number }
   modes?: { id: string; label: string; description?: string; dangerous?: boolean }[]
