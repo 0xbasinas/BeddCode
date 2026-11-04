@@ -321,7 +321,10 @@ export class AgentTools {
     linear: boolean
   } {
     const created = this.host.readSession(sessionId).find((e) => e.event.type === 'session.created')
-    const event = created?.event.type === 'session.created' ? created.event : this.startingFeatures.get(sessionId)
+    const event =
+      created?.event.type === 'session.created'
+        ? created.event
+        : this.startingFeatures.get(sessionId)
     if (created) this.startingFeatures.delete(sessionId)
     return {
       // The server is only given to sessions with one of the five; without the other flags it
