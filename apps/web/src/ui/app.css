@@ -6970,3 +6970,29 @@ button.patch-comment-btn:hover {
   width: calc(90px * var(--ui-scale));
   flex: none;
 }
+
+.browser-annotations {
+  flex: none;
+  max-height: 240px;
+  overflow: auto;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.browser-annotation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  font-size: 12px;
+}
+.browser-annotation > span:first-child {
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-annotation textarea {
+  flex: 1;
+  min-width: 100px;
+  resize: vertical;
+}

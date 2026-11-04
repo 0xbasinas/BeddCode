@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { tabLabel } from '@beddcode/client-runtime'
 import type { BrowserCommand, BrowserEvent, BrowserPageState } from '@beddcode/contracts'
 import '../../ui/desktop.ts'
+import { useAnnotations } from './annotations.ts'
 
 export interface BrowserTab {
   id: number
@@ -119,6 +120,7 @@ export const useBrowser = create<BrowserState>((set, get) => ({
     const { tabs, active } = get()
     const current = tabs.find((t) => t.id === active)
     if (current && !options?.newTab && !options?.agent) {
+      useAnnotations.getState().invalidateTab(current.id)
       set({
         tabs: tabs.map((t) =>
           t.id === current.id ? { ...t, url, title: tabLabel(url), via: options?.via } : t,
@@ -143,6 +145,7 @@ export const useBrowser = create<BrowserState>((set, get) => ({
   },
 
   close(id) {
+    useAnnotations.getState().invalidateTab(id)
     void browserCommand({ op: 'close', tabId: id })
     set(({ tabs, active, pages, prompts }) => {
       const index = tabs.findIndex((t) => t.id === id)
@@ -165,6 +168,8 @@ export const useBrowser = create<BrowserState>((set, get) => ({
   },
 
   navigated(id, url) {
+    if (get().tabs.find((t) => t.id === id)?.url !== url)
+      useAnnotations.getState().invalidateTab(id)
     set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, url } : t)) }))
   },
 
@@ -196,6 +201,7 @@ export function applyBrowserEvent(event: BrowserEvent): void {
     case 'state': {
       const { tabId, state } = event
       if (!store.getState().tabs.some((t) => t.id === tabId)) return
+      if (state.loading) useAnnotations.getState().invalidateTab(tabId)
       store.setState((s) => ({ pages: { ...s.pages, [tabId]: { ...s.pages[tabId], ...state } } }))
       const { navigated, titled, faviconed } = store.getState()
       if (state.url) navigated(tabId, state.url)

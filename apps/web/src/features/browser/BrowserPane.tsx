@@ -51,6 +51,7 @@ import {
   type BrowserPrompt,
   type BrowserTab,
 } from './browserStore.ts'
+import { annotationKey, EMPTY_ANNOTATIONS, useAnnotations } from './annotations.ts'
 import { useNativeLayout } from './nativeView.ts'
 import { previewTarget } from './preview.ts'
 import { useHostKey } from '../../stores/HostScope.tsx'
@@ -59,7 +60,6 @@ import { hostRequest, interrupt, useHostStore } from '../../stores/host.ts'
 import { Dropdown } from '../../ui/Dropdown.tsx'
 import {
   CANCEL_PICK_SCRIPT,
-  elementContext,
   normalizeUrl,
   pickElement,
   PICK_ELEMENT_SCRIPT,
@@ -112,6 +112,8 @@ export function BrowserPane({
   const [profileNotice, setProfileNotice] = useState<string>()
   const frame = useRef<HTMLIFrameElement>(null)
   const addressInput = useRef<HTMLInputElement>(null)
+  const annotationDraft = annotationKey(hostKey, draftId ?? '')
+  const annotations = useAnnotations((s) => s.drafts[annotationDraft] ?? EMPTY_ANNOTATIONS)
   const [picking, setPicking] = useState(false)
   const [pickError, setPickError] = useState<string>()
   const picker = useRef<{ cancel(): void } | null>(null)
@@ -258,7 +260,14 @@ export function BrowserPane({
       picker.current?.cancel()
       picker.current = null
     }
-  }, [current?.id, current?.url, hostKey, draftId, reloadKey])
+  }, [current?.id, current?.url, hostKey, draftId, reloadKey, page.loading])
+
+  useEffect(
+    () => () => {
+      useAnnotations.getState().invalidateDraft(annotationDraft)
+    },
+    [annotationDraft],
+  )
 
   // Ctrl+F / Ctrl+L pressed inside a page come here (the page itself never sees them).
   const firstRequests = useRef(requests)
@@ -330,23 +339,15 @@ export function BrowserPane({
         element = await pickElement(doc)
       }
       if (!element || cancelled) return
-      void attachUpload(
-        hostKey,
-        draftId,
-        new File([elementContext(element)], 'browser-element.txt', { type: 'text/plain' }),
-      )
-      if (desktop && element.rect.width > 0 && element.rect.height > 0) {
-        const rect = element.rect
-        // Reserve the screenshot chip now so Send waits for both attachments.
-        void stageAttachment(hostKey, draftId, 'browser-element.png', 0, async () => {
-          const image = await browserCommand<string>({ op: 'capture', tabId, rect })
-          if (!image) throw new Error('Could not capture the element')
-          return hostRequest(hostKey, 'attachments.upload', {
-            name: 'browser-element.png',
-            dataBase64: dataUrlBase64(image),
-          })
-        })
-      }
+      useAnnotations.getState().add({
+        id: crypto.randomUUID(),
+        host: hostKey,
+        session: draftId,
+        tab: tabId,
+        element,
+        comment: '',
+        stale: false,
+      })
     } catch (err) {
       if (!cancelled) setPickError(err instanceof Error ? err.message : 'Could not pick an element')
     } finally {
@@ -395,6 +396,7 @@ export function BrowserPane({
 
   const reload = () => {
     if (!current) return
+    if (!page.loading) useAnnotations.getState().invalidateTab(current.id)
     if (desktop) void browserCommand({ op: page.loading ? 'stop' : 'reload', tabId: current.id })
     else setReloadKey((k) => k + 1)
   }
@@ -590,6 +592,37 @@ export function BrowserPane({
         )}
       </form>
 
+      {annotations.length > 0 && (
+        <div className="browser-annotations" aria-label="Browser annotations">
+          <strong>Annotations</strong>{' '}
+          <span className="muted">Add a comment to each before sending.</span>
+          {annotations.map((annotation, index) => (
+            <div key={annotation.id} className="browser-annotation">
+              <span>
+                {index + 1}. {annotation.element.selector || 'Selector unavailable'}
+              </span>
+              {annotation.stale && (
+                <span role="status">Page changed or tab closed; remove and pick again.</span>
+              )}
+              {annotation.element.truncated && <span>HTML was truncated.</span>}
+              <textarea
+                aria-label={`Comment ${index + 1}`}
+                value={annotation.comment}
+                placeholder="Add a comment"
+                onChange={(e) =>
+                  useAnnotations.getState().edit(annotationDraft, annotation.id, e.target.value)
+                }
+              />
+              <button
+                type="button"
+                onClick={() => useAnnotations.getState().remove(annotationDraft, [annotation.id])}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       {finding && current && desktop && (
         <FindBar
           tabId={current.id}
@@ -603,7 +636,7 @@ export function BrowserPane({
       ))}
       {picking && (
         <div className="banner" role="status">
-          Click an element to attach it. Press Escape to cancel.
+          Click an element to annotate it. Press Escape to cancel.
         </div>
       )}
       {(pickError || goError) && (
@@ -630,6 +663,7 @@ export function BrowserPane({
       {!desktop && current && !blank && (
         <iframe
           ref={frame}
+          onLoad={() => useAnnotations.getState().invalidateTab(current.id)}
           key={`${current.id}:${current.url}:${reloadKey}`}
           className="page-frame"
           src={current.url}
