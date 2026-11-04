@@ -204,7 +204,7 @@ export class TerminalManager {
           return snapshot(t)
       }
     }
-    const shell = params.shell ?? (this.options.shell ?? cachedDefaultShell)()
+    let shell = params.shell ?? (this.options.shell ?? cachedDefaultShell)()
     const cols = params.cols ?? 80
     const rows = params.rows ?? 24
     const env = {
@@ -213,6 +213,13 @@ export class TerminalManager {
       COLORTERM: 'truecolor',
     } as Record<string, string>
 
+    if (
+      params.command &&
+      process.platform === 'win32' &&
+      /^(powershell|pwsh)(\.exe)?$/i.test(path.win32.basename(shell.file))
+    ) {
+      shell = { file: env.COMSPEC ?? 'cmd.exe', args: [], name: 'cmd' }
+    }
     const args = params.command ? commandArgs(shell, params.command) : shell.args
     const pty = (this.options.pty ?? defaultPty)(shell.file, args, {
       cwd: params.cwd,
