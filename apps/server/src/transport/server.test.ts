@@ -1064,7 +1064,8 @@ describe('automation', () => {
     const { server, store } = await boot()
     const c = await Client.connect(server.port)
     await c.until((fs) => fs.some((f) => f.t === 'welcome'))
-    const { sessionId } = (await c.rpc('sessions.create', { instanceId: 'fake', agentTools: true })).result as {
+    const { sessionId } = (await c.rpc('sessions.create', { instanceId: 'fake', agentTools: true }))
+      .result as {
       sessionId: string
     }
     await c.rpc('sessions.prompt', { sessionId, text: '[orchestrate]' })
@@ -1080,7 +1081,9 @@ describe('automation', () => {
       expect(
         store
           .childrenOf(sessionId)
-          .filter((id) => store.readSession(id).some(({ event }) => event.type === 'session.result')),
+          .filter((id) =>
+            store.readSession(id).some(({ event }) => event.type === 'session.result'),
+          ),
       ).toHaveLength(2),
     )
   })
