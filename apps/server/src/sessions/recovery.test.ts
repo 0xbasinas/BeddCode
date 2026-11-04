@@ -36,6 +36,7 @@ describe('interrupted turn recovery', () => {
     store.append({ type: 'turn.completed', sessionId: 'done', turnId: 't', at: 5, reason: 'done' })
     recoverInterruptedTurns(store)
     const stale = store.readSession('stale').map((s) => s.event)
+    expect(stale).toContainEqual(expect.objectContaining({ type: 'turn.interrupted', turnId: 't' }))
     expect(stale.at(-1)).toMatchObject({
       type: 'turn.completed',
       reason: 'cancelled',
@@ -49,6 +50,23 @@ describe('interrupted turn recovery', () => {
     const seq = store.lastSeq()
     recoverInterruptedTurns(store)
     expect(store.lastSeq()).toBe(seq)
+    store.close()
+  })
+  it('does not duplicate a recovery marker if the host crashed while recording it', () => {
+    const store = new EventStore(':memory:')
+    store.append({ type: 'turn.started', sessionId: 's', turnId: 't', at: 1 })
+    store.append({
+      type: 'turn.interrupted',
+      sessionId: 's',
+      turnId: 't',
+      message: 'Stopped',
+      at: 2,
+    })
+    recoverInterruptedTurns(store)
+    expect(
+      store.readSession('s').filter(({ event }) => event.type === 'turn.interrupted'),
+    ).toHaveLength(1)
+    expect(store.readSession('s').at(-1)?.event.type).toBe('turn.completed')
     store.close()
   })
   it('does not mark an already failed turn as interrupted', () => {

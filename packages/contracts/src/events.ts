@@ -227,6 +227,12 @@ export const SessionEvent = z.discriminatedUnion('type', [
     currentModeId: z.string().optional(),
   }),
   Base.extend({ type: z.literal('turn.started') }),
+  /** A provider stopped while a turn was running; remains actionable until resolved. */
+  Base.extend({ type: z.literal('turn.interrupted'), message: z.string() }),
+  Base.extend({
+    type: z.literal('turn.interruption-resolved'),
+    action: z.enum(['resumed', 'dismissed']),
+  }),
   Base.extend({
     type: z.literal('host.updating'),
     message: z.string(),

@@ -194,6 +194,78 @@ describe('SessionManager', () => {
     await manager.close()
   })
 
+  it.each([true, false])(
+    'resumes an interrupted session with context (native resume: %s)',
+    async (native) => {
+      const { store, manager, starts, prompts } = setup({ resume: native })
+      store.append({
+        type: 'session.created',
+        sessionId: 'interrupted',
+        title: 'Task',
+        cwd: os.tmpdir(),
+        instanceId: 'stub',
+        at: 1,
+      })
+      store.append({
+        type: 'session.provider-session',
+        sessionId: 'interrupted',
+        providerSessionId: 'old',
+        at: 2,
+      })
+      store.append({
+        type: 'message.delta',
+        sessionId: 'interrupted',
+        role: 'user',
+        text: 'Fix the failing test',
+        at: 3,
+      })
+      store.append({
+        type: 'plan.updated',
+        sessionId: 'interrupted',
+        steps: [{ text: 'Investigate', status: 'in-progress' }],
+        at: 4,
+      })
+      store.append({
+        type: 'turn.interrupted',
+        sessionId: 'interrupted',
+        turnId: 't',
+        message: 'Stopped',
+        at: 5,
+      })
+      expect(manager.interruptedSessions()).toMatchObject([
+        { sessionId: 'interrupted', turnId: 't' },
+      ])
+      await manager.resumeInterrupted('interrupted')
+      await vi.waitFor(() => expect(prompts).toHaveLength(1))
+      expect(starts[0]?.resumeId).toBe(native ? 'old' : undefined)
+      expect(prompts[0]?.text).toContain('Fix the failing test')
+      expect(prompts[0]?.text).toContain('in-progress: Investigate')
+      expect(manager.interruptedSessions()).toEqual([])
+      await expect(manager.resumeInterrupted('interrupted')).rejects.toThrow('not interrupted')
+      await manager.close()
+    },
+  )
+
+  it('persists dismissal and leaves a failed resume available to retry', async () => {
+    const { store, manager } = setup({ resume: true, status: 'not-installed' })
+    store.append({
+      type: 'session.created',
+      sessionId: 's',
+      title: 'Task',
+      cwd: os.tmpdir(),
+      instanceId: 'stub',
+      at: 1,
+    })
+    store.append({ type: 'turn.interrupted', sessionId: 's', message: 'Stopped', at: 2 })
+    await expect(manager.resumeInterrupted('s')).rejects.toThrow()
+    expect(manager.interruptedSessions()).toHaveLength(1)
+    manager.dismissInterrupted('s')
+    expect(manager.interruptedSessions()).toEqual([])
+    expect(store.readSession('s').at(-1)?.event).toMatchObject({
+      type: 'turn.interruption-resolved',
+      action: 'dismissed',
+    })
+  })
   it('directs design pane prompts to the canvas without changing the recorded message', async () => {
     const { store, manager, prompts } = setup({ resume: true })
     const design = await manager.create({ instanceId: 'stub', designTools: true })

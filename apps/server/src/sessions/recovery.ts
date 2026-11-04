@@ -25,6 +25,7 @@ export function recoverInterruptedTurns(store: EventStore): string[] {
   const active = new Map<string, { turnId?: string; at: number }>()
   const updating = new Map<string, Extract<StoredEvent['event'], { type: 'host.updating' }>>()
   const createdAt = new Map<string, number>()
+  const interrupted = new Set<string>()
   let cursor = 0
   for (;;) {
     const events = store.readAfter(cursor, 5000)
@@ -34,6 +35,8 @@ export function recoverInterruptedTurns(store: EventStore): string[] {
       track(active, stored)
       if (event.type === 'session.created') createdAt.set(event.sessionId, event.at)
       if (event.type === 'host.updating') updating.set(event.sessionId, event)
+      if (event.type === 'turn.interrupted') interrupted.add(event.sessionId)
+      if (event.type === 'turn.interruption-resolved') interrupted.delete(event.sessionId)
       if (event.type === 'turn.completed' || event.type === 'error')
         updating.delete(event.sessionId)
     }
@@ -49,6 +52,15 @@ export function recoverInterruptedTurns(store: EventStore): string[] {
       pendingResume.set(sessionId, { turnId, prompt: marker.prompt })
       updating.delete(sessionId)
       continue
+    }
+    if (!interrupted.has(sessionId)) {
+      store.append({
+        type: 'turn.interrupted',
+        sessionId,
+        turnId,
+        at: Date.now(),
+        message: 'The host restarted before this turn finished.',
+      })
     }
     store.append({
       type: 'turn.completed',

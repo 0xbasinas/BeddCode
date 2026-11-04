@@ -866,6 +866,7 @@ export class SessionManager {
     const turn = this.turnState(sessionId)
     if (!turn.busy) {
       await this.startTurn(sessionId, live, text, attachments)
+      if (this.interruption(sessionId)) this.dismissInterrupted(sessionId)
       return { state: 'started' }
     }
 
@@ -1695,6 +1696,83 @@ export class SessionManager {
     this.closing = false
   }
 
+  private interruption(sessionId: string) {
+    let pending: Extract<SessionEvent, { type: 'turn.interrupted' }> | undefined
+    for (const { event } of this.deps.store.readSession(sessionId)) {
+      if (event.type === 'turn.interrupted') pending = event
+      else if (event.type === 'turn.interruption-resolved' || event.type === 'session.deleted')
+        pending = undefined
+    }
+    return pending
+  }
+
+  interruptedSessions() {
+    const pending = new Map<string, Extract<SessionEvent, { type: 'turn.interrupted' }>>()
+    let cursor = 0
+    for (;;) {
+      const rows = this.deps.store.readAfter(cursor, 5000)
+      if (!rows.length) break
+      for (const { event } of rows) {
+        if (event.type === 'turn.interrupted') pending.set(event.sessionId, event)
+        else if (event.type === 'turn.interruption-resolved' || event.type === 'session.deleted')
+          pending.delete(event.sessionId)
+      }
+      cursor = rows.at(-1)!.seq
+    }
+    return [...pending.values()].map(({ sessionId, turnId, at, message }) => ({
+      sessionId,
+      turnId,
+      at,
+      message,
+    }))
+  }
+
+  dismissInterrupted(sessionId: string) {
+    const pending = this.interruption(sessionId)
+    if (!pending) throw new Error('Session is not interrupted')
+    this.deps.store.append({
+      type: 'turn.interruption-resolved',
+      sessionId,
+      turnId: pending.turnId,
+      at: Date.now(),
+      action: 'dismissed',
+    })
+  }
+
+  private readonly recovering = new Set<string>()
+
+  async resumeInterrupted(sessionId: string) {
+    const pending = this.interruption(sessionId)
+    if (!pending) throw new Error('Session is not interrupted')
+    if (this.recovering.has(sessionId)) throw new Error('Session is already resuming')
+    this.recovering.add(sessionId)
+    try {
+      const history = this.deps.store.readSession(sessionId).map(({ event }) => event)
+      const goal = history.find((event) => event.type === 'message.delta' && event.role === 'user')
+      const messages = history.filter((event) => event.type === 'message.delta').slice(-20)
+      const recap = messages
+        .map((event) => (event.type === 'message.delta' ? `${event.role}: ${event.text}` : ''))
+        .join('\n')
+        .slice(-12000)
+      const plan = history.findLast((event) => event.type === 'plan.updated')
+      const text = `Continue the task interrupted by a host or agent failure. Inspect the working tree and current changes before proceeding. Verify the current state rather than assuming the interrupted step completed.${goal?.type === 'message.delta' ? `\n\nOriginal request: ${goal.text.slice(0, 4000)}` : ''}\n\nRecent conversation:\n${recap}${plan?.type === 'plan.updated' ? `\n\nLast plan: ${plan.steps.map((step) => `${step.status}: ${step.text}`).join('; ')}` : ''}`
+      const live = await this.ensureLive(sessionId, true)
+      if (this.interruption(sessionId)?.at !== pending.at)
+        throw new Error('Interruption is no longer pending')
+      if (this.turnState(sessionId).busy) throw new Error('Session is already running')
+      await this.startTurn(sessionId, live, text, [])
+      this.deps.store.append({
+        type: 'turn.interruption-resolved',
+        sessionId,
+        turnId: pending.turnId,
+        at: Date.now(),
+        action: 'resumed',
+      })
+    } finally {
+      this.recovering.delete(sessionId)
+    }
+  }
+
   private async detect(force = false) {
     const ttl = this.deps.detectTtlMs ?? 60_000
     if (!force && this.detected && Date.now() - this.detected.at < ttl)
@@ -1735,19 +1813,19 @@ export class SessionManager {
     return live
   }
 
-  private ensureLive(sessionId: string): Promise<LiveSession> {
+  private ensureLive(sessionId: string, allowFresh = false): Promise<LiveSession> {
     const live = this.live.get(sessionId)
     if (live) return Promise.resolve(live)
     // Two prompts arriving together must not start two provider processes.
     let pending = this.resuming.get(sessionId)
     if (!pending) {
-      pending = this.resume(sessionId).finally(() => this.resuming.delete(sessionId))
+      pending = this.resume(sessionId, allowFresh).finally(() => this.resuming.delete(sessionId))
       this.resuming.set(sessionId, pending)
     }
     return pending
   }
 
-  private async resume(sessionId: string): Promise<LiveSession> {
+  private async resume(sessionId: string, allowFresh = false): Promise<LiveSession> {
     this.closing = false
     const events = this.deps.store.readSession(sessionId)
     const created = events.find(
@@ -1777,7 +1855,11 @@ export class SessionManager {
     const { adapter, instance } = await this.findInstance(
       segment?.provider ?? created.event.instanceId,
     )
-    if ((!adapter.capabilities(instance.id).resume || !resumeId) && !segment?.handoffContext) {
+    if (
+      (!adapter.capabilities(instance.id).resume || !resumeId) &&
+      !segment?.handoffContext &&
+      !allowFresh
+    ) {
       throw new Error(`${instance.label} cannot resume this session`)
     }
 
@@ -1819,9 +1901,11 @@ export class SessionManager {
       ),
     }
     let session: ProviderSession
-    let resumedFrom: string | undefined = resumeId
+    let resumedFrom: string | undefined = adapter.capabilities(instance.id).resume
+      ? resumeId
+      : undefined
     try {
-      session = await adapter.startSession(instance.id, { ...input, resumeId })
+      session = await adapter.startSession(instance.id, { ...input, resumeId: resumedFrom })
       const afterSwitch = events.slice(
         events.map((e) => e.event.type).lastIndexOf('session.switched') + 1,
       )
@@ -2363,16 +2447,15 @@ export class SessionManager {
         this.deps.agentTerminals?.observe(event)
         // Live command output is for the agent terminal only; the tool's result keeps the output.
         if (event.type === 'tool.output') continue
+        if (event.type === 'turn.completed' && this.restarting.delete(sessionId)) {
+          // Do not persist the provider's shutdown completion over the restart marker.
+          this.deps.log.debug(`provider ${sessionId} stopped for host restart`)
+          continue
+        }
         this.record(event)
         this.observe(sessionId, event)
         this.seedPreview(sessionId, event)
         if (event.type === 'turn.started') this.turnState(sessionId).busy = true
-        if (event.type === 'turn.completed' && this.restarting.delete(sessionId)) {
-          // The agent's shutdown response is expected; preserve the durable marker so startup
-          // knows to resend the turn that was active before the upgrade.
-          this.deps.log.debug(`provider ${sessionId} stopped for host restart`)
-          continue
-        }
         if (event.type === 'turn.completed') {
           const turn = this.turnState(sessionId)
           turn.stopRequested = false
@@ -2533,6 +2616,13 @@ export class SessionManager {
     const why = failure ? `: ${errorText(failure)}` : ''
     const at = Date.now()
     try {
+      this.deps.store.append({
+        type: 'turn.interrupted',
+        sessionId,
+        turnId: open.turnId,
+        at,
+        message: `The agent stopped unexpectedly${why}.`,
+      })
       if (!open.explained) {
         this.deps.store.append({
           type: 'error',
