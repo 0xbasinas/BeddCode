@@ -17,6 +17,7 @@ import { CODEX_BUILTINS, scanCodexPrompts } from './commands.ts'
 import { readCodexLimits } from './limits.ts'
 import { generateSessionText } from '@beddcode/provider-core'
 import { randomUUID } from 'node:crypto'
+import { createCodexFingerprint } from './fingerprint.ts'
 
 export const CODEX_INSTANCE_ID = 'codex'
 
@@ -68,17 +69,25 @@ export interface CodexAdapter extends ProviderAdapter {
 export function createCodexAdapter(options: CodexAdapterOptions = {}): CodexAdapter {
   const instanceId = options.instanceId ?? CODEX_INSTANCE_ID
   const log = options.log ?? createLogger('codex')
-  const env = { ...process.env, ...(options.codexHome ? { CODEX_HOME: options.codexHome } : {}) }
+  const env = () => ({
+    ...process.env,
+    ...(options.codexHome ? { CODEX_HOME: options.codexHome } : {}),
+  })
   let capabilities = codexCapabilities
 
   const executable = () =>
-    options.executablePath ? resolveExecutable(options.executablePath) : resolveExecutable('codex')
+    options.executablePath
+      ? resolveExecutable(options.executablePath, env())
+      : resolveExecutable('codex', env())
 
   // History, forks and skill lists talk to a throwaway app-server rather than a live session.
   const appServer = createWithAppServer((cwd) => {
     const exe = executable()
     if (!exe) throw new Error('Codex is not installed on this host')
-    return options.createTransport?.(cwd) ?? spawnTransport(exe, ['app-server'], { env, cwd }, log)
+    return (
+      options.createTransport?.(cwd) ??
+      spawnTransport(exe, ['app-server'], { env: env(), cwd }, log)
+    )
   }, log)
   const history = createCodexHistory(appServer)
 
@@ -95,10 +104,10 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): CodexAdap
     let version: string | undefined
     let status: ProviderStatus = 'ready'
     try {
-      const v = await runCommand(exe, ['--version'], { env })
+      const v = await runCommand(exe, ['--version'], { env: env() })
       version = /\d+\.\d+\.\d+/.exec(v.stdout)?.[0]
       // `login status` reads local credentials only; it does not start the app server.
-      const auth = await runCommand(exe, ['login', 'status'], { env })
+      const auth = await runCommand(exe, ['login', 'status'], { env: env() })
       if (auth.code !== 0) status = 'needs-sign-in'
     } catch (err) {
       log.warn('codex detection failed', err)
@@ -108,7 +117,7 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): CodexAdap
       try {
         const transport =
           options.createTransport?.(process.cwd()) ??
-          spawnTransport(exe, ['app-server'], { env, cwd: process.cwd() }, log)
+          spawnTransport(exe, ['app-server'], { env: env(), cwd: process.cwd() }, log)
         capabilities = { ...codexCapabilities, ...(await discoverCodexModels(transport, log)) }
       } catch (err) {
         log.warn('Codex model discovery failed; using the CLI configuration', err)
@@ -118,11 +127,14 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): CodexAdap
     return { ...base, capabilities, status, version }
   }
 
+  const fingerprint = createCodexFingerprint(executable, env)
+
   async function prepareSession(cwd: string): Promise<CodexWarmSession> {
     const exe = executable()
     if (!exe) throw new Error('Codex is not installed on this host')
     const transport =
-      options.createTransport?.(cwd) ?? spawnTransport(exe, ['app-server'], { env, cwd }, log)
+      options.createTransport?.(cwd) ??
+      spawnTransport(exe, ['app-server'], { env: env(), cwd }, log)
     const prepared = await prepareCodexProcess({ transport, log })
     return {
       healthy: async () => prepared.healthy(),
@@ -168,13 +180,13 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): CodexAdap
 
   return {
     prepareSession,
-    warmPool: { supported: true, prepareSession },
+    warmPool: { supported: true, prepareSession, fingerprint },
     generateText: async (input) => {
       const exe = executable()
       if (!exe) throw new Error('Codex is not installed on this host')
       const transport =
         options.createTransport?.(input.cwd) ??
-        spawnTransport(exe, ['app-server'], { env, cwd: input.cwd }, log)
+        spawnTransport(exe, ['app-server'], { env: env(), cwd: input.cwd }, log)
       return generateSessionText(
         new CodexSession(
           {
@@ -198,7 +210,7 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): CodexAdap
       if (!exe) throw new Error('Codex is not installed on this host')
       const transport =
         options.createTransport?.(input.cwd) ??
-        spawnTransport(exe, ['app-server'], { env, cwd: input.cwd }, log)
+        spawnTransport(exe, ['app-server'], { env: env(), cwd: input.cwd }, log)
       return new CodexSession(input, { transport, log })
     },
     listHistory: (_instanceId, cwd) => history.list(cwd),
@@ -211,6 +223,6 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): CodexAdap
       ...scanCodexPrompts(),
       ...(await listCodexSkills(appServer, cwd ?? process.cwd()).catch(() => [])),
     ],
-    mcp: createCodexMcp(executable, env),
+    mcp: createCodexMcp(executable, env()),
   }
 }

@@ -43,13 +43,82 @@ export function createHostWarmPool(
       cwd,
       additionalDirectories: [attachmentsRoot],
     })
+  const keys = new Map<string, (typeof supported)[number]>()
+  const fingerprints = new Map<(typeof supported)[number], string>()
+  let closed = false
+  let serial: Promise<void> = Promise.resolve()
+  const locked = <T>(fn: () => Promise<T>): Promise<T> => {
+    const result = serial.then(fn)
+    serial = result.then(
+      () => {},
+      () => {},
+    )
+    return result
+  }
+  // Return false on a change or a read failure: a checkout must then start cold.
+  const check = async (entry: (typeof supported)[number]): Promise<boolean> => {
+    let fingerprint: string | undefined
+    try {
+      fingerprint = entry.warm.fingerprint()
+    } catch {
+      // Do not hand out a process when its inputs cannot be verified.
+    }
+    const previous = fingerprints.get(entry)
+    if (fingerprint !== undefined && previous === fingerprint) return true
+    if (fingerprint === undefined) fingerprints.delete(entry)
+    else fingerprints.set(entry, fingerprint)
+    const affected = [...keys].filter(([, candidate]) => candidate === entry).map(([key]) => key)
+    await Promise.all(affected.map((key) => pool.remove(key)))
+    if (!closed && fingerprint !== undefined) affected.forEach((key) => pool.refill(key))
+    return false
+  }
+  const timer = setInterval(() => {
+    void locked(async () => {
+      if (closed) return
+      for (const entry of supported) {
+        if ([...keys.values()].includes(entry)) await check(entry)
+      }
+    })
+  }, 30_000)
+  timer.unref?.()
   return {
     pool: {
-      take: (key: string) => (find(key) ? pool.take(key) : Promise.resolve(null)),
-      close: () => pool.close(),
+      take: (key: string) =>
+        locked(async () => {
+          const match = find(key)
+          if (closed || !match || !keys.has(key) || !(await check(match.entry))) return null
+          const resource = await pool.take(key)
+          if (resource && !(await check(match.entry))) {
+            await resource.close().catch(() => {})
+            return null
+          }
+          return resource
+        }),
+      close: async () => {
+        closed = true
+        clearInterval(timer)
+        await locked(async () => pool.close())
+      },
     },
-    warmProject: (cwd: string) => supported.forEach((entry) => pool.refill(keyFor(entry, cwd))),
+    warmProject: (cwd: string) => {
+      void locked(async () => {
+        if (closed) return
+        for (const entry of supported) {
+          const key = keyFor(entry, cwd)
+          keys.set(key, entry)
+          if (await check(entry)) pool.refill(key)
+        }
+      })
+    },
     removeProject: (cwd: string) =>
-      Promise.all(supported.map((entry) => pool.remove(keyFor(entry, cwd)))),
+      locked(async () => {
+        await Promise.all(
+          supported.map((entry) => {
+            const key = keyFor(entry, cwd)
+            keys.delete(key)
+            return pool.remove(key)
+          }),
+        )
+      }),
   }
 }

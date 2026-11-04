@@ -133,6 +133,8 @@ export interface ProviderAdapter {
     | { supported: false }
     | {
         supported: true
+        /** A digest of inputs that affect a prepared process. Never includes secrets in plain text. */
+        fingerprint(): string
         prepareSession(cwd: string): Promise<{
           healthy(): Promise<boolean>
           memoryBytes(): Promise<number | null>
