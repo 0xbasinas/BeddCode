@@ -4,6 +4,7 @@ import {
   keepKind,
   mergeSelection,
   rankHits,
+  rankedHits,
   toggleSelection,
   type HitCandidate,
   type SelectionItem,
@@ -40,6 +41,16 @@ describe('rankHits', () => {
   it('ranks all eligible edges and includes the pixel boundary', () => {
     expect(rankHits([hit('edge', 1, 1, 7), hit('edge', 2, 4, 6)], 'edge')?.id).toBe(2)
     expect(rankHits([hit('edge', 3, 8, 2), hit('edge', 4, 3, 2)], 'edge')?.id).toBe(4)
+  })
+  it('orders distinct eligible candidates for cycling', () => {
+    const candidates = [
+      hit('edge', 1, 4, 3),
+      hit('edge', 2, 8, 1),
+      hit('edge', 1, 3, 2),
+      hit('edge', 3, 1, 9),
+      hit('face', 4, 1),
+    ]
+    expect(rankedHits(candidates, 'edge').map((entry) => entry.id)).toEqual([2, 1])
   })
   it('returns null when nothing matches', () => {
     expect(rankHits([hit('face', 1, 1)], 'edge')).toBeNull()
