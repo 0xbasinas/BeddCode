@@ -1,3 +1,4 @@
+import { parseEdgeRefs, type TopologyRef } from '../edgeRefs.ts'
 import type { CadDocument, CadFeature, CadSketch, SketchEntity } from './CadDocument.ts'
 import type {
   AxisName,
@@ -14,13 +15,20 @@ import type {
  * Limits:
  * - Primitive x/y/z are ignored. The kernel builds boxes, cylinders, and
  *   spheres at the origin. Offsets stay on the feature for the properties panel.
- * - bothSides is two extrudes (distance and -distance) fused together. The
- *   kernel feature op has no bothSides flag.
+ * - bothSides on a sketch extrude is two extrudes fused together.
+ *   A through hole sets bothSides on its tool extrude so the cut goes both ways.
  * - An extrude with cut true subtracts that solid from the previous body.
  * - params.edgeIds is a comma-separated edge list copied onto the fillet or
- *   chamfer op. The worker's planRebuild drops unknown fields, so this kernel
- *   still fillets the whole solid until it keeps edgeIds.
+ *   chamfer op. params.edgeRefs is a JSON array of edge signatures copied
+ *   beside it. The kernel fillets those edges, not every edge.
+ * - A hole is a circle on XY extruded along Z and boolean-cut from its target.
+ *   throughAll builds a tall cylinder both ways so a plate on XY is pierced.
+ *   Replace this with the kernel hole op when that op exists; the stored face
+ *   point (x, y, z) and counterbore sizes are already on the feature.
  */
+
+/** Through-all fallback length, in millimetres, along Z from the XY plane. */
+const HOLE_THROUGH_MM = 1000
 
 const AXES = new Set<string>(['X', 'Y', 'Z', '-X', '-Y', '-Z'])
 const PLANES = new Set<string>(['XY', 'YZ', 'ZX', 'XZ', 'YX', 'ZY'])
@@ -142,6 +150,8 @@ function convertFeature(
       return edgeFeature(feature, 'fillet', produced)
     case 'chamfer':
       return edgeFeature(feature, 'chamfer', produced)
+    case 'hole':
+      return holeFeature(feature, produced)
     case 'union':
       return booleanFeature(feature, 'fuse', produced)
     case 'cut':
@@ -214,12 +224,71 @@ function edgeFeature(
   if (!produced.has(target)) throw new Error(`unknown shape ${target}`)
   const radius = positive(feature, 'radius', 1)
   const edgeIds = edgeIdsOf(feature)
+  const edgeRefs = edgeRefsOf(feature)
   const base: FeatureOp =
     op === 'fillet'
       ? { op: 'fillet', id: feature.id, target, radius }
       : { op: 'chamfer', id: feature.id, target, radius }
-  const next = edgeIds.length > 0 ? Object.assign({}, base, { edgeIds }) : base
+  const next: FeatureOp = edgeIds.length > 0 ? Object.assign({}, base, { edgeIds }) : base
+  if (edgeRefs.length > 0) {
+    Object.assign(next, { edgeRefs })
+  }
   return { ops: [next], bodyId: feature.id }
+}
+
+/**
+ * Cuts a circular tool from `target`. Counterbore, when both sizes are set,
+ * is a wider shallow cut first. This is the stand-in for a kernel hole op.
+ */
+function holeFeature(feature: CadFeature, produced: ReadonlySet<string>): Built {
+  const target = text(feature, 'target') ?? text(feature, 'targetId')
+  if (!target) throw new Error('hole needs a target feature')
+  if (!produced.has(target)) throw new Error(`unknown shape ${target}`)
+  const diameter = positive(feature, 'diameter', 8)
+  const through = throughAllOf(feature)
+  const x = finiteOf(feature, 'x', 0)
+  const y = finiteOf(feature, 'y', 0)
+  const cboreDiameter = optionalPositive(feature, 'cboreDiameter')
+  const cboreDepth = optionalPositive(feature, 'cboreDepth')
+  if ((cboreDiameter === undefined) !== (cboreDepth === undefined)) {
+    throw new Error('counterbore needs diameter and depth')
+  }
+
+  const ops: FeatureOp[] = []
+  let body = target
+  if (cboreDiameter !== undefined && cboreDepth !== undefined) {
+    const tool = partId(feature.id, 'cbore')
+    const cut = partId(feature.id, 'cbore-cut')
+    ops.push({
+      op: 'extrude',
+      id: tool,
+      profile: circleProfile(x, y, cboreDiameter / 2),
+      distance: cboreDepth,
+    })
+    ops.push({ op: 'boolean', id: cut, mode: 'cut', target: body, tool })
+    body = cut
+  }
+
+  const depth = through ? HOLE_THROUGH_MM : positive(feature, 'depth', diameter)
+  const tool = partId(feature.id, 'tool')
+  ops.push({
+    op: 'extrude',
+    id: tool,
+    profile: circleProfile(x, y, diameter / 2),
+    distance: depth,
+    ...(through ? { bothSides: true } : {}),
+  })
+  ops.push({ op: 'boolean', id: feature.id, mode: 'cut', target: body, tool })
+  return { ops, bodyId: feature.id }
+}
+
+function circleProfile(cx: number, cy: number, radius: number): Profile2D {
+  const points: Array<[number, number]> = []
+  for (let index = 0; index < CIRCLE_SEGMENTS; index += 1) {
+    const angle = (index / CIRCLE_SEGMENTS) * Math.PI * 2
+    points.push([cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)])
+  }
+  return { plane: 'XY', points }
 }
 
 function booleanFeature(
@@ -445,6 +514,37 @@ function flag(feature: CadFeature, key: string): boolean {
 function text(feature: CadFeature, key: string): string | null {
   const value = feature.params[key]
   return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+function edgeRefsOf(feature: CadFeature): TopologyRef[] {
+  const raw = feature.params.edgeRefs
+  if (typeof raw !== 'string' || raw.trim() === '') return []
+  return parseEdgeRefs(raw)
+}
+
+function throughAllOf(feature: CadFeature): boolean {
+  const value = feature.params.throughAll
+  if (value === undefined) return true
+  if (value === false || value === 'false') return false
+  return value === true || value === 'true'
+}
+
+function finiteOf(feature: CadFeature, key: string, fallback: number): number {
+  const value = feature.params[key]
+  if (value === undefined) return fallback
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`${key} must be a finite number`)
+  }
+  return value
+}
+
+function optionalPositive(feature: CadFeature, key: string): number | undefined {
+  const value = feature.params[key]
+  if (value === undefined || value === 0 || value === '') return undefined
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`${key} must be a positive number`)
+  }
+  return value
 }
 
 function edgeIdsOf(feature: CadFeature): number[] {

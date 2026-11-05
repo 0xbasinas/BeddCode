@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { planRebuild } from '../kernel/featureOps.ts'
 import {
+  addHole,
   appendFeature,
   appendSketch,
   emptyDocument,
@@ -8,6 +9,7 @@ import {
   makeCylinderFeature,
   makeExtrudeFeature,
   makeFilletFeature,
+  makeHoleFeature,
   makeSphereFeature,
   updateFeature,
 } from './CadDocument.ts'
@@ -158,5 +160,77 @@ describe('toFeatureDocument', () => {
     const missing = toFeatureDocument(doc)
     expect(missing.errors.step).toMatch(/STEP/)
     expect(missing.document.ops.map((op) => op.id)).toEqual(['base', 'pad::tool', 'pad'])
+  })
+
+  it('cuts a through hole from the target and keeps fillet edge refs', () => {
+    let doc = appendFeature(emptyDocument(), makeBoxFeature(emptyDocument(), 'base'))
+    doc = addHole(
+      doc,
+      { target: 'base', diameter: 8, x: 1, y: 2, z: 10, throughAll: true },
+      'hole',
+    ).doc
+    const refs = JSON.stringify([{ kind: 'edge', mid: [1, 0, 0], dir: [1, 0, 0], length: 10 }])
+    doc = appendFeature(doc, makeFilletFeature(doc, 'hole', '7', 'round', refs))
+    const plan = toFeatureDocument(doc)
+    expect(plan.errors).toEqual({})
+    expect(plan.document.ops.map((op) => op.id)).toEqual(['base', 'hole::tool', 'hole', 'round'])
+    expect(plan.document.ops[1]).toMatchObject({
+      op: 'extrude',
+      distance: 1000,
+      bothSides: true,
+      profile: { plane: 'XY' },
+    })
+    const profile = (plan.document.ops[1] as { profile: { points: number[][] } }).profile
+    expect(profile.points).toHaveLength(16)
+    expect(profile.points[0]).toEqual([5, 2])
+    expect(plan.document.ops[2]).toMatchObject({
+      op: 'boolean',
+      mode: 'cut',
+      target: 'base',
+      tool: 'hole::tool',
+    })
+    const fillet = plan.document.ops[3] as { edgeIds?: number[]; edgeRefs?: unknown }
+    expect(fillet.edgeIds).toEqual([7])
+    expect(fillet.edgeRefs).toEqual([{ kind: 'edge', mid: [1, 0, 0], dir: [1, 0, 0], length: 10 }])
+    expect(planRebuild(plan.document).map((op) => op.id)).toEqual([
+      'base',
+      'hole::tool',
+      'hole',
+      'round',
+    ])
+    expect(visibleShapeIds(plan.document.ops)).toEqual(['round'])
+  })
+
+  it('maps a blind hole and a counterbore, and reports a missing target', () => {
+    let doc = appendFeature(emptyDocument(), makeBoxFeature(emptyDocument(), 'base'))
+    doc = addHole(doc, { target: 'base', diameter: 6, depth: 4, throughAll: false }, 'blind').doc
+    doc = addHole(
+      doc,
+      { target: 'blind', diameter: 4, cboreDiameter: 12, cboreDepth: 3, throughAll: true },
+      'cbore',
+    ).doc
+    const plan = toFeatureDocument(doc)
+    expect(plan.errors).toEqual({})
+    expect(plan.document.ops.map((op) => op.id)).toEqual([
+      'base',
+      'blind::tool',
+      'blind',
+      'cbore::cbore',
+      'cbore::cbore-cut',
+      'cbore::tool',
+      'cbore',
+    ])
+    expect(plan.document.ops[1]).toMatchObject({ op: 'extrude', distance: 4 })
+    expect(plan.document.ops[1]).not.toHaveProperty('bothSides')
+    expect(plan.document.ops[3]).toMatchObject({ op: 'extrude', distance: 3 })
+    expect(visibleShapeIds(plan.document.ops)).toEqual(['cbore'])
+
+    const missing = appendFeature(
+      emptyDocument(),
+      makeHoleFeature(emptyDocument(), { target: 'gone', diameter: 8 }, 'h'),
+    )
+    const failed = toFeatureDocument(missing)
+    expect(failed.errors.h).toMatch(/unknown shape gone/)
+    expect(failed.document.ops).toEqual([])
   })
 })

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
+  addHole,
   appendFeature,
   emptyDocument,
   isCadDocument,
   makeBoxFeature,
   makeCylinderFeature,
+  makeFilletFeature,
   makeSphereFeature,
   moveFeature,
   removeFeature,
@@ -64,6 +66,43 @@ describe('CadDocument', () => {
     expect(doc.features.map((feature) => feature.id)).toEqual(['b'])
     expect(doc.historyIndex).toBe(0)
     expect(removeFeature(doc, 'missing')).toBe(doc)
+  })
+
+  it('adds a hole with diameter 8 and through-all unless told otherwise', () => {
+    const doc = emptyDocument()
+    const placed = addHole(doc, { target: 'base', x: 1.234, y: -2, z: 10 }, 'h1')
+    expect(placed.feature.kind).toBe('hole')
+    expect(placed.feature.name).toBe('Hole 1')
+    expect(placed.feature.params).toMatchObject({
+      target: 'base',
+      diameter: 8,
+      depth: 10,
+      throughAll: true,
+      x: 1.234,
+      y: -2,
+      z: 10,
+      cboreDiameter: 0,
+      cboreDepth: 0,
+    })
+    expect(placed.doc.features).toEqual([placed.feature])
+    expect(placed.doc.rev).toBe(1)
+    const blind = addHole(placed.doc, {
+      target: 'h1',
+      diameter: 4,
+      depth: 3,
+      throughAll: false,
+      cboreDiameter: 8,
+      cboreDepth: 2,
+    })
+    expect(blind.feature.name).toBe('Hole 2')
+    expect(blind.feature.params.throughAll).toBe(false)
+    expect(blind.feature.params.diameter).toBe(4)
+    const fillet = makeFilletFeature(placed.doc, 'base', '3,4', 'f', '[{"kind":"edge"}]')
+    expect(fillet.params).toMatchObject({
+      targetId: 'base',
+      edgeIds: '3,4',
+      edgeRefs: '[{"kind":"edge"}]',
+    })
   })
 
   it('recognizes a document and rejects other json', () => {

@@ -12,6 +12,7 @@ export type FeatureKind =
   | 'revolve'
   | 'fillet'
   | 'chamfer'
+  | 'hole'
   | 'union'
   | 'cut'
   | 'intersect'
@@ -196,6 +197,7 @@ export function makeFilletFeature(
   targetId: string,
   edgeIds?: string,
   id: string = crypto.randomUUID(),
+  edgeRefs?: string,
 ): CadFeature {
   const count = countKind(doc, 'fillet')
   return {
@@ -203,7 +205,12 @@ export function makeFilletFeature(
     name: `Fillet ${count + 1}`,
     kind: 'fillet',
     suppressed: false,
-    params: { targetId, radius: 1, ...(edgeIds ? { edgeIds } : {}) },
+    params: {
+      targetId,
+      radius: 1,
+      ...(edgeIds ? { edgeIds } : {}),
+      ...(edgeRefs ? { edgeRefs } : {}),
+    },
   }
 }
 
@@ -212,6 +219,7 @@ export function makeChamferFeature(
   targetId: string,
   edgeIds?: string,
   id: string = crypto.randomUUID(),
+  edgeRefs?: string,
 ): CadFeature {
   const count = countKind(doc, 'chamfer')
   return {
@@ -219,8 +227,75 @@ export function makeChamferFeature(
     name: `Chamfer ${count + 1}`,
     kind: 'chamfer',
     suppressed: false,
-    params: { targetId, radius: 1, ...(edgeIds ? { edgeIds } : {}) },
+    params: {
+      targetId,
+      radius: 1,
+      ...(edgeIds ? { edgeIds } : {}),
+      ...(edgeRefs ? { edgeRefs } : {}),
+    },
   }
+}
+
+export interface HoleParams {
+  /** Body the hole cuts. */
+  target: string
+  diameter?: number
+  depth?: number
+  /** Defaults to true. A blind hole uses `depth`. */
+  throughAll?: boolean
+  /** Face point in millimetres. */
+  x?: number
+  y?: number
+  z?: number
+  cboreDiameter?: number
+  cboreDepth?: number
+}
+
+function holeNumber(value: number | undefined, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+/**
+ * Local hole helper. The kernel agent owns the first-class hole op and may
+ * replace this with its own `addHole`. Until then the pane calls this one.
+ * Params match that contract: target, diameter, depth, throughAll, x/y/z,
+ * and optional counterbore sizes. `toFeatureDocument` cuts a circle extrusion
+ * from the target until a hole op replaces that mapping.
+ */
+export function makeHoleFeature(
+  doc: CadDocument,
+  params: HoleParams,
+  id: string = crypto.randomUUID(),
+): CadFeature {
+  const count = countKind(doc, 'hole')
+  const target = params.target
+  return {
+    id,
+    name: `Hole ${count + 1}`,
+    kind: 'hole',
+    suppressed: false,
+    params: {
+      target,
+      diameter: holeNumber(params.diameter, 8),
+      depth: holeNumber(params.depth, 10),
+      throughAll: params.throughAll !== false,
+      x: holeNumber(params.x, 0),
+      y: holeNumber(params.y, 0),
+      z: holeNumber(params.z, 0),
+      cboreDiameter: holeNumber(params.cboreDiameter, 0),
+      cboreDepth: holeNumber(params.cboreDepth, 0),
+    },
+  }
+}
+
+/** Appends a hole and bumps the document. The feature is the one just added. */
+export function addHole(
+  doc: CadDocument,
+  params: HoleParams,
+  id?: string,
+): { doc: CadDocument; feature: CadFeature } {
+  const feature = id ? makeHoleFeature(doc, params, id) : makeHoleFeature(doc, params)
+  return { feature, doc: appendFeature(doc, feature) }
 }
 
 export function makeBooleanFeature(

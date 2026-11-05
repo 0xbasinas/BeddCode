@@ -52,6 +52,15 @@
   border-left: 1px solid var(--border-subtle);
 }
 
+/* Shell listens for beddcode:cad-maximize and grows the column. This marks the pane. */
+.cad-pane--max {
+  min-width: 0;
+}
+
+.cad-maximize {
+  margin-left: auto;
+}
+
 .cad-body {
   display: flex;
   flex: 1;
@@ -134,9 +143,18 @@
   white-space: nowrap;
 }
 
-.cad-feature-kind {
+.cad-feature-kind,
+.cad-feature-error {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-faint);
   font-size: var(--fs-micro);
+}
+
+.cad-feature.failed .cad-feature-error {
+  color: var(--text-secondary);
 }
 
 .cad-feature.suppressed .cad-feature-name {

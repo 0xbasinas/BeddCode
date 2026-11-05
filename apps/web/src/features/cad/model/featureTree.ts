@@ -18,6 +18,7 @@ const KIND_LABEL: Record<FeatureKind, string> = {
   revolve: 'Revolve',
   fillet: 'Fillet',
   chamfer: 'Chamfer',
+  hole: 'Hole',
   union: 'Union',
   cut: 'Cut',
   intersect: 'Intersect',

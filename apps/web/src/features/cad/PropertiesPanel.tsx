@@ -4,14 +4,18 @@ const ORDER = [
   'width',
   'depth',
   'height',
+  'diameter',
   'radius',
   'distance',
   'angle',
+  'throughAll',
   'bothSides',
   'cut',
+  'cboreDiameter',
+  'cboreDepth',
   'targetId',
-  'toolId',
   'target',
+  'toolId',
   'tool',
   'edgeIds',
   'axis',
@@ -22,6 +26,25 @@ const ORDER = [
   'y',
   'z',
 ]
+
+/** Signature blob. The tree and the kernel read it; the form does not edit it. */
+const HIDDEN = new Set(['edgeRefs'])
+
+const LABELS: Record<string, string> = {
+  throughAll: 'Through all',
+  bothSides: 'Both sides',
+  targetId: 'Target',
+  target: 'Target',
+  toolId: 'Tool',
+  tool: 'Tool',
+  edgeIds: 'Edges',
+  cboreDiameter: 'Counterbore diameter',
+  cboreDepth: 'Counterbore depth',
+  sketchId: 'Sketch',
+  fileName: 'File',
+  diameter: 'Diameter',
+  depth: 'Depth',
+}
 
 function orderedKeys(params: CadFeature['params']): string[] {
   return Object.keys(params).sort((a, b) => {
@@ -35,7 +58,7 @@ function orderedKeys(params: CadFeature['params']): string[] {
 }
 
 function labelOf(key: string): string {
-  return key.charAt(0).toUpperCase() + key.slice(1)
+  return LABELS[key] ?? key.charAt(0).toUpperCase() + key.slice(1)
 }
 
 export function PropertiesPanel({
@@ -63,6 +86,7 @@ export function PropertiesPanel({
           <div className="cad-kind">{feature.kind}</div>
           {error ? <p className="cad-empty">{error}</p> : null}
           {orderedKeys(feature.params).map((key) => {
+            if (HIDDEN.has(key)) return null
             const value = feature.params[key]
             if (typeof value === 'boolean') {
               return (

@@ -332,6 +332,58 @@ function startHost(entry: HostEntry) {
           (err: unknown) => answer({ error: err instanceof Error ? err.message : String(err) }),
         )
     },
+    onCadRender(request) {
+      const answer = (reply: { image?: { data: string; mime: string }; error?: string }) =>
+        client.send({ t: 'cad.rendered', id: request.id, ...reply })
+      import('../features/cad/cadHostBridge.ts')
+        .then((m) => m.takeScreenshot())
+        .then(
+          (image) => answer({ image }),
+          (err: unknown) => answer({ error: err instanceof Error ? err.message : String(err) }),
+        )
+    },
+    onCadQuery(request) {
+      const answer = (reply: { geometry?: unknown; error?: string }) =>
+        client.send({ t: 'cad.queried', id: request.id, ...reply })
+      import('../features/cad/cadHostBridge.ts')
+        .then((m) => m.takeQuery(request))
+        .then(
+          (geometry) => answer({ geometry }),
+          (err: unknown) => answer({ error: err instanceof Error ? err.message : String(err) }),
+        )
+    },
+    onCadExport(request) {
+      const answer = (reply: {
+        file?: { data: string; mime: string; filename?: string }
+        error?: string
+      }) => client.send({ t: 'cad.exported', id: request.id, ...reply })
+      import('../features/cad/cadHostBridge.ts')
+        .then((m) => m.takeExport(request))
+        .then(
+          (file) => answer({ file }),
+          (err: unknown) => answer({ error: err instanceof Error ? err.message : String(err) }),
+        )
+    },
+    onCadImport(request) {
+      const answer = (reply: { features?: unknown[]; sketches?: unknown[]; error?: string }) =>
+        client.send({ t: 'cad.imported', id: request.id, ...reply })
+      import('../features/cad/cadHostBridge.ts')
+        .then((m) => m.takeImport(request))
+        .then(
+          (result) => answer(result),
+          (err: unknown) => answer({ error: err instanceof Error ? err.message : String(err) }),
+        )
+    },
+    onCadRebuild(request) {
+      const answer = (reply: { error?: string }) =>
+        client.send({ t: 'cad.rebuilt', id: request.id, ...reply })
+      import('../features/cad/cadHostBridge.ts')
+        .then((m) => m.takeRebuild(request))
+        .then(
+          () => answer({}),
+          (err: unknown) => answer({ error: err instanceof Error ? err.message : String(err) }),
+        )
+    },
     onCaughtUp() {
       flush()
       patchRuntime(entry.key, () => ({ synced: true }))
@@ -357,6 +409,14 @@ function startHost(entry: HostEntry) {
   )
   client.offerBrowser(browserOffer())
   client.offerDesign({ canRender: true, ...designViews.get(entry.key) })
+  const cad = cadViews.get(entry.key)
+  if (cad) {
+    client.offerCad({
+      canRender: true,
+      documentId: cad.documentId,
+      selection: cad.selection ?? [],
+    })
+  }
   // Show the history saved last time straight away, and ask the host only for what came after.
   void readReplica(entry.key).then((raw) => {
     if (clients.get(entry.key) !== client) return
@@ -382,6 +442,30 @@ const browserOffer = (focus?: { sessionId: string; at: number }) => {
 
 /** What each host was last told is open in the Design screen. */
 const designViews = new Map<string, { designId?: string; pageId?: string; selection?: string[] }>()
+
+/** What each host was last told is open in the CAD pane. */
+const cadViews = new Map<string, { documentId?: string; selection?: string[] }>()
+
+/**
+ * Tells a host that this window can draw the CAD model, and which document is open.
+ * Pass null when the pane closes. The pane also keeps the same view on `getCadView`.
+ */
+export function reportCadView(
+  hostKey: string,
+  view: { documentId?: string; selection?: string[] } | null,
+) {
+  if (!view) {
+    cadViews.delete(hostKey)
+    clients.get(hostKey)?.offerCad({ canRender: false, selection: [] })
+    return
+  }
+  cadViews.set(hostKey, view)
+  clients.get(hostKey)?.offerCad({
+    canRender: true,
+    documentId: view.documentId,
+    selection: view.selection ?? [],
+  })
+}
 
 /** Tells a host what this window has open in the Design screen, so agents can see the selection. */
 export function reportDesignView(
