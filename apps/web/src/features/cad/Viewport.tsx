@@ -1073,7 +1073,7 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     ) {
       event.preventDefault()
       cycleIndex = (cycleIndex + 1) % cycleHits.length
-      showHover(cycleHits[cycleIndex])
+      showHover(cycleHits[cycleIndex] ?? null)
       return
     }
     if (event.key !== 'Shift') return

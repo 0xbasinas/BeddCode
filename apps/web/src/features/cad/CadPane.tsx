@@ -113,7 +113,7 @@ function placementWhere(placement: FaceSketchPlacement): string {
 
 /**
  * CAD pane: toolbar, feature tree, viewport, properties, and a status bar.
- * The arrangement follows a common solid modeler. It does not share code with Chili3D.
+ * The arrangement follows a common solid modeler. It does not share code with the AGPL reference CAD.
  * Solids are rebuilt through createCadClient() and OpenCascade.
  *
  * Maximize dispatches `beddcode:cad-maximize` with `{ maximized: boolean }` and sets
