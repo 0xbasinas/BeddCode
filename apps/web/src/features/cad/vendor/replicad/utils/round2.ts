@@ -3,5 +3,5 @@
 // @ts-nocheck
 
 export default function round2(v: number): number {
-  return Math.round(v * 100) / 100;
+  return Math.round(v * 100) / 100
 }

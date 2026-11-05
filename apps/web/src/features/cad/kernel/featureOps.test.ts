@@ -31,29 +31,49 @@ describe('feature document rebuild plan', () => {
           op: 'extrude',
           id: 'wall',
           distance: 8,
-          profile: { plane: 'XY', points: [[0, 0], [10, 0], [10, 4]] },
+          profile: {
+            plane: 'XY',
+            points: [
+              [0, 0],
+              [10, 0],
+              [10, 4],
+            ],
+          },
         },
         {
           op: 'revolve',
           id: 'knob',
           angle: 360,
           axis: 'Y',
-          profile: { points: [[2, 0], [4, 0], [3, 5]] },
+          profile: {
+            points: [
+              [2, 0],
+              [4, 0],
+              [3, 5],
+            ],
+          },
         },
         { op: 'chamfer', id: 'lip', target: 'wall', radius: 0.4 },
         { op: 'boolean', id: 'part', mode: 'cut', target: 'base', tool: 'knob' },
         { op: 'importStep', id: 'step', name: 'bracket.step' },
       ],
     })
-    expect(ops.map((op) => op.op)).toEqual(['primitive', 'extrude', 'revolve', 'chamfer', 'boolean', 'importStep'])
+    expect(ops.map((op) => op.op)).toEqual([
+      'primitive',
+      'extrude',
+      'revolve',
+      'chamfer',
+      'boolean',
+      'importStep',
+    ])
   })
 
   it('rejects a document that cannot be rebuilt', () => {
     expect(() => planRebuild({ version: 2, ops: [] })).toThrow(/version/)
     expect(() => planRebuild({ version: 1, ops: [box, box] })).toThrow(/duplicate feature id base/)
-    expect(() => planRebuild({ version: 1, ops: [{ op: 'fillet', id: 'f', target: 'missing', radius: 1 }] })).toThrow(
-      /unknown shape missing/,
-    )
+    expect(() =>
+      planRebuild({ version: 1, ops: [{ op: 'fillet', id: 'f', target: 'missing', radius: 1 }] }),
+    ).toThrow(/unknown shape missing/)
     expect(() =>
       planRebuild({
         version: 1,
@@ -64,11 +84,14 @@ describe('feature document rebuild plan', () => {
         ],
       }),
     ).toThrow(/must differ/)
-    expect(() => planRebuild({ version: 1, ops: [{ ...box, params: { width: 0, depth: 1, height: 1 } }] })).toThrow(
-      /width/,
-    )
     expect(() =>
-      planRebuild({ version: 1, ops: [{ op: 'extrude', id: 'e', distance: 5, profile: { points: [[0, 0]] } }] }),
+      planRebuild({ version: 1, ops: [{ ...box, params: { width: 0, depth: 1, height: 1 } }] }),
+    ).toThrow(/width/)
+    expect(() =>
+      planRebuild({
+        version: 1,
+        ops: [{ op: 'extrude', id: 'e', distance: 5, profile: { points: [[0, 0]] } }],
+      }),
     ).toThrow(/at least 3 points/)
     expect(() => parseFeatureDocument('not json')).toThrow(/not json/)
   })

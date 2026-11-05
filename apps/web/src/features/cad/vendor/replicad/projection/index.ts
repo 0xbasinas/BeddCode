@@ -2,5 +2,5 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-export * from "./ProjectionCamera";
-export * from "./makeProjectedEdges";
+export * from './ProjectionCamera'
+export * from './makeProjectedEdges'

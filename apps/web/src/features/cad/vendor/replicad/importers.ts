@@ -2,12 +2,11 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { cast } from "./shapes";
-import { getOC } from "./oclib";
-import { localGC } from "./register";
+import { cast } from './shapes'
+import { getOC } from './oclib'
+import { localGC } from './register'
 
-const uniqueId = () =>
-  Date.now().toString(36) + Math.random().toString(36).substring(2);
+const uniqueId = () => Date.now().toString(36) + Math.random().toString(36).substring(2)
 
 /**
  * Creates a new shapes from a STEP file (as a Blob or a File).
@@ -15,26 +14,26 @@ const uniqueId = () =>
  * @category Import
  */
 export async function importSTEP(STLBlob: Blob) {
-  const oc = getOC();
-  const [r, gc] = localGC();
+  const oc = getOC()
+  const [r, gc] = localGC()
 
-  const fileName = uniqueId();
-  const bufferView = new Uint8Array(await STLBlob.arrayBuffer());
-  oc.FS.writeFile(`/${fileName}`, bufferView);
+  const fileName = uniqueId()
+  const bufferView = new Uint8Array(await STLBlob.arrayBuffer())
+  oc.FS.writeFile(`/${fileName}`, bufferView)
 
-  const reader = r(new oc.STEPControl_Reader());
+  const reader = r(new oc.STEPControl_Reader())
   if (reader.ReadFile(fileName)) {
-    oc.FS.unlink("/" + fileName);
-    reader.TransferRoots();
-    const stepShape = r(reader.OneShape());
+    oc.FS.unlink('/' + fileName)
+    reader.TransferRoots()
+    const stepShape = r(reader.OneShape())
 
-    const shape = cast(stepShape);
-    gc();
-    return shape;
+    const shape = cast(stepShape)
+    gc()
+    return shape
   } else {
-    oc.FS.unlink("/" + fileName);
-    gc();
-    throw new Error("Failed to load STEP file");
+    oc.FS.unlink('/' + fileName)
+    gc()
+    throw new Error('Failed to load STEP file')
   }
 }
 
@@ -49,35 +48,33 @@ export async function importSTEP(STLBlob: Blob) {
  * @category Import
  */
 export async function importSTL(STLBlob: Blob) {
-  const oc = getOC();
-  const [r, gc] = localGC();
+  const oc = getOC()
+  const [r, gc] = localGC()
 
-  const fileName = uniqueId();
-  const bufferView = new Uint8Array(await STLBlob.arrayBuffer());
-  oc.FS.writeFile(`/${fileName}`, bufferView);
+  const fileName = uniqueId()
+  const bufferView = new Uint8Array(await STLBlob.arrayBuffer())
+  oc.FS.writeFile(`/${fileName}`, bufferView)
 
-  const reader = r(new oc.StlAPI_Reader());
-  const readShape = r(new oc.TopoDS_Shell());
+  const reader = r(new oc.StlAPI_Reader())
+  const readShape = r(new oc.TopoDS_Shell())
 
   if (reader.Read(readShape, fileName)) {
-    oc.FS.unlink("/" + fileName);
+    oc.FS.unlink('/' + fileName)
 
-    const shapeUpgrader = r(
-      new oc.ShapeUpgrade_UnifySameDomain(readShape, true, true, false)
-    );
-    shapeUpgrader.Build();
-    const upgradedShape = r(shapeUpgrader.Shape());
+    const shapeUpgrader = r(new oc.ShapeUpgrade_UnifySameDomain(readShape, true, true, false))
+    shapeUpgrader.Build()
+    const upgradedShape = r(shapeUpgrader.Shape())
 
-    const solidSTL = r(new oc.BRepBuilderAPI_MakeSolid());
-    solidSTL.Add(oc.TopoDS.Shell(upgradedShape));
-    const asSolid = r(solidSTL.Solid());
+    const solidSTL = r(new oc.BRepBuilderAPI_MakeSolid())
+    solidSTL.Add(oc.TopoDS.Shell(upgradedShape))
+    const asSolid = r(solidSTL.Solid())
 
-    const shape = cast(asSolid);
-    gc();
-    return shape;
+    const shape = cast(asSolid)
+    gc()
+    return shape
   } else {
-    oc.FS.unlink("/" + fileName);
-    gc();
-    throw new Error("Failed to load STL file");
+    oc.FS.unlink('/' + fileName)
+    gc()
+    throw new Error('Failed to load STL file')
   }
 }

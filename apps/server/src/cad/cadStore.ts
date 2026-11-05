@@ -114,7 +114,9 @@ export class CadStore {
   /** Keeps units in millimetres and the history cursor inside the feature list. */
   private normalize(doc: CadDocument): CadDocument {
     const features = Array.isArray(doc.features) ? doc.features : []
-    const history = Number.isFinite(doc.historyIndex) ? Math.floor(doc.historyIndex) : features.length
+    const history = Number.isFinite(doc.historyIndex)
+      ? Math.floor(doc.historyIndex)
+      : features.length
     return {
       ...doc,
       units: 'mm',

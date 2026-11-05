@@ -2,69 +2,62 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { DEG2RAD } from "./constants";
-import { Point2D, polarToCartesian } from "./lib2d";
+import { DEG2RAD } from './constants'
+import { Point2D, polarToCartesian } from './lib2d'
 
-type StartSplineTangent = number | Point2D;
-export type SplineTangent = StartSplineTangent | "symmetric";
+type StartSplineTangent = number | Point2D
+export type SplineTangent = StartSplineTangent | 'symmetric'
 
 export type SplineConfig =
   | SplineTangent
   | {
-      endTangent?: SplineTangent;
-      startTangent?: StartSplineTangent;
-      startFactor?: number;
-      endFactor?: number;
-    };
+      endTangent?: SplineTangent
+      startTangent?: StartSplineTangent
+      startFactor?: number
+      endFactor?: number
+    }
 
 const isTangent = (c: unknown): c is SplineTangent =>
-  c === "symmetric" ||
-  typeof c === "number" ||
-  (Array.isArray(c) && c.length === 2);
+  c === 'symmetric' || typeof c === 'number' || (Array.isArray(c) && c.length === 2)
 
 export const defaultsSplineConfig = (
-  config?: SplineConfig
+  config?: SplineConfig,
 ): {
-  endTangent: Point2D | "symmetric";
-  startTangent?: Point2D;
-  startFactor: number;
-  endFactor: number;
+  endTangent: Point2D | 'symmetric'
+  startTangent?: Point2D
+  startFactor: number
+  endFactor: number
 } => {
   let conf: {
-    endTangent: SplineTangent;
-    startFactor?: number;
-    endFactor?: number;
-    startTangent?: StartSplineTangent;
-  };
-  if (!config) conf = { endTangent: [1, 0] };
+    endTangent: SplineTangent
+    startFactor?: number
+    endFactor?: number
+    startTangent?: StartSplineTangent
+  }
+  if (!config) conf = { endTangent: [1, 0] }
   else if (isTangent(config)) {
-    conf = { endTangent: config };
+    conf = { endTangent: config }
   } else {
-    conf = { endTangent: 0, ...config };
+    conf = { endTangent: 0, ...config }
   }
-  const {
-    endTangent: endTgt,
-    startFactor = 1,
-    endFactor = 1,
-    startTangent: startTgt,
-  } = conf;
+  const { endTangent: endTgt, startFactor = 1, endFactor = 1, startTangent: startTgt } = conf
 
-  let endTangent: Point2D | "symmetric";
-  if (typeof endTgt === "number") {
-    endTangent = polarToCartesian(1, endTgt * DEG2RAD);
+  let endTangent: Point2D | 'symmetric'
+  if (typeof endTgt === 'number') {
+    endTangent = polarToCartesian(1, endTgt * DEG2RAD)
   } else {
-    endTangent = endTgt;
+    endTangent = endTgt
   }
 
-  let startTangent: Point2D | undefined;
-  if (typeof startTgt === "number") {
-    startTangent = polarToCartesian(1, startTgt * DEG2RAD);
+  let startTangent: Point2D | undefined
+  if (typeof startTgt === 'number') {
+    startTangent = polarToCartesian(1, startTgt * DEG2RAD)
   } else {
-    startTangent = startTgt;
+    startTangent = startTgt
   }
 
-  return { endTangent, startFactor, endFactor, startTangent };
-};
+  return { endTangent, startFactor, endFactor, startTangent }
+}
 
 /**
  * Sketchers allow the user to draw a two dimentional shape using segment of
@@ -82,52 +75,52 @@ export interface GenericSketcher<ReturnType> {
   /**
    * Changes the point to start your drawing from
    */
-  movePointerTo(point: Point2D): this;
+  movePointerTo(point: Point2D): this
 
   /**
    * Draws a line from the current point to the point given in argument
    *
    * @category Line Segment
    */
-  lineTo(point: Point2D): this;
+  lineTo(point: Point2D): this
   /**
    * Draws a line at the horizontal distance xDist and the vertical distance
    * yDist of the current point
    *
    * @category Line Segment
    */
-  line(xDist: number, yDist: number): this;
+  line(xDist: number, yDist: number): this
   /**
    * Draws a vertical line of length distance from the current point
    *
    * @category Line Segment
    */
-  vLine(distance: number): this;
+  vLine(distance: number): this
   /**
    * Draws an horizontal line of length distance from the current point
    *
    * @category Line Segment
    */
-  hLine(distance: number): this;
+  hLine(distance: number): this
   /**
    * Draws a vertical line to the y coordinate
    *
    * @category Line Segment
    */
-  vLineTo(yPos: number): this;
+  vLineTo(yPos: number): this
   /**
    * Draws an horizontal line to the x coordinate
    *
    * @category Line Segment
    */
-  hLineTo(xPos: number): this;
+  hLineTo(xPos: number): this
   /**
    * Draws a line from the current point to the point defined in polar
    * coordiates, of radius r and angle theta (in degrees) from the origin
    *
    * @category Line Segment
    */
-  polarLineTo([r, theta]: [number, number]): this;
+  polarLineTo([r, theta]: [number, number]): this
   /**
    * Draws a line from the current point to the point defined in polar
    * coordiates, of radius r and angle theta (in degrees) from the current
@@ -135,40 +128,35 @@ export interface GenericSketcher<ReturnType> {
    *
    * @category Line Segment
    */
-  polarLine(r: number, theta: number): this;
+  polarLine(r: number, theta: number): this
   /**
    * Draws a line from the current point as a tangent to the previous part of
    * curve drawn. The distance defines how long the line will be.
    *
    * @category Line Segment
    */
-  tangentLine(distance: number): this;
+  tangentLine(distance: number): this
 
   /** Draws an arc of circle by defining its end point and a third point
    * through which the arc will pass.
    *
    * @category Arc Segment
    */
-  threePointsArcTo(end: Point2D, innerPoint: Point2D): this;
+  threePointsArcTo(end: Point2D, innerPoint: Point2D): this
   /** Draws an arc of circle by defining its end point and a third point
    * through which the arc will pass. Both poinats are defined in horizontal
    * (x) and vertical (y) distances from the start point.
    *
    * @category Arc Segment
    */
-  threePointsArc(
-    xDist: number,
-    yDist: number,
-    viaXDist: number,
-    viaYDist: number
-  ): this;
+  threePointsArc(xDist: number, yDist: number, viaXDist: number, viaYDist: number): this
   /** Draws an arc of circle by defining its end point and the sagitta - the
    * maximum distance between the arc and the straight line going from start to
    * end point.
    *
    * @category Arc Segment
    */
-  sagittaArcTo(end: Point2D, sagitta: number): this;
+  sagittaArcTo(end: Point2D, sagitta: number): this
   /** Draws an arc of circle by defining its end point and the sagitta - the
    * maximum distance between the arc and the straight line going from start to
    * end point.The end point is defined by its horizontal and vertical
@@ -176,7 +164,7 @@ export interface GenericSketcher<ReturnType> {
    *
    * @category Arc Segment
    */
-  sagittaArc(xDist: number, yDist: number, sagitta: number): this;
+  sagittaArc(xDist: number, yDist: number, sagitta: number): this
   /** Draws a vertical arc of circle by defining its end point and the sagitta
    * - the maximum distance between the arc and the straight line going from
    * start to end point.The end point is defined by its  vertical distance from
@@ -184,7 +172,7 @@ export interface GenericSketcher<ReturnType> {
    *
    * @category Arc Segment
    */
-  vSagittaArc(distance: number, sagitta: number): this;
+  vSagittaArc(distance: number, sagitta: number): this
   /** Draws an horizontal arc of circle by defining its end point and the
    * sagitta - the maximum distance between the arc and the straight line going
    * from start to end point.The end point is defined by its horizontal
@@ -192,14 +180,14 @@ export interface GenericSketcher<ReturnType> {
    *
    * @category Arc Segment
    */
-  hSagittaArc(distance: number, sagitta: number): this;
+  hSagittaArc(distance: number, sagitta: number): this
   /** Draws an arc of circle by defining its end point and the bulge - the
    * maximum distance between the arc and the straight line going from start to
    * end point.
    *
    * @category Arc Segment
    */
-  bulgeArcTo(end: Point2D, bulge: number): this;
+  bulgeArcTo(end: Point2D, bulge: number): this
   /** Draws an arc of circle by defining its end point and the bulge - the
    * maximum distance between the arc and the straight line going from start to
    * end point in units of half the chord. The end point is defined by its horizontal and vertical distances
@@ -207,7 +195,7 @@ export interface GenericSketcher<ReturnType> {
    *
    * @category Arc Segment
    */
-  bulgeArc(xDist: number, yDist: number, bulge: number): this;
+  bulgeArc(xDist: number, yDist: number, bulge: number): this
   /** Draws a vertical arc of circle by defining its end point and the bulge
    * - the maximum distance between the arc and the straight line going from
    * start to end point in units of half the chord. The end point is defined by its  vertical distance from
@@ -215,7 +203,7 @@ export interface GenericSketcher<ReturnType> {
    *
    * @category Arc Segment
    */
-  vBulgeArc(distance: number, bulge: number): this;
+  vBulgeArc(distance: number, bulge: number): this
   /** Draws an horizontal arc of circle by defining its end point and the bulge
    * - the maximum distance between the arc and the straight line going from
    * start to end point in units of half the chord. The end point is defined by
@@ -223,7 +211,7 @@ export interface GenericSketcher<ReturnType> {
    *
    * @category Arc Segment
    */
-  hBulgeArc(distance: number, bulge: number): this;
+  hBulgeArc(distance: number, bulge: number): this
 
   /**
    * Draws an arc of circle from the current point as a tangent to the previous
@@ -231,7 +219,7 @@ export interface GenericSketcher<ReturnType> {
    *
    * @category Arc Segment
    */
-  tangentArcTo(end: Point2D): this;
+  tangentArcTo(end: Point2D): this
   /**
    * Draws an arc of circle from the current point as a tangent to the previous
    * part of curve drawn.The end point is defined by its horizontal and vertical
@@ -239,7 +227,7 @@ export interface GenericSketcher<ReturnType> {
    *
    * @category Arc Segment
    */
-  tangentArc(xDist: number, yDist: number): this;
+  tangentArc(xDist: number, yDist: number): this
 
   /**
    * Draws an arc of ellipse by defining its end point and an ellipse.
@@ -256,8 +244,8 @@ export interface GenericSketcher<ReturnType> {
     verticalRadius: number,
     rotation: number,
     longAxis: boolean,
-    sweep: boolean
-  ): this;
+    sweep: boolean,
+  ): this
   /**
    * Draws an arc of ellipse by defining its end point and an ellipse. The end
    * point is defined by distances from he start point.
@@ -275,8 +263,8 @@ export interface GenericSketcher<ReturnType> {
     verticalRadius: number,
     rotation: number,
     longAxis: boolean,
-    sweep: boolean
-  ): this;
+    sweep: boolean,
+  ): this
   /**
    * Draws an arc as half an ellipse, defined by the sagitta of the ellipse
    * (which corresponds to the radius in the axe orthogonal to the straight
@@ -286,7 +274,7 @@ export interface GenericSketcher<ReturnType> {
    *
    * @category Ellipse Arc Segment
    */
-  halfEllipseTo(end: Point2D, radius: number, sweep: boolean): this;
+  halfEllipseTo(end: Point2D, radius: number, sweep: boolean): this
 
   /**
    * Draws an arc as half an ellipse, defined by the sagitta of the ellipse
@@ -297,12 +285,7 @@ export interface GenericSketcher<ReturnType> {
    *
    * @category Ellipse Arc Segment
    */
-  halfEllipse(
-    xDist: number,
-    yDist: number,
-    radius: number,
-    sweep: boolean
-  ): this;
+  halfEllipse(xDist: number, yDist: number, radius: number, sweep: boolean): this
 
   /** Draws a generic bezier curve to the end point, going using a set of
    * control points.
@@ -313,13 +296,13 @@ export interface GenericSketcher<ReturnType> {
    *
    * @category Bezier Curve
    */
-  bezierCurveTo(end: Point2D, controlPoints: Point2D | Point2D[]): this;
+  bezierCurveTo(end: Point2D, controlPoints: Point2D | Point2D[]): this
   /** Draws a quadratic bezier curve to the end point, using the single control
    * point.
    *
    * @category Bezier Curve
    */
-  quadraticBezierCurveTo(end: Point2D, controlPoint: Point2D): this;
+  quadraticBezierCurveTo(end: Point2D, controlPoint: Point2D): this
   /** Draws a cubic bezier curve to the end point, using the start  and end
    * control point to define its shape. This corresponds to the most commonly
    * used bezier curve.
@@ -329,11 +312,7 @@ export interface GenericSketcher<ReturnType> {
    *
    * @category Bezier Curve
    */
-  cubicBezierCurveTo(
-    end: Point2D,
-    startControlPoint: Point2D,
-    endControlPoint: Point2D
-  ): this;
+  cubicBezierCurveTo(end: Point2D, startControlPoint: Point2D, endControlPoint: Point2D): this
   /** Draws a cubic bezier curve to the end point, attempting to make the line
    * smooth with the previous segment.
    *
@@ -351,7 +330,7 @@ export interface GenericSketcher<ReturnType> {
    *
    * @category Bezier Curve
    */
-  smoothSplineTo(end: Point2D, config?: SplineConfig): this;
+  smoothSplineTo(end: Point2D, config?: SplineConfig): this
   /** Draws a cubic bezier curve to the end point, attempting to make the line
    * smooth with the previous segment. The end point is defined by its distance
    * to the first point.
@@ -371,35 +350,35 @@ export interface GenericSketcher<ReturnType> {
    *
    * @category Bezier Curve
    */
-  smoothSpline(xDist: number, yDist: number, splineConfig: SplineConfig): this;
+  smoothSpline(xDist: number, yDist: number, splineConfig: SplineConfig): this
 
   /**
    * Stop drawing and returns the sketch.
    */
-  done(): ReturnType;
+  done(): ReturnType
   /**
    * Stop drawing, make sure the sketch is closed (by adding a straight line to
    * from the last point to the first) and returns the sketch.
    */
-  close(): ReturnType;
+  close(): ReturnType
   /**
    * Stop drawing, make sure the sketch is closed (by mirroring the lines
    * between the first and last points drawn) and returns the sketch.
    */
-  closeWithMirror(): ReturnType;
+  closeWithMirror(): ReturnType
 }
 
 /*
  * adapted from https://stackoverflow.com/a/12329083
  */
 function radianAngle(ux: number, uy: number, vx: number, vy: number): number {
-  const dot = ux * vx + uy * vy;
-  const mod = Math.sqrt((ux * ux + uy * uy) * (vx * vx + vy * vy));
-  let rad = Math.acos(dot / mod);
+  const dot = ux * vx + uy * vy
+  const mod = Math.sqrt((ux * ux + uy * uy) * (vx * vx + vy * vy))
+  let rad = Math.acos(dot / mod)
   if (ux * vy - uy * vx < 0.0) {
-    rad = -rad;
+    rad = -rad
   }
-  return rad;
+  return rad
 }
 
 export function convertSvgEllipseParams(
@@ -409,94 +388,94 @@ export function convertSvgEllipseParams(
   ry: number,
   phi: number,
   fA: boolean,
-  fS: boolean
+  fS: boolean,
 ): {
-  cx: number;
-  cy: number;
-  rx: number;
-  ry: number;
-  startAngle: number;
-  deltaAngle: number;
-  endAngle: number;
-  clockwise: boolean;
+  cx: number
+  cy: number
+  rx: number
+  ry: number
+  startAngle: number
+  deltaAngle: number
+  endAngle: number
+  clockwise: boolean
 } {
-  const PIx2 = Math.PI * 2.0;
+  const PIx2 = Math.PI * 2.0
 
   if (rx < 0) {
-    rx = -rx;
+    rx = -rx
   }
   if (ry < 0) {
-    ry = -ry;
+    ry = -ry
   }
   if (rx == 0.0 || ry == 0.0) {
     // invalid arguments
-    throw Error("rx and ry can not be 0");
+    throw Error('rx and ry can not be 0')
   }
 
-  const s_phi = Math.sin(phi);
-  const c_phi = Math.cos(phi);
-  const hd_x = (x1 - x2) / 2.0; // half diff of x
-  const hd_y = (y1 - y2) / 2.0; // half diff of y
-  const hs_x = (x1 + x2) / 2.0; // half sum of x
-  const hs_y = (y1 + y2) / 2.0; // half sum of y
+  const s_phi = Math.sin(phi)
+  const c_phi = Math.cos(phi)
+  const hd_x = (x1 - x2) / 2.0 // half diff of x
+  const hd_y = (y1 - y2) / 2.0 // half diff of y
+  const hs_x = (x1 + x2) / 2.0 // half sum of x
+  const hs_y = (y1 + y2) / 2.0 // half sum of y
 
   // F6.5.1
-  const x1_ = c_phi * hd_x + s_phi * hd_y;
-  const y1_ = c_phi * hd_y - s_phi * hd_x;
+  const x1_ = c_phi * hd_x + s_phi * hd_y
+  const y1_ = c_phi * hd_y - s_phi * hd_x
 
   // F.6.6 Correction of out-of-range radii
   //   Step 3: Ensure radii are large enough
-  const lambda = (x1_ * x1_) / (rx * rx) + (y1_ * y1_) / (ry * ry);
+  const lambda = (x1_ * x1_) / (rx * rx) + (y1_ * y1_) / (ry * ry)
   if (lambda > 1) {
-    rx = rx * Math.sqrt(lambda);
-    ry = ry * Math.sqrt(lambda);
+    rx = rx * Math.sqrt(lambda)
+    ry = ry * Math.sqrt(lambda)
   }
 
-  const rxry = rx * ry;
-  const rxy1_ = rx * y1_;
-  const ryx1_ = ry * x1_;
-  const sum_of_sq = rxy1_ * rxy1_ + ryx1_ * ryx1_; // sum of square
+  const rxry = rx * ry
+  const rxy1_ = rx * y1_
+  const ryx1_ = ry * x1_
+  const sum_of_sq = rxy1_ * rxy1_ + ryx1_ * ryx1_ // sum of square
   if (!sum_of_sq) {
-    throw Error("start point can not be same as end point");
+    throw Error('start point can not be same as end point')
   }
-  let coe = Math.sqrt(Math.abs((rxry * rxry - sum_of_sq) / sum_of_sq));
+  let coe = Math.sqrt(Math.abs((rxry * rxry - sum_of_sq) / sum_of_sq))
   if (fA == fS) {
-    coe = -coe;
+    coe = -coe
   }
 
   // F6.5.2
-  const cx_ = (coe * rxy1_) / ry;
-  const cy_ = (-coe * ryx1_) / rx;
+  const cx_ = (coe * rxy1_) / ry
+  const cy_ = (-coe * ryx1_) / rx
 
   // F6.5.3
-  const cx = c_phi * cx_ - s_phi * cy_ + hs_x;
-  const cy = s_phi * cx_ + c_phi * cy_ + hs_y;
+  const cx = c_phi * cx_ - s_phi * cy_ + hs_x
+  const cy = s_phi * cx_ + c_phi * cy_ + hs_y
 
-  const xcr1 = (x1_ - cx_) / rx;
-  const xcr2 = (x1_ + cx_) / rx;
-  const ycr1 = (y1_ - cy_) / ry;
-  const ycr2 = (y1_ + cy_) / ry;
+  const xcr1 = (x1_ - cx_) / rx
+  const xcr2 = (x1_ + cx_) / rx
+  const ycr1 = (y1_ - cy_) / ry
+  const ycr2 = (y1_ + cy_) / ry
 
   // F6.5.5
-  const startAngle = radianAngle(1.0, 0.0, xcr1, ycr1);
+  const startAngle = radianAngle(1.0, 0.0, xcr1, ycr1)
 
   // F6.5.6
-  let deltaAngle = radianAngle(xcr1, ycr1, -xcr2, -ycr2);
+  let deltaAngle = radianAngle(xcr1, ycr1, -xcr2, -ycr2)
   while (deltaAngle > PIx2) {
-    deltaAngle -= PIx2;
+    deltaAngle -= PIx2
   }
   while (deltaAngle < 0.0) {
-    deltaAngle += PIx2;
+    deltaAngle += PIx2
   }
   if (!fS) {
-    deltaAngle -= PIx2;
+    deltaAngle -= PIx2
   }
-  let endAngle = startAngle + deltaAngle;
+  let endAngle = startAngle + deltaAngle
   while (endAngle > PIx2) {
-    endAngle -= PIx2;
+    endAngle -= PIx2
   }
   while (endAngle < 0.0) {
-    endAngle += PIx2;
+    endAngle += PIx2
   }
 
   const outputObj = {
@@ -508,7 +487,7 @@ export function convertSvgEllipseParams(
     clockwise: !!fS,
     rx,
     ry,
-  };
+  }
 
-  return outputObj;
+  return outputObj
 }

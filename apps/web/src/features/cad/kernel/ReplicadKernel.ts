@@ -42,7 +42,8 @@ function asSolid(shape: AnyShape): Shape3D {
 
 function toMesh(shape: Shape3D): MeshBuffer {
   const raw = shape.mesh()
-  const normals = raw.normals.length === raw.vertices.length ? raw.normals : raw.vertices.map(() => 0)
+  const normals =
+    raw.normals.length === raw.vertices.length ? raw.normals : raw.vertices.map(() => 0)
   return {
     positions: Float32Array.from(raw.vertices),
     normals: Float32Array.from(normals),
@@ -72,7 +73,10 @@ function profileDrawing(profile: Profile2D) {
   return pen.close()
 }
 
-function solidFromProfile(profile: Profile2D, build: (sketch: ReturnType<ReturnType<typeof profileDrawing>['sketchOnPlane']>) => AnyShape): Shape3D {
+function solidFromProfile(
+  profile: Profile2D,
+  build: (sketch: ReturnType<ReturnType<typeof profileDrawing>['sketchOnPlane']>) => AnyShape,
+): Shape3D {
   const drawing = profileDrawing(profile)
   const sketch = drawing.sketchOnPlane(profile.plane ?? 'XY')
   return asSolid(build(sketch))
@@ -108,7 +112,11 @@ export class ReplicadKernel implements GeometryKernel {
     this.ready = true
   }
 
-  async createPrimitive(kind: PrimitiveKind, params: PrimitiveParams, id?: string): Promise<ShapeResult> {
+  async createPrimitive(
+    kind: PrimitiveKind,
+    params: PrimitiveParams,
+    id?: string,
+  ): Promise<ShapeResult> {
     this.assertReady()
     const op = planRebuild({
       version: 1,
@@ -129,14 +137,21 @@ export class ReplicadKernel implements GeometryKernel {
     return this.keep(shape, id)
   }
 
-  async revolve(profile: Profile2D, angle: number, axis?: AxisName, id?: string): Promise<ShapeResult> {
+  async revolve(
+    profile: Profile2D,
+    angle: number,
+    axis?: AxisName,
+    id?: string,
+  ): Promise<ShapeResult> {
     this.assertReady()
     const op = planRebuild({
       version: 1,
       ops: [{ op: 'revolve', id: id ?? 'check', profile, angle, ...(axis ? { axis } : {}) }],
     })[0]
     if (!op || op.op !== 'revolve') throw new Error('profile is missing')
-    const shape = solidFromProfile(op.profile, (sketch) => sketch.revolve(op.axis ?? 'Z', { angle: op.angle }))
+    const shape = solidFromProfile(op.profile, (sketch) =>
+      sketch.revolve(op.axis ?? 'Z', { angle: op.angle }),
+    )
     return this.keep(shape, id)
   }
 
@@ -164,7 +179,12 @@ export class ReplicadKernel implements GeometryKernel {
     return this.keep(asSolid(this.require(targetId).chamfer(radius)), id)
   }
 
-  async boolean(mode: BooleanMode, targetId: string, toolId: string, id?: string): Promise<ShapeResult> {
+  async boolean(
+    mode: BooleanMode,
+    targetId: string,
+    toolId: string,
+    id?: string,
+  ): Promise<ShapeResult> {
     this.assertReady()
     if (targetId === toolId) throw new Error('boolean target and tool must differ')
     planRebuild({
@@ -177,7 +197,12 @@ export class ReplicadKernel implements GeometryKernel {
     })
     const target = this.require(targetId)
     const tool = this.require(toolId)
-    const next = mode === 'fuse' ? target.fuse(tool) : mode === 'cut' ? target.cut(tool) : target.intersect(tool)
+    const next =
+      mode === 'fuse'
+        ? target.fuse(tool)
+        : mode === 'cut'
+          ? target.cut(tool)
+          : target.intersect(tool)
     return this.keep(asSolid(next), id)
   }
 
@@ -209,7 +234,10 @@ export class ReplicadKernel implements GeometryKernel {
     return bytesOf(this.require(targetId).blobSTL({ binary: true }))
   }
 
-  async rebuild(document: FeatureDocument, files: Readonly<Record<string, Uint8Array>> = {}): Promise<ShapeResult[]> {
+  async rebuild(
+    document: FeatureDocument,
+    files: Readonly<Record<string, Uint8Array>> = {},
+  ): Promise<ShapeResult[]> {
     this.assertReady()
     const ops = planRebuild(document)
     const results: ShapeResult[] = []
@@ -222,7 +250,10 @@ export class ReplicadKernel implements GeometryKernel {
     this.shapes.clear()
   }
 
-  private async apply(op: FeatureOp, files: Readonly<Record<string, Uint8Array>>): Promise<ShapeResult> {
+  private async apply(
+    op: FeatureOp,
+    files: Readonly<Record<string, Uint8Array>>,
+  ): Promise<ShapeResult> {
     switch (op.op) {
       case 'primitive':
         return this.keep(this.makePrimitive(op.kind, op.params), op.id)

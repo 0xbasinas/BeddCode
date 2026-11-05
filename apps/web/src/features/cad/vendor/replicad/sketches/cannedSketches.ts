@@ -9,19 +9,19 @@ import {
   makeCircle,
   makeEllipse,
   makeHelix,
-} from "../shapeHelpers";
-import { Direction, Plane, PlaneName, Point, Vector } from "../geom";
-import Sketcher from "../Sketcher";
-import { makePlane } from "../geomHelpers";
-import Sketch from "./Sketch";
-import { Face } from "../shapes";
-import { Point2D } from "../lib2d";
-import { localGC } from "../register";
-import { roundedRectangleBlueprint } from "../blueprints/cannedBlueprints";
+} from '../shapeHelpers'
+import { Direction, Plane, PlaneName, Point, Vector } from '../geom'
+import Sketcher from '../Sketcher'
+import { makePlane } from '../geomHelpers'
+import Sketch from './Sketch'
+import { Face } from '../shapes'
+import { Point2D } from '../lib2d'
+import { localGC } from '../register'
+import { roundedRectangleBlueprint } from '../blueprints/cannedBlueprints'
 
 interface PlaneConfig {
-  plane?: PlaneName | Plane;
-  origin?: Point | number;
+  plane?: PlaneName | Plane
+  origin?: Point | number
 }
 
 /**
@@ -29,61 +29,52 @@ interface PlaneConfig {
  *
  * @category Sketching
  */
-export const sketchCircle = (
-  radius: number,
-  planeConfig: PlaneConfig = {}
-): Sketch => {
+export const sketchCircle = (radius: number, planeConfig: PlaneConfig = {}): Sketch => {
   const plane =
     planeConfig.plane instanceof Plane
       ? makePlane(planeConfig.plane)
-      : makePlane(planeConfig.plane, planeConfig.origin);
+      : makePlane(planeConfig.plane, planeConfig.origin)
 
-  const wire = assembleWire([makeCircle(radius, plane.origin, plane.zDir)]);
+  const wire = assembleWire([makeCircle(radius, plane.origin, plane.zDir)])
   const sketch = new Sketch(wire, {
     defaultOrigin: plane.origin,
     defaultDirection: plane.zDir,
-  });
-  plane.delete();
-  return sketch;
-};
+  })
+  plane.delete()
+  return sketch
+}
 
 /**
  * Creates the `Sketch` of an ellispe in a defined plane
  *
  * @category Sketching
  */
-export const sketchEllipse = (
-  xRadius = 1,
-  yRadius = 2,
-  planeConfig: PlaneConfig = {}
-): Sketch => {
+export const sketchEllipse = (xRadius = 1, yRadius = 2, planeConfig: PlaneConfig = {}): Sketch => {
   const plane =
     planeConfig.plane instanceof Plane
       ? makePlane(planeConfig.plane)
-      : makePlane(planeConfig.plane, planeConfig.origin);
-  const xDir = new Vector(plane.xDir);
+      : makePlane(planeConfig.plane, planeConfig.origin)
+  const xDir = new Vector(plane.xDir)
 
-  let majR = xRadius;
-  let minR = yRadius;
+  let majR = xRadius
+  let minR = yRadius
 
   if (yRadius > xRadius) {
-    xDir.rotate(90, plane.origin, plane.zDir);
-    majR = yRadius;
-    minR = xRadius;
+    xDir.rotate(90, plane.origin, plane.zDir)
+    majR = yRadius
+    minR = xRadius
   }
 
-  const wire = assembleWire([
-    makeEllipse(majR, minR, plane.origin, plane.zDir, xDir),
-  ]);
-  xDir.delete();
+  const wire = assembleWire([makeEllipse(majR, minR, plane.origin, plane.zDir, xDir)])
+  xDir.delete()
 
   const sketch = new Sketch(wire, {
     defaultOrigin: plane.origin,
     defaultDirection: plane.zDir,
-  });
-  plane.delete();
-  return sketch;
-};
+  })
+  plane.delete()
+  return sketch
+}
 
 /**
  * Creates the `Sketch` of a rectangle in a defined plane
@@ -93,20 +84,20 @@ export const sketchEllipse = (
 export const sketchRectangle = (
   xLength: number,
   yLength: number,
-  planeConfig: PlaneConfig = {}
+  planeConfig: PlaneConfig = {},
 ): Sketch => {
   const sketcher =
     planeConfig.plane instanceof Plane
       ? new Sketcher(planeConfig.plane)
-      : new Sketcher(planeConfig.plane, planeConfig.origin);
+      : new Sketcher(planeConfig.plane, planeConfig.origin)
   return sketcher
     .movePointerTo([-xLength / 2, -yLength / 2])
     .hLine(xLength)
     .vLine(yLength)
     .hLine(-xLength)
     .vLine(-yLength)
-    .done();
-};
+    .done()
+}
 
 /**
  * Creates the `Sketch` of a rounded rectangle in a defined plane
@@ -117,11 +108,11 @@ export const sketchRoundedRectangle = (
   width: number,
   height: number,
   r: number | { rx?: number; ry?: number } = 0,
-  planeConfig: PlaneConfig = {}
+  planeConfig: PlaneConfig = {},
 ): Sketch => {
-  const bp = roundedRectangleBlueprint(width, height, r);
-  return bp.sketchOnPlane(planeConfig.plane, planeConfig.origin);
-};
+  const bp = roundedRectangleBlueprint(width, height, r)
+  return bp.sketchOnPlane(planeConfig.plane, planeConfig.origin)
+}
 
 /**
  * Creates the `Sketch` of an polygon in a defined plane
@@ -135,31 +126,31 @@ export const sketchPolysides = (
   radius: number,
   sidesCount: number,
   sagitta = 0,
-  planeConfig: PlaneConfig = {}
+  planeConfig: PlaneConfig = {},
 ): Sketch => {
   const points = [...Array(sidesCount).keys()].map((i) => {
-    const theta = -((Math.PI * 2) / sidesCount) * i;
-    return [radius * Math.sin(theta), radius * Math.cos(theta)];
-  });
+    const theta = -((Math.PI * 2) / sidesCount) * i
+    return [radius * Math.sin(theta), radius * Math.cos(theta)]
+  })
 
   // We start with the last point to make sure the shape is complete
   const sketcher =
     planeConfig.plane instanceof Plane
       ? new Sketcher(planeConfig.plane)
-      : new Sketcher(planeConfig.plane, planeConfig.origin);
+      : new Sketcher(planeConfig.plane, planeConfig.origin)
   const sketch = sketcher.movePointerTo([
     points[points.length - 1][0],
     points[points.length - 1][1],
-  ]);
+  ])
 
   if (sagitta) {
-    points.forEach(([x, y]) => sketch.sagittaArcTo([x, y], sagitta));
+    points.forEach(([x, y]) => sketch.sagittaArcTo([x, y], sagitta))
   } else {
-    points.forEach(([x, y]) => sketch.lineTo([x, y]));
+    points.forEach(([x, y]) => sketch.lineTo([x, y]))
   }
 
-  return sketch.done();
-};
+  return sketch.done()
+}
 
 /**
  * Helper function to compute the inner radius of a polyside (even if a sagitta
@@ -168,15 +159,15 @@ export const sketchPolysides = (
 export const polysideInnerRadius = (
   outerRadius: number,
   sidesCount: number,
-  sagitta = 0
+  sagitta = 0,
 ): number => {
-  const innerAngle = Math.PI / sidesCount; // Half of a side
-  const innerRadius = Math.cos(innerAngle) * outerRadius;
+  const innerAngle = Math.PI / sidesCount // Half of a side
+  const innerRadius = Math.cos(innerAngle) * outerRadius
 
   // Only a concave sagitta changes the inner radius
-  if (sagitta >= 0) return innerRadius;
-  return innerRadius + sagitta;
-};
+  if (sagitta >= 0) return innerRadius
+  return innerRadius + sagitta
+}
 
 /**
  * Creates the `Sketch` of an offset of a certain face. A negative offset will
@@ -185,16 +176,16 @@ export const polysideInnerRadius = (
  * @category Sketching
  */
 export const sketchFaceOffset = (face: Face, offset: number): Sketch => {
-  const defaultOrigin = face.center;
-  const defaultDirection = face.normalAt();
-  const wire = face.outerWire().offset2D(offset);
+  const defaultOrigin = face.center
+  const defaultDirection = face.normalAt()
+  const wire = face.outerWire().offset2D(offset)
 
-  const sketch = new Sketch(wire, { defaultOrigin, defaultDirection });
-  defaultOrigin.delete();
-  defaultDirection.delete();
+  const sketch = new Sketch(wire, { defaultOrigin, defaultDirection })
+  defaultOrigin.delete()
+  defaultDirection.delete()
 
-  return sketch;
-};
+  return sketch
+}
 
 /**
  * Creates the `Sketch` of parametric function in a specified plane
@@ -207,32 +198,30 @@ export const sketchParametricFunction = (
   func: (t: number) => Point2D,
   planeConfig: PlaneConfig = {},
   { pointsCount = 400, start = 0, stop = 1 } = {},
-  approximationConfig: BSplineApproximationConfig = {}
+  approximationConfig: BSplineApproximationConfig = {},
 ): Sketch => {
-  const [r, gc] = localGC();
+  const [r, gc] = localGC()
   const plane = r(
     planeConfig.plane instanceof Plane
       ? makePlane(planeConfig.plane)
-      : makePlane(planeConfig.plane, planeConfig.origin)
-  );
+      : makePlane(planeConfig.plane, planeConfig.origin),
+  )
 
-  const stepSize = (stop - start) / pointsCount;
+  const stepSize = (stop - start) / pointsCount
   const points = [...Array(pointsCount + 1).keys()].map((t) => {
-    const point = func(start + t * stepSize);
-    return r(plane.toWorldCoords(point));
-  });
+    const point = func(start + t * stepSize)
+    return r(plane.toWorldCoords(point))
+  })
 
-  const wire = assembleWire([
-    r(makeBSplineApproximation(points, approximationConfig)),
-  ]);
+  const wire = assembleWire([r(makeBSplineApproximation(points, approximationConfig))])
 
   const sketch = new Sketch(wire, {
     defaultOrigin: plane.origin,
     defaultDirection: plane.zDir,
-  });
-  gc();
-  return sketch;
-};
+  })
+  gc()
+  return sketch
+}
 
 /**
  * Creates the `Sketch` of a helix
@@ -245,9 +234,7 @@ export const sketchHelix = (
   radius: number,
   center: Point = [0, 0, 0],
   dir: Direction = [0, 0, 1],
-  lefthand = false
+  lefthand = false,
 ): Sketch => {
-  return new Sketch(
-    assembleWire(makeHelix(pitch, height, radius, center, dir, lefthand).wires)
-  );
-};
+  return new Sketch(assembleWire(makeHelix(pitch, height, radius, center, dir, lefthand).wires))
+}

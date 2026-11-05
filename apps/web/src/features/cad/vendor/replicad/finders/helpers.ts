@@ -2,27 +2,22 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Face, type AnyShape } from "../shapes";
-import { FaceFinder } from "./faceFinder";
-import type { FaceOrEdge, FilterFcn, FinderFunction } from "./definitions";
+import { Face, type AnyShape } from '../shapes'
+import { FaceFinder } from './faceFinder'
+import type { FaceOrEdge, FilterFcn, FinderFunction } from './definitions'
 
-export type SingleFace =
-  | Face
-  | FaceFinder
-  | FinderFunction<FaceFinder, AnyShape>;
+export type SingleFace = Face | FaceFinder | FinderFunction<FaceFinder, AnyShape>
 
 export function getSingleFace(f: SingleFace, shape: AnyShape): Face {
-  if (f instanceof Face) return f;
-  const finder = f instanceof FaceFinder ? f : f(new FaceFinder(), shape);
-  return finder.find(shape, { unique: true });
+  if (f instanceof Face) return f
+  const finder = f instanceof FaceFinder ? f : f(new FaceFinder(), shape)
+  return finder.find(shape, { unique: true })
 }
 
-type CartesianAxis = "X" | "Y" | "Z";
-type ShapeExtremumFilter = <Type extends FaceOrEdge>(
-  filter: FilterFcn<Type>
-) => boolean;
+type CartesianAxis = 'X' | 'Y' | 'Z'
+type ShapeExtremumFilter = <Type extends FaceOrEdge>(filter: FilterFcn<Type>) => boolean
 
-const AXIS_INDEX: Record<CartesianAxis, number> = { X: 0, Y: 1, Z: 2 };
+const AXIS_INDEX: Record<CartesianAxis, number> = { X: 0, Y: 1, Z: 2 }
 
 /**
  * Creates a predicate for a finder's `when` method that selects elements
@@ -55,23 +50,23 @@ const AXIS_INDEX: Record<CartesianAxis, number> = { X: 0, Y: 1, Z: 2 };
 export const atShapeExtremum = (
   shape: AnyShape,
   axis: CartesianAxis,
-  extremum: "min" | "max",
-  tolerance = 1e-6
+  extremum: 'min' | 'max',
+  tolerance = 1e-6,
 ): ShapeExtremumFilter => {
-  const axisIndex = AXIS_INDEX[axis];
-  const boundIndex = extremum === "min" ? 0 : 1;
-  const shapeBox = shape.boundingBox;
-  const shapeExtreme = shapeBox.bounds[boundIndex][axisIndex];
-  shapeBox.delete();
+  const axisIndex = AXIS_INDEX[axis]
+  const boundIndex = extremum === 'min' ? 0 : 1
+  const shapeBox = shape.boundingBox
+  const shapeExtreme = shapeBox.bounds[boundIndex][axisIndex]
+  shapeBox.delete()
 
   return ({ element }) => {
-    const elementBox = element.boundingBox;
-    const elementExtreme = elementBox.bounds[boundIndex][axisIndex];
-    elementBox.delete();
+    const elementBox = element.boundingBox
+    const elementExtreme = elementBox.bounds[boundIndex][axisIndex]
+    elementBox.delete()
 
-    return Math.abs(elementExtreme - shapeExtreme) <= tolerance;
-  };
-};
+    return Math.abs(elementExtreme - shapeExtreme) <= tolerance
+  }
+}
 
 /**
  * Creates a predicate selecting elements touching the shape's maximum Z bound.
@@ -84,7 +79,7 @@ export const atShapeExtremum = (
  * @category Finders
  */
 export const topMost = (shape: AnyShape, tolerance = 1e-6) =>
-  atShapeExtremum(shape, "Z", "max", tolerance);
+  atShapeExtremum(shape, 'Z', 'max', tolerance)
 
 /**
  * Creates a predicate selecting elements touching the shape's minimum Z bound.
@@ -95,7 +90,7 @@ export const topMost = (shape: AnyShape, tolerance = 1e-6) =>
  * @category Finders
  */
 export const bottomMost = (shape: AnyShape, tolerance = 1e-6) =>
-  atShapeExtremum(shape, "Z", "min", tolerance);
+  atShapeExtremum(shape, 'Z', 'min', tolerance)
 
 /**
  * Creates a predicate selecting elements touching the shape's minimum X bound.
@@ -106,7 +101,7 @@ export const bottomMost = (shape: AnyShape, tolerance = 1e-6) =>
  * @category Finders
  */
 export const leftMost = (shape: AnyShape, tolerance = 1e-6) =>
-  atShapeExtremum(shape, "X", "min", tolerance);
+  atShapeExtremum(shape, 'X', 'min', tolerance)
 
 /**
  * Creates a predicate selecting elements touching the shape's maximum X bound.
@@ -117,7 +112,7 @@ export const leftMost = (shape: AnyShape, tolerance = 1e-6) =>
  * @category Finders
  */
 export const rightMost = (shape: AnyShape, tolerance = 1e-6) =>
-  atShapeExtremum(shape, "X", "max", tolerance);
+  atShapeExtremum(shape, 'X', 'max', tolerance)
 
 /**
  * Creates a predicate selecting elements touching the shape's maximum Y bound.
@@ -130,7 +125,7 @@ export const rightMost = (shape: AnyShape, tolerance = 1e-6) =>
  * @category Finders
  */
 export const frontMost = (shape: AnyShape, tolerance = 1e-6) =>
-  atShapeExtremum(shape, "Y", "max", tolerance);
+  atShapeExtremum(shape, 'Y', 'max', tolerance)
 
 /**
  * Creates a predicate selecting elements touching the shape's minimum Y bound.
@@ -143,4 +138,4 @@ export const frontMost = (shape: AnyShape, tolerance = 1e-6) =>
  * @category Finders
  */
 export const backMost = (shape: AnyShape, tolerance = 1e-6) =>
-  atShapeExtremum(shape, "Y", "min", tolerance);
+  atShapeExtremum(shape, 'Y', 'min', tolerance)

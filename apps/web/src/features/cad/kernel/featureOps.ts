@@ -32,7 +32,8 @@ function assertPositive(name: string, value: unknown): asserts value is number {
 }
 
 function assertNonZero(name: string, value: unknown): asserts value is number {
-  if (!isFiniteNumber(value) || value === 0) throw new Error(`${name} must be a non-zero finite number`)
+  if (!isFiniteNumber(value) || value === 0)
+    throw new Error(`${name} must be a non-zero finite number`)
 }
 
 function isPlane(value: unknown): value is PlaneName {
@@ -131,7 +132,12 @@ function readOp(value: unknown, seen: Set<string>): FeatureOp {
     }
     case 'fillet': {
       assertPositive('radius', record.radius)
-      feature = { op: 'fillet', id: record.id, target: knownShape(record.target, seen), radius: record.radius }
+      feature = {
+        op: 'fillet',
+        id: record.id,
+        target: knownShape(record.target, seen),
+        radius: record.radius,
+      }
       break
     }
     case 'chamfer': {
@@ -145,7 +151,8 @@ function readOp(value: unknown, seen: Set<string>): FeatureOp {
       break
     }
     case 'boolean': {
-      if (!(BOOLEANS as readonly string[]).includes(String(record.mode))) throw new Error('unknown boolean mode')
+      if (!(BOOLEANS as readonly string[]).includes(String(record.mode)))
+        throw new Error('unknown boolean mode')
       const target = knownShape(record.target, seen)
       const tool = knownShape(record.tool, seen)
       if (target === tool) throw new Error('boolean target and tool must differ')

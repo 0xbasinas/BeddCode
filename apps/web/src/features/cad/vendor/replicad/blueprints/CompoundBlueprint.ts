@@ -2,136 +2,119 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Point2D, BoundingBox2d } from "../lib2d";
-import Blueprint from "./Blueprint";
-import { DrawingInterface } from "./lib";
-import { asSVG, viewbox } from "./svg";
+import { Point2D, BoundingBox2d } from '../lib2d'
+import Blueprint from './Blueprint'
+import { DrawingInterface } from './lib'
+import { asSVG, viewbox } from './svg'
 
-import { AnyShape, Face } from "../shapes";
+import { AnyShape, Face } from '../shapes'
 
-import { Plane, PlaneName, Point } from "../geom";
+import { Plane, PlaneName, Point } from '../geom'
 
-import { ScaleMode } from "../curves";
-import CompoundSketch from "../sketches/CompoundSketch";
-import { SingleFace } from "../finders";
+import { ScaleMode } from '../curves'
+import CompoundSketch from '../sketches/CompoundSketch'
+import { SingleFace } from '../finders'
 
 export default class CompoundBlueprint implements DrawingInterface {
-  blueprints: Blueprint[];
-  protected _boundingBox: BoundingBox2d | null;
+  blueprints: Blueprint[]
+  protected _boundingBox: BoundingBox2d | null
 
   constructor(blueprints: Blueprint[]) {
-    this.blueprints = blueprints;
-    this._boundingBox = null;
+    this.blueprints = blueprints
+    this._boundingBox = null
   }
 
   clone() {
-    return new CompoundBlueprint(this.blueprints);
+    return new CompoundBlueprint(this.blueprints)
   }
 
   get boundingBox(): BoundingBox2d {
     if (!this._boundingBox) {
-      const box = new BoundingBox2d();
-      this.blueprints.forEach((b) => box.add(b.boundingBox));
-      this._boundingBox = box;
+      const box = new BoundingBox2d()
+      this.blueprints.forEach((b) => box.add(b.boundingBox))
+      this._boundingBox = box
     }
-    return this._boundingBox;
+    return this._boundingBox
   }
 
   get repr() {
     return [
-      "Compound Blueprints",
-      "-- Outline",
+      'Compound Blueprints',
+      '-- Outline',
       this.blueprints[0].repr,
-      "-- Holes",
+      '-- Holes',
       ...this.blueprints.slice(1).map((b) => b.repr),
-    ].join("\n");
+    ].join('\n')
   }
 
-  stretch(
-    ratio: number,
-    direction: Point2D,
-    origin: Point2D
-  ): CompoundBlueprint {
-    return new CompoundBlueprint(
-      this.blueprints.map((bp) => bp.stretch(ratio, direction, origin))
-    );
+  stretch(ratio: number, direction: Point2D, origin: Point2D): CompoundBlueprint {
+    return new CompoundBlueprint(this.blueprints.map((bp) => bp.stretch(ratio, direction, origin)))
   }
 
   rotate(angle: number, center?: Point2D): CompoundBlueprint {
-    return new CompoundBlueprint(
-      this.blueprints.map((bp) => bp.rotate(angle, center))
-    );
+    return new CompoundBlueprint(this.blueprints.map((bp) => bp.rotate(angle, center)))
   }
 
   scale(scaleFactor: number, center?: Point2D): CompoundBlueprint {
-    const centerPoint = center || this.boundingBox.center;
-    return new CompoundBlueprint(
-      this.blueprints.map((bp) => bp.scale(scaleFactor, centerPoint))
-    );
+    const centerPoint = center || this.boundingBox.center
+    return new CompoundBlueprint(this.blueprints.map((bp) => bp.scale(scaleFactor, centerPoint)))
   }
 
-  translate(xDist: number, yDist: number): CompoundBlueprint;
-  translate(translationVector: Point2D): CompoundBlueprint;
+  translate(xDist: number, yDist: number): CompoundBlueprint
+  translate(translationVector: Point2D): CompoundBlueprint
   translate(xDistOrPoint: number | Point2D, yDist = 0): CompoundBlueprint {
     return new CompoundBlueprint(
-      this.blueprints.map((bp) => bp.translate(xDistOrPoint as any, yDist))
-    );
+      this.blueprints.map((bp) => bp.translate(xDistOrPoint as any, yDist)),
+    )
   }
 
   mirror(
     centerOrDirection: Point2D,
     origin?: Point2D,
-    mode?: "center" | "plane"
+    mode?: 'center' | 'plane',
   ): CompoundBlueprint {
     return new CompoundBlueprint(
-      this.blueprints.map((bp) => bp.mirror(centerOrDirection, origin, mode))
-    );
+      this.blueprints.map((bp) => bp.mirror(centerOrDirection, origin, mode)),
+    )
   }
 
-  sketchOnPlane(
-    plane?: PlaneName | Plane,
-    origin?: Point | number
-  ): CompoundSketch {
-    const sketches = this.blueprints.map((blueprint) =>
-      blueprint.sketchOnPlane(plane, origin)
-    );
+  sketchOnPlane(plane?: PlaneName | Plane, origin?: Point | number): CompoundSketch {
+    const sketches = this.blueprints.map((blueprint) => blueprint.sketchOnPlane(plane, origin))
 
-    return new CompoundSketch(sketches);
+    return new CompoundSketch(sketches)
   }
 
   sketchOnFace(face: Face, scaleMode?: ScaleMode): CompoundSketch {
-    const sketches = this.blueprints.map((blueprint) =>
-      blueprint.sketchOnFace(face, scaleMode)
-    );
+    const sketches = this.blueprints.map((blueprint) => blueprint.sketchOnFace(face, scaleMode))
 
-    return new CompoundSketch(sketches);
+    return new CompoundSketch(sketches)
   }
 
   punchHole(
     shape: AnyShape,
     face: SingleFace,
     options: {
-      height?: number;
-      origin?: Point;
-      draftAngle?: number;
-    } = {}
+      height?: number
+      origin?: Point
+      draftAngle?: number
+    } = {},
   ): AnyShape {
-    return this.blueprints[0].punchHole(shape, face, options);
+    return this.blueprints[0].punchHole(shape, face, options)
   }
 
   toSVGViewBox(margin = 1) {
-    return viewbox(this.boundingBox, margin);
+    return viewbox(this.boundingBox, margin)
   }
 
   toSVGPaths() {
-    return this.blueprints.flatMap((bp) => bp.toSVGPaths());
+    return this.blueprints.flatMap((bp) => bp.toSVGPaths())
   }
 
   toSVGGroup() {
-    return `<g>${this.blueprints.map((b) => b.toSVGPath()).join("")}</g>`;
+    return `<g>${this.blueprints.map((b) => b.toSVGPath()).join('')}</g>`
   }
 
   toSVG(margin = 1) {
-    return asSVG(this.toSVGGroup(), this.boundingBox, margin);
+    return asSVG(this.toSVGGroup(), this.boundingBox, margin)
   }
 }

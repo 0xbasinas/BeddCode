@@ -77,7 +77,10 @@ describe('CAD tools', () => {
       params: { distance: 8 },
     })
     expect(feature.json).toMatchObject({ type: 'extrude', historyIndex: 1 })
-    const second = run('cad_add_feature', { type: 'box', params: { width: 4, depth: 4, height: 4 } })
+    const second = run('cad_add_feature', {
+      type: 'box',
+      params: { width: 4, depth: 4, height: 4 },
+    })
     const docId = feature.json.document as string
     store.mutate(docId, (doc) => {
       doc.historyIndex = 1
@@ -90,7 +93,11 @@ describe('CAD tools', () => {
     const tree = run('cad_get_tree', { document: docId }).json
     expect(tree.features.map((f: { type: string }) => f.type)).toEqual(['extrude', 'fillet'])
     expect(tree.historyIndex).toBe(2)
-    expect(tree.features[0]).toMatchObject({ name: 'Pad', active: true, sketchId: sketch.json.sketch })
+    expect(tree.features[0]).toMatchObject({
+      name: 'Pad',
+      active: true,
+      sketchId: sketch.json.sketch,
+    })
     expect(second.json.feature).not.toBe(third.json.feature)
 
     expect(
@@ -107,11 +114,13 @@ describe('CAD tools', () => {
     expect(run('cad_edit_feature', { id: feature.json.feature, type: 'box' }).text).toMatch(
       /cannot be changed/,
     )
-    expect(run('cad_delete_feature', { id: third.json.feature }).json.removed).toBe(third.json.feature)
-    expect(run('cad_get_tree').json.historyIndex).toBe(1)
-    expect(changes.some((c) => c.origin === 'agent' && c.touched?.includes(feature.json.feature))).toBe(
-      true,
+    expect(run('cad_delete_feature', { id: third.json.feature }).json.removed).toBe(
+      third.json.feature,
     )
+    expect(run('cad_get_tree').json.historyIndex).toBe(1)
+    expect(
+      changes.some((c) => c.origin === 'agent' && c.touched?.includes(feature.json.feature)),
+    ).toBe(true)
   })
 
   it('merges document parameters and drops a null key', () => {
@@ -151,9 +160,15 @@ describe('CAD tools', () => {
     const sent: ServerFrame[] = []
     const client = link.connect((f) => sent.push(f))
     client.frame({ t: 'cad.view', canRender: true })
-    const pending = tools.callAsync('cad_add_feature', { type: 'cylinder', params: { radius: 2, height: 5 } })
+    const pending = tools.callAsync('cad_add_feature', {
+      type: 'cylinder',
+      params: { radius: 2, height: 5 },
+    })
     await new Promise((r) => setTimeout(r, 0))
-    const asked = sent.find((f) => f.t === 'cad.rebuild') as Extract<ServerFrame, { t: 'cad.rebuild' }>
+    const asked = sent.find((f) => f.t === 'cad.rebuild') as Extract<
+      ServerFrame,
+      { t: 'cad.rebuild' }
+    >
     expect(asked.documentId).toBeTruthy()
     client.frame({ t: 'cad.rebuilt', id: asked.id })
     const result = await pending
@@ -175,7 +190,10 @@ describe('CAD tools', () => {
 
     const shot = tools.callAsync('cad_screenshot', { scale: 5 })
     await new Promise((r) => setTimeout(r, 0))
-    const render = sent.find((f) => f.t === 'cad.render') as Extract<ServerFrame, { t: 'cad.render' }>
+    const render = sent.find((f) => f.t === 'cad.render') as Extract<
+      ServerFrame,
+      { t: 'cad.render' }
+    >
     expect(render.scale).toBe(2)
     client.frame({
       t: 'cad.rendered',
@@ -219,7 +237,10 @@ describe('CAD tools', () => {
       data: 'ISO-10303-21;',
     })
     await new Promise((r) => setTimeout(r, 0))
-    const asked = sent.find((f) => f.t === 'cad.import') as Extract<ServerFrame, { t: 'cad.import' }>
+    const asked = sent.find((f) => f.t === 'cad.import') as Extract<
+      ServerFrame,
+      { t: 'cad.import' }
+    >
     expect(asked.format).toBe('step')
     client.frame({
       t: 'cad.imported',

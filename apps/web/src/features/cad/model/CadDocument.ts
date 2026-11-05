@@ -179,4 +179,3 @@ export type FeatureDraft = Omit<CadFeature, 'id' | 'name' | 'suppressed'> & {
   suppressed?: boolean
 }
 export type FeatureParamsOf<_K extends FeatureKind> = Record<string, ParamValue>
-

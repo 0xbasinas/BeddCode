@@ -6,7 +6,8 @@ type QueriedFrame = Extract<ClientFrame, { t: 'cad.queried' }>
 type ImportedFrame = Extract<ClientFrame, { t: 'cad.imported' }>
 type ExportedFrame = Extract<ClientFrame, { t: 'cad.exported' }>
 type RebuiltFrame = Extract<ClientFrame, { t: 'cad.rebuilt' }>
-type InFrame = ViewFrame | RenderedFrame | QueriedFrame | ImportedFrame | ExportedFrame | RebuiltFrame
+type InFrame =
+  ViewFrame | RenderedFrame | QueriedFrame | ImportedFrame | ExportedFrame | RebuiltFrame
 
 export interface CadView {
   documentId?: string
@@ -17,8 +18,7 @@ export type RenderResult =
   { ok: true; image: { data: string; mime: string } } | { ok: false; error: string }
 export type QueryResult = { ok: true; geometry: unknown } | { ok: false; error: string }
 export type ImportResult =
-  | { ok: true; features: unknown[]; sketches: unknown[] }
-  | { ok: false; error: string }
+  { ok: true; features: unknown[]; sketches: unknown[] } | { ok: false; error: string }
 export type ExportResult =
   | { ok: true; file: { data: string; mime: string; filename?: string } }
   | { ok: false; error: string }

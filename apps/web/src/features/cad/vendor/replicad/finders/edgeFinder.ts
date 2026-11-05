@@ -2,11 +2,11 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Direction, Point, Plane, PlaneName, Vector } from "../geom";
-import { makePlane } from "../geomHelpers";
-import { Face, AnyShape, Edge, CurveType } from "../shapes";
-import { PLANE_TO_DIR, StandardPlane } from "./definitions";
-import { Finder3d } from "./generic3dfinder";
+import { Direction, Point, Plane, PlaneName, Vector } from '../geom'
+import { makePlane } from '../geomHelpers'
+import { Face, AnyShape, Edge, CurveType } from '../shapes'
+import { PLANE_TO_DIR, StandardPlane } from './definitions'
+import { Finder3d } from './generic3dfinder'
 
 /**
  * With an EdgeFinder you can apply a set of filters to find specific edges
@@ -16,9 +16,9 @@ import { Finder3d } from "./generic3dfinder";
  */
 export class EdgeFinder extends Finder3d<Edge> {
   clone(): EdgeFinder {
-    const ef = new EdgeFinder();
-    ef.filters = [...this.filters];
-    return ef;
+    const ef = new EdgeFinder()
+    ef.filters = [...this.filters]
+    return ef
   }
 
   /**
@@ -27,7 +27,7 @@ export class EdgeFinder extends Finder3d<Edge> {
    * @category Filter
    */
   inDirection(direction: Direction): this {
-    return this.atAngleWith(direction, 0);
+    return this.atAngleWith(direction, 0)
   }
 
   /**
@@ -37,12 +37,11 @@ export class EdgeFinder extends Finder3d<Edge> {
    */
   ofLength(length: number | ((l: number) => boolean)): this {
     const check = ({ element }: { element: Edge }) => {
-      if (typeof length === "number")
-        return Math.abs(element.length - length) < 1e-9;
-      return length(element.length);
-    };
-    this.filters.push(check);
-    return this;
+      if (typeof length === 'number') return Math.abs(element.length - length) < 1e-9
+      return length(element.length)
+    }
+    this.filters.push(check)
+    return this
   }
 
   /**
@@ -52,10 +51,10 @@ export class EdgeFinder extends Finder3d<Edge> {
    */
   ofCurveType(curveType: CurveType): this {
     const check = ({ element }: { element: Edge }) => {
-      return element.geomType === curveType;
-    };
-    this.filters.push(check);
-    return this;
+      return element.geomType === curveType
+    }
+    this.filters.push(check)
+    return this
   }
 
   /**
@@ -67,16 +66,15 @@ export class EdgeFinder extends Finder3d<Edge> {
    * @category Filter
    */
   parallelTo(plane: Plane | StandardPlane | Face): this {
-    if (typeof plane === "string" && PLANE_TO_DIR[plane])
-      return this.atAngleWith(PLANE_TO_DIR[plane], 90);
-    if (typeof plane !== "string" && plane instanceof Plane)
-      return this.atAngleWith(plane.zDir, 90);
-    if (typeof plane !== "string" && plane.normalAt) {
-      const normal = plane.normalAt();
-      this.atAngleWith(normal, 90);
-      return this;
+    if (typeof plane === 'string' && PLANE_TO_DIR[plane])
+      return this.atAngleWith(PLANE_TO_DIR[plane], 90)
+    if (typeof plane !== 'string' && plane instanceof Plane) return this.atAngleWith(plane.zDir, 90)
+    if (typeof plane !== 'string' && plane.normalAt) {
+      const normal = plane.normalAt()
+      this.atAngleWith(normal, 90)
+      return this
     }
-    return this;
+    return this
   }
 
   /**
@@ -89,41 +87,39 @@ export class EdgeFinder extends Finder3d<Edge> {
    */
   inPlane(inputPlane: PlaneName | Plane, origin?: Point | number): this {
     const plane =
-      inputPlane instanceof Plane
-        ? makePlane(inputPlane)
-        : makePlane(inputPlane, origin);
+      inputPlane instanceof Plane ? makePlane(inputPlane) : makePlane(inputPlane, origin)
 
-    this.parallelTo(plane);
+    this.parallelTo(plane)
 
     const firstPointInPlane = ({ element }: { element: Edge }) => {
-      const point = element.startPoint;
-      const projectedPoint = point.projectToPlane(plane);
+      const point = element.startPoint
+      const projectedPoint = point.projectToPlane(plane)
 
-      const isSamePoint = point.equals(projectedPoint);
+      const isSamePoint = point.equals(projectedPoint)
 
-      return isSamePoint;
-    };
+      return isSamePoint
+    }
 
-    this.filters.push(firstPointInPlane);
-    return this;
+    this.filters.push(firstPointInPlane)
+    return this
   }
 
   shouldKeep(element: Edge): boolean {
-    let normal: Vector | null = null;
+    let normal: Vector | null = null
 
     try {
-      normal = element.tangentAt().normalized();
+      normal = element.tangentAt().normalized()
     } catch (error) {
-      console.error("failed to compute a normal", error);
+      console.error('failed to compute a normal', error)
     }
 
-    return this.filters.every((filter) => filter({ normal, element }));
+    return this.filters.every((filter) => filter({ normal, element }))
   }
 
   protected applyFilter(shape: AnyShape): Edge[] {
     return shape.edges.filter((edge: Edge) => {
-      const shouldKeep = this.shouldKeep(edge);
-      return shouldKeep;
-    });
+      const shouldKeep = this.shouldKeep(edge)
+      return shouldKeep
+    })
   }
 }

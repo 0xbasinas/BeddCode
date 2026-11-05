@@ -2,14 +2,14 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Geom2dAPI_PointsToBSpline } from "replicad-opencascadejs";
-import { getOC } from "../oclib.js";
-import { GCWithScope, localGC } from "../register.js";
+import { Geom2dAPI_PointsToBSpline } from 'replicad-opencascadejs'
+import { getOC } from '../oclib.js'
+import { GCWithScope, localGC } from '../register.js'
 
-import { Point2D } from "./definitions.js";
-import { axis2d, pnt, vec } from "./ocWrapper.js";
+import { Point2D } from './definitions.js'
+import { axis2d, pnt, vec } from './ocWrapper.js'
 
-import { Curve2D } from "./Curve2D";
+import { Curve2D } from './Curve2D'
 import {
   add2d,
   distance2d,
@@ -17,7 +17,7 @@ import {
   samePoint,
   scalarMultiply2d,
   subtract2d,
-} from "./vectorOperations.js";
+} from './vectorOperations.js'
 
 /**
  * Creates a 2D segment curve between two points.
@@ -29,25 +29,20 @@ import {
  *
  * @category Planar curves
  */
-export const make2dSegmentCurve = (
-  startPoint: Point2D,
-  endPoint: Point2D
-): Curve2D => {
-  const oc = getOC();
-  const [r, gc] = localGC();
+export const make2dSegmentCurve = (startPoint: Point2D, endPoint: Point2D): Curve2D => {
+  const oc = getOC()
+  const [r, gc] = localGC()
 
-  const segment = r(
-    new oc.GC_MakeSegment2d(r(pnt(startPoint)), r(pnt(endPoint)))
-  ).Value();
-  const curve = new Curve2D(segment);
+  const segment = r(new oc.GC_MakeSegment2d(r(pnt(startPoint)), r(pnt(endPoint)))).Value()
+  const curve = new Curve2D(segment)
 
   if (!samePoint(curve.firstPoint, startPoint)) {
-    curve.reverse();
+    curve.reverse()
   }
 
-  gc();
-  return curve;
-};
+  gc()
+  return curve
+}
 
 /**
  * Creates a 2D arc curve defined by three points.
@@ -63,31 +58,22 @@ export const make2dSegmentCurve = (
 export const make2dThreePointArc = (
   startPoint: Point2D,
   midPoint: Point2D,
-  endPoint: Point2D
+  endPoint: Point2D,
 ): Curve2D => {
-  const oc = getOC();
-  const [r, gc] = localGC();
+  const oc = getOC()
+  const [r, gc] = localGC()
 
   const segment = r(
-    new oc.GC_MakeArcOfCircle2d(
-      r(pnt(startPoint)),
-      r(pnt(midPoint)),
-      r(pnt(endPoint))
-    )
-  ).Value();
+    new oc.GC_MakeArcOfCircle2d(r(pnt(startPoint)), r(pnt(midPoint)), r(pnt(endPoint))),
+  ).Value()
 
-  const firstPoint = r(segment.Value(segment.FirstParameter()));
+  const firstPoint = r(segment.Value(segment.FirstParameter()))
   if (!samePoint([firstPoint.X(), firstPoint.Y()], startPoint)) {
-    segment.SetTrim(
-      segment.LastParameter(),
-      segment.FirstParameter(),
-      true,
-      true
-    );
+    segment.SetTrim(segment.LastParameter(), segment.FirstParameter(), true, true)
   }
-  gc();
-  return new Curve2D(segment);
-};
+  gc()
+  return new Curve2D(segment)
+}
 
 /**
  * Creates a 2D tangent arc curve defined by three points.
@@ -103,31 +89,22 @@ export const make2dThreePointArc = (
 export const make2dTangentArc = (
   startPoint: Point2D,
   tangent: Point2D,
-  endPoint: Point2D
+  endPoint: Point2D,
 ): Curve2D => {
-  const oc = getOC();
-  const [r, gc] = localGC();
+  const oc = getOC()
+  const [r, gc] = localGC()
 
   const segment = r(
-    new oc.GC_MakeArcOfCircle2d(
-      r(pnt(startPoint)),
-      r(vec(tangent)),
-      r(pnt(endPoint))
-    )
-  ).Value();
+    new oc.GC_MakeArcOfCircle2d(r(pnt(startPoint)), r(vec(tangent)), r(pnt(endPoint))),
+  ).Value()
 
-  const firstPoint = r(segment.Value(segment.FirstParameter()));
+  const firstPoint = r(segment.Value(segment.FirstParameter()))
   if (!samePoint([firstPoint.X(), firstPoint.Y()], startPoint)) {
-    segment.SetTrim(
-      segment.LastParameter(),
-      segment.FirstParameter(),
-      true,
-      true
-    );
+    segment.SetTrim(segment.LastParameter(), segment.FirstParameter(), true, true)
   }
-  gc();
-  return new Curve2D(segment);
-};
+  gc()
+  return new Curve2D(segment)
+}
 
 /**
  * Creates a 2D circle curve.
@@ -139,20 +116,15 @@ export const make2dTangentArc = (
  *
  * @category Planar curves
  */
-export const make2dCircle = (
-  radius: number,
-  center: Point2D = [0, 0]
-): Curve2D => {
-  const oc = getOC();
-  const [r, gc] = localGC();
+export const make2dCircle = (radius: number, center: Point2D = [0, 0]): Curve2D => {
+  const oc = getOC()
+  const [r, gc] = localGC()
 
-  const segment = r(
-    new oc.GC_MakeCircle2d(r(pnt(center)), radius, true)
-  ).Value();
-  gc();
+  const segment = r(new oc.GC_MakeCircle2d(r(pnt(center)), radius, true)).Value()
+  gc()
 
-  return new Curve2D(segment);
-};
+  return new Curve2D(segment)
+}
 
 /**
  * Creates a 2D ellipse curve.
@@ -172,24 +144,17 @@ export const make2dEllipse = (
   minorRadius: number,
   xDir: Point2D = [1, 0],
   center: Point2D = [0, 0],
-  direct = true
+  direct = true,
 ): Curve2D => {
-  const oc = getOC();
-  const [r, gc] = localGC();
-  const ellipse = r(
-    new oc.gp_Elips2d(
-      r(axis2d(center, xDir)),
-      majorRadius,
-      minorRadius,
-      direct
-    )
-  );
+  const oc = getOC()
+  const [r, gc] = localGC()
+  const ellipse = r(new oc.gp_Elips2d(r(axis2d(center, xDir)), majorRadius, minorRadius, direct))
 
-  const segment = r(new oc.GC_MakeEllipse2d(ellipse)).Value();
-  gc();
+  const segment = r(new oc.GC_MakeEllipse2d(ellipse)).Value()
+  gc()
 
-  return new Curve2D(segment);
-};
+  return new Curve2D(segment)
+}
 
 /**
  * Creates a 2D ellipse arc curve.
@@ -213,21 +178,17 @@ export const make2dEllipseArc = (
   endAngle: number,
   center: Point2D = [0, 0],
   xDir: Point2D,
-  direct = true
+  direct = true,
 ): Curve2D => {
-  const oc = getOC();
-  const [r, gc] = localGC();
-  const ellipse = r(
-    new oc.gp_Elips2d(r(axis2d(center, xDir)), majorRadius, minorRadius, true)
-  );
+  const oc = getOC()
+  const [r, gc] = localGC()
+  const ellipse = r(new oc.gp_Elips2d(r(axis2d(center, xDir)), majorRadius, minorRadius, true))
 
-  const segment = r(
-    new oc.GC_MakeArcOfEllipse2d(ellipse, startAngle, endAngle, direct)
-  ).Value();
-  gc();
+  const segment = r(new oc.GC_MakeArcOfEllipse2d(ellipse, startAngle, endAngle, direct)).Value()
+  gc()
 
-  return new Curve2D(segment);
-};
+  return new Curve2D(segment)
+}
 
 /**
  * Creates a 2D Bezier curve defined by a start point, control points, and an end point.
@@ -243,27 +204,25 @@ export const make2dEllipseArc = (
 export const make2dBezierCurve = (
   startPoint: Point2D,
   controls: Point2D[],
-  endPoint: Point2D
+  endPoint: Point2D,
 ): Curve2D => {
-  const oc = getOC();
-  const [r, gc] = localGC();
+  const oc = getOC()
+  const [r, gc] = localGC()
 
-  const arrayOfPoints = r(
-    new oc.NCollection_Array1_gp_Pnt2d(1, controls.length + 2)
-  );
-  arrayOfPoints.SetValue(1, r(pnt(startPoint)));
+  const arrayOfPoints = r(new oc.NCollection_Array1_gp_Pnt2d(1, controls.length + 2))
+  arrayOfPoints.SetValue(1, r(pnt(startPoint)))
 
   controls.forEach((p, i) => {
-    arrayOfPoints.SetValue(i + 2, r(pnt(p)));
-  });
+    arrayOfPoints.SetValue(i + 2, r(pnt(p)))
+  })
 
-  arrayOfPoints.SetValue(controls.length + 2, r(pnt(endPoint)));
+  arrayOfPoints.SetValue(controls.length + 2, r(pnt(endPoint)))
 
-  const bezCurve = new oc.Geom2d_BezierCurve(arrayOfPoints);
-  gc();
+  const bezCurve = new oc.Geom2d_BezierCurve(arrayOfPoints)
+  gc()
 
-  return new Curve2D(bezCurve);
-};
+  return new Curve2D(bezCurve)
+}
 
 /**
  * Creates a 2D B-spline curve defined by a set of points.
@@ -287,25 +246,25 @@ export function make2dInerpolatedBSplineCurve(
     degMax = 3,
     degMin = 1,
   }: {
-    tolerance?: number;
-    smoothing?: null | [number, number, number];
-    degMax?: number;
-    degMin?: number;
-  } = {}
+    tolerance?: number
+    smoothing?: null | [number, number, number]
+    degMax?: number
+    degMin?: number
+  } = {},
 ) {
-  const r = GCWithScope();
-  const oc = getOC();
+  const r = GCWithScope()
+  const oc = getOC()
 
-  const pnts = r(new oc.NCollection_Array1_gp_Pnt2d(1, points.length));
+  const pnts = r(new oc.NCollection_Array1_gp_Pnt2d(1, points.length))
 
   points.forEach((point, index) => {
-    pnts.SetValue(index + 1, r(pnt(point)));
-  });
+    pnts.SetValue(index + 1, r(pnt(point)))
+  })
 
-  let splineBuilder: Geom2dAPI_PointsToBSpline;
+  let splineBuilder: Geom2dAPI_PointsToBSpline
 
   if (smoothing) {
-    splineBuilder = r(new oc.Geom2dAPI_PointsToBSpline());
+    splineBuilder = r(new oc.Geom2dAPI_PointsToBSpline())
     splineBuilder.Init(
       pnts,
       smoothing[0],
@@ -313,24 +272,18 @@ export function make2dInerpolatedBSplineCurve(
       smoothing[2],
       degMax,
       oc.GeomAbs_Shape.GeomAbs_C2,
-      tolerance
-    );
+      tolerance,
+    )
   } else {
-    splineBuilder = r(new oc.Geom2dAPI_PointsToBSpline());
-    splineBuilder.Init(
-      pnts,
-      degMin,
-      degMax,
-      oc.GeomAbs_Shape.GeomAbs_C2,
-      tolerance
-    );
+    splineBuilder = r(new oc.Geom2dAPI_PointsToBSpline())
+    splineBuilder.Init(pnts, degMin, degMax, oc.GeomAbs_Shape.GeomAbs_C2, tolerance)
   }
 
   if (!splineBuilder.IsDone()) {
-    throw new Error("B-spline approximation failed");
+    throw new Error('B-spline approximation failed')
   }
 
-  return new Curve2D(splineBuilder.Curve());
+  return new Curve2D(splineBuilder.Curve())
 }
 
 // This assumes that both start and end points are at radius distance from the
@@ -339,16 +292,16 @@ export const make2dArcFromCenter = (
   startPoint: Point2D,
   endPoint: Point2D,
   center: Point2D,
-  longArc = false
+  longArc = false,
 ) => {
-  const midChord = scalarMultiply2d(add2d(startPoint, endPoint), 0.5);
-  const orientedRadius = distance2d(center, startPoint) * (longArc ? -1 : 1);
+  const midChord = scalarMultiply2d(add2d(startPoint, endPoint), 0.5)
+  const orientedRadius = distance2d(center, startPoint) * (longArc ? -1 : 1)
 
-  const midChordDir = normalize2d(subtract2d(midChord, center));
+  const midChordDir = normalize2d(subtract2d(midChord, center))
 
   return make2dThreePointArc(
     startPoint,
     add2d(scalarMultiply2d(midChordDir, orientedRadius), center),
-    endPoint
-  );
-};
+    endPoint,
+  )
+}

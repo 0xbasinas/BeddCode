@@ -2,45 +2,45 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { AxisName, Vector } from "../geom";
-import { Face, Edge } from "../shapes";
+import { AxisName, Vector } from '../geom'
+import { Face, Edge } from '../shapes'
 
-export type StandardPlane = "XY" | "XZ" | "YZ";
+export type StandardPlane = 'XY' | 'XZ' | 'YZ'
 export const PLANE_TO_DIR: Record<StandardPlane, AxisName> = {
-  YZ: "X",
-  XZ: "Y",
-  XY: "Z",
-};
+  YZ: 'X',
+  XZ: 'Y',
+  XY: 'Z',
+}
 
-export type FaceOrEdge = Face | Edge;
+export type FaceOrEdge = Face | Edge
 
 export type FilterFcn<Type> = {
-  element: Type;
-  normal: Vector | null;
-};
+  element: Type
+  normal: Vector | null
+}
 
 export type FinderFunction<FinderType, ShapeType> = (
   finder: FinderType,
-  shape: ShapeType
-) => FinderType;
+  shape: ShapeType,
+) => FinderType
 
 export abstract class Finder<Type, FilterType> {
-  protected filters: (({ element, normal }: FilterFcn<Type>) => boolean)[];
+  protected filters: (({ element, normal }: FilterFcn<Type>) => boolean)[]
 
-  protected abstract applyFilter(shape: FilterType): Type[];
+  protected abstract applyFilter(shape: FilterType): Type[]
 
   /**
    * Check if a particular element should be filtered or not according to the
    * current finder
    */
-  abstract shouldKeep(t: Type): boolean;
+  abstract shouldKeep(t: Type): boolean
 
   constructor() {
-    this.filters = [];
+    this.filters = []
   }
 
   delete() {
-    this.filters = [];
+    this.filters = []
   }
 
   /**
@@ -55,8 +55,8 @@ export abstract class Finder<Type, FilterType> {
    * @category Filter Combination
    */
   and(findersList: ((f: this) => this)[]): this {
-    findersList.forEach((f) => f(this));
-    return this;
+    findersList.forEach((f) => f(this))
+    return this
   }
 
   /**
@@ -68,14 +68,13 @@ export abstract class Finder<Type, FilterType> {
    * @category Filter Combination
    */
   not(finderFun: (f: this) => this): this {
-    const finder = new (<any>this.constructor)() as this;
-    finderFun(finder);
+    const finder = new (<any>this.constructor)() as this
+    finderFun(finder)
 
-    const notFilter = ({ element }: { element: Type }) =>
-      !finder.shouldKeep(element);
-    this.filters.push(notFilter);
+    const notFilter = ({ element }: { element: Type }) => !finder.shouldKeep(element)
+    this.filters.push(notFilter)
 
-    return this;
+    return this
   }
 
   /**
@@ -88,16 +87,16 @@ export abstract class Finder<Type, FilterType> {
    */
   either(findersList: ((f: this) => this)[]): this {
     const builtFinders = findersList.map((finderFunction) => {
-      const finder = new (<any>this.constructor)() as this;
-      finderFunction(finder);
-      return finder;
-    });
+      const finder = new (<any>this.constructor)() as this
+      finderFunction(finder)
+      return finder
+    })
 
     const eitherFilter = ({ element }: { element: Type }) =>
-      builtFinders.some((finder) => finder.shouldKeep(element));
-    this.filters.push(eitherFilter);
+      builtFinders.some((finder) => finder.shouldKeep(element))
+    this.filters.push(eitherFilter)
 
-    return this;
+    return this
   }
 
   /**
@@ -107,20 +106,20 @@ export abstract class Finder<Type, FilterType> {
    * If unique is configured as an option it will either return the unique
    * element found or throw an error.
    */
-  find(shape: FilterType, options: { unique: true }): Type;
-  find(shape: FilterType): Type[];
-  find(shape: FilterType, options: { unique?: false }): Type[];
+  find(shape: FilterType, options: { unique: true }): Type
+  find(shape: FilterType): Type[]
+  find(shape: FilterType, options: { unique?: false }): Type[]
   find(shape: FilterType, { unique = false } = {}) {
-    const elements = this.applyFilter(shape);
+    const elements = this.applyFilter(shape)
 
     if (unique) {
       if (elements.length !== 1) {
-        console.error(elements);
-        throw new Error("Finder has not found a unique solution");
+        console.error(elements)
+        throw new Error('Finder has not found a unique solution')
       }
-      return elements[0];
+      return elements[0]
     }
 
-    return elements;
+    return elements
   }
 }

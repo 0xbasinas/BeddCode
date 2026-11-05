@@ -17,12 +17,12 @@
  * ```
  */
 
-export * from "./shapeInput.js";
-export * from "./topology.js";
-export * from "./casting.js";
-export * from "./geometry.js";
-export * from "./faceGeometry.js";
-export * from "./mesh.js";
-export * from "./export.js";
-export * from "./operations.js";
-export * from "./edgeOperations.js";
+export * from './shapeInput.js'
+export * from './topology.js'
+export * from './casting.js'
+export * from './geometry.js'
+export * from './faceGeometry.js'
+export * from './mesh.js'
+export * from './export.js'
+export * from './operations.js'
+export * from './edgeOperations.js'

@@ -2,33 +2,31 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { localGC } from "../register";
-import { ExtrudeUntilOptions } from "./lib";
-import { Point, AxisName } from "../geom.js";
-import { compoundShapes } from "../shapeHelpers.js";
-import { ExtrusionProfile } from "../addThickness.js";
-import { AnyShape, Face, Shape3D } from "../shapes.js";
+import { localGC } from '../register'
+import { ExtrudeUntilOptions } from './lib'
+import { Point, AxisName } from '../geom.js'
+import { compoundShapes } from '../shapeHelpers.js'
+import { ExtrusionProfile } from '../addThickness.js'
+import { AnyShape, Face, Shape3D } from '../shapes.js'
 
-import CompoundSketch from "./CompoundSketch";
-import Sketch from "./Sketch";
+import CompoundSketch from './CompoundSketch'
+import Sketch from './Sketch'
 
 export default class Sketches {
-  sketches: Array<Sketch | CompoundSketch>;
+  sketches: Array<Sketch | CompoundSketch>
 
   constructor(sketches: Array<Sketch | CompoundSketch>) {
-    this.sketches = sketches;
+    this.sketches = sketches
   }
 
   wires(): AnyShape {
-    const wires = this.sketches.map((s) =>
-      s instanceof Sketch ? s.wire : s.wires
-    );
-    return compoundShapes(wires);
+    const wires = this.sketches.map((s) => (s instanceof Sketch ? s.wire : s.wires))
+    return compoundShapes(wires)
   }
 
   faces(): AnyShape {
-    const faces = this.sketches.map((s) => s.face());
-    return compoundShapes(faces);
+    const faces = this.sketches.map((s) => s.face())
+    return compoundShapes(faces)
   }
 
   /**
@@ -36,18 +34,15 @@ export default class Sketches {
    * extrusions. The face is not consumed. Each sketch uses its default
    * direction unless overridden and is consumed when its extrusion succeeds.
    */
-  extrudeUntil(
-    limitingFace: Face,
-    extrusionConfig: ExtrudeUntilOptions = {}
-  ): Shape3D {
-    const [r, gc] = localGC();
+  extrudeUntil(limitingFace: Face, extrusionConfig: ExtrudeUntilOptions = {}): Shape3D {
+    const [r, gc] = localGC()
     try {
       const solids = this.sketches.map((sketch) =>
-        r(sketch.extrudeUntil(limitingFace, extrusionConfig))
-      );
-      return compoundShapes(solids).asShape3D();
+        r(sketch.extrudeUntil(limitingFace, extrusionConfig)),
+      )
+      return compoundShapes(solids).asShape3D()
     } finally {
-      gc();
+      gc()
     }
   }
 
@@ -64,17 +59,15 @@ export default class Sketches {
   extrude(
     extrusionDistance: number,
     extrusionConfig: {
-      extrusionDirection?: Point;
-      extrusionProfile?: ExtrusionProfile;
-      twistAngle?: number;
-      origin?: Point;
-    } = {}
+      extrusionDirection?: Point
+      extrusionProfile?: ExtrusionProfile
+      twistAngle?: number
+      origin?: Point
+    } = {},
   ): AnyShape {
-    const extruded = this.sketches.map((s) =>
-      s.extrude(extrusionDistance, extrusionConfig)
-    );
+    const extruded = this.sketches.map((s) => s.extrude(extrusionDistance, extrusionConfig))
 
-    return compoundShapes(extruded);
+    return compoundShapes(extruded)
   }
 
   /**
@@ -83,10 +76,8 @@ export default class Sketches {
    */
   revolve(
     revolutionAxis?: Point | AxisName,
-    config?: { origin?: Point; angle?: number }
+    config?: { origin?: Point; angle?: number },
   ): AnyShape {
-    return compoundShapes(
-      this.sketches.map((s) => s.revolve(revolutionAxis, config))
-    );
+    return compoundShapes(this.sketches.map((s) => s.revolve(revolutionAxis, config)))
   }
 }

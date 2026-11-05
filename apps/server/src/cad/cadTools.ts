@@ -181,7 +181,10 @@ export const CAD_TOOL_DEFINITIONS = [
       type: 'object',
       properties: {
         document: documentId,
-        feature: { type: 'string', description: 'Feature id to draw alone. The whole model if omitted.' },
+        feature: {
+          type: 'string',
+          description: 'Feature id to draw alone. The whole model if omitted.',
+        },
         scale: { type: 'number', description: 'Pixel scale, 0.25 to 2 (default 1).' },
       },
     },
@@ -345,8 +348,7 @@ export class CadTools {
     const given = typeof args.document === 'string' ? args.document : undefined
     const id = (() => {
       if (given) {
-        if (!this.documents.get(given))
-          throw new Error(`No CAD document ${given}. See cad_list.`)
+        if (!this.documents.get(given)) throw new Error(`No CAD document ${given}. See cad_list.`)
         return given
       }
       return this.documents.list()[0]?.id ?? this.documents.create('Untitled', 'agent').id
@@ -409,7 +411,8 @@ export class CadTools {
   }
 
   private async screenshot(args: Args): Promise<CadMcpResult> {
-    if (!this.link) return fail(`${NEEDS_CAD_PANE} Pictures of CAD models are not available on this host.`)
+    if (!this.link)
+      return fail(`${NEEDS_CAD_PANE} Pictures of CAD models are not available on this host.`)
     const id = this.resolve(args)
     const doc = this.documents.get(id)!
     const featureId = typeof args.feature === 'string' ? args.feature : undefined
@@ -435,7 +438,8 @@ export class CadTools {
     const featureId = typeof args.feature === 'string' ? args.feature : undefined
     if (featureId && !this.featureOf(doc, featureId)) throw new Error(`No feature ${featureId}`)
     const what = typeof args.what === 'string' && args.what ? args.what : 'bbox'
-    if (!QUERY_KINDS.has(what)) throw new Error(`Unknown measurement ${what}. Use bbox, volume, area, or center.`)
+    if (!QUERY_KINDS.has(what))
+      throw new Error(`Unknown measurement ${what}. Use bbox, volume, area, or center.`)
     const result = await this.link.query({ documentId: id, document: doc, featureId, what })
     if (!result.ok) return fail(result.error)
     return ok({ document: id, feature: featureId, what, geometry: result.geometry })
@@ -445,8 +449,7 @@ export class CadTools {
     if (!this.link) return fail(NEEDS_CAD_PANE)
     const id = this.resolve(args)
     const format = typeof args.format === 'string' ? args.format.trim().toLowerCase() : ''
-    if (!IMPORT_FORMATS.has(format))
-      throw new Error('format must be step, stp, stl, iges, or igs')
+    if (!IMPORT_FORMATS.has(format)) throw new Error('format must be step, stp, stl, iges, or igs')
     const data = typeof args.data === 'string' ? args.data : ''
     if (!data.trim()) throw new Error('data must be the file text or base64')
     if (data.length > MAX_IMPORT) throw new Error('Import data is too large')
@@ -572,7 +575,12 @@ export class CadTools {
           'agent',
           [made.id],
         )
-        return { document: id, feature: made.id, type: made.type, historyIndex: this.documents.get(id)!.historyIndex }
+        return {
+          document: id,
+          feature: made.id,
+          type: made.type,
+          historyIndex: this.documents.get(id)!.historyIndex,
+        }
       }
       case 'cad_edit_feature': {
         const id = this.resolve(args)

@@ -2,16 +2,16 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Blueprint } from "../blueprints";
-import { DEG2RAD } from "../constants";
-import { angle2d, Curve2D, distance2d, Point2D, samePoint } from "../lib2d";
-import { Finder } from "./definitions";
+import { Blueprint } from '../blueprints'
+import { DEG2RAD } from '../constants'
+import { angle2d, Curve2D, distance2d, Point2D, samePoint } from '../lib2d'
+import { Finder } from './definitions'
 
 export type Corner = {
-  firstCurve: Curve2D;
-  secondCurve: Curve2D;
-  point: Point2D;
-};
+  firstCurve: Curve2D
+  secondCurve: Curve2D
+  point: Point2D
+}
 
 const blueprintCorners = function (blueprint: Blueprint): Corner[] {
   return blueprint.curves.map((curve, index) => {
@@ -19,25 +19,25 @@ const blueprintCorners = function (blueprint: Blueprint): Corner[] {
       firstCurve: curve,
       secondCurve: blueprint.curves[(index + 1) % blueprint.curves.length],
       point: curve.lastPoint,
-    };
-  });
-};
+    }
+  })
+}
 
-const PI_2 = 2 * Math.PI;
+const PI_2 = 2 * Math.PI
 const positiveHalfAngle = (angle: number) => {
-  const limitedAngle = angle % PI_2;
+  const limitedAngle = angle % PI_2
 
-  const coterminalAngle = limitedAngle < 0 ? limitedAngle + PI_2 : limitedAngle;
-  if (coterminalAngle < Math.PI) return coterminalAngle;
-  if (coterminalAngle === Math.PI) return 0;
-  return Math.abs(coterminalAngle - PI_2);
-};
+  const coterminalAngle = limitedAngle < 0 ? limitedAngle + PI_2 : limitedAngle
+  if (coterminalAngle < Math.PI) return coterminalAngle
+  if (coterminalAngle === Math.PI) return 0
+  return Math.abs(coterminalAngle - PI_2)
+}
 
 export class CornerFinder extends Finder<Corner, Blueprint> {
   clone(): CornerFinder {
-    const ef = new CornerFinder();
-    ef.filters = [...this.filters];
-    return ef;
+    const ef = new CornerFinder()
+    ef.filters = [...this.filters]
+    return ef
   }
 
   /**
@@ -47,10 +47,10 @@ export class CornerFinder extends Finder<Corner, Blueprint> {
    */
   inList(elementList: Point2D[]): this {
     const elementInList = ({ element }: { element: Corner }) => {
-      return !!elementList.find((e) => samePoint(e, element.point));
-    };
-    this.filters.push(elementInList);
-    return this;
+      return !!elementList.find((e) => samePoint(e, element.point))
+    }
+    this.filters.push(elementInList)
+    return this
   }
 
   /**
@@ -60,10 +60,10 @@ export class CornerFinder extends Finder<Corner, Blueprint> {
    */
   atDistance(distance: number, point: Point2D = [0, 0]): this {
     function elementAtDistance({ element }: { element: Corner }) {
-      return Math.abs(distance2d(point, element.point) - distance) < 1e-9;
+      return Math.abs(distance2d(point, element.point) - distance) < 1e-9
     }
-    this.filters.push(elementAtDistance);
-    return this;
+    this.filters.push(elementAtDistance)
+    return this
   }
 
   /**
@@ -73,10 +73,10 @@ export class CornerFinder extends Finder<Corner, Blueprint> {
    */
   atPoint(point: Point2D): this {
     function elementAtPoint({ element }: { element: Corner }) {
-      return samePoint(point, element.point);
+      return samePoint(point, element.point)
     }
-    this.filters.push(elementAtPoint);
-    return this;
+    this.filters.push(elementAtPoint)
+    return this
   }
 
   /**
@@ -85,21 +85,21 @@ export class CornerFinder extends Finder<Corner, Blueprint> {
    * @category Filter
    */
   inBox(corner1: Point2D, corner2: Point2D) {
-    const [x1, y1] = corner1;
-    const [x2, y2] = corner2;
+    const [x1, y1] = corner1
+    const [x2, y2] = corner2
 
-    const minX = Math.min(x1, x2);
-    const maxX = Math.max(x1, x2);
+    const minX = Math.min(x1, x2)
+    const maxX = Math.max(x1, x2)
 
-    const minY = Math.min(y1, y2);
-    const maxY = Math.max(y1, y2);
+    const minY = Math.min(y1, y2)
+    const maxY = Math.max(y1, y2)
 
     function elementInBox({ element }: { element: Corner }) {
-      const [x, y] = element.point;
-      return x >= minX && x <= maxX && y >= minY && y <= maxY;
+      const [x, y] = element.point
+      return x >= minX && x <= maxX && y >= minY && y <= maxY
     }
-    this.filters.push(elementInBox);
-    return this;
+    this.filters.push(elementInBox)
+    return this
   }
 
   /**
@@ -110,32 +110,27 @@ export class CornerFinder extends Finder<Corner, Blueprint> {
    */
   ofAngle(angle: number) {
     function elementOfAngle({ element }: { element: Corner }) {
-      const tgt1 = element.firstCurve.tangentAt(1);
-      const tgt2 = element.secondCurve.tangentAt(0);
+      const tgt1 = element.firstCurve.tangentAt(1)
+      const tgt2 = element.secondCurve.tangentAt(0)
 
       return (
-        Math.abs(
-          positiveHalfAngle(angle2d(tgt1, tgt2)) -
-            positiveHalfAngle(DEG2RAD * angle)
-        ) < 1e-9
-      );
+        Math.abs(positiveHalfAngle(angle2d(tgt1, tgt2)) - positiveHalfAngle(DEG2RAD * angle)) < 1e-9
+      )
     }
 
-    this.filters.push(elementOfAngle);
-    return this;
+    this.filters.push(elementOfAngle)
+    return this
   }
 
   shouldKeep(element: Corner): boolean {
-    const shouldKeep = this.filters.every((filter) =>
-      filter({ normal: null, element })
-    );
-    return shouldKeep;
+    const shouldKeep = this.filters.every((filter) => filter({ normal: null, element }))
+    return shouldKeep
   }
 
   protected applyFilter(blueprint: Blueprint): Corner[] {
     return blueprintCorners(blueprint).filter((corner: Corner) => {
-      const shouldKeep = this.shouldKeep(corner);
-      return shouldKeep;
-    });
+      const shouldKeep = this.shouldKeep(corner)
+      return shouldKeep
+    })
   }
 }

@@ -57,8 +57,7 @@ export function suppressFeature(doc: CadDocument, id: string, suppressed = true)
 export function deleteFeature(doc: CadDocument, id: string): CadDocument {
   requireFeature(doc, id)
   const features = doc.features.filter((feature) => feature.id !== id)
-  const historyIndex =
-    features.length === 0 ? -1 : Math.min(doc.historyIndex, features.length - 1)
+  const historyIndex = features.length === 0 ? -1 : Math.min(doc.historyIndex, features.length - 1)
   return touch(doc, { features, historyIndex })
 }
 

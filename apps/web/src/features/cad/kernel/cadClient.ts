@@ -30,7 +30,10 @@ export function createCadClient(): GeometryKernel {
   let nextId = 1
   let dead = false
   let ready: Promise<void> | null = null
-  const pending = new Map<number, { resolve: (response: CadResponse & { ok: true }) => void; reject: (error: Error) => void }>()
+  const pending = new Map<
+    number,
+    { resolve: (response: CadResponse & { ok: true }) => void; reject: (error: Error) => void }
+  >()
 
   const failAll = (error: Error) => {
     for (const waiter of pending.values()) waiter.reject(error)
@@ -47,7 +50,10 @@ export function createCadClient(): GeometryKernel {
   }
   worker.onerror = () => failAll(new Error('cad worker failed'))
 
-  function send(request: RequestBody, transfer: ArrayBuffer[] = []): Promise<CadResponse & { ok: true }> {
+  function send(
+    request: RequestBody,
+    transfer: ArrayBuffer[] = [],
+  ): Promise<CadResponse & { ok: true }> {
     if (dead) return Promise.reject(new Error('kernel disposed'))
     const id = nextId++
     const message = { ...request, id } as CadRequest
@@ -117,7 +123,10 @@ export function createCadClient(): GeometryKernel {
     },
     async rebuild(document: FeatureDocument, files: Readonly<Record<string, Uint8Array>> = {}) {
       await client.init()
-      const payload = Object.entries(files).map(([id, bytes]) => ({ id, bytes: exactBuffer(copyBytes(bytes)) }))
+      const payload = Object.entries(files).map(([id, bytes]) => ({
+        id,
+        bytes: exactBuffer(copyBytes(bytes)),
+      }))
       const response = await send(
         { kind: 'rebuild', document, files: payload.map(({ id, bytes }) => ({ id, bytes })) },
         payload.map((file) => file.bytes),

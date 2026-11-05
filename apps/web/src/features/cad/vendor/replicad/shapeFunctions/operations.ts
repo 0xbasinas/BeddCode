@@ -7,25 +7,18 @@ import type {
   TopoDS_Face,
   TopoDS_Shape,
   TopoDS_Solid,
-} from "replicad-opencascadejs";
+} from 'replicad-opencascadejs'
 
-import { DEG2RAD } from "../constants.js";
-import {
-  asDir,
-  asPnt,
-  makePln,
-  type Plane,
-  type PlaneName,
-  type SimplePoint,
-} from "../geom.js";
-import { makePlane } from "../geomHelpers.js";
-import { getOC } from "../oclib.js";
-import { GCWithScope } from "../register.js";
-import { unwrapShape, type ShapeInput } from "./shapeInput.js";
-import { iterTopo } from "./topology.js";
+import { DEG2RAD } from '../constants.js'
+import { asDir, asPnt, makePln, type Plane, type PlaneName, type SimplePoint } from '../geom.js'
+import { makePlane } from '../geomHelpers.js'
+import { getOC } from '../oclib.js'
+import { GCWithScope } from '../register.js'
+import { unwrapShape, type ShapeInput } from './shapeInput.js'
+import { iterTopo } from './topology.js'
 
 export interface BooleanOperationOptions {
-  optimisation?: "none" | "commonFace" | "sameFace";
+  optimisation?: 'none' | 'commonFace' | 'sameFace'
   /**
    * Merge same-domain faces and edges after the Boolean operation.
    * This cleans up topology; it does not simplify a mesh. Set to `false` to
@@ -33,102 +26,96 @@ export interface BooleanOperationOptions {
    *
    * @default true
    */
-  simplify?: boolean;
+  simplify?: boolean
 }
 
 export interface ShellOptions {
-  faces: Iterable<ShapeInput<TopoDS_Face>>;
-  thickness: number;
-  tolerance?: number;
+  faces: Iterable<ShapeInput<TopoDS_Face>>
+  thickness: number
+  tolerance?: number
 }
 
 export interface DraftOptions {
-  faces: Iterable<ShapeInput<TopoDS_Face>>;
-  angle: number;
-  neutralPlane?: Plane | PlaneName;
+  faces: Iterable<ShapeInput<TopoDS_Face>>
+  angle: number
+  neutralPlane?: Plane | PlaneName
 }
 
-export type PlaneSide = "positive" | "negative";
+export type PlaneSide = 'positive' | 'negative'
 
 /** Pieces grouped by their position relative to an oriented plane. */
 export interface PlaneSplitResult<T> {
-  positive: T | null;
-  negative: T | null;
-  on: T | null;
+  positive: T | null
+  negative: T | null
+  on: T | null
 }
 
 const configureGlue = (
   builder: {
-    SetGlue(value: any): void;
+    SetGlue(value: any): void
   },
-  optimisation: BooleanOperationOptions["optimisation"]
+  optimisation: BooleanOperationOptions['optimisation'],
 ): void => {
-  const oc = getOC();
-  if (optimisation === "commonFace") {
-    builder.SetGlue(oc.BOPAlgo_GlueEnum.BOPAlgo_GlueShift);
+  const oc = getOC()
+  if (optimisation === 'commonFace') {
+    builder.SetGlue(oc.BOPAlgo_GlueEnum.BOPAlgo_GlueShift)
   }
-  if (optimisation === "sameFace") {
-    builder.SetGlue(oc.BOPAlgo_GlueEnum.BOPAlgo_GlueFull);
+  if (optimisation === 'sameFace') {
+    builder.SetGlue(oc.BOPAlgo_GlueEnum.BOPAlgo_GlueFull)
   }
-};
+}
 
 /** Builds a raw shape by fusing two shapes. */
 export function fuseShapes(
   leftInput: ShapeInput,
   rightInput: ShapeInput,
-  { optimisation = "none", simplify = true }: BooleanOperationOptions = {}
+  { optimisation = 'none', simplify = true }: BooleanOperationOptions = {},
 ): TopoDS_Shape {
-  const oc = getOC();
-  const r = GCWithScope();
-  const builder = r(
-    new oc.BRepAlgoAPI_Fuse(unwrapShape(leftInput), unwrapShape(rightInput))
-  );
+  const oc = getOC()
+  const r = GCWithScope()
+  const builder = r(new oc.BRepAlgoAPI_Fuse(unwrapShape(leftInput), unwrapShape(rightInput)))
 
-  configureGlue(builder, optimisation);
-  builder.Build();
-  if (simplify) builder.SimplifyResult(true, true, 1e-3);
-  return builder.Shape();
+  configureGlue(builder, optimisation)
+  builder.Build()
+  if (simplify) builder.SimplifyResult(true, true, 1e-3)
+  return builder.Shape()
 }
 
 /** Builds a raw shape by cutting a tool shape from another shape. */
 export function cutShape(
   shapeInput: ShapeInput,
   toolInput: ShapeInput,
-  { optimisation = "none", simplify = true }: BooleanOperationOptions = {}
+  { optimisation = 'none', simplify = true }: BooleanOperationOptions = {},
 ): TopoDS_Shape {
-  const oc = getOC();
-  const r = GCWithScope();
-  const builder = r(
-    new oc.BRepAlgoAPI_Cut(unwrapShape(shapeInput), unwrapShape(toolInput))
-  );
+  const oc = getOC()
+  const r = GCWithScope()
+  const builder = r(new oc.BRepAlgoAPI_Cut(unwrapShape(shapeInput), unwrapShape(toolInput)))
 
-  configureGlue(builder, optimisation);
-  builder.Build();
-  if (simplify) builder.SimplifyResult(true, true, 1e-3);
-  return builder.Shape();
+  configureGlue(builder, optimisation)
+  builder.Build()
+  if (simplify) builder.SimplifyResult(true, true, 1e-3)
+  return builder.Shape()
 }
 
 /** Builds a raw shape containing the intersection of two shapes. */
 export function intersectShapes(
   leftInput: ShapeInput,
   rightInput: ShapeInput,
-  { simplify = true }: Pick<BooleanOperationOptions, "simplify"> = {}
+  { simplify = true }: Pick<BooleanOperationOptions, 'simplify'> = {},
 ): TopoDS_Shape {
-  const oc = getOC();
-  const r = GCWithScope();
-  const builder = r(
-    new oc.BRepAlgoAPI_Common(unwrapShape(leftInput), unwrapShape(rightInput))
-  );
+  const oc = getOC()
+  const r = GCWithScope()
+  const builder = r(new oc.BRepAlgoAPI_Common(unwrapShape(leftInput), unwrapShape(rightInput)))
 
-  builder.Build();
-  if (simplify) builder.SimplifyResult(true, true, 1e-3);
-  return builder.Shape();
+  builder.Build()
+  if (simplify) builder.SimplifyResult(true, true, 1e-3)
+  return builder.Shape()
 }
 
 const signedDistanceToPlane = (point: SimplePoint, plane: Plane): number =>
   (point[0] - plane.origin.x) * plane.zDir.x +
   (point[1] - plane.origin.y) * plane.zDir.y +
-  (point[2] - plane.origin.z) * plane.zDir.z;
+  (point[2] - plane.origin.z) * plane.zDir.z
 
 /**
  * Splits a shape with an oriented plane and groups pieces by side.
@@ -139,14 +126,14 @@ const signedDistanceToPlane = (point: SimplePoint, plane: Plane): number =>
  */
 export function splitShape(
   shapeInput: ShapeInput,
-  inputPlane: Plane | PlaneName = "XY",
+  inputPlane: Plane | PlaneName = 'XY',
   offset = 0,
-  tolerance = 1e-7
+  tolerance = 1e-7,
 ): PlaneSplitResult<TopoDS_Solid | TopoDS_Compound> {
-  const oc = getOC();
-  const r = GCWithScope();
-  const shape = unwrapShape(shapeInput);
-  const basePlane = r(makePlane(inputPlane));
+  const oc = getOC()
+  const r = GCWithScope()
+  const shape = unwrapShape(shapeInput)
+  const basePlane = r(makePlane(inputPlane))
   const plane =
     offset === 0
       ? basePlane
@@ -155,75 +142,73 @@ export function splitShape(
             basePlane.zDir.x * offset,
             basePlane.zDir.y * offset,
             basePlane.zDir.z * offset,
-          ])
-        );
-  const ocPlane = r(makePln(plane.origin, plane.zDir));
-  const faceBuilder = r(new oc.BRepBuilderAPI_MakeFace(ocPlane));
-  const splittingFace = r(faceBuilder.Face());
+          ]),
+        )
+  const ocPlane = r(makePln(plane.origin, plane.zDir))
+  const faceBuilder = r(new oc.BRepBuilderAPI_MakeFace(ocPlane))
+  const splittingFace = r(faceBuilder.Face())
 
-  const argumentsList = r(new oc.NCollection_List_TopoDS_Shape());
-  argumentsList.Append(shape);
-  const toolsList = r(new oc.NCollection_List_TopoDS_Shape());
-  toolsList.Append(splittingFace);
+  const argumentsList = r(new oc.NCollection_List_TopoDS_Shape())
+  argumentsList.Append(shape)
+  const toolsList = r(new oc.NCollection_List_TopoDS_Shape())
+  toolsList.Append(splittingFace)
 
-  const builder = r(new oc.BRepAlgoAPI_Splitter());
-  builder.SetArguments(argumentsList);
-  builder.SetTools(toolsList);
-  builder.Build();
-  if (builder.HasErrors()) throw new Error("Could not split shape with plane");
+  const builder = r(new oc.BRepAlgoAPI_Splitter())
+  builder.SetArguments(argumentsList)
+  builder.SetTools(toolsList)
+  builder.Build()
+  if (builder.HasErrors()) throw new Error('Could not split shape with plane')
 
   // Splitter.Shape() contains the split arguments but not the tools. We only
   // expose solid results; section edges, faces, shells, and other topology are
   // intentionally ignored.
-  const splitResult = builder.Shape();
+  const splitResult = builder.Shape()
   const pieces: TopoDS_Solid[] =
     splitResult.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_SOLID
       ? [oc.TopoDS.Solid(splitResult)]
-      : [...iterTopo(splitResult, "solid")];
-  splitResult.delete();
+      : [...iterTopo(splitResult, 'solid')]
+  splitResult.delete()
 
   const grouped = {
     positive: [] as TopoDS_Solid[],
     negative: [] as TopoDS_Solid[],
     on: [] as TopoDS_Solid[],
-  };
+  }
 
   for (const piece of pieces) {
-    const bounds = r(new oc.Bnd_Box());
-    oc.BRepBndLib.Add(piece, bounds, true);
-    const min = r(bounds.CornerMin());
-    const max = r(bounds.CornerMax());
+    const bounds = r(new oc.Bnd_Box())
+    oc.BRepBndLib.Add(piece, bounds, true)
+    const min = r(bounds.CornerMin())
+    const max = r(bounds.CornerMax())
     const center: SimplePoint = [
       (min.X() + max.X()) / 2,
       (min.Y() + max.Y()) / 2,
       (min.Z() + max.Z()) / 2,
-    ];
-    const distance = signedDistanceToPlane(center, plane);
+    ]
+    const distance = signedDistanceToPlane(center, plane)
 
-    if (distance > tolerance) grouped.positive.push(piece);
-    else if (distance < -tolerance) grouped.negative.push(piece);
-    else grouped.on.push(piece);
+    if (distance > tolerance) grouped.positive.push(piece)
+    else if (distance < -tolerance) grouped.negative.push(piece)
+    else grouped.on.push(piece)
   }
 
-  const asShape = (
-    group: TopoDS_Solid[]
-  ): TopoDS_Solid | TopoDS_Compound | null => {
-    if (!group.length) return null;
-    if (group.length === 1) return group[0];
+  const asShape = (group: TopoDS_Solid[]): TopoDS_Solid | TopoDS_Compound | null => {
+    if (!group.length) return null
+    if (group.length === 1) return group[0]
 
-    const compound = new oc.TopoDS_Compound();
-    const compoundBuilder = r(new oc.TopoDS_Builder());
-    compoundBuilder.MakeCompound(compound);
-    group.forEach((piece) => compoundBuilder.Add(compound, piece));
-    group.forEach((piece) => piece.delete());
-    return compound;
-  };
+    const compound = new oc.TopoDS_Compound()
+    const compoundBuilder = r(new oc.TopoDS_Builder())
+    compoundBuilder.MakeCompound(compound)
+    group.forEach((piece) => compoundBuilder.Add(compound, piece))
+    group.forEach((piece) => piece.delete())
+    return compound
+  }
 
   return {
     positive: asShape(grouped.positive),
     negative: asShape(grouped.negative),
     on: asShape(grouped.on),
-  };
+  }
 }
 
 /**
@@ -234,14 +219,14 @@ export function splitShape(
  */
 export function cutShapeWithPlane(
   shapeInput: ShapeInput,
-  inputPlane: Plane | PlaneName = "XY",
+  inputPlane: Plane | PlaneName = 'XY',
   offset = 0,
-  keep: PlaneSide = "positive"
+  keep: PlaneSide = 'positive',
 ): TopoDS_Solid | TopoDS_Compound | null {
-  const oc = getOC();
-  const r = GCWithScope();
-  const shape = unwrapShape(shapeInput);
-  const basePlane = r(makePlane(inputPlane));
+  const oc = getOC()
+  const r = GCWithScope()
+  const shape = unwrapShape(shapeInput)
+  const basePlane = r(makePlane(inputPlane))
   const plane =
     offset === 0
       ? basePlane
@@ -250,47 +235,45 @@ export function cutShapeWithPlane(
             basePlane.zDir.x * offset,
             basePlane.zDir.y * offset,
             basePlane.zDir.z * offset,
-          ])
-        );
-  const ocPlane = r(makePln(plane.origin, plane.zDir));
-  const faceBuilder = r(new oc.BRepBuilderAPI_MakeFace(ocPlane));
-  const face = r(faceBuilder.Face());
+          ]),
+        )
+  const ocPlane = r(makePln(plane.origin, plane.zDir))
+  const faceBuilder = r(new oc.BRepBuilderAPI_MakeFace(ocPlane))
+  const face = r(faceBuilder.Face())
 
   // MakeHalfSpace creates the side containing its reference point. Build the
   // side that should be removed, then subtract it from the input shape.
-  const removedSign = keep === "negative" ? 1 : -1;
+  const removedSign = keep === 'negative' ? 1 : -1
   const referencePoint = r(
     asPnt([
       plane.origin.x + plane.zDir.x * removedSign,
       plane.origin.y + plane.zDir.y * removedSign,
       plane.origin.z + plane.zDir.z * removedSign,
-    ])
-  );
-  const halfSpaceBuilder = r(
-    new oc.BRepPrimAPI_MakeHalfSpace(face, referencePoint)
-  );
-  const halfSpace = r(halfSpaceBuilder.Solid());
+    ]),
+  )
+  const halfSpaceBuilder = r(new oc.BRepPrimAPI_MakeHalfSpace(face, referencePoint))
+  const halfSpace = r(halfSpaceBuilder.Solid())
 
-  const builder = r(new oc.BRepAlgoAPI_Cut(shape, halfSpace));
-  builder.Build();
-  if (builder.HasErrors()) throw new Error("Could not cut shape with plane");
+  const builder = r(new oc.BRepAlgoAPI_Cut(shape, halfSpace))
+  builder.Build()
+  if (builder.HasErrors()) throw new Error('Could not cut shape with plane')
 
-  const cutResult = builder.Shape();
+  const cutResult = builder.Shape()
   const solids: TopoDS_Solid[] =
     cutResult.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_SOLID
       ? [oc.TopoDS.Solid(cutResult)]
-      : [...iterTopo(cutResult, "solid")];
-  cutResult.delete();
+      : [...iterTopo(cutResult, 'solid')]
+  cutResult.delete()
 
-  if (!solids.length) return null;
-  if (solids.length === 1) return solids[0];
+  if (!solids.length) return null
+  if (solids.length === 1) return solids[0]
 
-  const compound = new oc.TopoDS_Compound();
-  const compoundBuilder = r(new oc.TopoDS_Builder());
-  compoundBuilder.MakeCompound(compound);
-  solids.forEach((solid) => compoundBuilder.Add(compound, solid));
-  solids.forEach((solid) => solid.delete());
-  return compound;
+  const compound = new oc.TopoDS_Compound()
+  const compoundBuilder = r(new oc.TopoDS_Builder())
+  compoundBuilder.MakeCompound(compound)
+  solids.forEach((solid) => compoundBuilder.Add(compound, solid))
+  solids.forEach((solid) => solid.delete())
+  return compound
 }
 
 /**
@@ -299,15 +282,15 @@ export function cutShapeWithPlane(
  */
 export function shellShape(
   shapeInput: ShapeInput,
-  { faces, thickness, tolerance = 1e-3 }: ShellOptions
+  { faces, thickness, tolerance = 1e-3 }: ShellOptions,
 ): TopoDS_Shape {
-  const oc = getOC();
-  const r = GCWithScope();
-  const facesToRemove = r(new oc.NCollection_List_TopoDS_Shape());
+  const oc = getOC()
+  const r = GCWithScope()
+  const facesToRemove = r(new oc.NCollection_List_TopoDS_Shape())
 
-  for (const face of faces) facesToRemove.Append(unwrapShape(face));
+  for (const face of faces) facesToRemove.Append(unwrapShape(face))
 
-  const builder = r(new oc.BRepOffsetAPI_MakeThickSolid());
+  const builder = r(new oc.BRepOffsetAPI_MakeThickSolid())
   builder.MakeThickSolidByJoin(
     unwrapShape(shapeInput),
     facesToRemove,
@@ -317,34 +300,34 @@ export function shellShape(
     false,
     false,
     oc.GeomAbs_JoinType.GeomAbs_Arc,
-    false
-  );
+    false,
+  )
 
-  return builder.Shape();
+  return builder.Shape()
 }
 
 /** Applies a draft angle to the supplied faces of a shape. */
 export function draftShape(
   shapeInput: ShapeInput,
-  { faces, angle, neutralPlane = "XY" }: DraftOptions
+  { faces, angle, neutralPlane = 'XY' }: DraftOptions,
 ): TopoDS_Shape {
-  const oc = getOC();
-  const shape = unwrapShape(shapeInput);
-  const builder = new oc.BRepOffsetAPI_DraftAngle(shape);
-  const inputPlane = makePlane(neutralPlane);
-  const plane = makePln(inputPlane.origin, inputPlane.zDir);
-  const direction = asDir(inputPlane.zDir);
+  const oc = getOC()
+  const shape = unwrapShape(shapeInput)
+  const builder = new oc.BRepOffsetAPI_DraftAngle(shape)
+  const inputPlane = makePlane(neutralPlane)
+  const plane = makePln(inputPlane.origin, inputPlane.zDir)
+  const direction = asDir(inputPlane.zDir)
 
   for (const face of faces) {
-    builder.Add(unwrapShape(face), direction, angle * DEG2RAD, plane, false);
+    builder.Add(unwrapShape(face), direction, angle * DEG2RAD, plane, false)
   }
 
-  builder.Build();
-  const result = builder.ModifiedShape(shape);
+  builder.Build()
+  const result = builder.ModifiedShape(shape)
 
-  builder.delete();
-  plane.delete();
-  direction.delete();
-  inputPlane.delete();
-  return result;
+  builder.delete()
+  plane.delete()
+  direction.delete()
+  inputPlane.delete()
+  return result
 }

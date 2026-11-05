@@ -2,28 +2,28 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Geom2dAdaptor_Curve, GeomAbs_Shape } from "replicad-opencascadejs";
-import { findCurveType } from "../definitionMaps";
-import { getOC } from "../oclib";
-import { GCWithScope } from "../register";
-import { Curve2D } from "./Curve2D";
-import { samePoint } from "./vectorOperations";
+import { Geom2dAdaptor_Curve, GeomAbs_Shape } from 'replicad-opencascadejs'
+import { findCurveType } from '../definitionMaps'
+import { getOC } from '../oclib'
+import { GCWithScope } from '../register'
+import { Curve2D } from './Curve2D'
+import { samePoint } from './vectorOperations'
 
 export const approximateAsBSpline = (
   adaptor: Geom2dAdaptor_Curve,
   tolerance = 1e-4,
-  continuity: "C0" | "C1" | "C2" | "C3" = "C0",
-  maxSegments = 200
+  continuity: 'C0' | 'C1' | 'C2' | 'C3' = 'C0',
+  maxSegments = 200,
 ): Curve2D => {
-  const oc = getOC();
-  const r = GCWithScope();
+  const oc = getOC()
+  const r = GCWithScope()
 
   const continuities: Record<string, GeomAbs_Shape> = {
     C0: oc.GeomAbs_Shape.GeomAbs_C0 as GeomAbs_Shape,
     C1: oc.GeomAbs_Shape.GeomAbs_C1 as GeomAbs_Shape,
     C2: oc.GeomAbs_Shape.GeomAbs_C2 as GeomAbs_Shape,
     C3: oc.GeomAbs_Shape.GeomAbs_C3 as GeomAbs_Shape,
-  };
+  }
 
   const convert = r(
     new oc.Geom2dConvert_ApproxCurve(
@@ -31,92 +31,91 @@ export const approximateAsBSpline = (
       tolerance,
       continuities[continuity],
       maxSegments,
-      3
-    )
-  );
+      3,
+    ),
+  )
 
-  return new Curve2D(convert.Curve());
-};
+  return new Curve2D(convert.Curve())
+}
 
 export const BSplineToBezier = (adaptor: Geom2dAdaptor_Curve): Curve2D[] => {
-  if (findCurveType(adaptor.GetType()) !== "BSPLINE_CURVE")
-    throw new Error("You can only convert a Bspline");
+  if (findCurveType(adaptor.GetType()) !== 'BSPLINE_CURVE')
+    throw new Error('You can only convert a Bspline')
 
-  const handle = adaptor.BSpline();
-  const firstParameter = adaptor.FirstParameter();
-  const lastParameter = adaptor.LastParameter();
+  const handle = adaptor.BSpline()
+  const firstParameter = adaptor.FirstParameter()
+  const lastParameter = adaptor.LastParameter()
 
-  const oc = getOC();
+  const oc = getOC()
   const convert = new oc.Geom2dConvert_BSplineCurveToBezierCurve(
     handle,
     firstParameter,
     lastParameter,
-    1e-9
-  );
+    1e-9,
+  )
 
   function* bezierCurves(): Generator<Curve2D> {
-    const nArcs = convert.NbArcs();
-    if (!nArcs) return;
+    const nArcs = convert.NbArcs()
+    if (!nArcs) return
 
     for (let i = 1; i <= nArcs; i++) {
-      const arc = convert.Arc(i);
-      yield new Curve2D(arc);
+      const arc = convert.Arc(i)
+      yield new Curve2D(arc)
     }
   }
 
-  const curves = Array.from(bezierCurves());
-  convert.delete();
-  return curves;
-};
+  const curves = Array.from(bezierCurves())
+  convert.delete()
+  return curves
+}
 
 export interface ApproximationOptions {
-  tolerance?: number;
-  continuity?: "C0" | "C1" | "C2" | "C3";
-  maxSegments?: number;
+  tolerance?: number
+  continuity?: 'C0' | 'C1' | 'C2' | 'C3'
+  maxSegments?: number
 }
 
 export function approximateAsSvgCompatibleCurve(
   curves: Curve2D[],
   options: ApproximationOptions = {
     tolerance: 1e-4,
-    continuity: "C0",
+    continuity: 'C0',
     maxSegments: 300,
-  }
+  },
 ): Curve2D[] {
-  const r = GCWithScope();
+  const r = GCWithScope()
 
   return curves.flatMap((curve) => {
-    const adaptor = r(curve.adaptor());
-    const curveType = findCurveType(adaptor.GetType());
-    const midpointParameter =
-      0.5 * (curve.firstParameter + curve.lastParameter);
+    const adaptor = r(curve.adaptor())
+    const curveType = findCurveType(adaptor.GetType())
+    const midpointParameter = 0.5 * (curve.firstParameter + curve.lastParameter)
 
     if (
-      curveType === "ELLIPSE" ||
-      (curveType === "CIRCLE" && samePoint(curve.firstPoint, curve.lastPoint))
+      curveType === 'ELLIPSE' ||
+      (curveType === 'CIRCLE' && samePoint(curve.firstPoint, curve.lastPoint))
     ) {
-      return curve.splitAt([midpointParameter]);
+      return curve.splitAt([midpointParameter])
     }
 
-    if (["LINE", "ELLIPSE", "CIRCLE"].includes(curveType)) {
-      return curve;
+    if (['LINE', 'ELLIPSE', 'CIRCLE'].includes(curveType)) {
+      return curve
     }
 
-    if (curveType === "BEZIER_CURVE") {
-      const b = adaptor.Bezier();
-      const deg = b.Degree();
+    if (curveType === 'BEZIER_CURVE') {
+      const b = adaptor.Bezier()
+      const deg = b.Degree()
 
       if (!b.IsRational() && [1, 2, 3].includes(deg)) {
-        return curve;
+        return curve
       }
     }
 
-    if (curveType === "BSPLINE_CURVE") {
-      const bspline = adaptor.BSpline();
+    if (curveType === 'BSPLINE_CURVE') {
+      const bspline = adaptor.BSpline()
 
       if (!bspline.IsRational()) {
-        const c = BSplineToBezier(adaptor);
-        return approximateAsSvgCompatibleCurve(c, options);
+        const c = BSplineToBezier(adaptor)
+        return approximateAsSvgCompatibleCurve(c, options)
       }
     }
 
@@ -124,11 +123,8 @@ export function approximateAsSvgCompatibleCurve(
       adaptor,
       options.tolerance,
       options.continuity,
-      options.maxSegments
-    );
-    return approximateAsSvgCompatibleCurve(
-      BSplineToBezier(r(bspline.adaptor())),
-      options
-    );
-  });
+      options.maxSegments,
+    )
+    return approximateAsSvgCompatibleCurve(BSplineToBezier(r(bspline.adaptor())), options)
+  })
 }

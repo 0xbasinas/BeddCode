@@ -2,9 +2,9 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Finder, FilterFcn, FinderFunction } from "./definitions";
+import { Finder, FilterFcn, FinderFunction } from './definitions'
 
-export type { FilterFcn, FinderFunction };
+export type { FilterFcn, FinderFunction }
 
 /**
  * Combine a set of finder filters (defined with radius) to pass as a filter
@@ -16,19 +16,19 @@ export type { FilterFcn, FinderFunction };
  * @category Finders
  */
 export const combineFinderFilters = <Type, T, R = number>(
-  filters: { filter: Finder<Type, T>; radius: R }[]
+  filters: { filter: Finder<Type, T>; radius: R }[],
 ): [(v: Type) => R | null, () => void] => {
   const filter = (element: Type) => {
     for (const { filter, radius } of filters) {
-      if (filter.shouldKeep(element)) return radius;
+      if (filter.shouldKeep(element)) return radius
     }
-    return null;
-  };
+    return null
+  }
 
-  return [filter, () => filters.forEach((f) => f.filter.delete())];
-};
+  return [filter, () => filters.forEach((f) => f.filter.delete())]
+}
 
-export * from "./edgeFinder";
-export * from "./faceFinder";
-export * from "./cornerFinder";
-export * from "./helpers";
+export * from './edgeFinder'
+export * from './faceFinder'
+export * from './cornerFinder'
+export * from './helpers'

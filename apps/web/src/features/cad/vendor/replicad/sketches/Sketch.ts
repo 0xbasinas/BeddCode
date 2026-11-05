@@ -2,10 +2,10 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { extrudeFaceUntil } from "./extrudeUntil";
-import { Vector, Plane, Point, AxisName } from "../geom.js";
-import { localGC } from "../register.js";
-import { makeFace, makeNewFaceWithinFace } from "../shapeHelpers.js";
+import { extrudeFaceUntil } from './extrudeUntil'
+import { Vector, Plane, Point, AxisName } from '../geom.js'
+import { localGC } from '../register.js'
+import { makeFace, makeNewFaceWithinFace } from '../shapeHelpers.js'
 import {
   basicFaceExtrusion,
   complexExtrude,
@@ -16,9 +16,9 @@ import {
   ExtrusionProfile,
   GenericSweepConfig,
   LoftConfig,
-} from "../addThickness.js";
-import { Face, Shape3D, Wire } from "../shapes.js";
-import { ExtrudeUntilOptions, SketchInterface } from "./lib.js";
+} from '../addThickness.js'
+import { Face, Shape3D, Wire } from '../shapes.js'
+import { ExtrudeUntilOptions, SketchInterface } from './lib.js'
 
 /**
  * A line drawing to be acted upon. It defines directions to be acted upon by
@@ -29,94 +29,94 @@ import { ExtrudeUntilOptions, SketchInterface } from "./lib.js";
  * @category Sketching
  */
 export default class Sketch implements SketchInterface {
-  wire: Wire;
+  wire: Wire
   /**
    * @ignore
    */
   // @ts-expect-error initialised indirectly
-  _defaultOrigin: Vector;
+  _defaultOrigin: Vector
   /**
    * @ignore
    */
   // @ts-expect-error initialised indirectly
-  _defaultDirection: Vector;
-  protected _baseFace?: Face | null;
+  _defaultDirection: Vector
+  protected _baseFace?: Face | null
   constructor(
     wire: Wire,
     {
       defaultOrigin = [0, 0, 0],
       defaultDirection = [0, 0, 1],
     }: {
-      defaultOrigin?: Point;
-      defaultDirection?: Point;
-    } = {}
+      defaultOrigin?: Point
+      defaultDirection?: Point
+    } = {},
   ) {
-    this.wire = wire;
-    this.defaultOrigin = defaultOrigin;
-    this.defaultDirection = defaultDirection;
-    this.baseFace = null;
+    this.wire = wire
+    this.defaultOrigin = defaultOrigin
+    this.defaultDirection = defaultDirection
+    this.baseFace = null
   }
 
   get baseFace(): Face | null | undefined {
-    return this._baseFace;
+    return this._baseFace
   }
 
   set baseFace(newFace: Face | null | undefined) {
-    if (!newFace) this._baseFace = newFace;
-    else this._baseFace = newFace.clone();
+    if (!newFace) this._baseFace = newFace
+    else this._baseFace = newFace.clone()
   }
 
   delete(): void {
-    this.wire.delete();
-    this._defaultOrigin.delete();
-    this._defaultDirection.delete();
-    this.baseFace && this.baseFace.delete();
+    this.wire.delete()
+    this._defaultOrigin.delete()
+    this._defaultDirection.delete()
+    this.baseFace && this.baseFace.delete()
   }
 
   clone(): Sketch {
     const sketch = new Sketch(this.wire.clone(), {
       defaultOrigin: this.defaultOrigin,
       defaultDirection: this.defaultDirection,
-    });
-    if (this.baseFace) sketch.baseFace = this.baseFace.clone();
-    return sketch;
+    })
+    if (this.baseFace) sketch.baseFace = this.baseFace.clone()
+    return sketch
   }
 
   get defaultOrigin(): Vector {
-    return this._defaultOrigin;
+    return this._defaultOrigin
   }
 
   set defaultOrigin(newOrigin: Point) {
-    this._defaultOrigin = new Vector(newOrigin);
+    this._defaultOrigin = new Vector(newOrigin)
   }
 
   get defaultDirection(): Vector {
-    return this._defaultDirection;
+    return this._defaultDirection
   }
 
   set defaultDirection(newDirection: Point) {
-    this._defaultDirection = new Vector(newDirection);
+    this._defaultDirection = new Vector(newDirection)
   }
 
   /**
    * Transforms the lines into a face. The lines should be closed.
    */
   face(): Face {
-    let face;
+    let face
     if (!this.baseFace) {
-      face = makeFace(this.wire);
+      face = makeFace(this.wire)
     } else {
-      face = makeNewFaceWithinFace(this.baseFace, this.wire);
+      face = makeNewFaceWithinFace(this.baseFace, this.wire)
     }
-    return face;
+    return face
   }
 
   wires(): Wire {
-    return this.wire.clone();
+    return this.wire.clone()
   }
 
   faces(): Face {
-    return this.face();
+    return this.face()
   }
 
   /**
@@ -125,18 +125,13 @@ export default class Sketch implements SketchInterface {
    */
   revolve(
     revolutionAxis?: Point | AxisName,
-    { origin, angle }: { origin?: Point; angle?: number } = {}
+    { origin, angle }: { origin?: Point; angle?: number } = {},
   ): Shape3D {
-    const face = makeFace(this.wire);
-    const solid = revolution(
-      face,
-      origin || this.defaultOrigin,
-      revolutionAxis,
-      angle
-    );
-    face.delete();
-    this.delete();
-    return solid;
+    const face = makeFace(this.wire)
+    const solid = revolution(face, origin || this.defaultOrigin, revolutionAxis, angle)
+    face.delete()
+    this.delete()
+    return solid
   }
 
   /**
@@ -147,21 +142,18 @@ export default class Sketch implements SketchInterface {
    * without crossing the profile. Use a trimmed face for closed surfaces.
    * The sketch is consumed on success, like `extrude`, but retained on failure.
    */
-  extrudeUntil(
-    limitingFace: Face,
-    { extrusionDirection }: ExtrudeUntilOptions = {}
-  ): Shape3D {
-    const [r, gc] = localGC();
+  extrudeUntil(limitingFace: Face, { extrusionDirection }: ExtrudeUntilOptions = {}): Shape3D {
+    const [r, gc] = localGC()
     try {
       const solid = extrudeFaceUntil(
         r(this.face()),
         limitingFace,
-        extrusionDirection ?? this.defaultDirection
-      );
-      this.delete();
-      return solid;
+        extrusionDirection ?? this.defaultDirection,
+      )
+      this.delete()
+      return solid
     } finally {
-      gc();
+      gc()
     }
   }
 
@@ -183,30 +175,30 @@ export default class Sketch implements SketchInterface {
       twistAngle,
       origin,
     }: {
-      extrusionDirection?: Point;
-      extrusionProfile?: ExtrusionProfile;
-      twistAngle?: number;
-      origin?: Point;
-    } = {}
+      extrusionDirection?: Point
+      extrusionProfile?: ExtrusionProfile
+      twistAngle?: number
+      origin?: Point
+    } = {},
   ): Shape3D {
-    const [r, gc] = localGC();
+    const [r, gc] = localGC()
 
     const extrusionVec = r(
       new Vector(extrusionDirection || this.defaultDirection)
         .normalized()
-        .multiply(extrusionDistance)
-    );
+        .multiply(extrusionDistance),
+    )
 
     if (extrusionProfile && !twistAngle) {
       const solid = complexExtrude(
         this.wire,
         origin || this.defaultOrigin,
         extrusionVec,
-        extrusionProfile
-      );
-      gc();
-      this.delete();
-      return solid;
+        extrusionProfile,
+      )
+      gc()
+      this.delete()
+      return solid
     }
 
     if (twistAngle) {
@@ -215,19 +207,19 @@ export default class Sketch implements SketchInterface {
         twistAngle,
         origin || this.defaultOrigin,
         extrusionVec,
-        extrusionProfile
-      );
-      gc();
-      this.delete();
-      return solid;
+        extrusionProfile,
+      )
+      gc()
+      this.delete()
+      return solid
     }
 
-    const face = makeFace(this.wire);
-    const solid = basicFaceExtrusion(face, extrusionVec);
+    const face = makeFace(this.wire)
+    const solid = basicFaceExtrusion(face, extrusionVec)
 
-    gc();
-    this.delete();
-    return solid;
+    gc()
+    this.delete()
+    return solid
   }
 
   /**
@@ -239,28 +231,25 @@ export default class Sketch implements SketchInterface {
    */
   sweepSketch(
     sketchOnPlane: (plane: Plane, origin: Point) => this,
-    sweepConfig: GenericSweepConfig = {}
+    sweepConfig: GenericSweepConfig = {},
   ): Shape3D {
-    const startPoint = this.wire.startPoint;
-    const normal = this.wire.tangentAt(1e-9).multiply(-1).normalize();
-    const xDir = normal.cross(this.defaultDirection).multiply(-1);
+    const startPoint = this.wire.startPoint
+    const normal = this.wire.tangentAt(1e-9).multiply(-1).normalize()
+    const xDir = normal.cross(this.defaultDirection).multiply(-1)
 
-    const sketch = sketchOnPlane(
-      new Plane(startPoint, xDir, normal),
-      startPoint
-    );
+    const sketch = sketchOnPlane(new Plane(startPoint, xDir, normal), startPoint)
 
     const config: GenericSweepConfig = {
       forceProfileSpineOthogonality: true,
       ...sweepConfig,
-    };
-    if (this.baseFace) {
-      config.support = this.baseFace.wrapped;
     }
-    const shape = genericSweep(sketch.wire, this.wire, config);
-    this.delete();
+    if (this.baseFace) {
+      config.support = this.baseFace.wrapped
+    }
+    const shape = genericSweep(sketch.wire, this.wire, config)
+    this.delete()
 
-    return shape;
+    return shape
   }
 
   /** Loft between this sketch and another sketch (or an array of them)
@@ -275,18 +264,18 @@ export default class Sketch implements SketchInterface {
   loftWith(
     otherSketches: this | this[],
     loftConfig: LoftConfig = {},
-    returnShell = false
+    returnShell = false,
   ): Shape3D {
     const sketchArray = Array.isArray(otherSketches)
       ? [this, ...otherSketches]
-      : [this, otherSketches];
+      : [this, otherSketches]
     const shape = loft(
       sketchArray.map((s) => s.wire),
       loftConfig,
-      returnShell
-    );
+      returnShell,
+    )
 
-    sketchArray.forEach((s) => s.delete());
-    return shape;
+    sketchArray.forEach((s) => s.delete())
+    return shape
   }
 }

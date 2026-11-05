@@ -13,7 +13,7 @@ import {
   Point2D,
   samePoint,
   stitchCurves,
-} from "./lib2d";
+} from './lib2d'
 import {
   Blueprint,
   cut2D,
@@ -26,24 +26,24 @@ import {
   Shape2D,
   Blueprints,
   CompoundBlueprint,
-} from "./blueprints";
-import { Plane, PlaneName, Point } from "./geom";
-import type { AnyShape, Edge, Face } from "./shapes";
-import { BaseSketcher2d } from "./Sketcher2d";
-import type { SketchInterface, Sketches, Sketch } from "./sketches";
-import type { GenericSketcher } from "./sketcherlib";
-import { lookFromPlane, ProjectionCamera } from "./projection/ProjectionCamera";
-import type { ProjectionPlane } from "./projection/ProjectionCamera";
-import { makeProjectedEdges } from "./projection/makeProjectedEdges";
+} from './blueprints'
+import { Plane, PlaneName, Point } from './geom'
+import type { AnyShape, Edge, Face } from './shapes'
+import { BaseSketcher2d } from './Sketcher2d'
+import type { SketchInterface, Sketches, Sketch } from './sketches'
+import type { GenericSketcher } from './sketcherlib'
+import { lookFromPlane, ProjectionCamera } from './projection/ProjectionCamera'
+import type { ProjectionPlane } from './projection/ProjectionCamera'
+import { makeProjectedEdges } from './projection/makeProjectedEdges'
 
-import offset, { Offset2DConfig } from "./blueprints/offset";
-import { CornerFinder } from "./finders/cornerFinder";
-import type { FinderFunction } from "./finders/definitions";
-import { fillet2D, chamfer2D } from "./blueprints/customCorners";
-import { edgeToCurve, edgeToCurveOnPlane } from "./curves";
-import { BSplineApproximationConfig } from "./shapeHelpers";
-import { approximateForSVG } from "./blueprints/approximations";
-import { SingleFace } from "./finders";
+import offset, { Offset2DConfig } from './blueprints/offset'
+import { CornerFinder } from './finders/cornerFinder'
+import type { FinderFunction } from './finders/definitions'
+import { fillet2D, chamfer2D } from './blueprints/customCorners'
+import { edgeToCurve, edgeToCurveOnPlane } from './curves'
+import { BSplineApproximationConfig } from './shapeHelpers'
+import { approximateForSVG } from './blueprints/approximations'
+import { SingleFace } from './finders'
 
 /**
  * @categoryDescription Drawing
@@ -53,14 +53,14 @@ import { SingleFace } from "./finders";
  */
 
 export class Drawing implements DrawingInterface {
-  private innerShape: Shape2D;
+  private innerShape: Shape2D
 
   constructor(innerShape: Shape2D = null) {
-    this.innerShape = innerShape;
+    this.innerShape = innerShape
   }
 
   clone(): Drawing {
-    return new Drawing(this.innerShape?.clone() || null);
+    return new Drawing(this.innerShape?.clone() || null)
   }
 
   serialize(): string {
@@ -68,65 +68,61 @@ export class Drawing implements DrawingInterface {
     function serializeHelper(shape: Shape2D): any {
       if (shape instanceof CompoundBlueprint) {
         return {
-          type: "CompoundBlueprint",
+          type: 'CompoundBlueprint',
           blueprints: shape.blueprints.map(serializeHelper),
-        };
+        }
       } else if (shape instanceof Blueprints) {
         return {
-          type: "Blueprints",
+          type: 'Blueprints',
           blueprints: shape.blueprints.map(serializeHelper),
-        };
+        }
       } else if (shape instanceof Blueprint) {
         return {
-          type: "Blueprint",
+          type: 'Blueprint',
           curves: shape.curves.map((c) => c.serialize()),
-        };
+        }
       } else {
-        throw new Error("Unknown shape type for serialization");
+        throw new Error('Unknown shape type for serialization')
       }
     }
 
-    return JSON.stringify(serializeHelper(this.innerShape));
+    return JSON.stringify(serializeHelper(this.innerShape))
   }
 
   get boundingBox(): BoundingBox2d {
-    if (!this.innerShape) return new BoundingBox2d();
-    return this.innerShape.boundingBox;
+    if (!this.innerShape) return new BoundingBox2d()
+    return this.innerShape.boundingBox
   }
   stretch(ratio: number, direction: Point2D, origin: Point2D): Drawing {
-    if (!this.innerShape) return new Drawing();
-    return new Drawing(this.innerShape.stretch(ratio, direction, origin));
+    if (!this.innerShape) return new Drawing()
+    return new Drawing(this.innerShape.stretch(ratio, direction, origin))
   }
 
   get repr(): string {
-    if (this.innerShape === null) return "=== empty shape";
-    return this.innerShape.repr;
+    if (this.innerShape === null) return '=== empty shape'
+    return this.innerShape.repr
   }
 
   rotate(angle: number, center?: Point2D): Drawing {
-    if (!this.innerShape) return new Drawing();
-    return new Drawing(this.innerShape.rotate(angle, center));
+    if (!this.innerShape) return new Drawing()
+    return new Drawing(this.innerShape.rotate(angle, center))
   }
 
-  translate(xDist: number, yDist: number): Drawing;
-  translate(translationVector: Point2D): Drawing;
+  translate(xDist: number, yDist: number): Drawing
+  translate(translationVector: Point2D): Drawing
   translate(xDistOrPoint: number | Point2D, yDist = 0): Drawing {
-    if (!this.innerShape) return new Drawing();
-    return new Drawing(this.innerShape.translate(xDistOrPoint as any, yDist));
+    if (!this.innerShape) return new Drawing()
+    return new Drawing(this.innerShape.translate(xDistOrPoint as any, yDist))
   }
 
   scale(scaleFactor: number, center?: Point2D): Drawing {
-    if (!this.innerShape) return new Drawing();
-    return new Drawing(this.innerShape.scale(scaleFactor, center));
+    if (!this.innerShape) return new Drawing()
+    return new Drawing(this.innerShape.scale(scaleFactor, center))
   }
 
-  mirror(
-    centerOrDirection: Point2D,
-    origin?: Point2D,
-    mode?: "center" | "plane"
-  ): Drawing {
-    if (!this.innerShape) return new Drawing();
-    return new Drawing(this.innerShape.mirror(centerOrDirection, origin, mode));
+  mirror(centerOrDirection: Point2D, origin?: Point2D, mode?: 'center' | 'plane'): Drawing {
+    if (!this.innerShape) return new Drawing()
+    return new Drawing(this.innerShape.mirror(centerOrDirection, origin, mode))
   }
 
   /**
@@ -135,7 +131,7 @@ export class Drawing implements DrawingInterface {
    * @category Drawing Modifications
    */
   cut(other: Drawing): Drawing {
-    return new Drawing(cut2D(this.innerShape, other.innerShape));
+    return new Drawing(cut2D(this.innerShape, other.innerShape))
   }
 
   /**
@@ -144,7 +140,7 @@ export class Drawing implements DrawingInterface {
    * @category Drawing Modifications
    */
   fuse(other: Drawing): Drawing {
-    return new Drawing(fuse2D(this.innerShape, other.innerShape));
+    return new Drawing(fuse2D(this.innerShape, other.innerShape))
   }
 
   /**
@@ -153,7 +149,7 @@ export class Drawing implements DrawingInterface {
    * @category Drawing Modifications
    */
   intersect(other: Drawing): Drawing {
-    return new Drawing(intersect2D(this.innerShape, other.innerShape));
+    return new Drawing(intersect2D(this.innerShape, other.innerShape))
   }
 
   /**
@@ -162,12 +158,9 @@ export class Drawing implements DrawingInterface {
    *
    * @category Drawing Modifications
    */
-  fillet(
-    radius: number,
-    filter?: FinderFunction<CornerFinder, Shape2D>
-  ): Drawing {
-    const finder = filter && filter(new CornerFinder(), this.innerShape);
-    return new Drawing(fillet2D(this.innerShape, radius, finder));
+  fillet(radius: number, filter?: FinderFunction<CornerFinder, Shape2D>): Drawing {
+    const finder = filter && filter(new CornerFinder(), this.innerShape)
+    return new Drawing(fillet2D(this.innerShape, radius, finder))
   }
 
   /**
@@ -176,69 +169,60 @@ export class Drawing implements DrawingInterface {
    *
    * @category Drawing Modifications
    */
-  chamfer(
-    radius: number,
-    filter?: FinderFunction<CornerFinder, Shape2D>
-  ): Drawing {
-    const finder = filter && filter(new CornerFinder(), this.innerShape);
-    return new Drawing(chamfer2D(this.innerShape, radius, finder));
+  chamfer(radius: number, filter?: FinderFunction<CornerFinder, Shape2D>): Drawing {
+    const finder = filter && filter(new CornerFinder(), this.innerShape)
+    return new Drawing(chamfer2D(this.innerShape, radius, finder))
   }
 
-  sketchOnPlane(inputPlane: Plane): SketchInterface | Sketches;
-  sketchOnPlane(
-    inputPlane?: PlaneName,
-    origin?: Point | number
-  ): SketchInterface | Sketches;
+  sketchOnPlane(inputPlane: Plane): SketchInterface | Sketches
+  sketchOnPlane(inputPlane?: PlaneName, origin?: Point | number): SketchInterface | Sketches
   sketchOnPlane(
     inputPlane?: PlaneName | Plane,
-    origin?: Point | number
+    origin?: Point | number,
   ): SketchInterface | Sketches {
-    if (!this.innerShape) throw new Error("Trying to sketch an empty drawing");
-    return this.innerShape.sketchOnPlane(inputPlane, origin);
+    if (!this.innerShape) throw new Error('Trying to sketch an empty drawing')
+    return this.innerShape.sketchOnPlane(inputPlane, origin)
   }
 
   sketchOnFace(face: Face, scaleMode: ScaleMode): SketchInterface | Sketches {
-    if (!this.innerShape) throw new Error("Trying to sketch an empty drawing");
-    return this.innerShape.sketchOnFace(face, scaleMode);
+    if (!this.innerShape) throw new Error('Trying to sketch an empty drawing')
+    return this.innerShape.sketchOnFace(face, scaleMode)
   }
 
   punchHole(
     shape: AnyShape,
     faceFinder: SingleFace,
     options: {
-      height?: number;
-      origin?: Point;
-      draftAngle?: number;
-    } = {}
+      height?: number
+      origin?: Point
+      draftAngle?: number
+    } = {},
   ): AnyShape {
-    if (!this.innerShape) return shape;
-    return this.innerShape.punchHole(shape, faceFinder, options);
+    if (!this.innerShape) return shape
+    return this.innerShape.punchHole(shape, faceFinder, options)
   }
 
   toSVG(margin?: number): string {
-    return this.innerShape?.toSVG(margin) || "";
+    return this.innerShape?.toSVG(margin) || ''
   }
 
   toSVGViewBox(margin = 1): string {
-    return this.innerShape?.toSVGViewBox(margin) || "";
+    return this.innerShape?.toSVGViewBox(margin) || ''
   }
 
   toSVGPaths(): string[] | string[][] {
-    return this.innerShape?.toSVGPaths() || [];
+    return this.innerShape?.toSVGPaths() || []
   }
 
   offset(distance: number, offsetConfig: Offset2DConfig = {}): Drawing {
-    return new Drawing(offset(this.innerShape, distance, offsetConfig));
+    return new Drawing(offset(this.innerShape, distance, offsetConfig))
   }
 
-  approximate(
-    target: "svg" | "arcs",
-    options: ApproximationOptions = {}
-  ): Drawing {
-    if (target !== "svg") {
-      throw new Error("Only 'svg' is supported for now");
+  approximate(target: 'svg' | 'arcs', options: ApproximationOptions = {}): Drawing {
+    if (target !== 'svg') {
+      throw new Error("Only 'svg' is supported for now")
     }
-    return new Drawing(approximateForSVG(this.innerShape, options));
+    return new Drawing(approximateForSVG(this.innerShape, options))
   }
 
   get blueprint(): Blueprint {
@@ -248,11 +232,11 @@ export class Drawing implements DrawingInterface {
         this.innerShape.blueprints.length === 1 &&
         this.innerShape.blueprints[0] instanceof Blueprint
       ) {
-        return this.innerShape.blueprints[0];
+        return this.innerShape.blueprints[0]
       }
-      throw new Error("This drawing is not a blueprint");
+      throw new Error('This drawing is not a blueprint')
     }
-    return this.innerShape;
+    return this.innerShape
   }
 }
 
@@ -263,30 +247,27 @@ export class Drawing implements DrawingInterface {
  *
  * @category Drawing
  */
-export class DrawingPen
-  extends BaseSketcher2d
-  implements GenericSketcher<Drawing>
-{
+export class DrawingPen extends BaseSketcher2d implements GenericSketcher<Drawing> {
   constructor(origin: Point2D = [0, 0]) {
-    super();
-    this.pointer = origin;
-    this.firstPoint = origin;
+    super()
+    this.pointer = origin
+    this.firstPoint = origin
 
-    this.pendingCurves = [];
+    this.pendingCurves = []
   }
 
   done(): Drawing {
-    return new Drawing(new Blueprint(this.pendingCurves));
+    return new Drawing(new Blueprint(this.pendingCurves))
   }
 
   close(): Drawing {
-    this._closeSketch();
-    return this.done();
+    this._closeSketch()
+    return this.done()
   }
 
   closeWithMirror(): Drawing {
-    this._closeWithMirror();
-    return this.close();
+    this._closeWithMirror()
+    return this.close()
   }
 
   /**
@@ -294,14 +275,11 @@ export class DrawingPen
    * from the last point to the first), change the corner between the last and the
    * first segments and returns the sketch.
    */
-  closeWithCustomCorner(
-    radius: number,
-    mode: "fillet" | "chamfer" = "fillet"
-  ): Drawing {
-    this._closeSketch();
-    this._customCornerLastWithFirst(radius, mode);
+  closeWithCustomCorner(radius: number, mode: 'fillet' | 'chamfer' = 'fillet'): Drawing {
+    this._closeSketch()
+    this._customCornerLastWithFirst(radius, mode)
 
-    return this.done();
+    return this.done()
   }
 }
 
@@ -311,23 +289,23 @@ export class DrawingPen
  */
 export function deserializeDrawing(data: string): Drawing {
   function deserializeHelper(json: any): Shape2D {
-    if (json["type"] === "CompoundBlueprint") {
-      const blueprints = json["blueprints"].map(deserializeHelper);
-      return new CompoundBlueprint(blueprints);
-    } else if (json["type"] === "Blueprints") {
-      const blueprints = json["blueprints"].map(deserializeHelper);
-      return new Blueprints(blueprints);
-    } else if (json["type"] === "Blueprint") {
-      const curves = json["curves"].map((c: string) => deserializeCurve2D(c));
-      return new Blueprint(curves);
+    if (json['type'] === 'CompoundBlueprint') {
+      const blueprints = json['blueprints'].map(deserializeHelper)
+      return new CompoundBlueprint(blueprints)
+    } else if (json['type'] === 'Blueprints') {
+      const blueprints = json['blueprints'].map(deserializeHelper)
+      return new Blueprints(blueprints)
+    } else if (json['type'] === 'Blueprint') {
+      const curves = json['curves'].map((c: string) => deserializeCurve2D(c))
+      return new Blueprint(curves)
     } else {
-      throw new Error("Unknown shape type for deserialization");
+      throw new Error('Unknown shape type for deserialization')
     }
   }
 
-  const json = JSON.parse(data);
-  const shape = deserializeHelper(json);
-  return new Drawing(shape);
+  const json = JSON.parse(data)
+  const shape = deserializeHelper(json)
+  return new Drawing(shape)
 }
 
 /**
@@ -336,11 +314,11 @@ export function deserializeDrawing(data: string): Drawing {
  * @category Drawing
  */
 export function draw(initialPoint?: Point2D): DrawingPen {
-  const pen = new DrawingPen();
+  const pen = new DrawingPen()
   if (initialPoint) {
-    pen.movePointerTo(initialPoint);
+    pen.movePointerTo(initialPoint)
   }
-  return pen;
+  return pen
 }
 
 /**
@@ -353,11 +331,11 @@ export function draw(initialPoint?: Point2D): DrawingPen {
 export function drawRoundedRectangle(
   width: number,
   height: number,
-  r: number | { rx?: number; ry?: number } = 0
+  r: number | { rx?: number; ry?: number } = 0,
 ): Drawing {
-  return new Drawing(roundedRectangleBlueprint(width, height, r));
+  return new Drawing(roundedRectangleBlueprint(width, height, r))
 }
-export const drawRectangle = drawRoundedRectangle;
+export const drawRectangle = drawRoundedRectangle
 
 /**
  * Creates the `Drawing` of a circle as one single curve.
@@ -367,7 +345,7 @@ export const drawRectangle = drawRoundedRectangle;
  * @category Drawing
  */
 export function drawSingleCircle(radius: number): Drawing {
-  return new Drawing(new Blueprint([make2dCircle(radius)]));
+  return new Drawing(new Blueprint([make2dCircle(radius)]))
 }
 
 /**
@@ -377,14 +355,11 @@ export function drawSingleCircle(radius: number): Drawing {
  *
  * @category Drawing
  */
-export function drawSingleEllipse(
-  majorRadius: number,
-  minorRadius: number
-): Drawing {
-  const [minor, major] = [majorRadius, minorRadius].sort((a, b) => a - b);
-  const direction: Point2D = major === majorRadius ? [1, 0] : [0, 1];
+export function drawSingleEllipse(majorRadius: number, minorRadius: number): Drawing {
+  const [minor, major] = [majorRadius, minorRadius].sort((a, b) => a - b)
+  const direction: Point2D = major === majorRadius ? [1, 0] : [0, 1]
 
-  return new Drawing(new Blueprint([make2dEllipse(major, minor, direction)]));
+  return new Drawing(new Blueprint([make2dEllipse(major, minor, direction)]))
 }
 
 /**
@@ -399,7 +374,7 @@ export function drawCircle(radius: number): Drawing {
     .movePointerTo([-radius, 0])
     .sagittaArc(2 * radius, 0, radius)
     .sagittaArc(-2 * radius, 0, radius)
-    .close();
+    .close()
 }
 
 /**
@@ -414,7 +389,7 @@ export function drawEllipse(majorRadius: number, minorRadius: number): Drawing {
     .movePointerTo([-majorRadius, 0])
     .halfEllipse(2 * majorRadius, 0, minorRadius)
     .halfEllipse(-2 * majorRadius, 0, minorRadius)
-    .close();
+    .close()
 }
 
 /**
@@ -425,12 +400,8 @@ export function drawEllipse(majorRadius: number, minorRadius: number): Drawing {
  *
  * @category Drawing
  */
-export function drawPolysides(
-  radius: number,
-  sidesCount: number,
-  sagitta = 0
-): Drawing {
-  return new Drawing(polysidesBlueprint(radius, sidesCount, sagitta));
+export function drawPolysides(radius: number, sidesCount: number, sagitta = 0): Drawing {
+  return new Drawing(polysidesBlueprint(radius, sidesCount, sagitta))
 }
 
 /**
@@ -445,16 +416,16 @@ export const drawPointsInterpolation = (
   points: Point2D[],
   approximationConfig: BSplineApproximationConfig = {},
   options: {
-    closeShape?: boolean;
-  } = {}
+    closeShape?: boolean
+  } = {},
 ): Drawing => {
-  const curves = [make2dInerpolatedBSplineCurve(points, approximationConfig)];
+  const curves = [make2dInerpolatedBSplineCurve(points, approximationConfig)]
   if (options.closeShape && !samePoint(points[0], points[points.length - 1])) {
-    curves.push(make2dSegmentCurve(points[points.length - 1], points[0]));
+    curves.push(make2dSegmentCurve(points[points.length - 1], points[0]))
   }
 
-  return new Drawing(new Blueprint(curves));
-};
+  return new Drawing(new Blueprint(curves))
+}
 
 /**
  * Creates the `Drawing` of parametric function
@@ -467,34 +438,32 @@ export const drawPointsInterpolation = (
 export const drawParametricFunction = (
   func: (t: number) => Point2D,
   { pointsCount = 400, start = 0, stop = 1, closeShape = false } = {},
-  approximationConfig: BSplineApproximationConfig = {}
+  approximationConfig: BSplineApproximationConfig = {},
 ): Drawing => {
-  const stepSize = (stop - start) / pointsCount;
+  const stepSize = (stop - start) / pointsCount
   const points = [...Array(pointsCount + 1).keys()].map((t) => {
-    return func(start + t * stepSize);
-  });
+    return func(start + t * stepSize)
+  })
 
-  return drawPointsInterpolation(points, approximationConfig, { closeShape });
-};
+  return drawPointsInterpolation(points, approximationConfig, { closeShape })
+}
 
 const edgesToDrawing = (edges: Edge[]): Drawing => {
-  const planeFace = (
-    drawRectangle(1000, 1000).sketchOnPlane() as Sketch
-  ).face();
+  const planeFace = (drawRectangle(1000, 1000).sketchOnPlane() as Sketch).face()
 
   const curves = edges.map((e) => {
     try {
-      return edgeToCurveOnPlane(e);
+      return edgeToCurveOnPlane(e)
     } catch (_error) {
-      return edgeToCurve(e, planeFace);
+      return edgeToCurve(e, planeFace)
     }
-  });
-  const stitchedCurves = stitchCurves(curves).map((s) => new Blueprint(s));
-  if (stitchedCurves.length === 0) return new Drawing();
-  if (stitchedCurves.length === 1) return new Drawing(stitchedCurves[0]);
+  })
+  const stitchedCurves = stitchCurves(curves).map((s) => new Blueprint(s))
+  if (stitchedCurves.length === 0) return new Drawing()
+  if (stitchedCurves.length === 1) return new Drawing(stitchedCurves[0])
 
-  return new Drawing(new Blueprints(stitchedCurves));
-};
+  return new Drawing(new Blueprints(stitchedCurves))
+}
 
 /**
  * Creates the `Drawing` of a projection of a shape on a plane.
@@ -505,21 +474,21 @@ const edgesToDrawing = (edges: Edge[]): Drawing => {
  */
 export function drawProjection(
   shape: AnyShape,
-  projectionCamera: ProjectionPlane | ProjectionCamera = "front"
+  projectionCamera: ProjectionPlane | ProjectionCamera = 'front',
 ): { visible: Drawing; hidden: Drawing } {
-  let camera: ProjectionCamera;
+  let camera: ProjectionCamera
   if (projectionCamera instanceof ProjectionCamera) {
-    camera = projectionCamera;
+    camera = projectionCamera
   } else {
-    camera = lookFromPlane(projectionCamera);
+    camera = lookFromPlane(projectionCamera)
   }
 
-  const { visible, hidden } = makeProjectedEdges(shape, camera);
+  const { visible, hidden } = makeProjectedEdges(shape, camera)
 
   return {
     visible: edgesToDrawing(visible),
     hidden: edgesToDrawing(hidden),
-  };
+  }
 }
 
 /**
@@ -528,12 +497,12 @@ export function drawProjection(
  * @category Drawing
  */
 export function drawFaceOutline(face: Face): Drawing {
-  const outerWire = face.clone().outerWire();
-  const curves = outerWire.edges.map((e) => edgeToCurve(e, face));
+  const outerWire = face.clone().outerWire()
+  const curves = outerWire.edges.map((e) => edgeToCurve(e, face))
 
-  const stitchedCurves = stitchCurves(curves).map((s) => new Blueprint(s));
-  if (stitchedCurves.length === 0) return new Drawing();
-  if (stitchedCurves.length === 1) return new Drawing(stitchedCurves[0]);
+  const stitchedCurves = stitchCurves(curves).map((s) => new Blueprint(s))
+  if (stitchedCurves.length === 0) return new Drawing()
+  if (stitchedCurves.length === 1) return new Drawing(stitchedCurves[0])
 
-  return new Drawing(new Blueprints(stitchedCurves));
+  return new Drawing(new Blueprints(stitchedCurves))
 }

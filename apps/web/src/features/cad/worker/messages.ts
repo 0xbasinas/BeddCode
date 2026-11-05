@@ -22,7 +22,12 @@ export type CadRequest =
   | { id: number; kind: 'importStep'; bytes: ArrayBuffer }
   | { id: number; kind: 'exportStep'; targetId: string }
   | { id: number; kind: 'exportStl'; targetId: string }
-  | { id: number; kind: 'rebuild'; document: FeatureDocument; files: { id: string; bytes: ArrayBuffer }[] }
+  | {
+      id: number
+      kind: 'rebuild'
+      document: FeatureDocument
+      files: { id: string; bytes: ArrayBuffer }[]
+    }
   | { id: number; kind: 'dispose' }
 
 export type CadResponse =
@@ -35,7 +40,11 @@ export type CadResponse =
   | { id: number; ok: false; error: string }
 
 export function meshTransfers(shape: ShapeResult): ArrayBuffer[] {
-  return [exactBuffer(shape.mesh.positions), exactBuffer(shape.mesh.normals), exactBuffer(shape.mesh.indices)]
+  return [
+    exactBuffer(shape.mesh.positions),
+    exactBuffer(shape.mesh.normals),
+    exactBuffer(shape.mesh.indices),
+  ]
 }
 
 export function responseTransfers(response: CadResponse): ArrayBuffer[] {

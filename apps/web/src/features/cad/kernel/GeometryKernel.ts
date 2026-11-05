@@ -30,6 +30,9 @@ export interface GeometryKernel {
   exportStep(targetId: string): Promise<Uint8Array>
   exportStl(targetId: string): Promise<Uint8Array>
   /** Replays a feature document. `files` holds STEP bytes keyed by import op id. */
-  rebuild(document: FeatureDocument, files?: Readonly<Record<string, Uint8Array>>): Promise<ShapeResult[]>
+  rebuild(
+    document: FeatureDocument,
+    files?: Readonly<Record<string, Uint8Array>>,
+  ): Promise<ShapeResult[]>
   dispose(): void
 }

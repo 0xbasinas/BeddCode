@@ -48,19 +48,44 @@ async function dispatch(request: CadRequest): Promise<void> {
         reply({ id: request.id, ok: true, type: 'disposed' })
         return
       case 'createPrimitive':
-        reply({ id: request.id, ok: true, type: 'shape', shape: await cad.createPrimitive(request.primitive, request.params) })
+        reply({
+          id: request.id,
+          ok: true,
+          type: 'shape',
+          shape: await cad.createPrimitive(request.primitive, request.params),
+        })
         return
       case 'extrude':
-        reply({ id: request.id, ok: true, type: 'shape', shape: await cad.extrude(request.profile, request.distance) })
+        reply({
+          id: request.id,
+          ok: true,
+          type: 'shape',
+          shape: await cad.extrude(request.profile, request.distance),
+        })
         return
       case 'revolve':
-        reply({ id: request.id, ok: true, type: 'shape', shape: await cad.revolve(request.profile, request.angle, request.axis) })
+        reply({
+          id: request.id,
+          ok: true,
+          type: 'shape',
+          shape: await cad.revolve(request.profile, request.angle, request.axis),
+        })
         return
       case 'fillet':
-        reply({ id: request.id, ok: true, type: 'shape', shape: await cad.fillet(request.targetId, request.radius) })
+        reply({
+          id: request.id,
+          ok: true,
+          type: 'shape',
+          shape: await cad.fillet(request.targetId, request.radius),
+        })
         return
       case 'chamfer':
-        reply({ id: request.id, ok: true, type: 'shape', shape: await cad.chamfer(request.targetId, request.radius) })
+        reply({
+          id: request.id,
+          ok: true,
+          type: 'shape',
+          shape: await cad.chamfer(request.targetId, request.radius),
+        })
         return
       case 'boolean':
         reply({
@@ -71,7 +96,12 @@ async function dispatch(request: CadRequest): Promise<void> {
         })
         return
       case 'measure':
-        reply({ id: request.id, ok: true, type: 'measure', measure: await cad.measure(request.targetId) })
+        reply({
+          id: request.id,
+          ok: true,
+          type: 'measure',
+          measure: await cad.measure(request.targetId),
+        })
         return
       case 'importStep':
         reply({
@@ -82,22 +112,41 @@ async function dispatch(request: CadRequest): Promise<void> {
         })
         return
       case 'exportStep':
-        reply({ id: request.id, ok: true, type: 'bytes', bytes: exactBuffer(await cad.exportStep(request.targetId)) })
+        reply({
+          id: request.id,
+          ok: true,
+          type: 'bytes',
+          bytes: exactBuffer(await cad.exportStep(request.targetId)),
+        })
         return
       case 'exportStl':
-        reply({ id: request.id, ok: true, type: 'bytes', bytes: exactBuffer(await cad.exportStl(request.targetId)) })
+        reply({
+          id: request.id,
+          ok: true,
+          type: 'bytes',
+          bytes: exactBuffer(await cad.exportStl(request.targetId)),
+        })
         return
       case 'rebuild': {
         const files: Record<string, Uint8Array> = {}
         for (const file of request.files) files[file.id] = new Uint8Array(file.bytes)
-        reply({ id: request.id, ok: true, type: 'shapes', shapes: await cad.rebuild(request.document, files) })
+        reply({
+          id: request.id,
+          ok: true,
+          type: 'shapes',
+          shapes: await cad.rebuild(request.document, files),
+        })
         return
       }
       default:
         reply({ id: (request as CadRequest).id, ok: false, error: 'unknown cad request' })
     }
   } catch (error) {
-    reply({ id: request.id, ok: false, error: error instanceof Error ? error.message : String(error) })
+    reply({
+      id: request.id,
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    })
   }
 }
 
