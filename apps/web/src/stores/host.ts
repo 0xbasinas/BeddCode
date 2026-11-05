@@ -40,6 +40,17 @@ import {
 } from './hostCatalog.ts'
 import { localHostUrl } from './localHostUrl.ts'
 import { composerDraftKey, useComposerDrafts } from '../features/composer/drafts.ts'
+import {
+  getCadOffer,
+  setCadPaneOpen,
+  setCadView,
+  subscribeCadOffer,
+  takeExport,
+  takeImport,
+  takeQuery,
+  takeRebuild,
+  takeScreenshot,
+} from '../features/cad/cadHostBridge.ts'
 import { onDeviceWake } from './wake.ts'
 
 const LOCAL_URL = localHostUrl({
@@ -332,6 +343,53 @@ function startHost(entry: HostEntry) {
           (err: unknown) => answer({ error: err instanceof Error ? err.message : String(err) }),
         )
     },
+    onCadRender(request) {
+      const answer = (reply: { image?: { data: string; mime: string }; error?: string }) =>
+        client.send({ t: 'cad.rendered', id: request.id, ...reply })
+      const { documentId, document, featureId, scale } = request
+      void takeScreenshot({ documentId, document, featureId, scale }).then(
+        (image) => answer({ image }),
+        (err: unknown) => answer({ error: err instanceof Error ? err.message : String(err) }),
+      )
+    },
+    onCadQuery(request) {
+      const answer = (reply: { geometry?: unknown; error?: string }) =>
+        client.send({ t: 'cad.queried', id: request.id, ...reply })
+      const { documentId, document, featureId, what } = request
+      void takeQuery({ documentId, document, featureId, what }).then(
+        (geometry) => answer({ geometry }),
+        (err: unknown) => answer({ error: err instanceof Error ? err.message : String(err) }),
+      )
+    },
+    onCadImport(request) {
+      const answer = (reply: { features?: unknown[]; sketches?: unknown[]; error?: string }) =>
+        client.send({ t: 'cad.imported', id: request.id, ...reply })
+      const { format, data, filename, documentId } = request
+      void takeImport({ format, data, filename, documentId }).then(
+        (imported) => answer(imported),
+        (err: unknown) => answer({ error: err instanceof Error ? err.message : String(err) }),
+      )
+    },
+    onCadExport(request) {
+      const answer = (reply: {
+        file?: { data: string; mime: string; filename?: string }
+        error?: string
+      }) => client.send({ t: 'cad.exported', id: request.id, ...reply })
+      const { documentId, document, format, featureId } = request
+      void takeExport({ documentId, document, format, featureId }).then(
+        (file) => answer({ file }),
+        (err: unknown) => answer({ error: err instanceof Error ? err.message : String(err) }),
+      )
+    },
+    onCadRebuild(request) {
+      const answer = (reply: { error?: string }) =>
+        client.send({ t: 'cad.rebuilt', id: request.id, ...reply })
+      const { documentId, document } = request
+      void takeRebuild({ documentId, document }).then(
+        () => answer({}),
+        (err: unknown) => answer({ error: err instanceof Error ? err.message : String(err) }),
+      )
+    },
     onCaughtUp() {
       flush()
       patchRuntime(entry.key, () => ({ synced: true }))
@@ -357,6 +415,8 @@ function startHost(entry: HostEntry) {
   )
   client.offerBrowser(browserOffer())
   client.offerDesign({ canRender: true, ...designViews.get(entry.key) })
+  watchCadOffer()
+  client.offerCad(getCadOffer())
   // Show the history saved last time straight away, and ask the host only for what came after.
   void readReplica(entry.key).then((raw) => {
     if (clients.get(entry.key) !== client) return
@@ -390,6 +450,38 @@ export function reportDesignView(
 ) {
   designViews.set(hostKey, view)
   clients.get(hostKey)?.offerDesign({ canRender: true, ...view })
+}
+
+let cadOfferWatching = false
+
+/** Pushes the CAD pane's offer to every host whenever the pane opens, closes, or changes document. */
+function watchCadOffer() {
+  if (cadOfferWatching) return
+  cadOfferWatching = true
+  subscribeCadOffer(() => {
+    const offer = getCadOffer()
+    for (const client of clients.values()) client.offerCad(offer)
+  })
+}
+
+/**
+ * The CAD pane tells a host which document it has open. Pass null when it unmounts.
+ * `canRender` follows that call and `setCadPaneOpen` from the shell.
+ */
+export function reportCadView(
+  hostKey: string,
+  view: { documentId?: string; selection?: string[] } | null,
+) {
+  watchCadOffer()
+  if (view) {
+    setCadView({ documentId: view.documentId, selection: view.selection ?? [] })
+    setCadPaneOpen(true)
+  } else {
+    // Close first so a cleared document is not offered as a live renderer.
+    setCadPaneOpen(false)
+    setCadView(null)
+  }
+  clients.get(hostKey)?.offerCad(getCadOffer())
 }
 
 /** Sets who runs agents' browser tool calls (features/browser/browserAgent.ts). */

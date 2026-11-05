@@ -40,6 +40,9 @@ interface UiState extends PaneState {
   prCreateAsk: number
   /** Opens the Git pane's PR tab on the form for a new pull request from the current branch. */
   showCreatePr(): void
+  /** The CAD pane covers most of the window. Cleared when that pane closes. Not saved. */
+  cadMaximized: boolean
+  setCadMaximized(maximized: boolean): void
 }
 
 type Store = Pick<Storage, 'getItem' | 'setItem'> | undefined
@@ -80,7 +83,14 @@ function savePaneState(state: PaneState, store: Store = storage()) {
 /** The pane fields for a new tool/collapsed pair, with `activePane` kept in step. */
 function pane(lastPane: PaneId, paneCollapsed: boolean) {
   savePaneState({ lastPane, paneCollapsed })
-  return { lastPane, paneCollapsed, activePane: paneCollapsed ? null : lastPane }
+  const activePane = paneCollapsed ? null : lastPane
+  return {
+    lastPane,
+    paneCollapsed,
+    activePane,
+    // Maximize belongs to the open CAD pane.
+    ...(activePane === 'cad' ? {} : { cadMaximized: false }),
+  }
 }
 
 const initial = loadPaneState()
@@ -103,4 +113,6 @@ export const useUiStore = create<UiState>((set) => ({
   prCreateAsk: 0,
   showCreatePr: () =>
     set((s) => ({ ...pane('git', false), gitTab: 'pr', prCreateAsk: s.prCreateAsk + 1 })),
+  cadMaximized: false,
+  setCadMaximized: (cadMaximized) => set({ cadMaximized }),
 }))

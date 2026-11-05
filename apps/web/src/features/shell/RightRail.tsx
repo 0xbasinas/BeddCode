@@ -13,6 +13,7 @@ import {
   Suspense,
   useDeferredValue,
   useEffect,
+  useState,
   type ComponentType,
   type ReactNode,
 } from 'react'
@@ -23,7 +24,9 @@ import { LOCAL_HOST_KEY } from '../../stores/hostCatalog.ts'
 import { useComposerWorkspace, type PaneWorkspace } from '../../stores/composerWorkspace.ts'
 import { useFocusedSession } from '../split/SplitView.tsx'
 import { useUiStore, type PaneId } from '../../stores/ui.ts'
+import { CAD_MAXIMIZE_EVENT, cadMaximizedFromEvent, setCadPaneOpen } from '../cad/cadHostBridge.ts'
 import { isMac } from '../../ui/desktop.ts'
+import { cadWantWidth, urlAsksForCad } from './paneWidth.ts'
 import { paneProject } from './paneProject.ts'
 import { PaneErrorBoundary } from './PaneErrorBoundary.tsx'
 import { MissingFolder, useFolderMissing } from './MissingFolder.tsx'
@@ -100,10 +103,12 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
     workspace ? (s.byCwd[folderId(hostKey, workspace.cwd)] ?? EMPTY_FOLDER).tabs.length > 0 : false,
   )
 
-  // Room for what is open: the editor wants a wide column, the browser and CAD a wider one still.
+  const cadMaximized = useUiStore((s) => s.cadMaximized)
+  const [frameWidth, setFrameWidth] = useState(readWindowWidth)
+  // Room for what is open: the editor wants a wide column, the browser a wider one, CAD most of the window.
   const wanted =
     activePane === 'cad'
-      ? 720
+      ? cadWantWidth(frameWidth, cadMaximized)
       : activePane === 'browser'
         ? 680
         : activePane === 'files' && editorOpen
@@ -112,6 +117,34 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
   useEffect(() => {
     if (wanted) wantWidth(wanted)
   }, [wanted, wantWidth])
+  useEffect(() => {
+    if (activePane !== 'cad') return
+    const onResize = () => setFrameWidth(readWindowWidth())
+    onResize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [activePane])
+  // Agents can ask this window for a picture only while the CAD pane is showing.
+  useEffect(() => {
+    setCadPaneOpen(activePane === 'cad')
+  }, [activePane])
+  // Playwright opens CAD with ?cad=1 or #cad. Skip onboarding with
+  // localStorage beddcode.setup-skipped=1 (skipSetup in Welcome.tsx). Leave Welcome in place.
+  useEffect(() => {
+    if (urlAsksForCad(window.location.search, window.location.hash)) {
+      useUiStore.getState().openPane('cad')
+    }
+  }, [])
+  useEffect(() => {
+    const onMaximize = (event: Event) => {
+      const maximized = cadMaximizedFromEvent(event)
+      if (maximized === null) return
+      if (maximized) useUiStore.getState().openPane('cad')
+      useUiStore.getState().setCadMaximized(maximized)
+    }
+    window.addEventListener(CAD_MAXIMIZE_EVENT, onMaximize)
+    return () => window.removeEventListener(CAD_MAXIMIZE_EVENT, onMaximize)
+  }, [])
 
   const folderMissing = useFolderMissing(hostKey, workspace)
 
@@ -135,7 +168,7 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
 
   return (
     <div
-      className={`right ${activePane ? 'has-pane' : ''} ${activePane === 'browser' ? 'browser-open' : ''} ${activePane === 'cad' ? 'cad-open' : ''} ${activePane === 'files' && editorOpen ? 'editor-open' : ''}`}
+      className={`right ${activePane ? 'has-pane' : ''} ${activePane === 'browser' ? 'browser-open' : ''} ${activePane === 'cad' ? 'cad-open' : ''} ${activePane === 'cad' && cadMaximized ? 'cad-maximized' : ''} ${activePane === 'files' && editorOpen ? 'editor-open' : ''}`}
     >
       {/* At the start of the open pane's header row, left of its tabs or title; with the pane
           collapsed, on the same line at the left of the rail and window buttons. */}
@@ -214,4 +247,9 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
       </nav>
     </div>
   )
+}
+
+function readWindowWidth(): number {
+  if (typeof window === 'undefined') return 1440
+  return window.innerWidth
 }
