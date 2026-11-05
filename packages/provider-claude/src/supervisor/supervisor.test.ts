@@ -6,7 +6,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import type { SessionEvent } from '@beddcode/contracts'
 import { createLogger } from '@beddcode/shared'
 import { createClaudeAdapter } from '../adapter.ts'
-import { SupervisorClient } from './client.ts'
+import { SupervisorClient } from '@beddcode/shared'
 
 const log = createLogger('test', 'error')
 const fake = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fakeClaude.mjs')

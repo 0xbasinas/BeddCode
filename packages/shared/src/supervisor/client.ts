@@ -5,15 +5,33 @@ import net from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PassThrough, Writable } from 'node:stream'
-import type { SpawnedProcess } from '@anthropic-ai/claude-agent-sdk'
-import type { Logger } from '@beddcode/shared'
+import type { Logger } from '../log.ts'
 
 /** The wire protocol the daemon and the host speak; a daemon of another version is not used. */
-export const PROTOCOL_VERSION = 1
+export const PROTOCOL_VERSION = 2
+
+/** Output younger than this is not acknowledged yet (see `SupervisedProcess.tryAck`). */
+const ACK_DELAY_MS = 120
 
 /** Feature flag: the supervisor is off unless this is `1`/`true`/`on`. */
 export function supervisorEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return /^(1|true|on|yes)$/i.test(env.BEDDCODE_AGENT_SUPERVISOR ?? '')
+}
+
+/**
+ * How the supervisor reads the agent's stream. `claude` is the Claude CLI's stream-json; `jsonrpc`
+ * is JSON-RPC over lines (Codex app-server, ACP agents, Grok).
+ */
+export type SupervisedProtocol = 'claude' | 'jsonrpc'
+
+/**
+ * For `jsonrpc` agents: what a host that reattaches sends again but the agent already did. Each
+ * group of request methods is answered, after the first time, with the first answer given to any
+ * method of the group (`thread/start` then `thread/resume`, say); `swallow` notifications are dropped.
+ */
+export interface SupervisedHandshake {
+  memo: string[][]
+  swallow?: string[]
 }
 
 export interface SupervisedSpawn {
@@ -21,13 +39,12 @@ export interface SupervisedSpawn {
   args: string[]
   cwd?: string
   env: Record<string, string | undefined>
+  protocol?: SupervisedProtocol
+  handshake?: SupervisedHandshake
 }
 
 /** What the host keeps in the supervisor next to an agent, to pick up where it left off. */
-export interface AgentMeta {
-  turnCount: number
-  turnActive: boolean
-}
+export type AgentMeta = Record<string, unknown>
 
 export interface AgentInfo {
   id: string
@@ -268,8 +285,10 @@ export class SupervisorClient {
  * frames. Output is acknowledged once it reached the SDK, so a later host is given only what this
  * one did not take in.
  */
-export class SupervisedProcess extends EventEmitter implements SpawnedProcess {
+export class SupervisedProcess extends EventEmitter {
   readonly stdout = new PassThrough()
+  /** The agent's stderr, for callers that read it as they would a child process's. */
+  readonly stderr = new PassThrough()
   readonly stdin: Writable
   pid: number
   meta: AgentMeta | undefined
@@ -277,6 +296,13 @@ export class SupervisedProcess extends EventEmitter implements SpawnedProcess {
   signalCode: NodeJS.Signals | null = null
   killed = false
   stderrTail = ''
+  /**
+   * True when everything handed to the session so far has been processed (its events saved). The
+   * session sets it; without one, output counts as processed after the short delay alone.
+   */
+  ackGate: () => boolean = () => true
+  private readonly unacked: { off: number; at: number }[] = []
+  private ackTimer: ReturnType<typeof setInterval> | undefined
   /** Leave the agent running: nothing more goes to it from here. */
   private detached = false
 
@@ -336,14 +362,18 @@ export class SupervisedProcess extends EventEmitter implements SpawnedProcess {
       this.stdout.write(data)
       const off = Number(f.off)
       if (off >= 0) {
-        // Only up to the end of the last whole line counts as taken in.
+        // Only up to the end of the last whole line counts as taken in, and only once the session
+        // has processed it (see `tryAck`).
         const nl = data.lastIndexOf('\n')
         if (nl >= 0) {
-          this.send({ op: 'ack', off: off + Buffer.byteLength(data.slice(0, nl + 1)) })
+          this.unacked.push({ off: off + Buffer.byteLength(data.slice(0, nl + 1)), at: Date.now() })
+          this.ackTimer ??= setInterval(() => this.tryAck(), 40)
+          this.ackTimer.unref?.()
         }
       }
     } else if (f.op === 'err') {
       this.stderrTail = (this.stderrTail + String(f.data)).slice(-2_000)
+      this.stderr.write(String(f.data))
     } else if (f.op === 'exit') {
       this.send({ op: 'release' })
       this.finish(f.code as number | null, f.signal as NodeJS.Signals | null)
@@ -353,13 +383,37 @@ export class SupervisedProcess extends EventEmitter implements SpawnedProcess {
     }
   }
 
+  /**
+   * Tells the supervisor what this host has taken in, so a later host is replayed only the rest.
+   * Not at once on receipt: the host could die before it saved what it was given, and that would
+   * be lost. Output is acknowledged when it is a moment old and the session has caught up, so what
+   * can repeat after a crash is at most the last few lines, and nothing can be lost.
+   */
+  private tryAck(force = false) {
+    if (this.unacked.length === 0 || this.detached) {
+      if (this.ackTimer && this.unacked.length === 0) clearInterval(this.ackTimer)
+      if (this.unacked.length === 0) this.ackTimer = undefined
+      return
+    }
+    if (!this.ackGate()) return
+    const cutoff = Date.now() - ACK_DELAY_MS
+    let upto = -1
+    for (let i = 0; i < this.unacked.length; i++)
+      if (force || this.unacked[i]!.at <= cutoff) upto = i
+    if (upto < 0) return
+    this.send({ op: 'ack', off: this.unacked[upto]!.off })
+    this.unacked.splice(0, upto + 1)
+  }
+
   private finish(code: number | null, signal: NodeJS.Signals | null) {
     if (this.exitCode !== null || this.signalCode !== null) return
     this.exitCode = code ?? (signal ? null : 0)
     this.signalCode = signal
     this.stdout.end()
+    this.stderr.end()
     // The SDK reads this as "the agent ended"; a null code with no signal would look still running.
     this.emit('exit', code, signal)
+    this.emit('close', code, signal)
     this.conn?.close()
   }
 
@@ -371,12 +425,15 @@ export class SupervisedProcess extends EventEmitter implements SpawnedProcess {
   /** The host is going away but the agent is not: let go without ending it. */
   detach() {
     if (this.detached) return
+    // A planned goodbye: what the session has processed is acknowledged now, so nothing repeats.
+    this.tryAck(true)
     this.detached = true
+    if (this.ackTimer) clearInterval(this.ackTimer)
     this.conn?.close()
     this.stdout.end()
   }
 
-  kill(): boolean {
+  kill(_signal?: NodeJS.Signals): boolean {
     if (this.detached) return true
     this.killed = true
     this.send({ op: 'kill' })

@@ -8,10 +8,12 @@ import {
   resolveExecutable,
   spawnTransport,
   type Logger,
+  type SupervisorClient,
   type Transport,
 } from '@beddcode/shared'
 import { instanceIdFor, type AcpAgentConfig, type AcpAgentStore } from './config.ts'
 import { AcpSession } from './session.ts'
+import { acpTransport } from './supervised.ts'
 import { AcpEventMapper, toConfigOptions } from './mapper.ts'
 import { approvalSetup } from './permissions.ts'
 import { profileFor } from './profiles.ts'
@@ -54,6 +56,8 @@ export interface AcpAdapterOptions {
   log?: Logger
   /** Injected in tests. */
   createTransport?: (config: AcpAgentConfig, cwd: string) => Transport
+  /** Keeps agents running across host restarts (see docs/agent-supervisor.md). */
+  supervisor?: SupervisorClient
 }
 
 export function createAcpAdapter(options: AcpAdapterOptions): ProviderAdapter {
@@ -173,17 +177,20 @@ export function createAcpAdapter(options: AcpAdapterOptions): ProviderAdapter {
         profile?.launchArgs && profile.modes.some((m) => m.id === input.permissionMode)
           ? input.permissionMode
           : undefined
+      const command = resolveExecutable(config.command) ?? config.command
+      const env = input.textOnly ? probeEnvironment(config.env) : { ...process.env, ...config.env }
       const transport =
         options.createTransport?.({ ...config, args: launched }, input.cwd) ??
-        spawnTransport(
-          resolveExecutable(config.command) ?? config.command,
-          launched,
-          {
-            cwd: input.cwd,
-            env: input.textOnly ? probeEnvironment(config.env) : { ...process.env, ...config.env },
-          },
+        (await acpTransport({
+          supervisor: options.supervisor,
+          input,
+          command,
+          args: launched,
+          env,
           log,
-        )
+          name: config.label,
+          plain: () => spawnTransport(command, launched, { cwd: input.cwd, env }, log),
+        }))
       return new AcpSession(input, {
         transport,
         log,

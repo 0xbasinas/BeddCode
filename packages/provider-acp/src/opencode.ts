@@ -6,10 +6,12 @@ import {
   resolveExecutable,
   spawnTransport,
   type Logger,
+  type SupervisorClient,
   type Transport,
 } from '@beddcode/shared'
 import { randomUUID } from 'node:crypto'
 import { generateSessionText } from '@beddcode/provider-core'
+import { acpTransport } from './supervised.ts'
 import { AcpSession } from './session.ts'
 
 export const OPENCODE_INSTANCE_ID = 'opencode'
@@ -37,6 +39,8 @@ export interface OpenCodeAdapterOptions {
     cwd: string,
     env: NodeJS.ProcessEnv,
   ) => Transport
+  /** Keeps OpenCode running across host restarts (see docs/agent-supervisor.md). */
+  supervisor?: SupervisorClient
 }
 
 /** OpenCode speaks ACP directly, so the shared ACP session handles permissions, config and resume. */
@@ -124,7 +128,17 @@ export function createOpenCodeAdapter(options: OpenCodeAdapterOptions = {}): Pro
       }
       const transport =
         options.createTransport?.(exe, ['acp'], input.cwd, { ...process.env }) ??
-        spawnTransport(exe, ['acp'], { cwd: input.cwd, env: { ...process.env } }, log)
+        (await acpTransport({
+          supervisor: options.supervisor,
+          input,
+          command: exe,
+          args: ['acp'],
+          env: { ...process.env },
+          log,
+          name: 'OpenCode',
+          plain: () =>
+            spawnTransport(exe, ['acp'], { cwd: input.cwd, env: { ...process.env } }, log),
+        }))
       return new AcpSession(input, { transport, log, label: 'OpenCode' })
     },
     async listHistory(_id, cwd) {

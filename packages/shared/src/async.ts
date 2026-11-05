@@ -37,6 +37,8 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 export interface AsyncQueue<T> extends AsyncIterable<T> {
   push(item: T): void
   close(): void
+  /** Nothing is waiting to be consumed and the consumer is back at its next `await`. */
+  readonly idle: boolean
 }
 
 export function createAsyncQueue<T>(): AsyncQueue<T> {
@@ -45,6 +47,9 @@ export function createAsyncQueue<T>(): AsyncQueue<T> {
   let closed = false
 
   return {
+    get idle() {
+      return items.length === 0
+    },
     push(item) {
       if (closed) return
       if (waiting) {

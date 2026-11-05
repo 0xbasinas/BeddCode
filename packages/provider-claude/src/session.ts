@@ -15,11 +15,12 @@ import {
   createAsyncQueue,
   deferred,
   trackChild,
+  type SupervisedProcess,
+  type SupervisorClient,
   type Deferred,
   type Logger,
 } from '@beddcode/shared'
 import { ClaudeEventMapper, toolKind, toolTitle } from './mapper.ts'
-import type { SupervisedProcess, SupervisorClient } from './supervisor/client.ts'
 
 export type QueryFn = (params: {
   prompt: AsyncIterable<SDKUserMessage>
@@ -110,8 +111,8 @@ export class ClaudeSession implements ProviderSession {
     this.reattached = deps.attached !== undefined
     if (deps.attached?.meta) {
       // Carry on counting turns where the previous host stopped, and in the turn it was in.
-      this.turnCount = deps.attached.meta.turnCount
-      this.turnActive = deps.attached.meta.turnActive
+      this.turnCount = Number(deps.attached.meta.turnCount) || 0
+      this.turnActive = deps.attached.meta.turnActive === true
       if (this.turnActive) this.mapper.setTurn(`turn-${this.turnCount}`)
     }
 
@@ -177,9 +178,10 @@ export class ClaudeSession implements ProviderSession {
         this.deps.supervisor!.spawn(
           this.sessionId,
           { command, args, cwd, env },
-          { turnCount: this.turnCount, turnActive: this.turnActive },
+          { turnCount: this.turnCount, turnActive: this.turnActive, active: this.turnActive },
         )
       this.supervised = proc
+      proc.ackGate = () => this.queue.idle
       return proc
     }
     const child = spawn(command, args, {
@@ -337,7 +339,11 @@ export class ClaudeSession implements ProviderSession {
 
   /** What a later host needs to know to pick this agent up: which turn it is in. */
   private syncMeta() {
-    this.supervised?.setMeta({ turnCount: this.turnCount, turnActive: this.turnActive })
+    this.supervised?.setMeta({
+      turnCount: this.turnCount,
+      turnActive: this.turnActive,
+      active: this.turnActive,
+    })
   }
 
   /**

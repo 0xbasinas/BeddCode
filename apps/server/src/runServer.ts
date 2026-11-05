@@ -6,7 +6,7 @@ import {
   createAcpAdapter,
   createOpenCodeAdapter,
 } from '@beddcode/provider-acp'
-import { createClaudeAdapter, SupervisorClient } from '@beddcode/provider-claude'
+import { createClaudeAdapter } from '@beddcode/provider-claude'
 import { createCodexAdapter } from '@beddcode/provider-codex'
 import { createGrokAdapter } from '@beddcode/provider-grok'
 import { createPiAdapter } from '@beddcode/provider-pi'
@@ -18,6 +18,7 @@ import {
   reapOrphans,
   recordChildrenIn,
   runningChildren,
+  SupervisorClient,
 } from '@beddcode/shared'
 import { acquireHostLock, listenError } from './hostLock.ts'
 import { AgentCatalog } from './agents/catalog.ts'
@@ -89,11 +90,15 @@ export async function runServer(config: ServerConfig): Promise<void> {
       log: createLogger('claude'),
       supervisor,
     }),
-    createCodexAdapter({ log: createLogger('codex') }),
-    createGrokAdapter({ log: createLogger('grok') }),
-    createPiAdapter({ log: createLogger('pi'), sessionDir: path.join(home, 'sessions', 'pi') }),
-    createOpenCodeAdapter({ log: createLogger('opencode') }),
-    createAcpAdapter({ store: acpStore, log: createLogger('acp') }),
+    createCodexAdapter({ log: createLogger('codex'), supervisor }),
+    createGrokAdapter({ log: createLogger('grok'), supervisor }),
+    createPiAdapter({
+      log: createLogger('pi'),
+      sessionDir: path.join(home, 'sessions', 'pi'),
+      supervisor,
+    }),
+    createOpenCodeAdapter({ log: createLogger('opencode'), supervisor }),
+    createAcpAdapter({ store: acpStore, log: createLogger('acp'), supervisor }),
   ]
   // "advanced" adds steering, plans, questions, forks and history to the scripted agent.
   const fake = process.env.BEDDCODE_FAKE_PROVIDER

@@ -11,8 +11,21 @@ import { StringDecoder } from 'node:string_decoder'
 const isWindows = process.platform === 'win32'
 const argv = process.argv.slice(2)
 const dir = path.resolve(argv[argv.indexOf('--dir') + 1] ?? '.')
-// Agents with no host attached for this long are ended, so a host that never comes back leaks nothing.
-const GRACE_MS = Number(process.env.BEDDCODE_SUPERVISOR_GRACE_MS ?? 15 * 60_000)
+// Agents with no host attached are ended after a while, so a host that never comes back leaks
+// nothing. One in the middle of a turn is worth waiting for much longer than one that is idle
+// (a host that restarts later still resumes an idle conversation from the agent's own history).
+const IDLE_GRACE_MS = Number(
+  process.env.BEDDCODE_SUPERVISOR_IDLE_GRACE_MS ??
+    process.env.BEDDCODE_SUPERVISOR_GRACE_MS ??
+    10 * 60_000,
+)
+const ACTIVE_GRACE_MS = Number(
+  process.env.BEDDCODE_SUPERVISOR_ACTIVE_GRACE_MS ??
+    process.env.BEDDCODE_SUPERVISOR_GRACE_MS ??
+    60 * 60_000,
+)
+const graceFor = (agent) =>
+  agent.meta?.active === true && !agent.turnOver ? ACTIVE_GRACE_MS : IDLE_GRACE_MS
 // The daemon itself leaves when it has held no agent and no connection for this long.
 const IDLE_MS = Number(process.env.BEDDCODE_SUPERVISOR_IDLE_MS ?? 60_000)
 const REPLAY_SLICE = 256 * 1024
@@ -47,6 +60,12 @@ let idleSince = Date.now()
  * @property {Map<string, { line: string, off: number }>} asks  requests the agent made that nobody answered
  * @property {string | null} initId
  * @property {object | null} initResponse
+ * @property {boolean} [turnOver]  the agent's turn ended while no host was attached
+ * @property {'claude' | 'jsonrpc'} protocol
+ * @property {string[][]} memo        request methods answered again from the first answer, by group
+ * @property {Set<string>} swallow    notifications a reattached host sends that are dropped
+ * @property {Map<string, number>} memoPending  ids of requests whose answer is to be remembered
+ * @property {Map<number, object>} memoCache    the remembered answers, by group
  */
 
 function send(sock, frame) {
@@ -88,7 +107,8 @@ function dropAgent(agent) {
   for (const f of [agent.log]) fs.rm(f, { force: true }, () => {})
 }
 
-function spawnAgent(id, { command, args = [], cwd, env, meta }) {
+function spawnAgent(id, spec) {
+  const { command, args = [], cwd, env, meta } = spec
   const old = agents.get(id)
   if (old) {
     // One agent per session: whatever was there is stale.
@@ -118,6 +138,11 @@ function spawnAgent(id, { command, args = [], cwd, env, meta }) {
     asks: new Map(),
     initId: null,
     initResponse: null,
+    protocol: spec.protocol === 'jsonrpc' ? 'jsonrpc' : 'claude',
+    memo: spec.handshake?.memo ?? [],
+    swallow: new Set(spec.handshake?.swallow ?? []),
+    memoPending: new Map(),
+    memoCache: new Map(),
   }
   agents.set(id, agent)
   fs.writeFileSync(agent.log, '')
@@ -159,12 +184,39 @@ function spawnAgent(id, { command, args = [], cwd, env, meta }) {
   return agent
 }
 
+const isResponse = (m) => m && m.id !== undefined && m.method === undefined
+const isRequest = (m) => m && m.id !== undefined && m.method !== undefined
+const keyOf = (id) => JSON.stringify(id)
+const groupOf = (agent, method) => agent.memo.findIndex((g) => g.includes(method))
+
 /** Tracks the agent's own requests (a permission prompt, say) until the host answers them. */
 function inspectOut(agent, line, off) {
   let msg
   try {
     msg = JSON.parse(line)
   } catch {
+    return
+  }
+  // A turn that ends while no host is attached: from then on the agent is idle, and waits less.
+  const ended =
+    agent.protocol === 'jsonrpc'
+      ? msg?.method === 'turn/completed' ||
+        msg?.type === 'agent_end' ||
+        (isResponse(msg) && typeof msg.result?.stopReason === 'string')
+      : msg?.type === 'result'
+  if (ended && !agent.conn && agent.meta?.active === true) {
+    agent.turnOver = true
+    agent.detachedAt = Date.now()
+  }
+  if (agent.protocol === 'jsonrpc') {
+    if (isRequest(msg)) agent.asks.set(keyOf(msg.id), { line, off })
+    else if (isResponse(msg)) {
+      const group = agent.memoPending.get(keyOf(msg.id))
+      if (group !== undefined) {
+        agent.memoPending.delete(keyOf(msg.id))
+        if (msg.error === undefined && !agent.memoCache.has(group)) agent.memoCache.set(group, msg)
+      }
+    }
     return
   }
   if (msg?.type === 'control_request' && typeof msg.request_id === 'string') {
@@ -195,6 +247,30 @@ function handleIn(agent, data, sock) {
     try {
       msg = JSON.parse(line)
     } catch {
+      forward += line
+      continue
+    }
+    if (agent.protocol === 'jsonrpc') {
+      if (isRequest(msg)) {
+        const group = groupOf(agent, msg.method)
+        if (group >= 0) {
+          const cached = agent.memoCache.get(group)
+          if (agent.attaches > 1 && cached) {
+            // The agent already did this for the previous host: answer from what it said then.
+            send(sock, {
+              op: 'out',
+              off: -1,
+              data: JSON.stringify({ ...cached, id: msg.id }) + '\n',
+            })
+            continue
+          }
+          if (!cached) agent.memoPending.set(keyOf(msg.id), group)
+        }
+      } else if (isResponse(msg)) {
+        agent.asks.delete(keyOf(msg.id))
+      } else if (msg?.method !== undefined && agent.attaches > 1 && agent.swallow.has(msg.method)) {
+        continue
+      }
       forward += line
       continue
     }
@@ -256,7 +332,8 @@ function replay(agent, sock) {
           carry = chunk
           continue
         }
-        send(sock, { op: 'out', off, data: chunk.subarray(0, upto).toString('utf8') })
+        const text = chunk.subarray(0, upto).toString('utf8')
+        send(sock, { op: 'out', off, data: text })
         off += upto
         carry = chunk.subarray(upto)
       }
@@ -308,7 +385,7 @@ const server = net.createServer((sock) => {
       if (!authed) {
         if (msg.op !== 'hello' || msg.token !== token) return sock.destroy()
         authed = true
-        send(sock, { op: 'hello', version: 1, pid: process.pid })
+        send(sock, { op: 'hello', version: 2, pid: process.pid })
         continue
       }
       try {
@@ -342,6 +419,7 @@ const server = net.createServer((sock) => {
         if (!agent) return send(sock, { op: 'error', id: msg.id, code: 'unknown' })
         claim(agent)
         agent.attaches++
+        agent.turnOver = false
         agent.inBuf = ''
         send(sock, {
           op: 'attached',
@@ -362,7 +440,10 @@ const server = net.createServer((sock) => {
         }
         return
       case 'meta':
-        if (mine) mine.meta = msg.meta
+        if (mine) {
+          mine.meta = msg.meta
+          mine.turnOver = false
+        }
         return
       case 'close-stdin':
         try {
@@ -383,9 +464,15 @@ const server = net.createServer((sock) => {
 setInterval(() => {
   const now = Date.now()
   for (const agent of agents.values()) {
-    if (agent.conn || !agent.detachedAt || now - agent.detachedAt < GRACE_MS) continue
+    // An agent whose turn ended while no host was there gets the idle allowance from that moment.
+    if (agent.conn || !agent.detachedAt || now - agent.detachedAt < graceFor(agent)) continue
     if (agent.exited) dropAgent(agent)
-    else killTree(agent)
+    else {
+      console.log(
+        `ending ${agent.id}: no host came back in ${Math.round(graceFor(agent) / 60_000)} min`,
+      )
+      killTree(agent)
+    }
   }
   if (agents.size === 0 && connections === 0) {
     idleSince ||= now
@@ -401,13 +488,29 @@ function shutdown() {
   process.exit(0)
 }
 
-fs.rmSync(infoFile, { force: true })
-if (!isWindows) fs.rmSync(endpoint, { force: true })
-server.on('error', () => process.exit(1))
-server.listen(endpoint, () => {
-  fs.writeFileSync(infoFile, JSON.stringify({ pid: process.pid, endpoint, token }), {
-    mode: 0o600,
-  })
-  idleSince = Date.now()
+// Only one daemon per folder: whoever manages to listen is it, the others leave. A socket file
+// nobody listens on any more (a daemon that was killed) is removed and listened on again.
+let retried = false
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE' && !isWindows && !retried) {
+    retried = true
+    const probe = net.connect(endpoint)
+    probe.once('connect', () => process.exit(0)) // a live daemon has it
+    probe.once('error', () => {
+      fs.rmSync(endpoint, { force: true })
+      listen()
+    })
+    return
+  }
+  process.exit(err.code === 'EADDRINUSE' ? 0 : 1)
 })
+function listen() {
+  server.listen(endpoint, () => {
+    fs.writeFileSync(infoFile, JSON.stringify({ pid: process.pid, endpoint, token }), {
+      mode: 0o600,
+    })
+    idleSince = Date.now()
+  })
+}
+listen()
 process.on('SIGTERM', shutdown)

@@ -17,6 +17,8 @@ import {
   runCommand,
   spawnProcess,
   type Logger,
+  type SupervisedProcess,
+  type SupervisorClient,
 } from '@beddcode/shared'
 import { generateSessionText } from '@beddcode/provider-core'
 import { PiEventMapper } from './mapper.ts'
@@ -74,6 +76,8 @@ export interface PiAdapterOptions {
   log?: Logger
   run?: typeof runCommand
   spawnFn?: PiSpawn
+  /** Keeps Pi running across host restarts (see docs/agent-supervisor.md). */
+  supervisor?: SupervisorClient
 }
 
 type Obj = Record<string, unknown>
@@ -153,12 +157,18 @@ export function createPiAdapter(options: PiAdapterOptions = {}): ProviderAdapter
       throw new Error(
         'Pi is not installed on this host. Install it from https://pi.dev and restart BeddCode.',
       )
+    const supervisor = input.textOnly ? undefined : options.supervisor
+    const attached = input.reattach
+      ? await supervisor?.attach(input.sessionId).catch(() => undefined)
+      : undefined
     return new PiSession(input, {
       exe,
       sessionDir: options.sessionDir,
       log,
       spawnFn: options.spawnFn,
       models: capabilities.models ?? [],
+      supervisor,
+      attached,
     })
   }
   return {
@@ -262,12 +272,18 @@ export function createPiAdapter(options: PiAdapterOptions = {}): ProviderAdapter
   }
 }
 
-interface PiDeps {
+export interface PiDeps {
   exe: string
+  /** Put before Pi's own arguments, for a Pi that is started through an interpreter or wrapper. */
+  exeArgs?: string[]
   sessionDir?: string
   log: Logger
   spawnFn?: PiSpawn
   models: ModelOption[]
+  /** Keeps Pi running across host restarts (see docs/agent-supervisor.md). */
+  supervisor?: SupervisorClient
+  /** A Pi a previous host left running, to carry on with. */
+  attached?: SupervisedProcess
 }
 type RpcPending = {
   resolve(value: Obj): void
@@ -278,7 +294,7 @@ type Draft<E = import('@beddcode/contracts').SessionEvent> = E extends unknown
   ? Omit<E, 'sessionId' | 'at' | 'turnId'>
   : never
 
-class PiSession implements ProviderSession {
+export class PiSession implements ProviderSession {
   readonly sessionId: string
   private readonly queue = createAsyncQueue<import('@beddcode/contracts').SessionEvent>()
   private readonly mapper: PiEventMapper
@@ -295,7 +311,10 @@ class PiSession implements ProviderSession {
   private effort?: string
   private modelRows: ModelOption[]
   /** Pi models without image input must receive an attachment path, never an image block. */
+  private supervised: SupervisedProcess | undefined
   private readonly imageModels = new Set<string>()
+  /** This session took over a Pi that was already running (and maybe mid-turn). */
+  readonly reattached: boolean
 
   constructor(
     private readonly input: StartSessionInput,
@@ -306,6 +325,23 @@ class PiSession implements ProviderSession {
     this.model = input.model
     this.effort = input.effort
     this.modelRows = deps.models
+    this.reattached = deps.attached?.meta !== undefined
+    const meta = deps.attached?.meta
+    if (meta) {
+      // Pick up where the previous host stopped: same turn numbering, same turn, same settings.
+      this.turn = Number(meta.turn) || 0
+      this.running = meta.running === true
+      if (this.running) this.mapper.setTurn(`turn-${this.turn}`)
+      this.providerSessionId =
+        typeof meta.providerSessionId === 'string' ? meta.providerSessionId : undefined
+      this.model = typeof meta.model === 'string' ? meta.model : this.model
+      this.effort = typeof meta.effort === 'string' ? meta.effort : this.effort
+      // Answers meant for the previous host's requests must not match this host's.
+      this.serial = 1_000_000 + (Date.now() % 1_000_000_000)
+      void this.ensureStarted().catch((err: unknown) => {
+        this.emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })
+      })
+    }
   }
   get events() {
     return this.queue
@@ -321,6 +357,7 @@ class PiSession implements ProviderSession {
   private async ensureStarted() {
     if (this.child) return
     const args = [
+      ...(this.deps.exeArgs ?? []),
       '--mode',
       'rpc',
       ...(this.input.textOnly
@@ -335,8 +372,26 @@ class PiSession implements ProviderSession {
     const launch = this.deps.spawnFn ?? ((f, a, o) => spawnProcess(f, a, o) as never)
     if (this.deps.sessionDir && !this.input.textOnly)
       await mkdir(this.deps.sessionDir, { recursive: true })
-    const child = launch(this.deps.exe, args, { cwd: this.input.cwd, env: { ...process.env } })
+    const child = this.deps.attached
+      ? (this.deps.attached as never as ChildProcessWithoutNullStreams)
+      : this.deps.supervisor
+        ? (this.deps.supervisor.spawn(
+            this.sessionId,
+            {
+              command: this.deps.exe,
+              args,
+              cwd: this.input.cwd,
+              env: { ...process.env },
+              protocol: 'jsonrpc',
+            },
+            {},
+          ) as never as ChildProcessWithoutNullStreams)
+        : launch(this.deps.exe, args, { cwd: this.input.cwd, env: { ...process.env } })
     this.child = child
+    this.supervised =
+      this.deps.attached ??
+      (this.deps.supervisor ? (child as never as SupervisedProcess) : undefined)
+    if (this.supervised) this.supervised.ackGate = () => this.queue.idle
     child.stdin.on('error', () => {})
     child.stdout.on('data', (chunk: Buffer) => this.readChunk(chunk))
     child.stderr.on('data', (chunk: Buffer) =>
@@ -347,7 +402,8 @@ class PiSession implements ProviderSession {
       this.failAll(new Error(`Pi exited${code === null ? '' : ` with code ${code}`}`)),
     )
     try {
-      if (this.input.resumeId)
+      // A Pi that is still running has its session open already.
+      if (this.input.resumeId && !this.reattached)
         await this.rpc('switch_session', { sessionPath: this.input.resumeId })
       else await this.rpc('get_state')
       const state = await this.rpc('get_state')
@@ -458,6 +514,7 @@ class PiSession implements ProviderSession {
     if (event.type === 'agent_start') {
       this.running = true
       const turnId = `turn-${++this.turn}`
+      this.syncMeta()
       this.mapper.setTurn(turnId)
       this.emit({ type: 'turn.started' }, turnId)
       return
@@ -499,6 +556,7 @@ class PiSession implements ProviderSession {
         turnId,
       )
       this.running = false
+      this.syncMeta()
       void this.refreshState().then(() => this.refreshUsage())
       return
     }
@@ -553,6 +611,7 @@ class PiSession implements ProviderSession {
   private adopt(file: string) {
     if (this.providerSessionId === file) return
     this.providerSessionId = file
+    this.syncMeta()
     this.emit({ type: 'session.provider-session', providerSessionId: file })
   }
   private write(value: Obj) {
@@ -750,6 +809,26 @@ class PiSession implements ProviderSession {
   }
   async respondToApproval(requestId: string) {
     throw new Error(`Pi does not have pending approval ${requestId}`)
+  }
+  /** What a later host needs to know to pick this Pi up. */
+  private syncMeta() {
+    this.supervised?.setMeta({
+      turn: this.turn,
+      running: this.running,
+      active: this.running,
+      providerSessionId: this.providerSessionId,
+      model: this.model,
+      effort: this.effort,
+    })
+  }
+  /** The host is stopping but Pi is to keep running (see docs/agent-supervisor.md). */
+  async detach() {
+    if (this.closed) return
+    this.closed = true
+    this.syncMeta()
+    this.supervised?.detach()
+    this.failAll(new Error('Pi session detached'))
+    this.queue.close()
   }
   async close() {
     if (this.closed) return

@@ -93,7 +93,7 @@ await build({
 // The agent supervisor runs as its own program (packages/provider-claude/src/supervisor), so it
 // cannot be inside the bundle: the host starts it by file, from next to main.mjs.
 cpSync(
-  path.join(root, 'packages/provider-claude/src/supervisor/daemon.mjs'),
+  path.join(root, 'packages/shared/src/supervisor/daemon.mjs'),
   path.join(out, 'server/daemon.mjs'),
 )
 

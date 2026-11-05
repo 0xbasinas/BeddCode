@@ -7,13 +7,14 @@ import type {
 } from '@beddcode/contracts'
 import type { ProviderAdapter } from '@beddcode/provider-core'
 import { generateSessionText } from '@beddcode/provider-core'
-import { AcpSession, grokLaunchArgs, grokProfile } from '@beddcode/provider-acp'
+import { AcpSession, acpTransport, grokLaunchArgs, grokProfile } from '@beddcode/provider-acp'
 import {
   createLogger,
   resolveExecutable,
   runCommand,
   spawnTransport,
   type Logger,
+  type SupervisorClient,
   type Transport,
 } from '@beddcode/shared'
 import { grokHooks } from './hooks.ts'
@@ -61,6 +62,8 @@ export interface GrokAdapterOptions {
   spawnFn?: SpawnFn
   /** Injected in tests: the connection to `grok agent stdio`. */
   createTransport?: (args: string[], cwd: string) => Transport
+  /** Keeps Grok running across host restarts (see docs/agent-supervisor.md). */
+  supervisor?: SupervisorClient
   run?: typeof runCommand
 }
 
@@ -183,14 +186,23 @@ export function createGrokAdapter(options: GrokAdapterOptions = {}): ProviderAda
     })
 
   /** A conversation the user has: Grok running as an agent, which can ask before it acts. */
-  function startAgent(exe: string, input: ConstructorParameters<typeof AcpSession>[0]) {
+  async function startAgent(exe: string, input: ConstructorParameters<typeof AcpSession>[0]) {
     const mode = profile.modes.some((m) => m.id === input.permissionMode)
       ? input.permissionMode
       : undefined
     const args = grokLaunchArgs(['agent', 'stdio'], mode)
     const transport =
       options.createTransport?.(args, input.cwd) ??
-      spawnTransport(exe, args, { cwd: input.cwd, env: agentEnv }, log)
+      (await acpTransport({
+        supervisor: options.supervisor,
+        input,
+        command: exe,
+        args,
+        env: agentEnv,
+        log,
+        name: 'Grok',
+        plain: () => spawnTransport(exe, args, { cwd: input.cwd, env: agentEnv }, log),
+      }))
     return new AcpSession(input, {
       transport,
       log,

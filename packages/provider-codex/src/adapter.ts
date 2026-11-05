@@ -4,7 +4,9 @@ import {
   createLogger,
   resolveExecutable,
   runCommand,
+  openSupervisedTransport,
   spawnTransport,
+  type SupervisorClient,
   type Logger,
   type Transport,
 } from '@beddcode/shared'
@@ -50,6 +52,14 @@ export interface CodexAdapterOptions {
   log?: Logger
   /** Injected in tests. */
   createTransport?: (cwd: string) => Transport
+  /** Keeps Codex running across host restarts (see docs/agent-supervisor.md). */
+  supervisor?: SupervisorClient
+}
+
+/** What a Codex that is reattached must not be told twice (see SupervisedHandshake). */
+const CODEX_HANDSHAKE = {
+  memo: [['initialize'], ['thread/start', 'thread/resume']],
+  swallow: ['initialized'],
 }
 
 export function createCodexAdapter(options: CodexAdapterOptions = {}): ProviderAdapter {
@@ -135,7 +145,20 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): ProviderA
       if (!exe) throw new Error('Codex is not installed on this host')
       const transport =
         options.createTransport?.(input.cwd) ??
-        spawnTransport(exe, ['app-server'], { env, cwd: input.cwd }, log)
+        (options.supervisor
+          ? await openSupervisedTransport(
+              options.supervisor,
+              input.sessionId,
+              {
+                command: exe,
+                args: ['app-server'],
+                cwd: input.cwd,
+                env,
+                handshake: CODEX_HANDSHAKE,
+              },
+              { reattach: input.reattach, log, name: 'codex' },
+            )
+          : spawnTransport(exe, ['app-server'], { env, cwd: input.cwd }, log))
       return new CodexSession(input, { transport, log })
     },
     listHistory: (_instanceId, cwd) => history.list(cwd),

@@ -6,7 +6,13 @@ import {
 } from '@anthropic-ai/claude-agent-sdk'
 import type { ProviderCapabilities, ProviderInstance, ProviderStatus } from '@beddcode/contracts'
 import type { ProviderAdapter } from '@beddcode/provider-core'
-import { createLogger, resolveExecutable, runCommand, type Logger } from '@beddcode/shared'
+import {
+  createLogger,
+  resolveExecutable,
+  runCommand,
+  type Logger,
+  type SupervisorClient,
+} from '@beddcode/shared'
 import { ClaudeSession, type QueryFn } from './session.ts'
 import { discoverClaudeModels } from './models.ts'
 import { CLAUDE_BUILTINS, scanClaudeCommands } from './commands.ts'
@@ -15,7 +21,6 @@ import { createClaudeMcp } from './mcp.ts'
 import { readClaudeLimits } from './limits.ts'
 import { generateSessionText } from '@beddcode/provider-core'
 import { randomUUID } from 'node:crypto'
-import type { SupervisorClient } from './supervisor/client.ts'
 
 export const CLAUDE_INSTANCE_ID = 'claude'
 
