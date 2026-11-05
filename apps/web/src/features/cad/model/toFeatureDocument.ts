@@ -391,7 +391,9 @@ function chainLines(segments: Array<[Pt, Pt]>): Pt[] {
 }
 
 function pointList(entities: LooseEntity[]): Pt[] {
-  const points = entities.map((entity) => [requiredField(entity, 'x'), requiredField(entity, 'y')] as Pt)
+  const points = entities.map(
+    (entity) => [requiredField(entity, 'x'), requiredField(entity, 'y')] as Pt,
+  )
   const first = points[0]
   const last = points[points.length - 1]
   if (first && last && near(first, last)) points.pop()
@@ -471,7 +473,12 @@ function axisOf(feature: CadFeature): AxisName | undefined {
 function angleOf(feature: CadFeature): number {
   const value = feature.params.angle
   const angle = value === undefined ? 360 : value
-  if (typeof angle !== 'number' || !Number.isFinite(angle) || angle === 0 || Math.abs(angle) > 360) {
+  if (
+    typeof angle !== 'number' ||
+    !Number.isFinite(angle) ||
+    angle === 0 ||
+    Math.abs(angle) > 360
+  ) {
     throw new Error('revolve angle must be within 360 degrees')
   }
   return angle

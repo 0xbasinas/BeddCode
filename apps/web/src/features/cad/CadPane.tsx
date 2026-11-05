@@ -9,7 +9,7 @@ import {
 } from 'react'
 import { FeatureTree } from './FeatureTree.tsx'
 import { PropertiesPanel } from './PropertiesPanel.tsx'
-import { CAD_TOOLS, Toolbar, type CadTool } from './Toolbar.tsx'
+import { CAD_TOOLS, Toolbar, type CadTool, type SketchTool } from './Toolbar.tsx'
 import { Viewport, type PickHit, type ViewportHandle } from './Viewport.tsx'
 import {
   appendFeature,
@@ -28,12 +28,14 @@ import {
   makeSphereFeature,
   moveFeature,
   removeFeature,
+  setSketchEntities,
   updateFeature,
   type CadDocument,
   type CadFeature,
   type CadSketch,
 } from './model/CadDocument.ts'
 import { UndoStack } from './model/undo.ts'
+import type { SketchEntity as DrawnEntity } from './sketcher/types.ts'
 import { useCadRebuild } from './useCadRebuild.ts'
 import './cad.css'
 
@@ -55,11 +57,10 @@ export function CadPane() {
   const [message, setMessage] = useState('Ready')
   const [fitRequest, setFitRequest] = useState(0)
   const [pick, setPick] = useState<PickHit | null>(null)
-  // TODO(viewport): Viewport has no sketch overlay yet. activeSketchId and
-  // activePlane are stored so a later viewport can draw the sketch. Do not
-  // drop them; the data attributes below expose them until that prop exists.
   const [activeSketchId, setActiveSketchId] = useState<string | null>(null)
   const [activePlane, setActivePlane] = useState<CadSketch['plane']>('XY')
+  const [sketchTool, setSketchTool] = useState<SketchTool>('rectangle')
+  const [measureLabel, setMeasureLabel] = useState<string | null>(null)
 
   const { meshes, errors, loading, failure, getClient } = useCadRebuild(doc, stepFiles)
   const meshKey = meshes.map((mesh) => mesh.id).join('|')
@@ -89,6 +90,12 @@ export function CadPane() {
   }
 
   const selected = doc.features.find((feature) => feature.id === selectedId) ?? null
+  const activeSketch =
+    doc.sketches.find((sketch) => sketch.id === activeSketchId) ??
+    (selected?.kind === 'sketch'
+      ? doc.sketches.find((sketch) => sketch.id === selected.id)
+      : undefined)
+  const activeSketchEntities = (activeSketch?.entities ?? []) as unknown as DrawnEntity[]
 
   const addSolid = (feature: CadFeature, nextTool: CadTool) => {
     commit(appendFeature(doc, feature))
@@ -151,9 +158,7 @@ export function CadPane() {
         return
       }
       const feature =
-        next === 'extrude'
-          ? makeExtrudeFeature(doc, sketch.id)
-          : makeRevolveFeature(doc, sketch.id)
+        next === 'extrude' ? makeExtrudeFeature(doc, sketch.id) : makeRevolveFeature(doc, sketch.id)
       addSolid(feature, next)
       return
     }
@@ -187,7 +192,9 @@ export function CadPane() {
         !isSolidFeature(target) ||
         toolFeature.id === target.id
       ) {
-        setMessage('Select two solids. The previous selection is the target and the current one is the tool.')
+        setMessage(
+          'Select two solids. The previous selection is the target and the current one is the tool.',
+        )
         return
       }
       addSolid(makeBooleanFeature(doc, next, target.id, toolFeature.id), next)
@@ -222,9 +229,9 @@ export function CadPane() {
       const result = await getClient().measure(id)
       const min = result.bbox.min.map((value) => trim(value)).join(', ')
       const max = result.bbox.max.map((value) => trim(value)).join(', ')
-      setMessage(
-        `Volume ${trim(result.volume)} · Area ${trim(result.area)} · BBox [${min}] – [${max}]`,
-      )
+      const label = `Volume ${trim(result.volume)} · Area ${trim(result.area)} · BBox [${min}] – [${max}]`
+      setMeasureLabel(label)
+      setMessage(label)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Measure failed')
     }
@@ -338,7 +345,16 @@ export function CadPane() {
       onKeyDown={onKeyDown}
       onPointerDown={focusPane}
     >
-      <Toolbar active={tool} onCommand={onCommand} />
+      <Toolbar
+        active={tool}
+        onCommand={onCommand}
+        sketchTool={tool === 'sketch' ? sketchTool : null}
+        onSketchTool={(next) => {
+          setSketchTool(next)
+          setTool('sketch')
+          setMessage(`Sketch ${next}`)
+        }}
+      />
       {tool === 'export' ? (
         <div className="cad-toolbar" role="menu" aria-label="Export">
           <button type="button" className="cad-tool" onClick={exportJson}>
@@ -376,6 +392,24 @@ export function CadPane() {
           selectedId={selectedId}
           fitRequest={fitRequest}
           onPick={onPick}
+          loading={loading}
+          sketchMode={tool === 'sketch'}
+          sketchTool={sketchTool}
+          plane={activePlane}
+          entities={activeSketchEntities}
+          onSketchChange={(entities) => {
+            const id = activeSketchId ?? activeSketch?.id
+            if (!id) return
+            commit(setSketchEntities(doc, id, entities))
+          }}
+          onSketchFinish={(entities) => {
+            const id = activeSketchId ?? activeSketch?.id
+            if (!id) return
+            commit(setSketchEntities(doc, id, entities))
+            setMessage(`Sketch finished · ${entities.length} entities`)
+          }}
+          measure={measureLabel ? { label: measureLabel } : null}
+          pickMode={tool === 'fillet' || tool === 'chamfer' ? 'edge' : 'face'}
         />
         <PropertiesPanel
           feature={selected}

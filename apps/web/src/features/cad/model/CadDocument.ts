@@ -1,5 +1,7 @@
 /** A CAD part stored as JSON. Edits return a new document and bump `rev`. */
 
+import type { SketchEntity } from '../sketcher/types.ts'
+
 export type LengthUnit = 'mm' | 'cm' | 'm' | 'in'
 
 export type FeatureKind =
@@ -18,11 +20,7 @@ export type FeatureKind =
 
 export type ParamValue = number | string | boolean
 
-export interface SketchEntity {
-  id: string
-  kind: 'line' | 'circle' | 'arc' | 'point' | 'rect'
-  params: Record<string, number>
-}
+export type { SketchEntity }
 
 export interface CadSketch {
   id: string
@@ -96,7 +94,10 @@ export function makeBoxFeature(doc: CadDocument, id: string = crypto.randomUUID(
 }
 
 /** A cylinder standing on the ground plane, stepped along X. */
-export function makeCylinderFeature(doc: CadDocument, id: string = crypto.randomUUID()): CadFeature {
+export function makeCylinderFeature(
+  doc: CadDocument,
+  id: string = crypto.randomUUID(),
+): CadFeature {
   const count = countKind(doc, 'cylinder')
   const height = 20
   return {
@@ -258,6 +259,21 @@ export function makeImportFeature(
 
 export function isSolidFeature(feature: CadFeature): boolean {
   return feature.kind !== 'sketch'
+}
+
+export function setSketchEntities(
+  doc: CadDocument,
+  sketchId: string,
+  entities: SketchEntity[],
+): CadDocument {
+  let changed = false
+  const sketches = doc.sketches.map((sketch) => {
+    if (sketch.id !== sketchId) return sketch
+    changed = true
+    return { ...sketch, entities }
+  })
+  if (!changed) return doc
+  return { ...doc, sketches, rev: doc.rev + 1, updatedAt: Date.now() }
 }
 
 export function appendFeature(doc: CadDocument, feature: CadFeature): CadDocument {

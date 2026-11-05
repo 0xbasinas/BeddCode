@@ -27,7 +27,7 @@ function bracket() {
       sketch.id === 'profile'
         ? {
             ...sketch,
-            entities: [{ id: 'r', kind: 'rect' as const, params: { x: 0, y: 0, width: 10, height: 4 } }],
+            entities: [{ id: 'r', kind: 'rect' as const, x: 0, y: 0, width: 10, height: 4 }],
           }
         : sketch,
     ),
@@ -76,7 +76,7 @@ describe('toFeatureDocument', () => {
       ...doc,
       sketches: doc.sketches.map((sketch) => ({
         ...sketch,
-        entities: [{ id: 'r', kind: 'rect' as const, params: { x: 0, y: 0, width: 4, height: 4 } }],
+        entities: [{ id: 'r', kind: 'rect' as const, x: 0, y: 0, width: 4, height: 4 }],
       })),
     }
     doc = appendFeature(doc, makeExtrudeFeature(doc, 'profile', 'pad'))
@@ -132,7 +132,7 @@ describe('toFeatureDocument', () => {
       ...sketched.doc,
       sketches: sketched.doc.sketches.map((sketch) => ({
         ...sketch,
-        entities: [{ id: 'r', kind: 'rect' as const, params: { x: 0, y: 0, width: 2, height: 2 } }],
+        entities: [{ id: 'r', kind: 'rect' as const, x: 0, y: 0, width: 2, height: 2 }],
       })),
     }
     doc = appendFeature(doc, makeExtrudeFeature(doc, 'profile', 'pad'))

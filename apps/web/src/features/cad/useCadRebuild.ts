@@ -156,7 +156,10 @@ function meshOf(shape: ShapeResult): MeshBuffers {
   }
   if (raw.faceGroups) mesh.faceGroups = raw.faceGroups
   if (raw.edgeGroups) mesh.edgeGroups = raw.edgeGroups
-  if (raw.edges) mesh.edges = raw.edges
+  if (raw.edges) {
+    mesh.edges = raw.edges
+    mesh.edgePositions = raw.edges.positions
+  }
   return mesh
 }
 
