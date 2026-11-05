@@ -28,6 +28,16 @@ export interface ApprovalPolicy {
   forcePush: Approval
 }
 
+/**
+ * A planner is a main agent that reads the request and starts the agents that do the work. `ask`: only
+ * for requests in plain words; `always`: also for `fix this`, `fix ci` and `rebase`; `off`: one agent does it.
+ */
+export interface PlannerSettings {
+  mode: 'off' | 'ask' | 'always'
+  /** Most worker sessions one job may start. */
+  maxWorkers: number
+}
+
 export interface GithubConfig {
   /** Where the Worker is, for example `https://beddcode-github.you.workers.dev`. */
   workerUrl: string
@@ -44,6 +54,7 @@ export interface GithubConfig {
   /** Settings per command, over `defaults`: keys `fix`, `review`, `fix-ci`, `explain`, `rebase`. */
   commands: Record<string, RunSettings>
   approval: ApprovalPolicy
+  planner: PlannerSettings
 }
 
 export const DEFAULT_APPROVAL: ApprovalPolicy = { push: 'ask', pullRequest: 'auto', forcePush: 'ask' }
@@ -69,6 +80,12 @@ function policy(raw: unknown, base: ApprovalPolicy): ApprovalPolicy {
     pullRequest: approval(o.pullRequest, base.pullRequest),
     forcePush: approval(o.forcePush, base.forcePush),
   }
+}
+
+function planner(raw: unknown): PlannerSettings {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const mode = o.mode === 'off' || o.mode === 'always' ? o.mode : 'ask'
+  return { mode, maxWorkers: Math.min(8, Math.max(1, Number(o.maxWorkers) || 3)) }
 }
 
 /** Reads `github.json`. Returns undefined when the file is missing or not set up, so the bridge stays off. */
@@ -108,6 +125,7 @@ export function readGithubConfig(file: string): GithubConfig | undefined {
     defaults: run(raw.defaults),
     commands,
     approval: approvals,
+    planner: planner(raw.planner),
   }
 }
 

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { SessionEvent, StoredEvent } from '@beddcode/contracts'
 import type { Job } from '@beddcode/github-app/protocol'
 import { createLogger } from '@beddcode/shared'
-import { GithubBridge, promptFor, redact, type GitRunner } from './bridge.ts'
+import { GithubBridge, plannerBrief, promptFor, redact, type GitRunner } from './bridge.ts'
 import { readGithubConfig, settingsFor, type GithubConfig } from './config.ts'
 
 const dirs: string[] = []
@@ -35,6 +35,7 @@ function setup(over: { approval?: object; repos?: object } = {}) {
   const asked: string[] = []
   const replies: string[] = []
   const prompts: string[] = []
+  const children: string[] = []
   const gitCalls: { args: string[]; env?: Record<string, string> }[] = []
   let listener: ((s: StoredEvent) => void) | undefined
   let answer = true
@@ -95,11 +96,12 @@ function setup(over: { approval?: object; repos?: object } = {}) {
         return () => (listener = undefined)
       },
       sessionCwd: () => dir,
+      childrenOf: () => children,
       hostId: 'host-1',
       hostLabel: 'my-pc',
     },
   })
-  return { bridge, config, reports, calls, replies, prompts, created, asked, gitCalls, deny: () => (answer = false) }
+  return { bridge, config, reports, calls, replies, prompts, children, created, asked, gitCalls, deny: () => (answer = false) }
 }
 
 const job = (over: Partial<Job> = {}): Job => ({
@@ -214,6 +216,42 @@ describe('ask: the agent reads the comment', () => {
     await t.bridge.handle(ask(), t.config)
     expect(t.prompts).toHaveLength(1)
     expect(t.gitCalls.some((c) => c.args[0] === 'push')).toBe(false)
+  })
+})
+
+describe('planner', () => {
+  const ask = () => job({ command: { verb: 'ask', extra: 'sort this out, use sonnet on medium' } })
+  it('gives the planner the agent tools and tells it to delegate', async () => {
+    const t = setup()
+    t.replies.push('DECISION: fix' + String.fromCharCode(92) + 'nOn it.', 'Done by a worker.')
+    t.children.push('child-1')
+    await t.bridge.handle(ask(), t.config)
+    expect(t.created[0]).toMatchObject({ agentTools: true })
+    expect(t.reports.at(-1)!.message).toContain('Agents used')
+    expect(t.prompts[1]).toContain('You are the planner')
+    expect(t.prompts[1]).toContain('start_session')
+    expect(t.prompts[1]).toContain('Start at most 3 workers')
+    expect(t.prompts[1]).toContain('model sonnet')
+  })
+  it('does not give plain commands the agent tools unless the planner is on for them', async () => {
+    const t = setup()
+    await t.bridge.handle(job(), t.config)
+    expect(t.created[0]!.agentTools).toBeUndefined()
+    expect(t.prompts[0]).not.toContain('You are the planner')
+    const always = setup()
+    always.config.planner.mode = 'always'
+    await always.bridge.handle(job(), always.config)
+    expect(always.created[0]).toMatchObject({ agentTools: true })
+    expect(always.prompts[0]).toContain('You are the planner')
+  })
+  it('stays off when configured off', async () => {
+    const off = setup()
+    off.config.planner.mode = 'off'
+    off.replies.push('DECISION: fix' + String.fromCharCode(92) + 'nOn it.', 'Done.')
+    await off.bridge.handle(ask(), off.config)
+    expect(off.created[0]!.agentTools).toBeUndefined()
+    expect(off.prompts[1]).not.toContain('You are the planner')
+    expect(plannerBrief(job(), 'beddcode/x', {}, 2)).toContain('Start at most 2 workers')
   })
 })
 

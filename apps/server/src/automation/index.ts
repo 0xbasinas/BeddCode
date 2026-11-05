@@ -168,6 +168,7 @@ export function createAutomation(deps: AutomationDeps) {
       providers: () => sessions.listProviders(),
       subscribe,
       sessionCwd: (id) => sessions.sessionInfo(id)?.cwd,
+      childrenOf: (id) => store.childrenOf(id),
       hostId: deps.hostId,
       hostLabel: os.hostname(),
     },

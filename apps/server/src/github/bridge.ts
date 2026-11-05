@@ -6,7 +6,7 @@ import type { ProviderInstance, StoredEvent } from '@beddcode/contracts'
 import type { Job, JobReport } from '@beddcode/github-app/protocol'
 import { digest } from '../automation/digest.ts'
 import { approvalFor, readGithubConfig, settingsFor, type GithubConfig } from './config.ts'
-import { resolveRun } from './resolve.ts'
+import { resolveRun, type Resolved } from './resolve.ts'
 
 const WAIT_SECONDS = 20
 const RETRY_MS = [2_000, 5_000, 15_000, 30_000, 60_000]
@@ -29,12 +29,16 @@ export interface GithubHost {
     effort?: string
     permissionMode?: string
     workspace?: { mode: 'worktree'; baseBranch?: string; branch?: string }
+    /** Lets the session start other agents (the planner does). */
+    agentTools?: boolean
   }): Promise<{ sessionId: string }>
   prompt(sessionId: string, text: string): Promise<unknown>
   interrupt(sessionId: string): Promise<void>
   /** Asks you (in the app, on your phone) and resolves false when refused or unanswered. */
   askUser(sessionId: string, ask: { title: string; detail?: string }): Promise<boolean>
   readSession(sessionId: string): StoredEvent[]
+  /** Sessions this one started, oldest first. */
+  childrenOf(sessionId: string): string[]
   providers(): Promise<ProviderInstance[]>
   subscribe(listener: (stored: StoredEvent) => void): () => void
   /** Where the session works (its worktree). */
@@ -97,6 +101,29 @@ Start your reply with exactly one line: DECISION: ${DECISIONS.join(' | ')}
 For any other decision, add one sentence on what you will do.`,
   }
   return tasks[verb]
+}
+
+/**
+ * What the planner is told: it coordinates, other agents write the code. Everything lands on the one
+ * branch this session works on, so the host can push it and open one pull request.
+ */
+export function plannerBrief(job: Job, branch: string, run: Pick<Resolved, 'model' | 'effort' | 'instance'>, maxWorkers: number): string {
+  const asked = [
+    run.instance ? `agent ${run.instance.label}` : '',
+    run.model ? `model ${run.model}` : '',
+    run.effort ? `effort ${run.effort}` : '',
+  ].filter(Boolean)
+  return [
+    'You are the planner for this GitHub request. You coordinate other coding agents; you do not have to write the code yourself.',
+    'How to work:',
+    '1. Call list_agents to see which agents, models and effort levels this host has.',
+    `2. Delegate with start_session. For code changes start ONE worker at a time and do not set worktree, so all the work lands in this folder on branch ${branch}. Read-only helpers (a review, reading a log) may run in parallel.`,
+    `3. Pick agent, model and effort per worker. ${asked.length ? `The request asked for: ${asked.join(', ')}; use that for the main worker.` : 'The request named none.'} Otherwise match the task: a small, clear edit gets a fast model and low or medium effort; a tricky or risky change gets a stronger model and higher effort.`,
+    '4. Use wait_for for each worker. For a non-trivial change, have a different agent check it with review_changes; if it finds real problems, send_message the worker to fix them (at most twice).',
+    `5. Start at most ${maxWorkers} workers in total. Make a one- or two-line edit yourself rather than starting a worker for it.`,
+    '6. Make sure the finished work is committed in this folder with clear messages. Do not push.',
+    'Finish with a short summary: what changed, which agent did it, and what the review found.',
+  ].join('\n')
 }
 
 /** The agent's `DECISION:` line, if it gave a usable one. */
@@ -288,7 +315,11 @@ export class GithubBridge {
       const start = onPullRequest ? job.head!.ref : (job.base?.ref ?? 'main')
       const branch = `beddcode/${onPullRequest ? 'pr' : 'issue'}-${job.number}-${randomBytes(2).toString('hex')}`
       const base = `origin/${start}`
+      const code = verb === 'fix' || verb === 'fix-ci' || verb === 'rebase'
+      // A planner starts other agents; it needs the agent tools from the first message.
+      const planning = config.planner.mode !== 'off' && (verb === 'ask' || (config.planner.mode === 'always' && code))
       const created = await host.create({
+        agentTools: planning || undefined,
         instanceId: agent.id,
         cwd: repo.path,
         title: `GitHub ${job.repo}#${job.number}: ${verb}`,
@@ -300,7 +331,7 @@ export class GithubBridge {
       sessionId = created.sessionId
       this.active.set(key, sessionId)
       const budget = job.budgetMinutes * 60_000
-      const via = `\n\n<sub>BeddCode on ${config.label ?? host.hostLabel} · ${agent.label}${run.model ? ` · ${run.model}` : ''}${run.effort ? ` · ${run.effort}` : ''} · session \`${sessionId.slice(0, 8)}\`</sub>${notes}`
+      let via = `\n\n<sub>BeddCode on ${config.label ?? host.hostLabel} · ${agent.label}${run.model ? ` · ${run.model}` : ''}${run.effort ? ` · ${run.effort}` : ''} · session \`${sessionId.slice(0, 8)}\`</sub>${notes}`
       const waiting = (title: string) =>
         void this.report(config, job, {
           status: 'working',
@@ -319,7 +350,10 @@ export class GithubBridge {
         })
         return true
       }
-      if (await ended(await this.runTurn(sessionId, promptFor(job, branch, base), budget, waiting))) return
+      const direct = planning && code ? `${plannerBrief(job, branch, run, config.planner.maxWorkers)}
+
+` : ''
+      if (await ended(await this.runTurn(sessionId, direct + promptFor(job, branch, base), budget, waiting))) return
 
       if (verb === 'ask') {
         // The agent read the comment; what it chose decides what happens next, in the same session.
@@ -334,6 +368,9 @@ export class GithubBridge {
           return void (await this.report(config, job, { status: 'done', message: `A rebase needs a pull request; this is an issue. Say \`@beddcode fix this\` to fix it and open one.${via}` }))
         verb = choice.decision
         const follow = [
+          planning && (verb === 'fix' || verb === 'fix-ci' || verb === 'rebase')
+            ? plannerBrief(job, branch, run, config.planner.maxWorkers)
+            : '',
           taskText(job, verb, base),
           verb === 'review' || verb === 'explain' ? '' : 'When you finish, reply with a short summary of what you changed and anything left undone.',
           `Commit your work here and do not push; the host does that.`,
@@ -344,6 +381,10 @@ export class GithubBridge {
       }
       const readOnly = verb === 'review' || verb === 'explain'
       const summary = summarize(host.readSession(sessionId))
+      const team = this.team(sessionId, config.planner.mode !== 'off')
+      if (team) via = `
+
+${team}${via}`
       if (readOnly) return void (await this.report(config, job, { status: 'done', message: summary + via }))
 
       const cwd = host.sessionCwd(sessionId) ?? repo.path
@@ -391,6 +432,20 @@ export class GithubBridge {
     } finally {
       this.active.delete(key)
     }
+  }
+
+  /** Who did the work, when the planner started helpers: one line per helper session. */
+  private team(sessionId: string, planned: boolean): string {
+    if (!planned) return ''
+    const { host } = this.options
+    const lines: string[] = []
+    for (const id of host.childrenOf(sessionId)) {
+      const d = digest(host.readSession(id))
+      if (!d) continue
+      const state = d.result ? d.result.status : d.status === 'error' ? 'failed' : d.status
+      lines.push(`- ${d.title.replace(/\s+/g, ' ').slice(0, 70)} (${d.instanceId}, ${state})`)
+    }
+    return lines.length ? `**Agents used**\n${lines.join('\n')}` : ''
   }
 
   /** Sends one prompt and waits for the turn to end, or for the budget to run out. */
