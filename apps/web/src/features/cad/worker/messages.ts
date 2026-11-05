@@ -2,8 +2,10 @@ import { exactBuffer } from '../kernel/buffers'
 import type {
   AxisName,
   BooleanMode,
+  EdgeTopologyRef,
   ExtrudeOptions,
   FeatureDocument,
+  HoleParams,
   MeasureResult,
   PrimitiveKind,
   PrimitiveParams,
@@ -16,8 +18,23 @@ export type CadRequest =
   | { id: number; kind: 'createPrimitive'; primitive: PrimitiveKind; params: PrimitiveParams }
   | ({ id: number; kind: 'extrude'; profile: Profile2D; distance: number } & ExtrudeOptions)
   | { id: number; kind: 'revolve'; profile: Profile2D; angle: number; axis?: AxisName }
-  | { id: number; kind: 'fillet'; targetId: string; radius: number; edgeIds?: number[] }
-  | { id: number; kind: 'chamfer'; targetId: string; radius: number; edgeIds?: number[] }
+  | {
+      id: number
+      kind: 'fillet'
+      targetId: string
+      radius: number
+      edgeIds?: number[]
+      edgeRefs?: EdgeTopologyRef[]
+    }
+  | {
+      id: number
+      kind: 'chamfer'
+      targetId: string
+      radius: number
+      edgeIds?: number[]
+      edgeRefs?: EdgeTopologyRef[]
+    }
+  | ({ id: number; kind: 'hole'; targetId: string } & HoleParams)
   | { id: number; kind: 'boolean'; mode: BooleanMode; targetId: string; toolId: string }
   | { id: number; kind: 'measure'; targetId: string }
   | { id: number; kind: 'importStep'; bytes: ArrayBuffer }

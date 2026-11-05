@@ -2,9 +2,12 @@ import type {
   AxisName,
   BooleanMode,
   BoxParams,
+  Counterbore,
   CylinderParams,
+  EdgeTopologyRef,
   FeatureDocument,
   FeatureOp,
+  HoleDirection,
   PlaneName,
   PrimitiveKind,
   PrimitiveParams,
@@ -14,6 +17,7 @@ import type {
 
 const PLANES: readonly PlaneName[] = ['XY', 'YZ', 'ZX', 'XZ', 'YX', 'ZY']
 const AXES: readonly AxisName[] = ['X', 'Y', 'Z', '-X', '-Y', '-Z']
+const HOLE_DIRECTIONS: readonly HoleDirection[] = ['X', 'Y', 'Z', '-X', '-Y', '-Z', 'normal']
 const PRIMITIVES: readonly PrimitiveKind[] = ['box', 'cylinder', 'sphere']
 const BOOLEANS: readonly BooleanMode[] = ['fuse', 'cut', 'intersect']
 
@@ -119,6 +123,68 @@ function optionalEdgeIds(value: unknown): number[] | undefined {
   return ids
 }
 
+function readPoint(value: unknown, label: string): [number, number, number] {
+  if (!Array.isArray(value) || value.length !== 3) {
+    throw new Error(`${label} must be a finite [x, y, z]`)
+  }
+  const x = value[0]
+  const y = value[1]
+  const z = value[2]
+  if (!isFiniteNumber(x) || !isFiniteNumber(y) || !isFiniteNumber(z)) {
+    throw new Error(`${label} must be a finite [x, y, z]`)
+  }
+  return [x, y, z]
+}
+
+function readEdgeRef(value: unknown): EdgeTopologyRef {
+  if (!value || typeof value !== 'object') throw new Error('edge ref must be an object')
+  const record = value as Record<string, unknown>
+  if (record.kind !== 'edge') throw new Error('edge ref kind must be edge')
+  assertPositive('edge length', record.length)
+  return {
+    kind: 'edge',
+    mid: readPoint(record.mid, 'edge midpoint'),
+    dir: readPoint(record.dir, 'edge direction'),
+    length: record.length,
+  }
+}
+
+/** Empty means there is nothing to rematch, same as omitting the field. */
+function optionalEdgeRefs(value: unknown): EdgeTopologyRef[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value)) throw new Error('edgeRefs must be an array')
+  if (value.length === 0) return undefined
+  return value.map((item) => readEdgeRef(item))
+}
+
+function holeDirection(value: unknown): HoleDirection | undefined {
+  if (value === undefined) return undefined
+  if (typeof value === 'string' && (HOLE_DIRECTIONS as readonly string[]).includes(value)) {
+    return value as HoleDirection
+  }
+  throw new Error('unknown hole direction')
+}
+
+function readCounterbore(
+  value: unknown,
+  diameter: number,
+  depth: number | undefined,
+  throughAll: boolean,
+): Counterbore | undefined {
+  if (value === undefined) return undefined
+  if (!value || typeof value !== 'object') throw new Error('counterbore must be an object')
+  const record = value as Record<string, unknown>
+  assertPositive('counterbore diameter', record.diameter)
+  assertPositive('counterbore depth', record.depth)
+  if (record.diameter <= diameter) {
+    throw new Error('counterbore diameter must be larger than the hole')
+  }
+  if (!throughAll && depth !== undefined && record.depth >= depth) {
+    throw new Error('counterbore depth must be shorter than the hole')
+  }
+  return { diameter: record.diameter, depth: record.depth }
+}
+
 function readOp(value: unknown, seen: Set<string>): FeatureOp {
   if (!value || typeof value !== 'object') throw new Error('feature op must be an object')
   const record = value as Record<string, unknown>
@@ -172,24 +238,52 @@ function readOp(value: unknown, seen: Set<string>): FeatureOp {
     case 'fillet': {
       assertPositive('radius', record.radius)
       const edgeIds = optionalEdgeIds(record.edgeIds)
+      const edgeRefs = optionalEdgeRefs(record.edgeRefs)
       feature = {
         op: 'fillet',
         id: record.id,
         target: knownShape(record.target, seen),
         radius: record.radius,
         ...(edgeIds ? { edgeIds } : {}),
+        ...(edgeRefs ? { edgeRefs } : {}),
       }
       break
     }
     case 'chamfer': {
       assertPositive('radius', record.radius)
       const edgeIds = optionalEdgeIds(record.edgeIds)
+      const edgeRefs = optionalEdgeRefs(record.edgeRefs)
       feature = {
         op: 'chamfer',
         id: record.id,
         target: knownShape(record.target, seen),
         radius: record.radius,
         ...(edgeIds ? { edgeIds } : {}),
+        ...(edgeRefs ? { edgeRefs } : {}),
+      }
+      break
+    }
+    case 'hole': {
+      assertPositive('diameter', record.diameter)
+      const throughAll = optionalBoolean('throughAll', record.throughAll)
+      let depth: number | undefined
+      if (record.depth !== undefined) {
+        assertPositive('depth', record.depth)
+        depth = record.depth
+      }
+      if (!throughAll && depth === undefined) throw new Error('hole depth is missing')
+      const direction = holeDirection(record.direction)
+      const counterbore = readCounterbore(record.counterbore, record.diameter, depth, throughAll)
+      feature = {
+        op: 'hole',
+        id: record.id,
+        target: knownShape(record.target, seen),
+        origin: readPoint(record.origin, 'hole origin'),
+        diameter: record.diameter,
+        ...(direction ? { direction } : {}),
+        ...(depth !== undefined ? { depth } : {}),
+        ...(throughAll ? { throughAll: true } : {}),
+        ...(counterbore ? { counterbore } : {}),
       }
       break
     }

@@ -15,13 +15,16 @@ import type { AnyShape, Edge, Shape3D } from '../vendor/replicad'
 import type { GeometryKernel } from './GeometryKernel'
 import { exactBuffer } from './buffers'
 import { planRebuild } from './featureOps'
+import { edgeCandidatesFromMesh, matchEdgeRefs } from './topologyRefs'
 import type {
   AxisName,
   BBox,
   BooleanMode,
+  EdgeTopologyRef,
   ExtrudeOptions,
   FeatureDocument,
   FeatureOp,
+  HoleParams,
   MeasureResult,
   MeshBuffer,
   PrimitiveKind,
@@ -40,6 +43,17 @@ function asSolid(shape: AnyShape): Shape3D {
   }
   return shape
 }
+
+const AXIS_VECTOR: Record<AxisName, [number, number, number]> = {
+  X: [1, 0, 0],
+  Y: [0, 1, 0],
+  Z: [0, 0, 1],
+  '-X': [-1, 0, 0],
+  '-Y': [0, -1, 0],
+  '-Z': [0, 0, -1],
+}
+
+type HoleOp = Extract<FeatureOp, { op: 'hole' }>
 
 /**
  * Vite rewrites the WASM import to `/@fs/<absolute path>` in Vitest. Node's
@@ -253,6 +267,7 @@ export class ReplicadKernel implements GeometryKernel {
     targetId: string,
     radius: number,
     edgeIds?: number[],
+    edgeRefs?: EdgeTopologyRef[],
     id?: string,
   ): Promise<ShapeResult> {
     this.assertReady()
@@ -266,17 +281,20 @@ export class ReplicadKernel implements GeometryKernel {
           target: targetId,
           radius,
           ...(edgeIds && edgeIds.length > 0 ? { edgeIds } : {}),
+          ...(edgeRefs && edgeRefs.length > 0 ? { edgeRefs } : {}),
         },
       ],
     })
     const shape = this.require(targetId, 'fillet target')
-    return this.keep(this.editEdges(shape, radius, edgeIds, 'fillet'), id)
+    const resolved = this.resolveEdgeIds(shape, edgeIds, edgeRefs, 'fillet')
+    return this.keep(this.editEdges(shape, radius, resolved, 'fillet'), id)
   }
 
   async chamfer(
     targetId: string,
     radius: number,
     edgeIds?: number[],
+    edgeRefs?: EdgeTopologyRef[],
     id?: string,
   ): Promise<ShapeResult> {
     this.assertReady()
@@ -290,11 +308,37 @@ export class ReplicadKernel implements GeometryKernel {
           target: targetId,
           radius,
           ...(edgeIds && edgeIds.length > 0 ? { edgeIds } : {}),
+          ...(edgeRefs && edgeRefs.length > 0 ? { edgeRefs } : {}),
         },
       ],
     })
     const shape = this.require(targetId, 'chamfer target')
-    return this.keep(this.editEdges(shape, radius, edgeIds, 'chamfer'), id)
+    const resolved = this.resolveEdgeIds(shape, edgeIds, edgeRefs, 'chamfer')
+    return this.keep(this.editEdges(shape, radius, resolved, 'chamfer'), id)
+  }
+
+  async hole(targetId: string, params: HoleParams, id?: string): Promise<ShapeResult> {
+    this.assertReady()
+    const planned = planRebuild({
+      version: 1,
+      ops: [
+        { op: 'primitive', id: targetId, kind: 'sphere', params: { radius: 1 } },
+        {
+          op: 'hole',
+          id: id ?? 'check',
+          target: targetId,
+          origin: params.origin,
+          diameter: params.diameter,
+          ...(params.direction ? { direction: params.direction } : {}),
+          ...(params.depth !== undefined ? { depth: params.depth } : {}),
+          ...(params.throughAll ? { throughAll: true } : {}),
+          ...(params.counterbore ? { counterbore: params.counterbore } : {}),
+        },
+      ],
+    }).at(-1)
+    if (!planned || planned.op !== 'hole') throw new Error('hole is missing')
+    const target = this.require(targetId, 'hole target')
+    return this.keep(this.cutHole(target, planned), id)
   }
 
   async boolean(
@@ -387,9 +431,22 @@ export class ReplicadKernel implements GeometryKernel {
       case 'revolve':
         return this.revolve(op.profile, op.angle, op.axis, op.id)
       case 'fillet':
-        return this.fillet(op.target, op.radius, op.edgeIds, op.id)
+        return this.fillet(op.target, op.radius, op.edgeIds, op.edgeRefs, op.id)
       case 'chamfer':
-        return this.chamfer(op.target, op.radius, op.edgeIds, op.id)
+        return this.chamfer(op.target, op.radius, op.edgeIds, op.edgeRefs, op.id)
+      case 'hole':
+        return this.hole(
+          op.target,
+          {
+            origin: op.origin,
+            diameter: op.diameter,
+            ...(op.direction ? { direction: op.direction } : {}),
+            ...(op.depth !== undefined ? { depth: op.depth } : {}),
+            ...(op.throughAll ? { throughAll: true } : {}),
+            ...(op.counterbore ? { counterbore: op.counterbore } : {}),
+          },
+          op.id,
+        )
       case 'boolean':
         return this.boolean(op.mode, op.target, op.tool, op.id)
       case 'importStep': {
@@ -423,6 +480,119 @@ export class ReplicadKernel implements GeometryKernel {
     }
     this.shapes.set(shapeId, shape)
     return { id: shapeId, mesh: toMesh(shape), bbox: toBBox(shape) }
+  }
+
+  /**
+   * Hash match first. On a miss, rematch `edgeRefs` against the current mesh.
+   * A miss that cannot be rematched throws. It does not fillet every edge.
+   */
+  private resolveEdgeIds(
+    shape: Shape3D,
+    edgeIds: number[] | undefined,
+    edgeRefs: EdgeTopologyRef[] | undefined,
+    kind: 'fillet' | 'chamfer',
+  ): number[] | undefined {
+    const wanted = edgeIds?.length ?? 0
+    const refs = edgeRefs ?? []
+    if (wanted === 0 && refs.length === 0) return undefined
+    const mesh = toMesh(shape)
+    const known = new Set((mesh.edgeGroups ?? []).map((group) => group.edgeId))
+    if (wanted > 0 && edgeIds && edgeIds.every((id) => known.has(id))) return edgeIds
+    if (refs.length > 0) {
+      const matched = matchEdgeRefs(refs, edgeCandidatesFromMesh(mesh))
+      if (!Array.isArray(matched)) throw new Error(`${kind} edges not found: ${matched.error}`)
+      return matched
+    }
+    throw new Error(`${kind} edges not found`)
+  }
+
+  private cutHole(target: Shape3D, op: HoleOp): Shape3D {
+    const direction = this.drillDirection(target, op)
+    const margin = 0.5
+    const origin = op.origin
+    const start: [number, number, number] = [
+      origin[0] - direction[0] * margin,
+      origin[1] - direction[1] * margin,
+      origin[2] - direction[2] * margin,
+    ]
+    const reach = op.throughAll ? this.span(target) + margin : (op.depth ?? 0) + margin
+    if (!(reach > margin)) throw new Error('hole depth is missing')
+    const tool = makeCylinder(op.diameter / 2, reach, start, direction)
+    let cutter: Shape3D = tool
+    let bore: Shape3D | null = null
+    try {
+      if (op.counterbore) {
+        bore = makeCylinder(
+          op.counterbore.diameter / 2,
+          op.counterbore.depth + margin,
+          start,
+          direction,
+        )
+        const fused = asSolid(cutter.fuse(bore))
+        cutter = fused
+      }
+      return asSolid(target.cut(cutter))
+    } finally {
+      if (cutter !== tool) tool.delete()
+      cutter.delete()
+      bore?.delete()
+    }
+  }
+
+  /** Drill axis. `normal` goes into the solid, opposite the outward face normal. */
+  private drillDirection(shape: Shape3D, op: HoleOp): [number, number, number] {
+    if (op.direction === 'normal') {
+      const outward = this.outwardNormal(shape, op.origin)
+      if (!outward) return [0, 0, -1]
+      return [-outward[0], -outward[1], -outward[2]]
+    }
+    if (!op.direction) return [0, 0, -1]
+    return AXIS_VECTOR[op.direction]
+  }
+
+  private outwardNormal(
+    shape: Shape3D,
+    origin: [number, number, number],
+  ): [number, number, number] | null {
+    let bestDist = Number.POSITIVE_INFINITY
+    let best: [number, number, number] | null = null
+    for (const face of shape.faces) {
+      let normal: { x: number; y: number; z: number; delete(): void } | null = null
+      let center: { x: number; y: number; z: number; delete(): void } | null = null
+      try {
+        normal = face.normalAt(origin)
+        center = face.center
+        const length = Math.hypot(normal.x, normal.y, normal.z)
+        if (length < 1e-9) continue
+        const unit: [number, number, number] = [
+          normal.x / length,
+          normal.y / length,
+          normal.z / length,
+        ]
+        const dist = Math.abs(
+          (origin[0] - center.x) * unit[0] +
+            (origin[1] - center.y) * unit[1] +
+            (origin[2] - center.z) * unit[2],
+        )
+        if (dist < bestDist) {
+          bestDist = dist
+          best = unit
+        }
+      } catch {
+        // Skip a face that cannot report a normal at this point.
+      } finally {
+        normal?.delete()
+        center?.delete()
+        face.delete()
+      }
+    }
+    if (!best || bestDist > 0.25) return null
+    return best
+  }
+
+  private span(shape: Shape3D): number {
+    const box = toBBox(shape)
+    return Math.hypot(box.max[0] - box.min[0], box.max[1] - box.min[1], box.max[2] - box.min[2]) + 1
   }
 
   private editEdges(

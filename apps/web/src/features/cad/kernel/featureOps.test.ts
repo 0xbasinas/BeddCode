@@ -284,4 +284,152 @@ describe('feature document rebuild plan', () => {
       }),
     ).toThrow('edgeIds must be an array of integers')
   })
+
+  it('serializes a hole and fillet edge refs', () => {
+    const doc = {
+      version: 1 as const,
+      ops: [
+        box,
+        {
+          op: 'hole' as const,
+          id: 'drill',
+          target: 'base',
+          origin: [1, 2, 10] as [number, number, number],
+          diameter: 4,
+          throughAll: true,
+          direction: '-Z' as const,
+          counterbore: { diameter: 8, depth: 2 },
+        },
+        {
+          op: 'fillet' as const,
+          id: 'round',
+          target: 'drill',
+          radius: 0.5,
+          edgeIds: [3],
+          edgeRefs: [{ kind: 'edge' as const, mid: [0, 5, 10], dir: [1, 0, 0], length: 20 }],
+        },
+      ],
+    }
+    const ops = planRebuild(doc)
+    expect(ops[1]).toEqual({
+      op: 'hole',
+      id: 'drill',
+      target: 'base',
+      origin: [1, 2, 10],
+      diameter: 4,
+      throughAll: true,
+      direction: '-Z',
+      counterbore: { diameter: 8, depth: 2 },
+    })
+    expect(ops[2]).toEqual({
+      op: 'fillet',
+      id: 'round',
+      target: 'drill',
+      radius: 0.5,
+      edgeIds: [3],
+      edgeRefs: [{ kind: 'edge', mid: [0, 5, 10], dir: [1, 0, 0], length: 20 }],
+    })
+    const text = serializeFeatureDocument(doc)
+    expect(serializeFeatureDocument(parseFeatureDocument(text))).toBe(text)
+    expect(text).toContain('"op":"hole"')
+    expect(text).toContain('"edgeRefs":[')
+    expect(text).toContain('"throughAll":true')
+  })
+
+  it('rejects a hole that cannot be cut and a bad edge ref', () => {
+    expect(() =>
+      planRebuild({
+        version: 1,
+        ops: [box, { op: 'hole', id: 'h', target: 'base', origin: [0, 0, 0], diameter: 4 }],
+      }),
+    ).toThrow('hole depth is missing')
+    expect(() =>
+      planRebuild({
+        version: 1,
+        ops: [
+          {
+            op: 'hole',
+            id: 'h',
+            target: 'missing',
+            origin: [0, 0, 0],
+            diameter: 4,
+            throughAll: true,
+          },
+        ],
+      }),
+    ).toThrow(/unknown shape missing/)
+    expect(() =>
+      planRebuild({
+        version: 1,
+        ops: [
+          box,
+          {
+            op: 'hole',
+            id: 'h',
+            target: 'base',
+            origin: [0, 0, 1],
+            diameter: 4,
+            throughAll: true,
+            direction: 'up',
+          },
+        ],
+      }),
+    ).toThrow('unknown hole direction')
+    expect(() =>
+      planRebuild({
+        version: 1,
+        ops: [
+          box,
+          {
+            op: 'hole',
+            id: 'h',
+            target: 'base',
+            origin: [0, 0, 1],
+            diameter: 4,
+            depth: 3,
+            counterbore: { diameter: 4, depth: 1 },
+          },
+        ],
+      }),
+    ).toThrow('counterbore diameter must be larger than the hole')
+    expect(() =>
+      planRebuild({
+        version: 1,
+        ops: [
+          box,
+          {
+            op: 'fillet',
+            id: 'f',
+            target: 'base',
+            radius: 1,
+            edgeRefs: [{ kind: 'face', mid: [0, 0, 0], dir: [0, 0, 1], length: 1 }],
+          },
+        ],
+      }),
+    ).toThrow('edge ref kind must be edge')
+    const blind = planRebuild({
+      version: 1,
+      ops: [
+        box,
+        {
+          op: 'hole',
+          id: 'h',
+          target: 'base',
+          origin: [0, 0, 10],
+          diameter: 5,
+          depth: 4,
+          throughAll: false,
+        },
+      ],
+    })
+    expect(blind[1]).toEqual({
+      op: 'hole',
+      id: 'h',
+      target: 'base',
+      origin: [0, 0, 10],
+      diameter: 5,
+      depth: 4,
+    })
+    expect(blind[1]).not.toHaveProperty('throughAll')
+  })
 })

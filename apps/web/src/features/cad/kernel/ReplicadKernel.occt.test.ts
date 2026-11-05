@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { meshTransfers } from '../worker/messages.ts'
-import type { Profile2D, ShapeResult } from './types.ts'
+import { edgeRefFromMesh } from './topologyRefs.ts'
+import type { MeshBuffer, Profile2D, ShapeResult } from './types.ts'
 
 const rectangle: Profile2D = {
   plane: 'XY',
@@ -91,7 +92,7 @@ if (!kernelModule.ok) {
         const edgeId = groups[0]?.edgeId
         expect(typeof edgeId).toBe('number')
 
-        const filleted = await kernel.fillet('box', 1, [edgeId!], 'filleted')
+        const filleted = await kernel.fillet('box', 1, [edgeId!], undefined, 'filleted')
         expect(filleted.mesh.indices.length).toBeGreaterThan(0)
         const volume = (await kernel.measure('filleted')).volume
         expect(volume).toBeGreaterThan(0)
@@ -130,6 +131,94 @@ if (!kernelModule.ok) {
           kernel.extrude(rectangle, 4, { cut: true, target: 'absent' }, 'pocket'),
         ).rejects.toThrow('extrude cut target absent is missing')
       }, 30_000)
+
+      it('cuts a through hole and rematches a fillet after a small width change', async () => {
+        const plate = await kernel.createPrimitive(
+          'box',
+          { width: 20, depth: 30, height: 10 },
+          'plate',
+        )
+        const before = (await kernel.measure('plate')).volume
+        expect(before).toBeGreaterThan(5000)
+
+        const drilled = await kernel.hole(
+          'plate',
+          { origin: [0, 0, 10], diameter: 4, throughAll: true },
+          'drilled',
+        )
+        expect(drilled.mesh.positions.length).toBeGreaterThan(0)
+        const after = (await kernel.measure('drilled')).volume
+        expect(after).toBeLessThan(before - 100)
+        expect(after).toBeGreaterThan(before - 160)
+
+        const counterbored = await kernel.hole(
+          'plate',
+          {
+            origin: [4, 0, 10],
+            diameter: 4,
+            throughAll: true,
+            counterbore: { diameter: 8, depth: 2 },
+          },
+          'counterbored',
+        )
+        const counterVolume = (await kernel.measure('counterbored')).volume
+        expect(counterVolume).toBeLessThan(before - 180)
+        expect(counterVolume).toBeGreaterThan(before - 250)
+
+        const blind = await kernel.hole(
+          'plate',
+          { origin: [-4, 0, 10], diameter: 4, depth: 4 },
+          'blind',
+        )
+        const blindVolume = (await kernel.measure('blind')).volume
+        expect(blindVolume).toBeLessThan(before - 40)
+        expect(blindVolume).toBeGreaterThan(before - 80)
+        expect(blind.id).toBe('blind')
+
+        const fromNormal = await kernel.hole(
+          'plate',
+          { origin: [0, 0, 10], direction: 'normal', diameter: 6, throughAll: true },
+          'fromNormal',
+        )
+        const normalVolume = (await kernel.measure('fromNormal')).volume
+        expect(normalVolume).toBeLessThan(before - 200)
+
+        const picked = firstEdge(plate.mesh)
+        expect(picked).not.toBeNull()
+        const wider = await kernel.createPrimitive(
+          'box',
+          { width: 20.004, depth: 30, height: 10 },
+          'wider',
+        )
+        const widerIds = new Set((wider.mesh.edgeGroups ?? []).map((group) => group.edgeId))
+        expect(widerIds.has(picked!.edgeId)).toBe(false)
+        const rounded = await kernel.fillet('wider', 1, [picked!.edgeId], [picked!.ref], 'rounded')
+        expect(rounded.mesh.indices.length).toBeGreaterThan(0)
+        const roundedVolume = (await kernel.measure('rounded')).volume
+        const widerVolume = (await kernel.measure('wider')).volume
+        expect(roundedVolume).toBeGreaterThan(0)
+        expect(roundedVolume).toBeLessThan(widerVolume)
+
+        await expect(
+          kernel.fillet(
+            'wider',
+            0.4,
+            [999999],
+            [{ kind: 'edge', mid: [80, 80, 80], dir: [0, 0, 1], length: 10 }],
+            'missed',
+          ),
+        ).rejects.toThrow(/fillet edges not found/)
+      }, 120_000)
     })
   }
+}
+
+function firstEdge(
+  mesh: MeshBuffer,
+): { edgeId: number; ref: NonNullable<ReturnType<typeof edgeRefFromMesh>> } | null {
+  for (const group of mesh.edgeGroups ?? []) {
+    const ref = edgeRefFromMesh(mesh, group)
+    if (ref) return { edgeId: group.edgeId, ref }
+  }
+  return null
 }

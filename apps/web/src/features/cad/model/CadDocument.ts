@@ -12,6 +12,7 @@ export type FeatureKind =
   | 'revolve'
   | 'fillet'
   | 'chamfer'
+  | 'hole'
   | 'union'
   | 'cut'
   | 'intersect'
@@ -221,6 +222,47 @@ export function makeChamferFeature(
     suppressed: false,
     params: { targetId, radius: 1, ...(edgeIds ? { edgeIds } : {}) },
   }
+}
+
+export interface AddHoleParams {
+  target: string
+  diameter: number
+  depth?: number
+  throughAll?: boolean
+  /** Face point. `facePoint` wins when both are set. */
+  x?: number
+  y?: number
+  z?: number
+  facePoint?: [number, number, number]
+  cboreDiameter?: number
+  cboreDepth?: number
+  direction?: string
+  id?: string
+}
+
+/** Appends a hole. The kernel cuts a cylinder from `target`. */
+export function addHole(doc: CadDocument, params: AddHoleParams): CadDocument {
+  const count = countKind(doc, 'hole')
+  const point = params.facePoint ?? [params.x ?? 0, params.y ?? 0, params.z ?? 0]
+  const feature: CadFeature = {
+    id: params.id ?? crypto.randomUUID(),
+    name: `Hole ${count + 1}`,
+    kind: 'hole',
+    suppressed: false,
+    params: {
+      target: params.target,
+      diameter: params.diameter,
+      x: point[0],
+      y: point[1],
+      z: point[2],
+      ...(params.depth !== undefined ? { depth: params.depth } : {}),
+      ...(params.throughAll ? { throughAll: true } : {}),
+      ...(params.cboreDiameter !== undefined ? { cboreDiameter: params.cboreDiameter } : {}),
+      ...(params.cboreDepth !== undefined ? { cboreDepth: params.cboreDepth } : {}),
+      ...(params.direction ? { direction: params.direction } : {}),
+    },
+  }
+  return appendFeature(doc, feature)
 }
 
 export function makeBooleanFeature(

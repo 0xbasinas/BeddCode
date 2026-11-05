@@ -3,8 +3,10 @@ import type { GeometryKernel } from './GeometryKernel'
 import type {
   AxisName,
   BooleanMode,
+  EdgeTopologyRef,
   ExtrudeOptions,
   FeatureDocument,
+  HoleParams,
   MeasureResult,
   PrimitiveKind,
   PrimitiveParams,
@@ -102,7 +104,12 @@ export function createCadClient(): GeometryKernel {
       await client.init()
       return shapeOf(await send({ kind: 'revolve', profile, angle, axis }))
     },
-    async fillet(targetId: string, radius: number, edgeIds?: number[]) {
+    async fillet(
+      targetId: string,
+      radius: number,
+      edgeIds?: number[],
+      edgeRefs?: EdgeTopologyRef[],
+    ) {
       await client.init()
       return shapeOf(
         await send({
@@ -110,10 +117,16 @@ export function createCadClient(): GeometryKernel {
           targetId,
           radius,
           ...(edgeIds && edgeIds.length > 0 ? { edgeIds } : {}),
+          ...(edgeRefs && edgeRefs.length > 0 ? { edgeRefs } : {}),
         }),
       )
     },
-    async chamfer(targetId: string, radius: number, edgeIds?: number[]) {
+    async chamfer(
+      targetId: string,
+      radius: number,
+      edgeIds?: number[],
+      edgeRefs?: EdgeTopologyRef[],
+    ) {
       await client.init()
       return shapeOf(
         await send({
@@ -121,8 +134,13 @@ export function createCadClient(): GeometryKernel {
           targetId,
           radius,
           ...(edgeIds && edgeIds.length > 0 ? { edgeIds } : {}),
+          ...(edgeRefs && edgeRefs.length > 0 ? { edgeRefs } : {}),
         }),
       )
+    },
+    async hole(targetId: string, params: HoleParams) {
+      await client.init()
+      return shapeOf(await send({ kind: 'hole', targetId, ...params }))
     },
     async boolean(mode: BooleanMode, targetId: string, toolId: string) {
       await client.init()
