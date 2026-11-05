@@ -74,6 +74,17 @@ async function accept(env: Env, ask: AskRequest): Promise<void> {
   if (!(await queue.admit(ask.sender, num(env.MAX_JOBS_PER_HOUR, 10))))
     return void (await say(`@${ask.sender} that is more than ${num(env.MAX_JOBS_PER_HOUR, 10)} requests this hour. Try again later.`))
 
+  if (ask.command.verb === 'help')
+    return void (await say(`@${ask.sender} I did not find a command in that. Try one of:
+
+- \`@${env.APP_SLUG ?? 'beddcode'} fix this\`
+- \`@${env.APP_SLUG ?? 'beddcode'} review\` / \`explain\`
+- \`@${env.APP_SLUG ?? 'beddcode'} fix ci\`
+- \`@${env.APP_SLUG ?? 'beddcode'} rebase on main\`
+- \`@${env.APP_SLUG ?? 'beddcode'} stop\`
+
+Add an agent, model or effort anywhere: \`codex\`, \`model=sonnet\`, \`effort=high\`, or in words like "with claude on sonnet, low effort".`))
+
   let head: Job['head']
   let base: Job['base']
   if (ask.isPullRequest) {

@@ -36,10 +36,22 @@ describe('parseCommand', () => {
   })
   it('ignores talk that is not a command', () => {
     expect(parseCommand('thanks @beddcode', slug)).toBeUndefined()
-    expect(parseCommand('@beddcode what do you think?', slug)).toBeUndefined()
+    expect(parseCommand('@beddcode', slug)).toBeUndefined()
     expect(parseCommand('please fix this', slug)).toBeUndefined()
     expect(parseCommand('email me@beddcode.com fix this', slug)).toBeUndefined()
     expect(parseCommand('@beddcodex fix this', slug)).toBeUndefined()
+  })
+  it('understands plain words, with agent, model and effort picked out', () => {
+    expect(parseCommand('@beddcode go ahead and tackle this with claude on sonnet 5.5 on low', slug)).toMatchObject({
+      verb: 'fix',
+      agent: 'claude',
+      model: 'sonnet',
+      effort: 'low',
+      extra: expect.stringContaining('tackle this'),
+    })
+    expect(parseCommand('@beddcode could you review this using codex, high effort?', slug)).toMatchObject({ verb: 'review', agent: 'codex', effort: 'high' })
+    expect(parseCommand('@beddcode the CI is failing, please sort it', slug)?.verb).toBe('fix-ci')
+    expect(parseCommand('@beddcode what do you think?', slug)?.verb).toBe('help')
   })
   it('ignores quotes and code blocks', () => {
     expect(parseCommand('> @beddcode fix this\nlooks good', slug)).toBeUndefined()

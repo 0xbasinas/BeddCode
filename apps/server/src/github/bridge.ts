@@ -87,6 +87,7 @@ export function promptFor(job: Job, branch: string, base: string): string {
     explain: `Explain ${where}: what is going on, where in the code it lives, and what a fix would involve. Do not change any files. Reply in Markdown.`,
     rebase: `Rebase this branch onto ${job.base ? `origin/${job.base.ref}` : base} (git rebase ${job.base ? `origin/${job.base.ref}` : base}). Resolve any conflicts so the intent of both sides is kept, then run the project's checks. Do not use merge commits.`,
     stop: 'Stop.',
+    help: '',
   }
   const task = tasks[verb]
   const readOnly = verb === 'review' || verb === 'explain'
