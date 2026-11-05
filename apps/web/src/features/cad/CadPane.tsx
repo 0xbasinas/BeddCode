@@ -651,7 +651,8 @@ export function CadPane() {
     const current = currentDoc.features.find((feature) => feature.id === selectedId)
     const sameTarget =
       current?.kind === kind &&
-      (current.params.targetId === hit.featureId || current.params.target === hit.featureId)
+      (current.id === hit.featureId ||
+        current.params.targetId === hit.featureId || current.params.target === hit.featureId)
     const radius = kind === 'fillet' ? optionsRef.current.filletRadius : optionsRef.current.chamferDistance
     if (sameTarget && current) {
       const merged = mergeEdgeParams(current.params.edgeIds, current.params.edgeRefs, added)
