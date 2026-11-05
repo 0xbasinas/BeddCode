@@ -737,26 +737,31 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
         point: face.point,
       })
     } else if (filter === 'edge') {
-      const edge = raycaster.intersectObjects(lines, false)[0]
-      if (edge?.object instanceof LineSegments && edge.index != null && edge.distance <= faceDepth + slack) {
-        const line = edge.object
-        const a = vertexAt(line, edge.index, new Vector3())
-        const b = vertexAt(line, edge.index + 1, new Vector3())
-        const sa = screenOf(a, box)
-        const sb = screenOf(b, box)
-        const range = edgeRanges(line).find(
-          (entry) => edge.index! >= entry.start && edge.index! < entry.start + entry.count,
-        )
-        candidates.push({
-          kind: 'edge',
-          featureId: featureIdOf(line),
-          id: range?.edgeId ?? edge.index,
-          depth: edge.distance,
-          screenPx: segmentDistancePx(cx, cy, sa.x, sa.y, sb.x, sb.y),
-          object: line,
-          index: range?.start ?? edge.index,
-          point: edge.point,
-        })
+      for (const child of lines) {
+        const line = child as LineSegments
+        for (const range of edgeRanges(line)) {
+          for (let index = range.start; index + 1 < range.start + range.count; index += 2) {
+            const a = vertexAt(line, index, new Vector3())
+            const b = vertexAt(line, index + 1, new Vector3())
+            const sa = screenOf(a, box)
+            const sb = screenOf(b, box)
+            const screenPx = segmentDistancePx(cx, cy, sa.x, sa.y, sb.x, sb.y)
+            const point = new Vector3()
+            ray.distanceSqToSegment(a, b, undefined, point)
+            const depth = point.distanceTo(ray.origin)
+            if (depth > faceDepth + slack) continue
+            candidates.push({
+              kind: 'edge',
+              featureId: featureIdOf(line),
+              id: range.edgeId,
+              depth,
+              screenPx,
+              object: line,
+              index: range.start,
+              point,
+            })
+          }
+        }
       }
     } else if (filter === 'vertex') {
       const scratch = new Vector3()
@@ -1296,7 +1301,7 @@ function savePng(url: string) {
 
 /**
  * Orbit, grid, lights, and axes stay on when the scene is empty.
- * Face picks are a click. Edge picks are shift-click, or every click in edge mode.
+ * Click selects the active filter; Shift-click toggles the hit.
  * Delete and Undo stay on the parent.
  */
 export const Viewport = forwardRef<
