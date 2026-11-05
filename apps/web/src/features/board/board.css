@@ -32,32 +32,34 @@
   gap: 8px;
   font-size: 12px;
 }
-.board-page select {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--background);
-  color: var(--foreground);
-  padding: 5px;
-}
 .board-columns {
   display: grid;
   grid-template-columns: repeat(4, minmax(200px, 1fr));
   gap: 12px;
   flex: 1;
   min-height: 0;
-  overflow: auto;
-  align-content: start;
+  overflow-x: auto;
+  overflow-y: hidden;
+  grid-template-rows: minmax(0, 1fr);
 }
 .board-column {
   background: var(--muted);
   border-radius: 8px;
   padding: 12px;
-  min-height: 200px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .board-column h2 {
   font-size: 13px;
   font-weight: 600;
   margin: 0 0 12px;
+  position: sticky;
+  top: -12px;
+  padding: 12px 0 6px;
+  margin-top: -12px;
+  background: var(--muted);
+  z-index: 1;
 }
 .board-column h2 span {
   color: var(--muted-foreground);

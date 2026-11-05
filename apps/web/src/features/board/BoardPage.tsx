@@ -3,16 +3,23 @@ import { Link } from '@tanstack/react-router'
 import { isWaitingOnYou, type SessionView } from '@beddcode/client-runtime'
 import { setSessionBoardStage, useAllSessions, useHostStore } from '../../stores/host.ts'
 import { folderName } from '../../ui/format.ts'
+import { Select } from '../../ui/Select.tsx'
 import './board.css'
 
 const stages = [
-  ['pending', 'Pending'],
-  ['in-progress', 'In progress'],
-  ['review', 'Review'],
-  ['done', 'Done'],
+  ['pending', 'Up next'],
+  ['in-progress', 'Working'],
+  ['review', 'Needs review'],
+  ['done', 'Completed'],
 ] as const
 
 type Stage = NonNullable<SessionView['boardStage']>
+
+// Sessions never moved by hand: live ones are "Working", finished conversations are "Completed".
+function defaultStage(session: SessionView): Stage {
+  if (session.boardStage) return session.boardStage
+  return session.status === 'running' || isWaitingOnYou(session) ? 'in-progress' : 'done'
+}
 
 export function BoardPage() {
   const sessions = useAllSessions()
@@ -52,14 +59,14 @@ export function BoardPage() {
         </div>
         <label>
           Project{' '}
-          <select value={project} onChange={(e) => setProject(e.target.value)}>
+          <Select value={project} onChange={(e) => setProject(e.target.value)}>
             <option value="all">All projects</option>
             {[...projects].map(([key, value]) => (
               <option key={key} value={key}>
                 {value.name} · {value.host}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       </header>
       {error && (
@@ -70,7 +77,7 @@ export function BoardPage() {
       <div className="board-columns">
         {stages.map(([stage, label]) => {
           const cards = visible.filter(
-            ({ session }) => (session.boardStage ?? 'in-progress') === stage,
+            ({ session }) => defaultStage(session) === stage,
           )
           return (
             <section className="board-column" key={stage} aria-label={label}>
@@ -97,7 +104,7 @@ export function BoardPage() {
                   </div>
                   <label>
                     Stage{' '}
-                    <select
+                    <Select
                       aria-label={`Stage for ${session.title}`}
                       value={stage}
                       onChange={(e) => void move(session.id, e.target.value as Stage)}
@@ -107,7 +114,7 @@ export function BoardPage() {
                           {name}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                 </article>
               ))}
