@@ -440,6 +440,8 @@ export interface HoleFacePick {
   diameter?: number
   throughAll?: boolean
   depth?: number
+  cboreDiameter?: number
+  cboreDepth?: number
   id?: string
 }
 
@@ -476,6 +478,8 @@ export function addHoleFromFace(
     diameter: pick.diameter,
     throughAll: pick.throughAll,
     depth: pick.depth,
+    cboreDiameter: pick.cboreDiameter,
+    cboreDepth: pick.cboreDepth,
   })
 }
 

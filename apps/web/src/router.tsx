@@ -21,6 +21,9 @@ import {
 const DesignPage = lazy(() =>
   import('./features/design/DesignPage.tsx').then((m) => ({ default: m.DesignPage })),
 )
+const CadPane = lazy(() =>
+  import('./features/cad/CadPane.tsx').then((m) => ({ default: m.CadPane })),
+)
 
 const rootRoute = createRootRoute({ component: AppShell })
 const indexRoute = createRoute({
@@ -86,6 +89,16 @@ const designRoute = createRoute({
   ),
 })
 
+const cadRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/cad',
+  component: () => (
+    <Suspense fallback={null}>
+      <CadPane />
+    </Suspense>
+  ),
+})
+
 const linearRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/linear',
@@ -105,6 +118,7 @@ export const router = createRouter({
     boardRoute,
     sessionRoute,
     designRoute,
+    cadRoute,
     linearRoute,
     schedulesRoute,
     settingsRoute,

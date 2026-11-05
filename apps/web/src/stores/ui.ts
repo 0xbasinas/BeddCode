@@ -1,10 +1,10 @@
 import { create } from 'zustand'
 
-export type PaneId = 'terminal' | 'files' | 'git' | 'browser' | 'desktop' | 'cad'
+export type PaneId = 'terminal' | 'files' | 'git' | 'browser' | 'desktop'
 export type GitTab = 'changes' | 'commits' | 'pr'
 
 const PANE_KEY = 'beddcode.right-pane'
-const PANES: PaneId[] = ['terminal', 'files', 'git', 'browser', 'desktop', 'cad']
+const PANES: PaneId[] = ['terminal', 'files', 'git', 'browser', 'desktop']
 
 interface PaneState {
   /** The tool the right pane shows when expanded; kept while it is collapsed. */
@@ -40,9 +40,6 @@ interface UiState extends PaneState {
   prCreateAsk: number
   /** Opens the Git pane's PR tab on the form for a new pull request from the current branch. */
   showCreatePr(): void
-  /** The CAD pane covers most of the window. Cleared when that pane closes. Not saved. */
-  cadMaximized: boolean
-  setCadMaximized(maximized: boolean): void
 }
 
 type Store = Pick<Storage, 'getItem' | 'setItem'> | undefined
@@ -60,6 +57,7 @@ export function loadPaneState(store: Store = storage()): PaneState {
   try {
     const saved = JSON.parse(store?.getItem(PANE_KEY) ?? 'null') as Partial<PaneState> | null
     if (!saved || typeof saved !== 'object') return fallback
+    if ((saved as { lastPane?: string }).lastPane === 'cad') return fallback
     return {
       lastPane: PANES.includes(saved.lastPane as PaneId) ? (saved.lastPane as PaneId) : 'git',
       paneCollapsed: typeof saved.paneCollapsed === 'boolean' ? saved.paneCollapsed : true,
@@ -88,8 +86,6 @@ function pane(lastPane: PaneId, paneCollapsed: boolean) {
     lastPane,
     paneCollapsed,
     activePane,
-    // Maximize belongs to the open CAD pane.
-    ...(activePane === 'cad' ? {} : { cadMaximized: false }),
   }
 }
 
@@ -113,6 +109,4 @@ export const useUiStore = create<UiState>((set) => ({
   prCreateAsk: 0,
   showCreatePr: () =>
     set((s) => ({ ...pane('git', false), gitTab: 'pr', prCreateAsk: s.prCreateAsk + 1 })),
-  cadMaximized: false,
-  setCadMaximized: (cadMaximized) => set({ cadMaximized }),
 }))

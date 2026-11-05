@@ -126,6 +126,7 @@ export interface PickHit {
 
 export interface ViewportHandle {
   fit(): void
+  clearSelection(): void
   /** PNG data URL of the WebGL canvas. */
   screenshot(): string
   setView(view: ViewName): void
@@ -172,6 +173,7 @@ interface SceneSession {
 
 interface SceneApi {
   resize(): void
+  clearSelection(): void
   setMeshes(meshes: MeshBuffers[], selectedId: string | null): void
   setInteraction(next: Omit<SceneSession, 'placed' | 'cursor' | 'snapKind'>): void
   cancelSketch(): void
@@ -1304,6 +1306,7 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
   loop()
 
   return {
+    clearSelection: () => setSelection([]),
     resize,
     setMeshes,
     setInteraction,
@@ -1498,6 +1501,7 @@ export const Viewport = forwardRef<
     ref,
     () => ({
       fit: () => apiRef.current?.fit(),
+      clearSelection: () => apiRef.current?.clearSelection(),
       screenshot: () => apiRef.current?.screenshot() ?? '',
       setView: applyView,
     }),

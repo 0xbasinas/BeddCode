@@ -11,7 +11,7 @@ import {
 import { useHostKey } from '../../stores/HostScope.tsx'
 import { reportCadView } from '../../stores/host.ts'
 import {
-  emitCadMaximize,
+  setCadPaneOpen,
   registerCadExportProvider,
   registerCadImportProvider,
   registerCadQueryProvider,
@@ -116,8 +116,6 @@ function placementWhere(placement: FaceSketchPlacement): string {
  * The arrangement follows a common solid modeler. It does not share code with the AGPL reference CAD.
  * Solids are rebuilt through createCadClient() and OpenCascade.
  *
- * Maximize dispatches `beddcode:cad-maximize` with `{ maximized: boolean }` and sets
- * `.cad-pane--max`. The shell listens and toggles `.right.cad-open.cad-maximized`.
  */
 export function CadPane() {
   const hostKey = useHostKey()
@@ -134,6 +132,7 @@ export function CadPane() {
   const [options, setOptions] = useState<ToolOptions>(DEFAULT_TOOL_OPTIONS)
   const [fitRequest, setFitRequest] = useState(0)
   const [pick, setPick] = useState<PickHit | null>(null)
+  const [pickedEdges, setPickedEdges] = useState<PickHit[]>([])
   const [pickFilter, setPickFilter] = useState<PickKind>('face')
   const forcedEdge = tool === 'fillet' || tool === 'chamfer'
   const activeFilter: PickKind = forcedEdge ? 'edge' : pickFilter
@@ -141,7 +140,6 @@ export function CadPane() {
   const [activePlane, setActivePlane] = useState<CadSketch['plane']>('XY')
   const [sketchTool, setSketchTool] = useState<SketchTool>('rectangle')
   const [measureLabel, setMeasureLabel] = useState<string | null>(null)
-  const [maximized, setMaximized] = useState(false)
   const [holeDepth, setHoleDepth] = useState(10)
   const optionsRef = useRef(options)
   const draftRef = useRef<string | null>(null)
@@ -180,10 +178,11 @@ export function CadPane() {
   }, [hostKey, doc.id, selectedId])
 
   useEffect(() => {
+    setCadPaneOpen(true)
     return () => {
+      setCadPaneOpen(false)
       setCadView({ canRender: false, selection: [] })
       reportCadView(hostKey, null)
-      emitCadMaximize(false)
     }
   }, [hostKey])
 
@@ -465,11 +464,7 @@ export function CadPane() {
     }
     if (next === 'fillet' || next === 'chamfer') {
       setTool(next)
-      if (pick?.kind === 'edge') {
-        placeEdge(pick, next)
-        return
-      }
-      setMessage(toolStatusHint(next))
+      setMessage('Select edges, then press Enter or Apply')
       return
     }
     if (next === 'hole') {
@@ -634,49 +629,44 @@ export function CadPane() {
     rememberFit()
   }
 
-  const placeEdge = (hit: PickHit, kind: 'fillet' | 'chamfer') => {
-    const mesh = meshes.find((item) => item.id === hit.featureId)
-    const found = mesh ? signatureForEdge(mesh, hit.edgeId, hit.index) : null
-    const edgeId = found?.edgeId ?? hit.edgeId ?? hit.index
-    const added = { edgeId, ref: found?.ref ?? null }
-    const currentDoc = docRef.current
-    const current = currentDoc.features.find((feature) => feature.id === selectedId)
-    const sameTarget =
-      current?.kind === kind &&
-      (current.id === hit.featureId ||
-        current.params.targetId === hit.featureId || current.params.target === hit.featureId)
-    const radius = kind === 'fillet' ? optionsRef.current.filletRadius : optionsRef.current.chamferDistance
-    if (sameTarget && current) {
-      const merged = mergeEdgeParams(current.params.edgeIds, current.params.edgeRefs, added)
-      commit(
-        updateFeature(currentDoc, current.id, {
-          params: {
-            edgeIds: merged.edgeIds,
-            edgeRefs: merged.edgeRefs ?? '',
-            radius,
-          },
-        }),
-      )
-      setMessage(EDGE_STATUS)
+  const applyEdges = () => {
+    if (tool !== 'fillet' && tool !== 'chamfer') return
+    const edges = pickedEdges.filter((hit) => hit.kind === 'edge')
+    const target = edges[0]?.featureId
+    if (!target) {
+      setMessage('Select at least one edge')
       return
     }
-    const merged = mergeEdgeParams(undefined, undefined, added)
+    if (edges.some((hit) => hit.featureId !== target)) {
+      setMessage('Select edges on the same body')
+      return
+    }
+    const mesh = meshes.find((item) => item.id === target)
+    if (!mesh) {
+      setMessage('Selected body is no longer available')
+      return
+    }
+    let merged: { edgeIds: string; edgeRefs?: string } = { edgeIds: '' }
+    for (const hit of edges) {
+      const found = signatureForEdge(mesh, hit.edgeId, hit.index)
+      if (!found) {
+        setMessage('Could not identify a selected edge')
+        return
+      }
+      merged = mergeEdgeParams(merged.edgeIds, merged.edgeRefs, found)
+    }
+    const currentDoc = docRef.current
     const made =
-      kind === 'fillet'
-        ? makeFilletFeature(currentDoc, hit.featureId, merged.edgeIds, undefined, merged.edgeRefs)
-        : makeChamferFeature(currentDoc, hit.featureId, merged.edgeIds, undefined, merged.edgeRefs)
-    const patch = draftParamPatch(kind, optionsRef.current)
+      tool === 'fillet'
+        ? makeFilletFeature(currentDoc, target, merged.edgeIds, undefined, merged.edgeRefs)
+        : makeChamferFeature(currentDoc, target, merged.edgeIds, undefined, merged.edgeRefs)
+    const patch = draftParamPatch(tool, optionsRef.current)
     const feature = patch ? { ...made, params: { ...made.params, ...patch } } : made
-    addSolid(feature, kind)
-    setMessage(EDGE_STATUS)
-  }
-
-  const toggleMaximize = () => {
-    setMaximized((value) => {
-      const next = !value
-      emitCadMaximize(next)
-      return next
-    })
+    addSolid(feature, 'select')
+    viewport.current?.clearSelection()
+    setMessage(
+      `${feature.name} applied to ${edges.length} ${edges.length === 1 ? 'edge' : 'edges'}`,
+    )
   }
 
   const onPick = (hit: PickHit | null) => {
@@ -705,7 +695,7 @@ export function CadPane() {
       return
     }
     if ((tool === 'fillet' || tool === 'chamfer') && hit.kind === 'edge') {
-      placeEdge(hit, tool)
+      setMessage('Select edges, then press Enter or Apply')
       return
     }
     if (tool === 'fillet' || tool === 'chamfer') {
@@ -721,6 +711,18 @@ export function CadPane() {
     const target = event.target
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return
     const mod = event.metaKey || event.ctrlKey
+    if (!mod && forcedEdge && event.key === 'Enter') {
+      event.preventDefault()
+      applyEdges()
+      return
+    }
+    if (!mod && forcedEdge && event.key === 'Escape') {
+      event.preventDefault()
+      viewport.current?.clearSelection()
+      setTool('select')
+      setMessage('Edge operation cancelled')
+      return
+    }
     if (!mod) return
     const key = event.key.toLowerCase()
     if (key === 'z' && !event.shiftKey) {
@@ -753,7 +755,7 @@ export function CadPane() {
 
   return (
     <div
-      className={`cad-pane${maximized ? ' cad-pane--max' : ''}`}
+      className="cad-pane"
       tabIndex={0}
       data-active-sketch={activeSketchId ?? undefined}
       data-sketch-plane={activePlane}
@@ -763,8 +765,6 @@ export function CadPane() {
       <Toolbar
         active={tool}
         onCommand={onCommand}
-        maximized={maximized}
-        onMaximize={toggleMaximize}
         sketchTool={tool === 'sketch' ? sketchTool : null}
         onSketchTool={(next) => {
           if (tool !== 'sketch') {
@@ -827,6 +827,7 @@ export function CadPane() {
           measure={measureLabel ? { label: measureLabel } : null}
           pickMode={activeFilter}
           onSelectionChange={(hits) => {
+            setPickedEdges(hits.filter((hit) => hit.kind === 'edge'))
             if (hits.length > 1) setMessage(`${hits.length} ${activeFilter}s selected`)
           }}
         />
@@ -835,10 +836,15 @@ export function CadPane() {
           error={selected ? errors[selected.id] : undefined}
           placement={placementFields}
           onPlacement={(key, value) => {
-            if (key === 'diameter' && typeof value === 'number' && value > 0) onOptionsChange({ holeDiameter: value })
-            if (key === 'throughAll' && typeof value === 'boolean') onOptionsChange({ holeThroughAll: value })
+            if (key === 'diameter' && typeof value === 'number' && value > 0)
+              onOptionsChange({ holeDiameter: value })
+            if (key === 'throughAll' && typeof value === 'boolean')
+              onOptionsChange({ holeThroughAll: value })
             if (key === 'depth' && typeof value === 'number' && value > 0) setHoleDepth(value)
-            if (key === 'radius' && typeof value === 'number' && value > 0) onOptionsChange(tool === 'chamfer' ? { chamferDistance: value } : { filletRadius: value })
+            if (key === 'radius' && typeof value === 'number' && value > 0)
+              onOptionsChange(
+                tool === 'chamfer' ? { chamferDistance: value } : { filletRadius: value },
+              )
           }}
           onName={(name) => {
             if (!selected) return
@@ -865,7 +871,9 @@ export function CadPane() {
               key === 'radius' &&
               typeof value === 'number'
             ) {
-              onOptionsChange(selected.kind === 'chamfer' ? { chamferDistance: value } : { filletRadius: value })
+              onOptionsChange(
+                selected.kind === 'chamfer' ? { chamferDistance: value } : { filletRadius: value },
+              )
             }
             commit(updateFeature(docRef.current, selected.id, { params: { [key]: value } }))
           }}
@@ -906,7 +914,14 @@ export function CadPane() {
             </button>
           ))}
         </span>
-        <span className="cad-status-hint" title={hint}>{hint}</span>
+        {forcedEdge ? (
+          <button type="button" onClick={applyEdges} disabled={pickedEdges.length === 0}>
+            Apply {tool} ({pickedEdges.length})
+          </button>
+        ) : null}
+        <span className="cad-status-hint" title={hint}>
+          {hint}
+        </span>
         <span>{doc.units}</span>
         <span>
           {doc.features.length} {doc.features.length === 1 ? 'feature' : 'features'}

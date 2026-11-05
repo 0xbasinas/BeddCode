@@ -67,6 +67,7 @@ if (!kernelModule.ok) {
     it('strips the Vitest /@fs prefix when running on node', () => {
       expect(locateWasm('/@fs/workspace/cad.wasm')).toBe('/workspace/cad.wasm')
       expect(locateWasm('/@fs/workspace/cad.wasm?import&url')).toBe('/workspace/cad.wasm')
+      expect(locateWasm('/@fs/C:/cad/cad.wasm?url')).toBe('C:/cad/cad.wasm')
       expect(locateWasm('./assets/cad.wasm')).toBe('./assets/cad.wasm')
       expect(locateWasm('./assets/cad.wasm?url')).toBe('./assets/cad.wasm')
     })
@@ -81,7 +82,11 @@ if (!kernelModule.ok) {
       afterAll(() => kernel.dispose())
 
       it('rounds only the four vertical edges of an 80 by 50 plate at radius 4', async () => {
-        const plate = await kernel.createPrimitive('box', { width: 80, depth: 50, height: 8 }, 'largePlate')
+        const plate = await kernel.createPrimitive(
+          'box',
+          { width: 80, depth: 50, height: 8 },
+          'largePlate',
+        )
         const picks = (plate.mesh.edgeGroups ?? []).flatMap((group) => {
           const ref = edgeRefFromMesh(plate.mesh, group)
           return ref && Math.abs(ref.dir[2]) > 0.99 && Math.abs(ref.length - 8) < 0.01

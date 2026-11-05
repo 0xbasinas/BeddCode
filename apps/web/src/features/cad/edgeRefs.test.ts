@@ -42,6 +42,19 @@ describe('edge refs', () => {
     expect(found?.ref).toMatchObject({ mid: [0, 2, 0], length: 4 })
   })
 
+  it('resolves segment-based groups in vertex space and prefers the picked edge id', () => {
+    const mesh = {
+      edgeGroups: [
+        { start: 0, count: 1, edgeId: 10 },
+        { start: 1, count: 1, edgeId: 11 },
+        { start: 2, count: 1, edgeId: 12 },
+      ],
+      edgePositions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 6]),
+    }
+    expect(signatureForEdge(mesh, 11, 2)).toMatchObject({ edgeId: 11, ref: { length: 4 } })
+    expect(signatureForEdge(mesh, undefined, 2)).toMatchObject({ edgeId: 11, ref: { length: 4 } })
+  })
+
   it('serializes ids and refs, then merges another edge', () => {
     const first: TopologyRef = { kind: 'edge', mid: [1, 0, 0], dir: [0, 0, 1], length: 2 }
     const second: TopologyRef = { kind: 'edge', mid: [0, 3, 0], dir: [1, 0, 0], length: 6 }

@@ -122,28 +122,22 @@ export function signatureForEdge(
   const vertexCount = positions ? Math.floor(positions.length / 3) : 0
   let span: { edgeId: number; start: number; count: number } | null = null
 
-  if (groups && groups.length > 0 && vertexIndex >= 0) {
-    const byVertex = groups.find(
-      (group) => vertexIndex >= group.start && vertexIndex < group.start + group.count,
-    )
-    if (byVertex) span = { edgeId: byVertex.edgeId, start: byVertex.start, count: byVertex.count }
-    if (!span) {
-      const segmentCount = vertexCount / 2
-      const sum = groups.reduce((total, group) => total + group.count, 0)
-      if (segmentCount > 0 && sum === segmentCount) {
-        const segment = vertexIndex / 2
-        const bySegment = groups.find(
-          (group) => segment >= group.start && segment < group.start + group.count,
-        )
-        if (bySegment) {
-          span = {
-            edgeId: bySegment.edgeId,
-            start: bySegment.start * 2,
-            count: bySegment.count * 2,
-          }
-        }
-      }
-    }
+  if (groups && groups.length > 0) {
+    const sum = groups.reduce((total, group) => total + group.count, 0)
+    const scale =
+      vertexCount > 0 &&
+      sum === vertexCount / 2 &&
+      groups.every((group) => group.start + group.count <= vertexCount / 2)
+        ? 2
+        : 1
+    const group =
+      groups.find((item) => item.edgeId === edgeId) ??
+      groups.find(
+        (item) =>
+          vertexIndex >= item.start * scale && vertexIndex < (item.start + item.count) * scale,
+      )
+    if (group)
+      span = { edgeId: group.edgeId, start: group.start * scale, count: group.count * scale }
   }
 
   if (!span && edgeId !== undefined) {

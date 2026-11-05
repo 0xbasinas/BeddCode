@@ -91,7 +91,7 @@ export function AppShell() {
   // Scheduled tasks and Linear are the same: a screen of their own, without the sessions list.
   const design = useLocation({
     select: (location) =>
-      ['/design', '/schedules', '/linear', '/board'].includes(location.pathname),
+      ['/design', '/cad', '/schedules', '/linear', '/board'].includes(location.pathname),
   })
   const navigate = useNavigate()
   useEffect(() => {

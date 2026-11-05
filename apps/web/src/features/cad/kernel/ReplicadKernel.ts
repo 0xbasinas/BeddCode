@@ -67,7 +67,10 @@ export function locateWasm(url: string): string {
   const clean = url.replace(/[?#].*$/, '')
   const onNode =
     typeof process !== 'undefined' && !!process.versions?.node && typeof window === 'undefined'
-  if (onNode && clean.startsWith('/@fs/')) return clean.slice(4)
+  if (onNode && clean.startsWith('/@fs/')) {
+    const path = clean.slice(4)
+    return /^\/[A-Za-z]:\//.test(path) ? path.slice(1) : path
+  }
   return clean
 }
 

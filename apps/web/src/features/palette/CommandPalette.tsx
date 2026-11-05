@@ -80,12 +80,6 @@ const PANES: { id: PaneId; label: string; icon: ReactNode; keywords: string[] }[
     keywords: ['shell', 'console'],
   },
   { id: 'browser', label: 'Browser', icon: <Globe size={14} />, keywords: ['preview', 'web'] },
-  {
-    id: 'cad',
-    label: 'CAD',
-    icon: <Box size={14} />,
-    keywords: ['model', 'solid', 'sketch', 'geometry', 'part'],
-  },
 ]
 
 const activeSessionId = (path: string) => /^\/session\/([^/]+)/.exec(path)?.[1]
@@ -174,6 +168,14 @@ function PaletteDialog() {
         icon: <Palette size={14} />,
         keywords: ['canvas', 'mockup'],
         run: () => void navigate({ to: '/design' }),
+      },
+      {
+        id: 'cad',
+        label: 'Open CAD',
+        group: 'Action',
+        icon: <Box size={14} />,
+        keywords: ['model', 'solid', 'sketch', 'geometry', 'part'],
+        run: () => void navigate({ to: '/cad' }),
       },
       {
         id: 'settings',

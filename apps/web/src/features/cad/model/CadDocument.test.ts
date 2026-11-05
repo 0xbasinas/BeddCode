@@ -239,10 +239,20 @@ describe('CadDocument', () => {
       diameter: 5.5,
       throughAll: false,
       depth: 6,
+      cboreDiameter: 8,
+      cboreDepth: 2,
     })
     expect(sideHole.feature.params).toMatchObject({
-      targetId: 'plate', x: -20, y: 3.125, z: 4,
-      direction: 'X', diameter: 5.5, throughAll: false, depth: 6,
+      targetId: 'plate',
+      x: -20,
+      y: 3.125,
+      z: 4,
+      direction: 'X',
+      diameter: 5.5,
+      throughAll: false,
+      depth: 6,
+      cboreDiameter: 8,
+      cboreDepth: 2,
     })
 
     expect(() =>
