@@ -19,6 +19,8 @@ import {
   MeshStandardMaterial,
   Object3D,
   PerspectiveCamera,
+  Points,
+  PointsMaterial,
   Raycaster,
   Scene,
   Vector2,
@@ -31,7 +33,21 @@ import { LineGeometry } from 'three/addons/lines/LineGeometry.js'
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js'
 import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh'
 import type { EdgeGroup, FaceGroup, MeshBuffers } from './solids.ts'
-import { edgeAt, faceAt } from './solids.ts'
+import { faceAt, faceTriangle } from './solids.ts'
+import {
+  boxSelect,
+  mergeSelection,
+  rankHits,
+  sameItem,
+  segmentDistancePx,
+  selectionKey,
+  keepKind,
+  toggleSelection,
+  type CenterItem,
+  type HitCandidate,
+  type PickKind,
+  type SelectionItem,
+} from './selection.ts'
 import { SketchOverlay, type OverlayLabel } from './SketchOverlay.tsx'
 import type { SketchEntity } from './sketcher/types.ts'
 import {
@@ -70,7 +86,8 @@ Mesh.prototype.raycast = acceleratedRaycast
 /**
  * Optional props CadPane can pass later. Defaults keep the current pane.
  * - loading: `.cad-loading` overlay while the geometry kernel starts
- * - pickMode: `'face'` (default) or `'edge'`. Shift-click still picks an edge.
+ * - pickMode: the selection filter, `'face'` (default), `'edge'`, or `'vertex'`.
+ *   Shift-click adds or removes from the selection; Ctrl/Cmd + drag box-selects.
  * - sketchMode, sketchTool (`line` | `rectangle` | `circle` | `arc`), plane
  *   (`XY` floor, `YZ` right, `ZX` front), sketchSnap (millimetres; Shift flips 1 and 5),
  *   entities (sketcher entities, not the document params bag), onSketchChange, onSketchFinish
@@ -85,14 +102,15 @@ export interface MeasureVisual {
   label?: string
 }
 
-/** A face or edge the raycaster hit. Edge picks are shift-click or `pickMode: 'edge'`. */
+/** A face, edge, or vertex the raycaster hit. `pickMode` is the active selection filter. */
 export interface PickHit {
-  kind: 'face' | 'edge'
+  kind: PickKind
   featureId: string
   /** Triangle index, or the edge segment's first vertex when `kind` is `edge`. */
   index: number
   faceId?: number
   edgeId?: number
+  vertexId?: number
   point?: [number, number, number]
 }
 
@@ -111,9 +129,11 @@ const SKETCH = 0x8a8a8a
 const SKETCH_PREVIEW = 0xb4b4b4
 const MEASURE = 0x9a9a9a
 const HOVER = 0xcfcfcf
+const SELECTED = 0xe0e0e0
 
 interface SceneHooks {
   onPick(hit: PickHit | null): void
+  onSelectionChange(hits: PickHit[]): void
   onSketchChange(entities: SketchEntity[]): void
   onSketchFinish(entities: SketchEntity[]): void
   onLabels(labels: OverlayLabel[]): void
@@ -124,7 +144,7 @@ interface SceneSession {
   sketchTool: SketchToolName
   plane: SketchPlaneName
   snap: number
-  pickMode: 'face' | 'edge'
+  pickMode: PickKind
   entities: SketchEntity[]
   measure: MeasureVisual | null
   placed: Array<[number, number]>
@@ -198,10 +218,12 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
 
   const parts = new Group()
   const hoverGroup = new Group()
+  const selectGroup = new Group()
   const sketchGroup = new Group()
   const previewGroup = new Group()
   const measureGroup = new Group()
   scene.add(parts)
+  scene.add(selectGroup)
   scene.add(hoverGroup)
   scene.add(sketchGroup)
   scene.add(previewGroup)
@@ -222,6 +244,12 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
   let downY = 0
   let down = false
   let lastPointer: PointerEvent | null = null
+  let selection: SelectionItem[] = []
+  let boxing = false
+  let boxFrame: HTMLDivElement | null = null
+  let boxFrom = { x: 0, y: 0 }
+
+  type Found = HitCandidate & { object: Object3D; index: number; point: Vector3 }
 
   const session: SceneSession = {
     sketchMode: false,
@@ -420,74 +448,273 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     return overlay
   }
 
-  const showFaceHover = (mesh: Mesh, triangleIndex: number) => {
-    const groups = mesh.userData.faceGroups as FaceGroup[] | undefined
-    const key = `${featureIdOf(mesh)}:f:${triangleIndex}:${groups?.length ?? 0}`
+  const showHover = (found: Found | null) => {
+    if (!found) {
+      if (hoverKey) clearHover()
+      return
+    }
+    const key = selectionKey(found)
     if (key === hoverKey) return
     clearHover()
     hoverKey = key
-    const geometry = faceGeometry(mesh.geometry, triangleIndex, groups)
-    if (!geometry) return
-    const overlay = new Mesh(
-      geometry,
-      new MeshBasicMaterial({
-        color: HOVER,
-        transparent: true,
-        opacity: 0.42,
-        depthWrite: false,
-        polygonOffset: true,
-        polygonOffsetFactor: -2,
-        polygonOffsetUnits: -2,
-      }),
-    )
-    overlay.raycast = () => {}
-    overlay.position.copy(mesh.position)
-    overlay.quaternion.copy(mesh.quaternion)
-    overlay.scale.copy(mesh.scale)
-    hoverGroup.add(overlay)
+    const overlay = buildOverlay(found, found.index, HOVER, 0.42, found.point)
+    if (overlay) hoverGroup.add(overlay)
   }
 
-  const showEdgeHover = (line: LineSegments, vertexIndex: number) => {
-    const groups = line.userData.edgeGroups as EdgeGroup[] | undefined
+  const partOf = (featureId: string, kind: 'mesh' | 'line') =>
+    parts.children.find(
+      (child) =>
+        featureIdOf(child) === featureId &&
+        (kind === 'mesh' ? child instanceof Mesh : child instanceof LineSegments),
+    )
+
+  /** Edge ranges in vertex space, whether the groups count vertices or segments. */
+  const edgeRanges = (line: LineSegments) => {
     const position = line.geometry.getAttribute('position')
-    if (!position) return
-    const found = edgeAt(groups, vertexIndex, position.count)
-    const start = found?.start ?? vertexIndex
-    const count = found?.count ?? 2
-    const key = `${featureIdOf(line)}:e:${start}:${count}`
-    if (key === hoverKey) return
-    clearHover()
-    hoverKey = key
+    const count = position?.count ?? 0
+    const groups = line.userData.edgeGroups as EdgeGroup[] | null | undefined
+    if (!groups?.length) {
+      return Array.from({ length: Math.floor(count / 2) }, (_, segment) => ({
+        edgeId: segment * 2,
+        start: segment * 2,
+        count: 2,
+      }))
+    }
+    const sum = groups.reduce((total, group) => total + group.count, 0)
+    const scale = count > 0 && sum === count / 2 ? 2 : 1
+    return groups.map((group) => ({
+      edgeId: group.edgeId,
+      start: group.start * scale,
+      count: group.count * scale,
+    }))
+  }
+
+  const vertexAt = (line: LineSegments, index: number, target: Vector3) =>
+    target
+      .set(
+        line.geometry.getAttribute('position').getX(index),
+        line.geometry.getAttribute('position').getY(index),
+        line.geometry.getAttribute('position').getZ(index),
+      )
+      .applyMatrix4(line.matrixWorld)
+
+  /** Endpoints of every edge. Vertex ids are edgeId * 2 (first) and edgeId * 2 + 1 (last). */
+  const edgeEnds = (line: LineSegments) => {
+    const out: Array<{ id: number; vertex: number }> = []
+    for (const range of edgeRanges(line)) {
+      out.push({ id: range.edgeId * 2, vertex: range.start })
+      out.push({ id: range.edgeId * 2 + 1, vertex: range.start + range.count - 1 })
+    }
+    return out
+  }
+
+  /** Face or edge range an item stands for, as a triangle index or first vertex. */
+  const locate = (item: SelectionItem): { index: number; point?: Vector3 } | null => {
+    if (item.kind === 'face') {
+      const mesh = partOf(item.featureId, 'mesh') as Mesh | undefined
+      if (!mesh) return null
+      const groups = mesh.userData.faceGroups as FaceGroup[] | null | undefined
+      const indexAttr = mesh.geometry.getIndex()
+      const total = indexAttr ? indexAttr.count : (mesh.geometry.getAttribute('position')?.count ?? 0)
+      if (!groups?.length) return item.id * 3 < total ? { index: item.id } : null
+      const triangle = faceTriangle(groups, item.id, total)
+      return triangle == null ? null : { index: triangle }
+    }
+    const line = partOf(item.featureId, 'line') as LineSegments | undefined
+    if (!line) return null
+    if (item.kind === 'edge') {
+      const range = edgeRanges(line).find((entry) => entry.edgeId === item.id)
+      return range ? { index: range.start } : null
+    }
+    const end = edgeEnds(line).find((entry) => entry.id === item.id)
+    return end ? { index: end.vertex, point: vertexAt(line, end.vertex, new Vector3()) } : null
+  }
+
+  const buildOverlay = (
+    item: SelectionItem,
+    index: number,
+    color: number,
+    opacity: number,
+    point?: Vector3,
+  ): Object3D | null => {
+    if (item.kind === 'face') {
+      const mesh = partOf(item.featureId, 'mesh') as Mesh | undefined
+      if (!mesh) return null
+      const geometry = faceGeometry(
+        mesh.geometry,
+        index,
+        mesh.userData.faceGroups as FaceGroup[] | undefined,
+      )
+      if (!geometry) return null
+      const overlay = new Mesh(
+        geometry,
+        new MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
+        }),
+      )
+      overlay.raycast = () => {}
+      overlay.position.copy(mesh.position)
+      overlay.quaternion.copy(mesh.quaternion)
+      overlay.scale.copy(mesh.scale)
+      return overlay
+    }
+    const line = partOf(item.featureId, 'line') as LineSegments | undefined
+    if (!line) return null
+    if (item.kind === 'vertex') {
+      if (!point) return null
+      const geometry = new BufferGeometry()
+      geometry.setAttribute('position', new Float32BufferAttribute([point.x, point.y, point.z], 3))
+      const dot = new Points(
+        geometry,
+        new PointsMaterial({ color, size: 8, sizeAttenuation: false, depthTest: false }),
+      )
+      dot.raycast = () => {}
+      dot.renderOrder = 2
+      return dot
+    }
+    const position = line.geometry.getAttribute('position')
+    const range = edgeRanges(line).find(
+      (entry) => index >= entry.start && index < entry.start + entry.count,
+    )
+    const start = range?.start ?? index
+    const end = Math.min(position.count, start + (range?.count ?? 2))
     const positions: number[] = []
-    const end = Math.min(position.count, start + count)
     for (let vertex = start; vertex < end; vertex++) {
       positions.push(position.getX(vertex), position.getY(vertex), position.getZ(vertex))
     }
-    if (positions.length < 6) return
+    if (positions.length < 6) return null
     const geometry = new BufferGeometry()
     geometry.setAttribute('position', new Float32BufferAttribute(positions, 3))
     const highlight = new LineSegments(
       geometry,
       new LineBasicMaterial({
-        color: EDGE_HOVER,
+        color,
         polygonOffset: true,
         polygonOffsetFactor: -2,
         polygonOffsetUnits: -2,
       }),
     )
     highlight.raycast = () => {}
-    hoverGroup.add(highlight)
+    return highlight
   }
 
-  const pointerRay = (event: PointerEvent) => {
-    const rect = renderer.domElement.getBoundingClientRect()
-    if (rect.width === 0 || rect.height === 0) return null
-    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
-    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+  const pointerRay = (event: { clientX: number; clientY: number }) => {
+    const box = renderer.domElement.getBoundingClientRect()
+    if (box.width === 0 || box.height === 0) return null
+    pointer.x = ((event.clientX - box.left) / box.width) * 2 - 1
+    pointer.y = -((event.clientY - box.top) / box.height) * 2 + 1
     const distance = camera.position.distanceTo(controls.target)
     raycaster.params.Line.threshold = edgePickThreshold(distance)
     raycaster.setFromCamera(pointer, camera)
     return raycaster.ray
+  }
+
+  const screenOf = (point: Vector3, box: DOMRect) => {
+    projected.copy(point).project(camera)
+    return {
+      x: ((projected.x + 1) / 2) * box.width,
+      y: ((1 - projected.y) / 2) * box.height,
+    }
+  }
+
+  /** Best hit under the cursor for the active filter, or null. */
+  const findHit = (event: { clientX: number; clientY: number }): Found | null => {
+    const ray = pointerRay(event)
+    if (!ray) return null
+    const box = renderer.domElement.getBoundingClientRect()
+    const cx = event.clientX - box.left
+    const cy = event.clientY - box.top
+    const meshes = parts.children.filter((child) => child instanceof Mesh)
+    const lines = parts.children.filter((child) => child instanceof LineSegments)
+    const filter = session.pickMode
+    const candidates: Found[] = []
+    const face = raycaster.intersectObjects(meshes, false)[0]
+    const faceDepth = face ? face.distance : Number.POSITIVE_INFINITY
+    // Lines lying on a face tie with it, so allow a small slack before calling them hidden.
+    const slack = camera.position.distanceTo(controls.target) * 0.01
+
+    if (filter === 'face' && face?.object instanceof Mesh && face.faceIndex != null) {
+      const groups = face.object.userData.faceGroups as FaceGroup[] | undefined
+      const indexAttr = face.object.geometry.getIndex()
+      const total = indexAttr
+        ? indexAttr.count
+        : (face.object.geometry.getAttribute('position')?.count ?? 0)
+      const found = faceAt(groups, face.faceIndex, total)
+      candidates.push({
+        kind: 'face',
+        featureId: featureIdOf(face.object),
+        id: found?.faceId ?? face.faceIndex,
+        depth: face.distance,
+        screenPx: 0,
+        object: face.object,
+        index: face.faceIndex,
+        point: face.point,
+      })
+    } else if (filter === 'edge') {
+      const edge = raycaster.intersectObjects(lines, false)[0]
+      if (edge?.object instanceof LineSegments && edge.index != null && edge.distance <= faceDepth + slack) {
+        const line = edge.object
+        const a = vertexAt(line, edge.index, new Vector3())
+        const b = vertexAt(line, edge.index + 1, new Vector3())
+        const sa = screenOf(a, box)
+        const sb = screenOf(b, box)
+        const range = edgeRanges(line).find(
+          (entry) => edge.index! >= entry.start && edge.index! < entry.start + entry.count,
+        )
+        candidates.push({
+          kind: 'edge',
+          featureId: featureIdOf(line),
+          id: range?.edgeId ?? edge.index,
+          depth: edge.distance,
+          screenPx: segmentDistancePx(cx, cy, sa.x, sa.y, sb.x, sb.y),
+          object: line,
+          index: range?.start ?? edge.index,
+          point: edge.point,
+        })
+      }
+    } else if (filter === 'vertex') {
+      const scratch = new Vector3()
+      for (const child of lines) {
+        const line = child as LineSegments
+        for (const end of edgeEnds(line)) {
+          vertexAt(line, end.vertex, scratch)
+          const depth = scratch.distanceTo(ray.origin)
+          if (depth > faceDepth + slack) continue
+          const screen = screenOf(scratch, box)
+          candidates.push({
+            kind: 'vertex',
+            featureId: featureIdOf(line),
+            id: end.id,
+            depth,
+            screenPx: Math.hypot(screen.x - cx, screen.y - cy),
+            object: line,
+            index: end.vertex,
+            point: scratch.clone(),
+          })
+        }
+      }
+    }
+    const best = rankHits(candidates, filter)
+    return best ? (best as Found) : null
+  }
+
+  const hitOf = (found: Found): PickHit => {
+    const hit: PickHit = {
+      kind: found.kind,
+      featureId: found.featureId,
+      index: found.index,
+      point: pointTuple(found.point),
+    }
+    if (found.kind === 'face') hit.faceId = found.id
+    else if (found.kind === 'edge') hit.edgeId = found.id
+    else hit.vertexId = found.id
+    return hit
   }
 
   const hoverAt = (event: PointerEvent) => {
@@ -495,75 +722,104 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       clearHover()
       return
     }
-    const ray = pointerRay(event)
-    if (!ray) return
-    const meshes = parts.children.filter((child) => child instanceof Mesh)
-    const edges = parts.children.filter((child) => child instanceof LineSegments)
-    const wantEdge = event.shiftKey || session.pickMode === 'edge'
-    if (wantEdge) {
-      const edge = raycaster.intersectObjects(edges, false)[0]
-      if (edge?.object instanceof LineSegments && edge.index != null) {
-        showEdgeHover(edge.object, edge.index)
-        return
-      }
-      clearHover()
-      return
+    showHover(findHit(event))
+  }
+
+  const selectionHits = (): PickHit[] => {
+    const out: PickHit[] = []
+    for (const item of selection) {
+      const spot = locate(item)
+      if (!spot) continue
+      const hit: PickHit = { kind: item.kind, featureId: item.featureId, index: spot.index }
+      if (spot.point) hit.point = pointTuple(spot.point)
+      if (item.kind === 'face') hit.faceId = item.id
+      else if (item.kind === 'edge') hit.edgeId = item.id
+      else hit.vertexId = item.id
+      out.push(hit)
     }
-    const face = raycaster.intersectObjects(meshes, false)[0]
-    if (face?.object instanceof Mesh && face.faceIndex != null) {
-      showFaceHover(face.object, face.faceIndex)
-      return
+    return out
+  }
+
+  /** Redraws the highlights and drops items that no longer exist after a rebuild. */
+  const redrawSelection = () => {
+    clearGroup(selectGroup)
+    const kept: SelectionItem[] = []
+    for (const item of selection) {
+      const spot = locate(item)
+      if (!spot) continue
+      const overlay = buildOverlay(item, spot.index, SELECTED, 0.55, spot.point)
+      if (!overlay) continue
+      selectGroup.add(overlay)
+      kept.push(item)
     }
-    clearHover()
+    return kept
+  }
+
+  const setSelection = (next: SelectionItem[]) => {
+    const before = selection.map(selectionKey).join('|')
+    selection = next
+    selection = redrawSelection()
+    if (selection.map(selectionKey).join('|') !== before) hooks.onSelectionChange(selectionHits())
   }
 
   const pick = (event: PointerEvent): PickHit | null => {
-    if (!pointerRay(event)) return null
-    const meshes = parts.children.filter((child) => child instanceof Mesh)
-    const edges = parts.children.filter((child) => child instanceof LineSegments)
-    const face = raycaster.intersectObjects(meshes, false)[0]
-    const edge = raycaster.intersectObjects(edges, false)[0]
-    const wantEdge = event.shiftKey || session.pickMode === 'edge'
-    if (wantEdge && edge) {
-      const groups = edge.object.userData.edgeGroups as EdgeGroup[] | undefined
-      const position = (edge.object as LineSegments).geometry.getAttribute('position')
-      const vertexIndex = edge.index ?? 0
-      const found = edgeAt(groups, vertexIndex, position?.count ?? 0)
-      const hit: PickHit = {
-        kind: 'edge',
-        featureId: featureIdOf(edge.object),
-        index: vertexIndex,
-        point: pointTuple(edge.point),
+    const found = findHit(event)
+    const additive = event.shiftKey
+    const next = toggleSelection(selection, found, additive)
+    setSelection(next)
+    if (!found) return null
+    // Removing an item from the set is not a new pick.
+    if (additive && !next.some((entry) => sameItem(entry, found))) return null
+    return hitOf(found)
+  }
+
+  /** Projected centers of every item of the active kind, for box select. */
+  const boxCenters = (box: DOMRect): CenterItem[] => {
+    const out: CenterItem[] = []
+    const filter = session.pickMode
+    const center = new Vector3()
+    if (filter === 'face') {
+      for (const child of parts.children) {
+        if (!(child instanceof Mesh)) continue
+        const groups = child.userData.faceGroups as FaceGroup[] | null | undefined
+        const position = child.geometry.getAttribute('position')
+        const indexAttr = child.geometry.getIndex()
+        const total = indexAttr ? indexAttr.count : (position?.count ?? 0)
+        const seen = new Set<number>()
+        for (const group of groups ?? []) {
+          if (seen.has(group.faceId)) continue
+          seen.add(group.faceId)
+          const triangle = faceTriangle(groups ?? undefined, group.faceId, total)
+          const geometry =
+            triangle == null ? null : faceGeometry(child.geometry, triangle, groups ?? undefined)
+          if (!geometry) continue
+          geometry.computeBoundingBox()
+          geometry.boundingBox?.getCenter(center)
+          geometry.dispose()
+          const screen = screenOf(center.applyMatrix4(child.matrixWorld), box)
+          out.push({ kind: 'face', featureId: featureIdOf(child), id: group.faceId, ...screen })
+        }
       }
-      if (found) hit.edgeId = found.edgeId
-      return hit
+      return out
     }
-    if (!wantEdge && face) {
-      const groups = face.object.userData.faceGroups as FaceGroup[] | undefined
-      const indexAttr = (face.object as Mesh).geometry.getIndex()
-      const position = (face.object as Mesh).geometry.getAttribute('position')
-      const indexCount = indexAttr ? indexAttr.count : (position?.count ?? 0)
-      const triangleIndex = face.faceIndex ?? 0
-      const found = faceAt(groups, triangleIndex, indexCount)
-      const hit: PickHit = {
-        kind: 'face',
-        featureId: featureIdOf(face.object),
-        index: triangleIndex,
-        point: pointTuple(face.point),
+    for (const child of parts.children) {
+      if (!(child instanceof LineSegments)) continue
+      const featureId = featureIdOf(child)
+      if (filter === 'vertex') {
+        for (const end of edgeEnds(child)) {
+          const screen = screenOf(vertexAt(child, end.vertex, center), box)
+          out.push({ kind: 'vertex', featureId, id: end.id, ...screen })
+        }
+        continue
       }
-      if (found) hit.faceId = found.faceId
-      return hit
-    }
-    if (edge) {
-      const hit: PickHit = {
-        kind: 'edge',
-        featureId: featureIdOf(edge.object),
-        index: edge.index ?? 0,
-        point: pointTuple(edge.point),
+      for (const range of edgeRanges(child)) {
+        const first = vertexAt(child, range.start, center).clone()
+        const last = vertexAt(child, range.start + range.count - 1, center)
+        const screen = screenOf(first.add(last).multiplyScalar(0.5), box)
+        out.push({ kind: 'edge', featureId, id: range.edgeId, ...screen })
       }
-      return hit
     }
-    return null
+    return out
   }
 
   const sketchCursor = (event: PointerEvent): [number, number] | null => {
@@ -587,8 +843,41 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     host.parentElement?.focus({ preventScroll: true })
   }
 
+  // Ctrl/Cmd + drag draws a selection rectangle. Runs in the capture phase so
+  // orbit never sees the gesture; a plain drag still orbits.
+  const onBoxStart = (event: PointerEvent) => {
+    if (event.button !== 0 || !(event.ctrlKey || event.metaKey) || session.sketchMode) return
+    if (event.target !== renderer.domElement) return
+    boxing = true
+    controls.enabled = false
+    const box = renderer.domElement.getBoundingClientRect()
+    boxFrame = document.createElement('div')
+    boxFrame.className = 'cad-box-select'
+    boxFrame.style.display = 'none'
+    host.appendChild(boxFrame)
+    boxFrom = { x: event.clientX - box.left, y: event.clientY - box.top }
+  }
+
+  const endBox = () => {
+    boxing = false
+    controls.enabled = true
+    boxFrame?.remove()
+    boxFrame = null
+  }
+
   const onPointerMove = (event: PointerEvent) => {
     lastPointer = event
+    if (boxing && boxFrame) {
+      const box = renderer.domElement.getBoundingClientRect()
+      const x = event.clientX - box.left
+      const y = event.clientY - box.top
+      boxFrame.style.display = 'block'
+      boxFrame.style.left = `${Math.min(boxFrom.x, x)}px`
+      boxFrame.style.top = `${Math.min(boxFrom.y, y)}px`
+      boxFrame.style.width = `${Math.abs(x - boxFrom.x)}px`
+      boxFrame.style.height = `${Math.abs(y - boxFrom.y)}px`
+      return
+    }
     if (session.sketchMode) {
       session.cursor = sketchCursor(event)
       redrawPreview()
@@ -600,7 +889,26 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
   const onPointerUp = (event: PointerEvent) => {
     if (!down || event.button !== 0) return
     down = false
-    if (Math.hypot(event.clientX - downX, event.clientY - downY) > 4) return
+    const dragged = Math.hypot(event.clientX - downX, event.clientY - downY) > 4
+    if (boxing) {
+      endBox()
+      if (dragged) {
+        const box = renderer.domElement.getBoundingClientRect()
+        const found = boxSelect(
+          boxCenters(box),
+          {
+            x0: downX - box.left,
+            y0: downY - box.top,
+            x1: event.clientX - box.left,
+            y1: event.clientY - box.top,
+          },
+          session.pickMode,
+        )
+        setSelection(event.shiftKey ? mergeSelection(selection, found) : found)
+        return
+      }
+    }
+    if (dragged) return
     if (session.sketchMode) {
       const cursor = sketchCursor(event)
       if (!cursor) return
@@ -626,17 +934,11 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     else clearHover()
   }
 
-  const onKey = (event: KeyboardEvent) => {
-    if (event.key !== 'Shift' || !lastPointer || session.sketchMode) return
-    hoverAt(lastPointer)
-  }
-
+  host.addEventListener('pointerdown', onBoxStart, true)
   renderer.domElement.addEventListener('pointerdown', onPointerDown)
   renderer.domElement.addEventListener('pointermove', onPointerMove)
   renderer.domElement.addEventListener('pointerup', onPointerUp)
   renderer.domElement.addEventListener('pointerleave', onPointerLeave)
-  window.addEventListener('keydown', onKey)
-  window.addEventListener('keyup', onKey)
 
   const clearParts = () => {
     clearHover()
@@ -687,6 +989,9 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       edges.userData = { featureId: mesh.id, edgeGroups }
       parts.add(edges)
     }
+    const before = selection.length
+    selection = redrawSelection()
+    if (selection.length !== before) hooks.onSelectionChange(selectionHits())
   }
 
   const setInteraction = (next: Omit<SceneSession, 'placed' | 'cursor'>) => {
@@ -698,7 +1003,11 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     session.sketchTool = next.sketchTool
     session.plane = next.plane
     session.snap = next.snap
-    session.pickMode = next.pickMode
+    if (next.pickMode !== session.pickMode) {
+      session.pickMode = next.pickMode
+      clearHover()
+      setSelection(keepKind(selection, next.pickMode))
+    }
     session.entities = next.entities
     session.measure = next.measure
     if (resetDraft) {
@@ -800,8 +1109,8 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       renderer.domElement.removeEventListener('pointermove', onPointerMove)
       renderer.domElement.removeEventListener('pointerup', onPointerUp)
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
-      window.removeEventListener('keydown', onKey)
-      window.removeEventListener('keyup', onKey)
+      host.removeEventListener('pointerdown', onBoxStart, true)
+      endBox()
       clearParts()
       clearGroup(sketchGroup)
       clearGroup(previewGroup)
@@ -841,7 +1150,8 @@ export const Viewport = forwardRef<
     onPick?: (hit: PickHit | null) => void
     loading?: boolean
     loadingLabel?: string
-    pickMode?: 'face' | 'edge'
+    pickMode?: PickKind
+    onSelectionChange?: (hits: PickHit[]) => void
     sketchMode?: boolean
     sketchTool?: SketchToolName
     plane?: SketchPlaneName
@@ -857,6 +1167,7 @@ export const Viewport = forwardRef<
     selectedId = null,
     fitRequest = 0,
     onPick,
+    onSelectionChange,
     loading = false,
     loadingLabel = 'Loading geometry…',
     pickMode = 'face',
@@ -875,6 +1186,7 @@ export const Viewport = forwardRef<
   const apiRef = useRef<SceneApi | null>(null)
   const hooksRef = useRef<SceneHooks>({
     onPick: () => {},
+    onSelectionChange: () => {},
     onSketchChange: () => {},
     onSketchFinish: () => {},
     onLabels: () => {},
@@ -885,6 +1197,7 @@ export const Viewport = forwardRef<
   const [labels, setLabels] = useState<OverlayLabel[]>([])
 
   hooksRef.current.onPick = (hit) => onPick?.(hit)
+  hooksRef.current.onSelectionChange = (hits) => onSelectionChange?.(hits)
   hooksRef.current.onSketchChange = (next) => onSketchChange?.(next)
   hooksRef.current.onSketchFinish = (next) => onSketchFinish?.(next)
   hooksRef.current.onLabels = (next) => {
@@ -901,6 +1214,7 @@ export const Viewport = forwardRef<
     if (!host) return
     const api = mountScene(host, {
       onPick: (hit) => hooksRef.current.onPick(hit),
+      onSelectionChange: (hits) => hooksRef.current.onSelectionChange(hits),
       onSketchChange: (next) => hooksRef.current.onSketchChange(next),
       onSketchFinish: (next) => hooksRef.current.onSketchFinish(next),
       onLabels: (next) => hooksRef.current.onLabels(next),

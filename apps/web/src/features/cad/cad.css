@@ -515,3 +515,34 @@
 .cad-file {
   display: none;
 }
+
+/* Ctrl/Cmd + drag selection rectangle. */
+.cad-box-select {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  border: 1px dashed rgba(200, 200, 200, 0.7);
+  background: rgba(200, 200, 200, 0.08);
+}
+
+.cad-filter {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.cad-filter button {
+  padding: 1px calc(6px * var(--ui-scale));
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.cad-filter button[aria-pressed='true'] {
+  border-color: rgba(200, 200, 200, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+  opacity: 1;
+}

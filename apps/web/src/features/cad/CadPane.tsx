@@ -27,6 +27,7 @@ import {
 import { FeatureTree } from './FeatureTree.tsx'
 import { PropertiesPanel } from './PropertiesPanel.tsx'
 import { Toolbar, type CadTool, type SketchTool } from './Toolbar.tsx'
+import { PICK_KINDS, type PickKind } from './selection.ts'
 import { Viewport, type PickHit, type ViewportHandle } from './Viewport.tsx'
 import { mergeEdgeParams, roundMm, signatureForEdge } from './edgeRefs.ts'
 import {
@@ -80,6 +81,9 @@ export function CadPane() {
   const [message, setMessage] = useState('Ready')
   const [fitRequest, setFitRequest] = useState(0)
   const [pick, setPick] = useState<PickHit | null>(null)
+  const [pickFilter, setPickFilter] = useState<PickKind>('face')
+  const forcedEdge = tool === 'fillet' || tool === 'chamfer'
+  const activeFilter: PickKind = forcedEdge ? 'edge' : pickFilter
   const [activeSketchId, setActiveSketchId] = useState<string | null>(null)
   const [activePlane, setActivePlane] = useState<CadSketch['plane']>('XY')
   const [sketchTool, setSketchTool] = useState<SketchTool>('rectangle')
@@ -591,7 +595,10 @@ export function CadPane() {
             setMessage(`Sketch finished · ${entities.length} entities`)
           }}
           measure={measureLabel ? { label: measureLabel } : null}
-          pickMode={tool === 'fillet' || tool === 'chamfer' ? 'edge' : 'face'}
+          pickMode={activeFilter}
+          onSelectionChange={(hits) => {
+            if (hits.length > 1) setMessage(`${hits.length} ${activeFilter}s selected`)
+          }}
         />
         <PropertiesPanel
           feature={selected}
@@ -627,6 +634,20 @@ export function CadPane() {
         >
           <Redo2 size={13} />
         </button>
+        <span className="cad-filter" role="group" aria-label="Selection filter">
+          {PICK_KINDS.map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              aria-pressed={activeFilter === kind}
+              disabled={forcedEdge && kind !== 'edge'}
+              title={`Select ${kind}s. Shift adds, Ctrl-drag box selects.`}
+              onClick={() => setPickFilter(kind)}
+            >
+              {kind === 'face' ? 'Face' : kind === 'edge' ? 'Edge' : 'Vertex'}
+            </button>
+          ))}
+        </span>
         <span>{doc.units}</span>
         <span>
           {doc.features.length} {doc.features.length === 1 ? 'feature' : 'features'}
