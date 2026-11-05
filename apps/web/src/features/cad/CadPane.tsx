@@ -1,6 +1,7 @@
 import { Redo2, Undo2 } from 'lucide-react'
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -28,14 +29,16 @@ import { FeatureTree } from './FeatureTree.tsx'
 import { PropertiesPanel, type PlacementField } from './PropertiesPanel.tsx'
 import { Toolbar, type CadTool, type SketchTool } from './Toolbar.tsx'
 import { PICK_KINDS, type PickKind } from './selection.ts'
+import { faceAt, type MeshBuffers } from './solids.ts'
 import { Viewport, type PickHit, type ViewportHandle } from './Viewport.tsx'
+import { planeFromFace } from './sketcher/facePlane.ts'
+import { workPlaneFromNormal, type PlaneArg } from './sketcher/project.ts'
 import { mergeEdgeParams, roundMm, signatureForEdge } from './edgeRefs.ts'
 import { faceFrameFromMesh, holeAxisFromFacePoint } from './kernel/featureOps.ts'
 import type { HoleDirection } from './kernel/types.ts'
 import {
   addHole,
   appendFeature,
-  appendSketch,
   emptyDocument,
   isCadDocument,
   isSolidFeature,
@@ -50,17 +53,56 @@ import {
   makeSphereFeature,
   holeTargetId,
   moveFeature,
+  openFaceSketch,
   removeFeature,
   setSketchEntities,
   updateFeature,
   type CadDocument,
   type CadFeature,
   type CadSketch,
+  type FaceSketchPlacement,
 } from './model/CadDocument.ts'
 import { UndoStack } from './model/undo.ts'
 import type { SketchEntity as DrawnEntity } from './sketcher/types.ts'
 import { useCadRebuild } from './useCadRebuild.ts'
 import './cad.css'
+
+function placementFromHit(
+  hit: PickHit,
+  meshes: readonly MeshBuffers[],
+): FaceSketchPlacement | null {
+  if (hit.kind !== 'face') return null
+  const mesh = meshes.find((item) => item.id === hit.featureId)
+  if (!mesh) return null
+  const indexCount = mesh.indices ? mesh.indices.length : mesh.positions.length / 3
+  const found = faceAt(mesh.faceGroups, hit.index, indexCount)
+  const solved = planeFromFace({
+    positions: mesh.positions,
+    indices: mesh.indices,
+    normals: mesh.normals,
+    ...(found ? { triangles: found.triangles } : { triangleIndex: hit.index }),
+  })
+  if (!solved) return null
+  const faceId = hit.faceId ?? found?.faceId
+  if (solved.kind === 'named') {
+    return {
+      plane: solved.plane,
+      hostId: hit.featureId,
+      ...(faceId !== undefined ? { faceId } : {}),
+    }
+  }
+  return {
+    plane: solved.plane,
+    origin: solved.origin,
+    normal: solved.normal,
+    hostId: hit.featureId,
+    ...(faceId !== undefined ? { faceId } : {}),
+  }
+}
+
+function placementWhere(placement: FaceSketchPlacement): string {
+  return placement.origin ? 'face' : placement.plane
+}
 
 /**
  * CAD pane: toolbar, feature tree, viewport, properties, and a status bar.
@@ -219,6 +261,12 @@ export function CadPane() {
       ? doc.sketches.find((sketch) => sketch.id === selected.id)
       : undefined)
   const activeSketchEntities = (activeSketch?.entities ?? []) as unknown as DrawnEntity[]
+  const drawingPlane = useMemo<PlaneArg>(() => {
+    if (activeSketch?.origin && activeSketch.normal) {
+      return workPlaneFromNormal(activeSketch.origin, activeSketch.normal)
+    }
+    return activePlane
+  }, [activeSketch?.origin, activeSketch?.normal, activePlane])
 
   const addSolid = (feature: CadFeature, nextTool: CadTool) => {
     commit(appendFeature(doc, feature))
@@ -232,6 +280,21 @@ export function CadPane() {
     const plane = selected?.params.plane
     if (plane === 'XY' || plane === 'YZ' || plane === 'ZX') return plane
     return 'XY'
+  }
+
+  const beginFaceSketch = (placement: FaceSketchPlacement) => {
+    const opened = openFaceSketch(doc, placement)
+    if (opened.created) commit(opened.doc)
+    choose(opened.feature.id)
+    setActiveSketchId(opened.feature.id)
+    setActivePlane(opened.sketch.plane)
+    setTool('sketch')
+    const where = placementWhere(placement)
+    setMessage(
+      opened.created
+        ? `Sketch ${opened.feature.name} on ${where}`
+        : `Editing ${opened.feature.name} on ${where}`,
+    )
   }
 
   const sketchTarget = (): CadFeature | null => {
@@ -263,14 +326,35 @@ export function CadPane() {
       return
     }
     if (next === 'sketch') {
-      const plane = selectedPlane()
-      const appended = appendSketch(doc, plane)
-      commit(appended.doc)
-      choose(appended.feature.id)
-      setActiveSketchId(appended.feature.id)
-      setActivePlane(plane)
+      if (tool !== 'sketch' && selected?.kind === 'sketch') {
+        const sketch = doc.sketches.find((item) => item.id === selected.id)
+        setActiveSketchId(selected.id)
+        setActivePlane(sketch?.plane ?? 'XY')
+        setTool('sketch')
+        setMessage(`Editing ${selected.name}`)
+        return
+      }
+      if (tool !== 'sketch' && pick?.kind === 'face') {
+        const placement = placementFromHit(pick, meshes)
+        if (placement) {
+          beginFaceSketch(placement)
+          return
+        }
+      }
+      if (tool !== 'sketch' && meshes.length === 0) {
+        const plane = selectedPlane()
+        const opened = openFaceSketch(doc, { plane })
+        if (opened.created) commit(opened.doc)
+        choose(opened.feature.id)
+        setActiveSketchId(opened.feature.id)
+        setActivePlane(plane)
+        setTool('sketch')
+        setMessage(`Sketch ${opened.feature.name} on ${plane}`)
+        return
+      }
+      setActiveSketchId(null)
       setTool('sketch')
-      setMessage(`Sketch ${appended.feature.name} on ${plane}`)
+      setMessage('Pick a face to sketch on')
       return
     }
     if (next === 'extrude' || next === 'revolve') {
@@ -522,6 +606,20 @@ export function CadPane() {
   }
 
   const onPick = (hit: PickHit | null) => {
+    setPick(hit)
+    if (tool === 'sketch') {
+      if (hit?.kind === 'face') {
+        const placement = placementFromHit(hit, meshes)
+        if (!placement) {
+          setMessage('Could not read that face')
+          return
+        }
+        beginFaceSketch(placement)
+        return
+      }
+      setMessage('Pick a face to sketch on')
+      return
+    }
     if (!hit) {
       if (tool === 'hole') setMessage(HOLE_STATUS)
       else if (tool === 'fillet' || tool === 'chamfer') setMessage(EDGE_STATUS)
@@ -595,7 +693,7 @@ export function CadPane() {
         onSketchTool={(next) => {
           setSketchTool(next)
           setTool('sketch')
-          setMessage(`Sketch ${next}`)
+          setMessage(activeSketchId ? `Sketch ${next}` : 'Pick a face to sketch on')
         }}
       />
       {tool === 'export' ? (
@@ -636,9 +734,9 @@ export function CadPane() {
           fitRequest={fitRequest}
           onPick={onPick}
           loading={loading}
-          sketchMode={tool === 'sketch'}
+          sketchMode={tool === 'sketch' && activeSketchId !== null}
           sketchTool={sketchTool}
-          plane={activePlane}
+          plane={drawingPlane}
           entities={activeSketchEntities}
           onSketchChange={(entities) => {
             const id = activeSketchId ?? activeSketch?.id

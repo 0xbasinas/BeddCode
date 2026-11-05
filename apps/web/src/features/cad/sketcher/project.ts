@@ -18,6 +18,19 @@ export interface PlaneFrame {
 }
 
 /**
+ * A sketch plane in world millimetres. Named datums use the origin.
+ * A face plane carries the face point and the same kind of axes.
+ */
+export interface WorkPlane {
+  origin: readonly [number, number, number]
+  u: readonly [number, number, number]
+  v: readonly [number, number, number]
+  normal: readonly [number, number, number]
+}
+
+export type PlaneArg = SketchPlaneName | WorkPlane
+
+/**
  * Local axes match replicad's named planes, so the overlay sits on the solid.
  * XY floor: +x = +X, +y = +Y. Top view (down −Z) shows +x right and +y up.
  * YZ right wall: +x = +Y, +y = +Z. Right view shows +x right and +y up.
@@ -75,32 +88,117 @@ function unit(x: number, y: number, z: number): readonly [number, number, number
   return [x / length, y / length, z / length]
 }
 
+function dot3(a: readonly [number, number, number], b: readonly [number, number, number]): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+function cross3(
+  a: readonly [number, number, number],
+  b: readonly [number, number, number],
+): [number, number, number] {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+}
+
 const EPS = 1e-6
 
 export function planeFrame(plane: SketchPlaneName): PlaneFrame {
   return FRAMES[plane]
 }
 
-export function toWorld(plane: SketchPlaneName, x: number, y: number): [number, number, number] {
-  const { u, v } = FRAMES[plane]
-  return [u[0] * x + v[0] * y, u[1] * x + v[1] * y, u[2] * x + v[2] * y]
+export function isWorkPlane(plane: PlaneArg): plane is WorkPlane {
+  return typeof plane !== 'string'
 }
 
-/** Ray against the sketch plane through the origin. `t < 0` and parallel rays miss. */
+/** Named planes sit on the world origin. A face plane is used as given. */
+export function asWorkPlane(plane: PlaneArg): WorkPlane {
+  if (isWorkPlane(plane)) return plane
+  const frame = FRAMES[plane]
+  return { origin: [0, 0, 0], u: frame.u, v: frame.v, normal: frame.normal }
+}
+
+/** Stable key so a freshly built frame does not reset an in-progress sketch. */
+export function planeKey(plane: PlaneArg): string {
+  const frame = asWorkPlane(plane)
+  const nums = [...frame.origin, ...frame.u, ...frame.v, ...frame.normal]
+  return nums.map((value) => value.toFixed(4)).join(',')
+}
+
+/**
+ * Right-handed axes for an arbitrary normal. U is the world axis least
+ * aligned with the normal, projected into the plane. V is normal × u.
+ */
+export function workPlaneFromNormal(
+  origin: readonly [number, number, number],
+  normal: readonly [number, number, number],
+): WorkPlane {
+  const length = Math.hypot(normal[0], normal[1], normal[2])
+  const n = length > 1e-8 ? unit(normal[0], normal[1], normal[2]) : ([0, 0, 1] as const)
+  const axes: Array<readonly [number, number, number]> = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ]
+  let hint = axes[0] ?? ([1, 0, 0] as const)
+  let best = Math.abs(dot3(n, hint))
+  for (const axis of axes) {
+    const score = Math.abs(dot3(n, axis))
+    if (score < best - 1e-8) {
+      hint = axis
+      best = score
+    }
+  }
+  const along = dot3(hint, n)
+  const projected: [number, number, number] = [
+    hint[0] - n[0] * along,
+    hint[1] - n[1] * along,
+    hint[2] - n[2] * along,
+  ]
+  const span = Math.hypot(projected[0], projected[1], projected[2])
+  const u = span > 1e-8 ? unit(projected[0], projected[1], projected[2]) : ([1, 0, 0] as const)
+  const v = cross3(n, u)
+  return {
+    origin: [origin[0], origin[1], origin[2]],
+    u,
+    v,
+    normal: [n[0], n[1], n[2]],
+  }
+}
+
+export function toWorld(plane: PlaneArg, x: number, y: number): [number, number, number] {
+  const { origin, u, v } = asWorkPlane(plane)
+  return [
+    origin[0] + u[0] * x + v[0] * y,
+    origin[1] + u[1] * x + v[1] * y,
+    origin[2] + u[2] * x + v[2] * y,
+  ]
+}
+
+/** Ray against the sketch plane. `t < 0` and parallel rays miss. */
 export function projectRayToPlane(
   origin: readonly [number, number, number],
   direction: readonly [number, number, number],
-  plane: SketchPlaneName,
+  plane: PlaneArg,
 ): [number, number] | null {
-  const { u, v, normal } = FRAMES[plane]
-  const denom = direction[0] * normal[0] + direction[1] * normal[1] + direction[2] * normal[2]
+  const frame = asWorkPlane(plane)
+  const denom = dot3(direction, frame.normal)
   if (Math.abs(denom) < 1e-8) return null
-  const t = -(origin[0] * normal[0] + origin[1] * normal[1] + origin[2] * normal[2]) / denom
+  const offset: [number, number, number] = [
+    frame.origin[0] - origin[0],
+    frame.origin[1] - origin[1],
+    frame.origin[2] - origin[2],
+  ]
+  const t = dot3(offset, frame.normal) / denom
   if (t < 0) return null
   const px = origin[0] + direction[0] * t
   const py = origin[1] + direction[1] * t
   const pz = origin[2] + direction[2] * t
-  return [px * u[0] + py * u[1] + pz * u[2], px * v[0] + py * v[1] + pz * v[2]]
+  const dx = px - frame.origin[0]
+  const dy = py - frame.origin[1]
+  const dz = pz - frame.origin[2]
+  return [
+    dx * frame.u[0] + dy * frame.u[1] + dz * frame.u[2],
+    dx * frame.v[0] + dy * frame.v[1] + dz * frame.v[2],
+  ]
 }
 
 export function snapToGrid(value: number, step: number): number {

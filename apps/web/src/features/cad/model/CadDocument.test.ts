@@ -10,6 +10,7 @@ import {
   makeFilletFeature,
   makeSphereFeature,
   moveFeature,
+  openFaceSketch,
   removeFeature,
   updateFeature,
 } from './CadDocument.ts'
@@ -67,6 +68,56 @@ describe('CadDocument', () => {
     expect(doc.features.map((feature) => feature.id)).toEqual(['b'])
     expect(doc.historyIndex).toBe(0)
     expect(removeFeature(doc, 'missing')).toBe(doc)
+  })
+
+  it('reopens a face sketch and keeps a free datum sketch separate', () => {
+    const face = openFaceSketch(
+      emptyDocument(),
+      {
+        plane: 'XY',
+        origin: [0, 0, 20],
+        normal: [0, 0, 1],
+        hostId: 'box',
+        faceId: 3,
+      },
+      'sk1',
+    )
+    expect(face.created).toBe(true)
+    expect(face.sketch).toMatchObject({
+      plane: 'XY',
+      origin: [0, 0, 20],
+      normal: [0, 0, 1],
+      hostId: 'box',
+      faceId: 3,
+    })
+    expect(face.feature.params).toMatchObject({
+      plane: 'XY',
+      originX: 0,
+      originY: 0,
+      originZ: 20,
+      normalZ: 1,
+    })
+    const again = openFaceSketch(face.doc, {
+      plane: 'XY',
+      origin: [0, 0, 20],
+      normal: [0, 0, 1],
+      hostId: 'box',
+      faceId: 3,
+    })
+    expect(again.created).toBe(false)
+    expect(again.doc).toBe(face.doc)
+    expect(again.feature.id).toBe('sk1')
+
+    const named = openFaceSketch(emptyDocument(), { plane: 'YZ', hostId: 'box', faceId: 1 }, 'sk2')
+    expect(named.sketch.origin).toBeUndefined()
+    expect(named.feature.params).toEqual({ plane: 'YZ' })
+
+    const free = openFaceSketch(face.doc, { plane: 'XY' }, 'sk3')
+    expect(free.created).toBe(true)
+    expect(free.doc.sketches).toHaveLength(2)
+    const reopened = openFaceSketch(free.doc, { plane: 'XY' })
+    expect(reopened.created).toBe(false)
+    expect(reopened.feature.id).toBe('sk3')
   })
 
   it('adds a hole with defaults and accepts a face point', () => {

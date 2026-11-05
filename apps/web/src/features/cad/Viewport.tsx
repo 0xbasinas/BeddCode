@@ -14,6 +14,7 @@ import {
   Group,
   LineBasicMaterial,
   LineSegments,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
@@ -49,9 +50,10 @@ import {
   type SelectionItem,
 } from './selection.ts'
 import { SketchOverlay, type OverlayLabel } from './SketchOverlay.tsx'
-import type { SketchEntity } from './sketcher/types.ts'
+import { applyDimensionToEntity, commitLiveDimension } from './sketcher/dimension.ts'
 import {
   advanceSketch,
+  asWorkPlane,
   CAMERA_UP,
   DEFAULT_CAMERA_POSITION,
   edgePickThreshold,
@@ -59,17 +61,25 @@ import {
   entityPolyline,
   formatLength,
   gridRotation,
-  planeFrame,
+  planeKey,
   previewAnnotation,
   previewPolyline,
   projectRayToPlane,
-  snapPoint,
   toWorld,
   viewDirection,
   worldDistance,
+  type PlaneArg,
   type SketchPlaneName,
   type SketchToolName,
 } from './sketcher/project.ts'
+import {
+  gridStepForShift,
+  resolveSnap,
+  sketchSnapTolerance,
+  snapCaption,
+  type SnapKind,
+} from './sketcher/snap.ts'
+import type { SketchEntity } from './sketcher/types.ts'
 import { ViewCube, type ViewName } from './ViewCube.tsx'
 
 export type { MeshBuffers } from './solids.ts'
@@ -89,11 +99,11 @@ Mesh.prototype.raycast = acceleratedRaycast
  * - pickMode: the selection filter, `'face'` (default), `'edge'`, or `'vertex'`.
  *   Shift-click adds or removes from the selection; Ctrl/Cmd + drag box-selects.
  * - sketchMode, sketchTool (`line` | `rectangle` | `circle` | `arc`), plane
- *   (`XY` floor, `YZ` right, `ZX` front), sketchSnap (millimetres; Shift flips 1 and 5),
+ *   (named datum or a face frame), sketchSnap (millimetres; Shift flips 1 and 5),
  *   entities (sketcher entities, not the document params bag), onSketchChange, onSketchFinish
  * - measure: `{ a, b, label }` draws a distance between two world points
- * Delete and Undo belong to the parent. This view handles Escape (drop the open
- * sketch segment) and Enter (finish the sketch).
+ * Delete and Undo belong to the parent. Escape drops the open sketch segment.
+ * Enter finishes the sketch, or commits a typed length when the dimension field has text.
  */
 export interface MeasureVisual {
   a?: [number, number, number]
@@ -131,32 +141,43 @@ const MEASURE = 0x9a9a9a
 const HOVER = 0xcfcfcf
 const SELECTED = 0xe0e0e0
 
+interface DraftAnchor {
+  x: number
+  y: number
+  placeholder: string
+  label: string
+}
+
 interface SceneHooks {
   onPick(hit: PickHit | null): void
   onSelectionChange(hits: PickHit[]): void
   onSketchChange(entities: SketchEntity[]): void
   onSketchFinish(entities: SketchEntity[]): void
   onLabels(labels: OverlayLabel[]): void
+  onDraft(draft: DraftAnchor | null): void
 }
 
 interface SceneSession {
   sketchMode: boolean
   sketchTool: SketchToolName
-  plane: SketchPlaneName
+  plane: PlaneArg
   snap: number
   pickMode: PickKind
   entities: SketchEntity[]
   measure: MeasureVisual | null
   placed: Array<[number, number]>
   cursor: [number, number] | null
+  snapKind: SnapKind | null
 }
 
 interface SceneApi {
   resize(): void
   setMeshes(meshes: MeshBuffers[], selectedId: string | null): void
-  setInteraction(next: Omit<SceneSession, 'placed' | 'cursor'>): void
+  setInteraction(next: Omit<SceneSession, 'placed' | 'cursor' | 'snapKind'>): void
   cancelSketch(): void
   finishSketch(): void
+  applyDraftDimension(text: string): boolean
+  applyEntityDimension(id: string, text: string): boolean
   fit(): void
   screenshot(): string
   setView(view: ViewName): void
@@ -261,6 +282,7 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     measure: null,
     placed: [],
     cursor: null,
+    snapKind: null,
   }
 
   const featureIdOf = (object: Object3D) =>
@@ -301,9 +323,14 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     group.add(line)
   }
 
-  const lift = (plane: SketchPlaneName, x: number, y: number): [number, number, number] => {
+  const gridBasis = new Matrix4()
+  const gridX = new Vector3()
+  const gridY = new Vector3()
+  const gridZ = new Vector3()
+
+  const lift = (plane: PlaneArg, x: number, y: number): [number, number, number] => {
     const world = toWorld(plane, x, y)
-    const normal = planeFrame(plane).normal
+    const normal = asWorkPlane(plane).normal
     return [world[0] + normal[0] * 0.15, world[1] + normal[1] * 0.15, world[2] + normal[2] * 0.15]
   }
 
@@ -353,9 +380,14 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     addPolyline(measureGroup, [measure.a, measure.b], MEASURE)
   }
 
-  const orientGrid = (grid: GridHelper, plane: SketchPlaneName) => {
-    const turn = gridRotation(plane)
-    grid.rotation.set(turn[0], turn[1], turn[2])
+  const orientGrid = (grid: GridHelper, plane: PlaneArg) => {
+    const frame = asWorkPlane(plane)
+    grid.position.set(frame.origin[0], frame.origin[1], frame.origin[2])
+    gridX.set(frame.u[0], frame.u[1], frame.u[2])
+    gridY.set(frame.normal[0], frame.normal[1], frame.normal[2])
+    gridZ.crossVectors(gridX, gridY)
+    if (gridZ.lengthSq() < 1e-8) return
+    grid.quaternion.setFromRotationMatrix(gridBasis.makeBasis(gridX, gridY, gridZ))
   }
 
   const syncGrid = () => {
@@ -383,6 +415,39 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     }
   }
 
+  const liveDimension = () =>
+    session.sketchMode &&
+    session.placed.length > 0 &&
+    (session.sketchTool === 'line' ||
+      session.sketchTool === 'rectangle' ||
+      session.sketchTool === 'circle')
+
+  const publishDraft = () => {
+    if (!liveDimension() || !session.cursor) {
+      hooks.onDraft(null)
+      return
+    }
+    const note = previewAnnotation(session.sketchTool, session.placed, session.cursor)
+    const at = note?.at ?? session.cursor
+    const screen = projectLabel(toWorld(session.plane, at[0], at[1]))
+    if (!screen) {
+      hooks.onDraft(null)
+      return
+    }
+    const label =
+      session.sketchTool === 'line'
+        ? 'Length'
+        : session.sketchTool === 'circle'
+          ? 'Radius'
+          : 'Width, height'
+    hooks.onDraft({
+      x: screen.x,
+      y: screen.y,
+      placeholder: note?.text || label,
+      label,
+    })
+  }
+
   const publishLabels = () => {
     const labels: OverlayLabel[] = []
     if (session.sketchMode) {
@@ -393,10 +458,24 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
         if (!screen) continue
         labels.push({ id: entity.id, text: note.text, ...screen, kind: 'sketch' })
       }
-      const preview = previewAnnotation(session.sketchTool, session.placed, session.cursor)
-      if (preview) {
-        const screen = projectLabel(toWorld(session.plane, preview.at[0], preview.at[1]))
-        if (screen) labels.push({ id: 'preview', text: preview.text, ...screen, kind: 'sketch' })
+      if (!liveDimension()) {
+        const preview = previewAnnotation(session.sketchTool, session.placed, session.cursor)
+        if (preview) {
+          const screen = projectLabel(toWorld(session.plane, preview.at[0], preview.at[1]))
+          if (screen) labels.push({ id: 'preview', text: preview.text, ...screen, kind: 'sketch' })
+        }
+      }
+      if (session.cursor && session.snapKind) {
+        const screen = projectLabel(toWorld(session.plane, session.cursor[0], session.cursor[1]))
+        if (screen) {
+          labels.push({
+            id: 'snap',
+            text: snapCaption(session.snapKind),
+            x: screen.x,
+            y: screen.y,
+            kind: 'snap',
+          })
+        }
       }
     }
     const measure = session.measure
@@ -417,6 +496,7 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       }
     }
     hooks.onLabels(labels)
+    publishDraft()
   }
 
   const clearHover = () => {
@@ -822,7 +902,11 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     return out
   }
 
-  const sketchCursor = (event: PointerEvent): [number, number] | null => {
+  const sketchCursor = (event: {
+    clientX: number
+    clientY: number
+    shiftKey: boolean
+  }): { point: [number, number]; kind: SnapKind } | null => {
     const ray = pointerRay(event)
     if (!ray) return null
     const hit = projectRayToPlane(
@@ -831,8 +915,15 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       session.plane,
     )
     if (!hit) return null
-    const step = event.shiftKey ? (session.snap === 5 ? 1 : 5) : session.snap
-    return snapPoint(hit, step > 0 ? step : 1)
+    const distance = camera.position.distanceTo(controls.target)
+    const anchor = session.placed[session.placed.length - 1] ?? null
+    return resolveSnap({
+      cursor: hit,
+      tolerance: sketchSnapTolerance(distance),
+      gridStep: gridStepForShift(session.snap, event.shiftKey),
+      anchor,
+      entities: session.entities,
+    })
   }
 
   const onPointerDown = (event: PointerEvent) => {
@@ -879,7 +970,9 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       return
     }
     if (session.sketchMode) {
-      session.cursor = sketchCursor(event)
+      const snap = sketchCursor(event)
+      session.cursor = snap?.point ?? null
+      session.snapKind = snap?.kind ?? null
       redrawPreview()
       return
     }
@@ -910,10 +1003,11 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     }
     if (dragged) return
     if (session.sketchMode) {
-      const cursor = sketchCursor(event)
-      if (!cursor) return
-      session.cursor = cursor
-      const next = advanceSketch(session.sketchTool, session.placed, cursor, `e${sketchSeq}`)
+      const snap = sketchCursor(event)
+      if (!snap) return
+      session.cursor = snap.point
+      session.snapKind = snap.kind
+      const next = advanceSketch(session.sketchTool, session.placed, snap.point, `e${sketchSeq}`)
       session.placed = next.placed
       if (next.entity) {
         sketchSeq += 1
@@ -930,8 +1024,25 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
 
   const onPointerLeave = () => {
     session.cursor = null
+    session.snapKind = null
     if (session.sketchMode) redrawPreview()
     else clearHover()
+  }
+
+  const onKey = (event: KeyboardEvent) => {
+    if (event.key !== 'Shift' || !lastPointer) return
+    if (session.sketchMode) {
+      const snap = sketchCursor({
+        clientX: lastPointer.clientX,
+        clientY: lastPointer.clientY,
+        shiftKey: event.type === 'keydown',
+      })
+      session.cursor = snap?.point ?? null
+      session.snapKind = snap?.kind ?? null
+      redrawPreview()
+      return
+    }
+    hoverAt(lastPointer)
   }
 
   host.addEventListener('pointerdown', onBoxStart, true)
@@ -939,6 +1050,8 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
   renderer.domElement.addEventListener('pointermove', onPointerMove)
   renderer.domElement.addEventListener('pointerup', onPointerUp)
   renderer.domElement.addEventListener('pointerleave', onPointerLeave)
+  window.addEventListener('keydown', onKey)
+  window.addEventListener('keyup', onKey)
 
   const clearParts = () => {
     clearHover()
@@ -994,10 +1107,10 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     if (selection.length !== before) hooks.onSelectionChange(selectionHits())
   }
 
-  const setInteraction = (next: Omit<SceneSession, 'placed' | 'cursor'>) => {
+  const setInteraction = (next: Omit<SceneSession, 'placed' | 'cursor' | 'snapKind'>) => {
     const resetDraft =
       next.sketchTool !== session.sketchTool ||
-      next.plane !== session.plane ||
+      planeKey(next.plane) !== planeKey(session.plane) ||
       next.sketchMode !== session.sketchMode
     session.sketchMode = next.sketchMode
     session.sketchTool = next.sketchTool
@@ -1013,6 +1126,7 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     if (resetDraft) {
       session.placed = []
       session.cursor = null
+      session.snapKind = null
     }
     renderer.domElement.style.cursor = session.sketchMode ? 'crosshair' : ''
     if (!session.sketchMode) clearHover()
@@ -1020,11 +1134,13 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     redrawCommitted()
     redrawPreview()
     redrawMeasure()
+    publishLabels()
   }
 
   const cancelSketch = () => {
     session.placed = []
     session.cursor = null
+    session.snapKind = null
     redrawPreview()
     publishLabels()
   }
@@ -1032,9 +1148,47 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
   const finishSketch = () => {
     session.placed = []
     session.cursor = null
+    session.snapKind = null
     redrawPreview()
     hooks.onSketchFinish(session.entities)
     publishLabels()
+  }
+
+  const applyDraftDimension = (text: string): boolean => {
+    if (!session.sketchMode) return false
+    const next = commitLiveDimension(
+      session.sketchTool,
+      session.placed,
+      session.cursor,
+      text,
+      `e${sketchSeq}`,
+    )
+    if (!next) return false
+    session.placed = next.placed
+    if (next.entity) {
+      sketchSeq += 1
+      session.entities = [...session.entities, next.entity]
+      hooks.onSketchChange(session.entities)
+      redrawCommitted()
+    }
+    redrawPreview()
+    publishLabels()
+    return true
+  }
+
+  const applyEntityDimension = (id: string, text: string): boolean => {
+    const index = session.entities.findIndex((entity) => entity.id === id)
+    const current = index >= 0 ? session.entities[index] : undefined
+    if (!current) return false
+    const next = applyDimensionToEntity(current, text)
+    if (!next) return false
+    const entities = session.entities.slice()
+    entities[index] = next
+    session.entities = entities
+    hooks.onSketchChange(entities)
+    redrawCommitted()
+    publishLabels()
+    return true
   }
 
   const fit = () => {
@@ -1100,6 +1254,8 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     setInteraction,
     cancelSketch,
     finishSketch,
+    applyDraftDimension,
+    applyEntityDimension,
     fit,
     screenshot,
     setView,
@@ -1110,6 +1266,8 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       renderer.domElement.removeEventListener('pointerup', onPointerUp)
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
       host.removeEventListener('pointerdown', onBoxStart, true)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keyup', onKey)
       endBox()
       clearParts()
       clearGroup(sketchGroup)
@@ -1154,7 +1312,7 @@ export const Viewport = forwardRef<
     onSelectionChange?: (hits: PickHit[]) => void
     sketchMode?: boolean
     sketchTool?: SketchToolName
-    plane?: SketchPlaneName
+    plane?: PlaneArg
     sketchSnap?: number
     entities?: SketchEntity[]
     onSketchChange?: (entities: SketchEntity[]) => void
@@ -1190,11 +1348,18 @@ export const Viewport = forwardRef<
     onSketchChange: () => {},
     onSketchFinish: () => {},
     onLabels: () => {},
+    onDraft: () => {},
   })
   const fitSeen = useRef(fitRequest)
   const labelKey = useRef('')
+  const draftWasOn = useRef(false)
+  const draftInput = useRef<HTMLInputElement>(null)
+  const editInput = useRef<HTMLInputElement>(null)
   const [view, setViewName] = useState<ViewName>('iso')
   const [labels, setLabels] = useState<OverlayLabel[]>([])
+  const [draftAnchor, setDraftAnchor] = useState<DraftAnchor | null>(null)
+  const [draftText, setDraftText] = useState('')
+  const [edit, setEdit] = useState<{ id: string; text: string } | null>(null)
 
   hooksRef.current.onPick = (hit) => onPick?.(hit)
   hooksRef.current.onSelectionChange = (hits) => onSelectionChange?.(hits)
@@ -1208,6 +1373,23 @@ export const Viewport = forwardRef<
     labelKey.current = key
     setLabels(next)
   }
+  hooksRef.current.onDraft = (next) => {
+    setDraftAnchor((prev) => {
+      if (!next) return prev ? null : prev
+      const x = Math.round(next.x)
+      const y = Math.round(next.y)
+      if (
+        prev &&
+        prev.x === x &&
+        prev.y === y &&
+        prev.placeholder === next.placeholder &&
+        prev.label === next.label
+      ) {
+        return prev
+      }
+      return { x, y, placeholder: next.placeholder, label: next.label }
+    })
+  }
 
   useEffect(() => {
     const host = hostRef.current
@@ -1218,6 +1400,7 @@ export const Viewport = forwardRef<
       onSketchChange: (next) => hooksRef.current.onSketchChange(next),
       onSketchFinish: (next) => hooksRef.current.onSketchFinish(next),
       onLabels: (next) => hooksRef.current.onLabels(next),
+      onDraft: (next) => hooksRef.current.onDraft(next),
     })
     apiRef.current = api
     const observer = new ResizeObserver(() => api.resize())
@@ -1266,16 +1449,95 @@ export const Viewport = forwardRef<
     [],
   )
 
+  useEffect(() => {
+    if (!draftAnchor) {
+      draftWasOn.current = false
+      setDraftText('')
+      return
+    }
+    if (draftWasOn.current) return
+    draftWasOn.current = true
+    setDraftText('')
+    draftInput.current?.focus()
+  }, [draftAnchor])
+
+  useEffect(() => {
+    if (!edit) return
+    editInput.current?.focus()
+    editInput.current?.select()
+  }, [edit?.id])
+
+  const onDraftKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      setDraftText('')
+      apiRef.current?.cancelSketch()
+      return
+    }
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    event.stopPropagation()
+    const text = event.currentTarget.value
+    if (!text.trim()) {
+      apiRef.current?.finishSketch()
+      return
+    }
+    if (apiRef.current?.applyDraftDimension(text)) setDraftText('')
+  }
+
+  const onEditKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      setEdit(null)
+      return
+    }
+    if (event.key !== 'Enter' || !edit) return
+    event.preventDefault()
+    event.stopPropagation()
+    if (apiRef.current?.applyEntityDimension(edit.id, edit.text)) setEdit(null)
+  }
+
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const target = event.target
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return
     if (event.key === 'Escape') {
       event.preventDefault()
       event.stopPropagation()
+      if (edit) {
+        setEdit(null)
+        return
+      }
+      setDraftText('')
       apiRef.current?.cancelSketch()
-    } else if (event.key === 'Enter') {
+      return
+    }
+    if (event.key === 'Enter') {
       event.preventDefault()
+      event.stopPropagation()
+      if (edit) {
+        if (apiRef.current?.applyEntityDimension(edit.id, edit.text)) setEdit(null)
+        return
+      }
+      if (draftText.trim()) {
+        if (apiRef.current?.applyDraftDimension(draftText)) setDraftText('')
+        return
+      }
       apiRef.current?.finishSketch()
+      return
+    }
+    if (
+      draftAnchor &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      event.key.length === 1 &&
+      /[0-9.-]/.test(event.key)
+    ) {
+      event.preventDefault()
+      setDraftText((value) => value + event.key)
+      draftInput.current?.focus()
     }
   }
 
@@ -1291,7 +1553,19 @@ export const Viewport = forwardRef<
           <span>{loadingLabel}</span>
         </div>
       ) : null}
-      <SketchOverlay labels={labels} />
+      <SketchOverlay
+        labels={labels}
+        draft={draftAnchor ? { ...draftAnchor, text: draftText } : null}
+        editId={edit?.id ?? null}
+        editText={edit?.text ?? ''}
+        draftRef={draftInput}
+        editRef={editInput}
+        onDraftText={setDraftText}
+        onDraftKeyDown={onDraftKeyDown}
+        onEdit={(label) => setEdit({ id: label.id, text: label.text })}
+        onEditText={(text) => setEdit((current) => (current ? { ...current, text } : current))}
+        onEditKeyDown={onEditKeyDown}
+      />
       {loneMeasure ? <div className="cad-measure-readout">{measure?.label}</div> : null}
       <div className="cad-viewport-chrome">
         <ViewCube active={view} onView={applyView} />
