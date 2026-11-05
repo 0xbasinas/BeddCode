@@ -63,8 +63,8 @@ describe('tool status hints', () => {
 describe('tool options', () => {
   it('starts from the feature defaults', () => {
     expect(DEFAULT_TOOL_OPTIONS).toMatchObject({
-      filletRadius: 1,
-      chamferDistance: 1,
+      filletRadius: 4,
+      chamferDistance: 4,
       holeDiameter: 8,
       holeThroughAll: true,
       sketchSnap: 1,
@@ -84,7 +84,7 @@ describe('tool options', () => {
   })
 
   it('stamps creation params from the strip', () => {
-    expect(draftParamPatch('fillet', DEFAULT_TOOL_OPTIONS)).toEqual({ radius: 1 })
+    expect(draftParamPatch('fillet', DEFAULT_TOOL_OPTIONS)).toEqual({ radius: 4 })
     expect(draftParamPatch('chamfer', { ...DEFAULT_TOOL_OPTIONS, chamferDistance: 2.5 })).toEqual({
       radius: 2.5,
     })

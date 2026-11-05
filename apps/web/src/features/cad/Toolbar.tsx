@@ -66,8 +66,8 @@ export interface ToolOptions {
 }
 
 export const DEFAULT_TOOL_OPTIONS: ToolOptions = {
-  filletRadius: 1,
-  chamferDistance: 1,
+  filletRadius: 4,
+  chamferDistance: 4,
   holeDiameter: 8,
   holeThroughAll: true,
   sketchSnap: 1,
