@@ -80,6 +80,27 @@ if (!kernelModule.ok) {
     describe('OCCT WASM geometry', () => {
       afterAll(() => kernel.dispose())
 
+      it('rounds only the four vertical edges of an 80 by 50 plate at radius 4', async () => {
+        const plate = await kernel.createPrimitive('box', { width: 80, depth: 50, height: 8 }, 'largePlate')
+        const picks = (plate.mesh.edgeGroups ?? []).flatMap((group) => {
+          const ref = edgeRefFromMesh(plate.mesh, group)
+          return ref && Math.abs(ref.dir[2]) > 0.99 && Math.abs(ref.length - 8) < 0.01
+            ? [{ edgeId: group.edgeId, ref }]
+            : []
+        })
+        expect(picks).toHaveLength(4)
+        const ids = picks.map((pick) => pick.edgeId)
+        const refs = picks.map((pick) => pick.ref)
+        const rounded = await kernel.fillet('largePlate', 4, ids, refs, 'roundedPlate')
+        const before = (await kernel.measure('largePlate')).volume
+        const after = (await kernel.measure('roundedPlate')).volume
+        expect(before - after).toBeCloseTo(4 * (16 - 4 * Math.PI) * 8, 2)
+        expect(rounded.mesh.indices.length).toBeGreaterThan(plate.mesh.indices.length)
+        const bevel = await kernel.chamfer('largePlate', 4, ids, refs, 'beveledPlate')
+        expect(bevel.mesh.indices.length).toBeGreaterThan(0)
+        expect(before - (await kernel.measure('beveledPlate')).volume).toBeCloseTo(4 * 8 * 8, 2)
+      }, 120_000)
+
       it('fillets a box, extrudes a rectangle, and round-trips STEP', async () => {
         const box = await kernel.createPrimitive('box', { width: 10, depth: 20, height: 30 }, 'box')
         expect(box.mesh.positions.length).toBeGreaterThan(0)
