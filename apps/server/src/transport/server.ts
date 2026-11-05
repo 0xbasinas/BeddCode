@@ -83,6 +83,8 @@ function readJson(req: IncomingMessage, limit = 4096): Promise<unknown> {
 }
 
 export interface StartServerOptions {
+  /** Agents run under the supervisor, so a host restart does not interrupt their turns. */
+  supervised?: boolean
   port: number
   host: string
   hostId: string
@@ -255,6 +257,8 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
                 activeTools: options.sessions.activeToolCount(),
               }
             : {}),
+          // The dev reloader restarts at once when a restart cannot interrupt a turn.
+          supervised: options.supervised === true,
         }),
       )
       return

@@ -62,7 +62,7 @@ async function boot(
   store = new EventStore(':memory:'),
   guard?: GuardOptions,
   hostId = 'host-1',
-  extra: { idleTimeoutMs?: number; fakeDelayMs?: number } = {},
+  extra: { idleTimeoutMs?: number; fakeDelayMs?: number; supervised?: boolean } = {},
 ) {
   cleanup.push(() => store.close())
   const log = createLogger('test', 'error')
@@ -218,7 +218,15 @@ describe('server', () => {
   it('serves /health', async () => {
     const { server } = await boot()
     const res = await fetch(`http://127.0.0.1:${server.port}/health`)
-    expect(((await res.json()) as { ok: boolean }).ok).toBe(true)
+    const body = (await res.json()) as { ok: boolean; supervised: boolean }
+    expect(body.ok).toBe(true)
+    expect(body.supervised).toBe(false)
+  })
+
+  it('tells the dev reloader when agents run under the supervisor', async () => {
+    const { server } = await boot(undefined, undefined, 'host-1', { supervised: true })
+    const res = await fetch(`http://127.0.0.1:${server.port}/health`)
+    expect(((await res.json()) as { supervised: boolean }).supervised).toBe(true)
   })
 
   it('answers hello with welcome', async () => {

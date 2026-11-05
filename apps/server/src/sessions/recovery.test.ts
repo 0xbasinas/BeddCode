@@ -110,7 +110,7 @@ describe('interrupted turn recovery', () => {
       expect(recoverInterruptedTurns(store)).toEqual(['s'])
       const [resumed] = takeInterruptedSessions()
       expect(resumed).toMatchObject({ sessionId: 's', turnId: 't' })
-      expect(resumed?.prompt.text).toContain('edit apps/server')
+      expect(resumed?.prompt?.text).toContain('edit apps/server')
       const events = store.readSession('s').map((r) => r.event)
       expect(events.map((e) => e.type)).not.toContain('turn.completed')
       expect(events.at(-1)).toMatchObject({
@@ -186,6 +186,28 @@ describe('interrupted turn recovery', () => {
       .readSession('s')
       .findLast(({ event }) => event.type === 'host.updating')?.event
     expect(reopened).toMatchObject({ type: 'host.updating', prompt: { text: 'finish the task' } })
+    store.close()
+  })
+
+  it('reattaches, instead of cancelling, a turn whose agent is still running under the supervisor', () => {
+    const store = new EventStore(':memory:')
+    for (const sessionId of ['kept', 'lost']) {
+      store.append({
+        type: 'session.created',
+        sessionId,
+        title: 'Demo',
+        cwd: '/w',
+        instanceId: 'claude',
+        at: 1,
+      })
+      store.append({ type: 'turn.started', sessionId, turnId: 't', at: 3 })
+    }
+    expect(recoverInterruptedTurns(store, 'auto', new Set(['kept']))).toEqual(['kept'])
+    expect(takeInterruptedSessions()).toEqual([{ sessionId: 'kept', turnId: 't' }])
+    const done = (id: string) =>
+      store.readSession(id).some((r) => r.event.type === 'turn.completed')
+    expect(done('kept')).toBe(false)
+    expect(done('lost')).toBe(true)
     store.close()
   })
 })

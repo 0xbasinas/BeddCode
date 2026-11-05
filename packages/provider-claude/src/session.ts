@@ -15,6 +15,8 @@ import {
   createAsyncQueue,
   deferred,
   trackChild,
+  type SupervisedProcess,
+  type SupervisorClient,
   type Deferred,
   type Logger,
 } from '@beddcode/shared'
@@ -39,6 +41,10 @@ export interface ClaudeSessionDeps {
   modes?: PermissionModeOption[]
   /** Overrides {@link STALL_NOTICE_MS}; for tests. */
   stallNoticeMs?: number
+  /** Starts the agent under the supervisor, which keeps it running if the host restarts. */
+  supervisor?: SupervisorClient
+  /** An agent a previous host left with the supervisor, to carry on with instead of starting one. */
+  attached?: SupervisedProcess
 }
 
 type Draft<E = SessionEvent> = E extends unknown ? Omit<E, 'sessionId' | 'at' | 'turnId'> : never
@@ -91,6 +97,10 @@ export class ClaudeSession implements ProviderSession {
   private readonly autoAllowed: Set<string>
   /** The end of what Claude's process wrote to stderr, to explain an exit. */
   private stderrTail = ''
+  /** The agent's process when the supervisor owns it. */
+  private supervised: SupervisedProcess | undefined
+  /** This session took over an agent that was already running (and maybe mid-turn). */
+  readonly reattached: boolean
 
   constructor(
     private readonly input: StartSessionInput,
@@ -106,6 +116,13 @@ export class ClaudeSession implements ProviderSession {
       cwd: input.cwd,
       resumed: input.resumeId !== undefined,
     })
+    this.reattached = deps.attached !== undefined
+    if (deps.attached?.meta) {
+      // Carry on counting turns where the previous host stopped, and in the turn it was in.
+      this.turnCount = Number(deps.attached.meta.turnCount) || 0
+      this.turnActive = deps.attached.meta.turnActive === true
+      if (this.turnActive) this.mapper.setTurn(`turn-${this.turnCount}`)
+    }
 
     this.query = deps.queryFn({
       prompt: this.prompts,
@@ -163,6 +180,18 @@ export class ClaudeSession implements ProviderSession {
    * tail kept, to say why it stopped.
    */
   private spawnClaude({ command, args, cwd, env, signal }: SpawnOptions): SpawnedProcess {
+    if (this.deps.supervisor || this.deps.attached) {
+      const proc =
+        this.deps.attached ??
+        this.deps.supervisor!.spawn(
+          this.sessionId,
+          { command, args, cwd, env },
+          { turnCount: this.turnCount, turnActive: this.turnActive, active: this.turnActive },
+        )
+      this.supervised = proc
+      proc.ackGate = () => this.queue.idle
+      return proc
+    }
     const child = spawn(command, args, {
       cwd,
       env,
@@ -213,6 +242,7 @@ export class ClaudeSession implements ProviderSession {
     const turnId = `turn-${++this.turnCount}`
     this.mapper.setTurn(turnId)
     this.turnActive = true
+    this.syncMeta()
     const done = deferred<void>()
     this.turnWaiters.push(done)
     this.emit({ type: 'turn.started' }, turnId)
@@ -322,6 +352,24 @@ export class ClaudeSession implements ProviderSession {
     this.emit({ type: 'session.modes', modes: this.deps.modes, currentModeId: modeId })
   }
 
+  /** What a later host needs to know to pick this agent up: which turn it is in. */
+  private syncMeta() {
+    this.supervised?.setMeta({
+      turnCount: this.turnCount,
+      turnActive: this.turnActive,
+      active: this.turnActive,
+    })
+  }
+
+  /**
+   * The host is going away but the agent is to keep running (see docs/agent-supervisor.md). Without
+   * the supervisor this is just `close`.
+   */
+  async detach() {
+    this.supervised?.detach()
+    await this.close()
+  }
+
   async close() {
     if (this.closed) return
     this.closed = true
@@ -329,6 +377,7 @@ export class ClaudeSession implements ProviderSession {
     this.prompts.close()
     this.abort.abort()
     this.query.close()
+    this.supervised?.kill()
     this.failTurns(new Error('session closed'))
     this.queue.close()
   }
@@ -471,7 +520,12 @@ export class ClaudeSession implements ProviderSession {
   /** The SDK's error, with the last thing Claude wrote to stderr when that says more. */
   private explainExit(err: unknown): string {
     const message = err instanceof Error ? err.message : String(err)
-    const tail = this.stderrTail.trim().split('\n').slice(-3).join('\n').trim()
+    const tail = (this.stderrTail + (this.supervised?.stderrTail ?? ''))
+      .trim()
+      .split('\n')
+      .slice(-3)
+      .join('\n')
+      .trim()
     return tail && !message.includes(tail) ? `${message}: ${tail.slice(0, 500)}` : message
   }
 
@@ -511,6 +565,7 @@ export class ClaudeSession implements ProviderSession {
           if (event.type === 'turn.completed') {
             this.turnActive = false
             this.clearStallNotice()
+            this.syncMeta()
             this.turnWaiters.shift()?.resolve()
           }
         }

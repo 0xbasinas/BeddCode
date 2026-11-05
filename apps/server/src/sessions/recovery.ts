@@ -3,7 +3,7 @@ import type { EventStore } from '../store/eventStore.ts'
 
 const pendingResume = new Map<
   string,
-  { turnId?: string; prompt: { text: string; attachments: { name: string; path: string }[] } }
+  { turnId?: string; prompt?: { text: string; attachments: { name: string; path: string }[] } }
 >()
 
 function track(active: Map<string, { turnId?: string; at: number }>, { event }: StoredEvent) {
@@ -43,6 +43,8 @@ function continuationPrompt(original: string) {
 export function recoverInterruptedTurns(
   store: EventStore,
   autoResume: AutoResume = 'auto',
+  /** Sessions whose agent is still running under the supervisor: they are reattached, not cancelled. */
+  held: ReadonlySet<string> = new Set(),
 ): string[] {
   pendingResume.clear()
   const providerIds = new Set<string>()
@@ -85,6 +87,13 @@ export function recoverInterruptedTurns(
       // The marker is the durable resume record. SessionManager handles provider setup.
       pendingResume.set(sessionId, { turnId, prompt: marker.prompt })
       updating.delete(sessionId)
+      continue
+    }
+    if (held.has(sessionId)) {
+      // The host died but the agent did not: its turn carries on and the output it wrote meanwhile
+      // is replayed when the session is reattached (there is no prompt to send again).
+      resume.push(sessionId)
+      pendingResume.set(sessionId, { turnId })
       continue
     }
     const original = lastUser.get(sessionId)

@@ -6,8 +6,14 @@ import {
 } from '@anthropic-ai/claude-agent-sdk'
 import type { ProviderCapabilities, ProviderInstance, ProviderStatus } from '@beddcode/contracts'
 import type { ProviderAdapter } from '@beddcode/provider-core'
-import { createLogger, resolveExecutable, runCommand, type Logger } from '@beddcode/shared'
 import { ClaudeCliSession } from './cli/session.ts'
+import {
+  createLogger,
+  resolveExecutable,
+  runCommand,
+  type Logger,
+  type SupervisorClient,
+} from '@beddcode/shared'
 import { ClaudeSession, type QueryFn } from './session.ts'
 import { discoverClaudeModels } from './models.ts'
 import { CLAUDE_BUILTINS, scanClaudeCommands } from './commands.ts'
@@ -74,6 +80,8 @@ export interface ClaudeAdapterOptions {
   /** Injected in tests. */
   queryFn?: QueryFn
   historySdk?: ClaudeHistorySdk
+  /** Keeps agents running across host restarts (off unless given; see docs/agent-supervisor.md). */
+  supervisor?: SupervisorClient
 }
 
 export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): ProviderAdapter {
@@ -185,12 +193,22 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
           env,
           modes: claudeCapabilities.permissionModes,
         })
+      const attached = input.reattach
+        ? await options.supervisor?.attach(input.sessionId).catch((err: unknown) => {
+            log.warn(`could not reattach ${input.sessionId}; starting a new agent`, err)
+            return undefined
+          })
+        : undefined
+      if (attached)
+        log.info(`reattached ${input.sessionId} to its running agent (pid ${attached.pid})`)
       return new ClaudeSession(input, {
         queryFn,
         log,
         executablePath: exe,
         env,
         modes: claudeCapabilities.permissionModes,
+        supervisor: options.supervisor,
+        attached,
       })
     },
     listHistory: (_instanceId, cwd) => history.list(cwd),

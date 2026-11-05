@@ -6,12 +6,14 @@ import type {
   StartSessionInput,
 } from '@beddcode/provider-core'
 import {
+  asSupervised,
   JsonRpcClient,
   JsonRpcError,
   createAsyncQueue,
   deferred,
   type Deferred,
   type Logger,
+  type SupervisedTransport,
   type Transport,
 } from '@beddcode/shared'
 import { CodexEventMapper, commandTitle, fileChangeTitle, type FileChange } from './mapper.ts'
@@ -73,6 +75,10 @@ export class CodexSession implements ProviderSession {
   private modeOverride: CodexMode | null = null
   private model: string | undefined
   private effort: string | undefined
+  /** The agent's process when the supervisor owns it. */
+  private readonly supervised: SupervisedTransport | undefined
+  /** This session took over a Codex that was already running (and maybe mid-turn). */
+  readonly reattached: boolean
 
   constructor(
     private readonly input: StartSessionInput,
@@ -82,7 +88,21 @@ export class CodexSession implements ProviderSession {
     this.model = input.model
     this.effort = input.effort
     this.mapper = new CodexEventMapper(input.sessionId, input.cwd)
-    this.rpc = deps.initializedRpc ?? new JsonRpcClient(deps.transport, deps.log)
+    this.supervised = asSupervised(deps.transport)
+    const meta = this.supervised?.reattached ? this.supervised.meta : undefined
+    this.reattached = meta !== undefined
+    if (meta) {
+      // Pick up where the previous host stopped: same thread, same turn numbering, same turn.
+      this.threadId = typeof meta.threadId === 'string' ? meta.threadId : null
+      this.codexTurnId = typeof meta.codexTurnId === 'string' ? meta.codexTurnId : null
+      this.turnCount = Number(meta.turnCount) || 0
+      this.active = meta.active === true
+      if (meta.active === true) this.mapper.setTurn(`turn-${this.turnCount}`)
+    }
+    this.supervised?.setAckGate(() => this.queue.idle)
+    this.rpc =
+      deps.initializedRpc ??
+      new JsonRpcClient(deps.transport, deps.log, { idStart: this.supervised?.idStart })
     this.rpc.onNotification((method, params) => this.onNotification(method, params))
     this.rpc.onRequest((method, params) => this.onServerRequest(method, params))
     this.rpc.onClose(() => this.fail('The Codex process ended unexpectedly'))
@@ -140,6 +160,7 @@ export class CodexSession implements ProviderSession {
           })
         : await this.rpc.request<{ thread: { id: string } }>('thread/start', common)
       this.threadId = res.thread.id
+      this.syncMeta()
       this.emit({ type: 'session.provider-session', providerSessionId: this.threadId })
       if (!this.input.textOnly) void this.announceSkills()
     } catch (err) {
@@ -205,6 +226,7 @@ export class CodexSession implements ProviderSession {
         delivery: 'inline',
       })
       this.codexTurnId = res.turn.id
+      this.syncMeta()
       return
     }
     const res = await this.rpc.request<{ turn: { id: string } }>('turn/start', {
@@ -216,6 +238,7 @@ export class CodexSession implements ProviderSession {
       ...this.takeModeOverride(),
     })
     this.codexTurnId = res.turn.id
+    this.syncMeta()
   }
 
   /** A leading `/skill` or `$skill` names a skill, which Codex takes as its own input item. */
@@ -248,6 +271,8 @@ export class CodexSession implements ProviderSession {
     this.emit({ type: 'turn.started' }, turnId)
     const done = deferred<void>()
     this.turnWaiters.push(done)
+    this.active = true
+    this.syncMeta()
 
     try {
       await this.startCodexTurn(input)
@@ -325,6 +350,28 @@ export class CodexSession implements ProviderSession {
     this.emit({ type: 'approval.resolved', requestId, optionId }, this.currentTurn())
   }
 
+  private active = false
+
+  /** What a later host needs to know to pick this Codex up: which thread and turn it is in. */
+  private syncMeta() {
+    this.supervised?.setMeta({
+      threadId: this.threadId,
+      codexTurnId: this.codexTurnId,
+      turnCount: this.turnCount,
+      active: this.active,
+    })
+  }
+
+  /** The host is stopping but Codex is to keep running (see docs/agent-supervisor.md). */
+  async detach() {
+    if (this.closed) return
+    this.closed = true
+    this.resolveAllPending()
+    this.rpc.detach()
+    this.releaseTurns()
+    this.queue.close()
+  }
+
   async close() {
     if (this.closed) return
     this.closed = true
@@ -354,6 +401,8 @@ export class CodexSession implements ProviderSession {
       this.queue.push(event)
       if (event.type === 'turn.completed') {
         this.codexTurnId = null
+        this.active = false
+        this.syncMeta()
         this.turnWaiters.shift()?.resolve()
       }
     }

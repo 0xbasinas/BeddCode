@@ -19,6 +19,7 @@ import {
   reapOrphans,
   recordChildrenIn,
   runningChildren,
+  SupervisorClient,
 } from '@beddcode/shared'
 import { acquireHostLock, listenError } from './hostLock.ts'
 import { AgentCatalog } from './agents/catalog.ts'
@@ -84,20 +85,33 @@ export async function runServer(
   )
   recordChildrenIn(ledger)
 
+  // Opt-in: Claude's process then outlives a host restart (docs/agent-supervisor.md).
+  const supervisor = config.agentSupervisor
+    ? new SupervisorClient(path.join(home, 'supervisor'), { log })
+    : undefined
+  const held = new Set(
+    (await supervisor?.list().catch(() => []))?.flatMap((a) => (a.alive ? [a.id] : [])) ?? [],
+  )
+
   const acpStore = new AcpAgentStore(path.join(home, 'acp-agents.json'))
   const mcpEnv: Record<string, string> = {}
-  const codex = createCodexAdapter({ log: createLogger('codex'), mcpEnv })
+  const codex = createCodexAdapter({ log: createLogger('codex'), mcpEnv, supervisor })
   const adapters: ProviderAdapter[] = [
     createClaudeAdapter({
       log: createLogger('claude'),
       mcpEnv,
       backend: config.claudeBackend ?? 'sdk',
+      supervisor,
     }),
     codex,
-    createGrokAdapter({ log: createLogger('grok') }),
-    createPiAdapter({ log: createLogger('pi'), sessionDir: path.join(home, 'sessions', 'pi') }),
-    createOpenCodeAdapter({ log: createLogger('opencode') }),
-    createAcpAdapter({ store: acpStore, log: createLogger('acp') }),
+    createGrokAdapter({ log: createLogger('grok'), supervisor }),
+    createPiAdapter({
+      log: createLogger('pi'),
+      sessionDir: path.join(home, 'sessions', 'pi'),
+      supervisor,
+    }),
+    createOpenCodeAdapter({ log: createLogger('opencode'), supervisor }),
+    createAcpAdapter({ store: acpStore, log: createLogger('acp'), supervisor }),
   ]
   await protectMcpSecrets(home, mcpEnv, adapters)
   // "advanced" adds steering, plans, questions, forks and history to the scripted agent.
@@ -108,7 +122,7 @@ export async function runServer(
 
   const store = openEventStore(path.join(home, 'beddcode.db'))
   store.jobs.recover()
-  recoverInterruptedTurns(store, autoResumeFromEnv())
+  recoverInterruptedTurns(store, autoResumeFromEnv(), held)
   const interruptedSessions = takeInterruptedSessions()
   const attachments = new AttachmentStore(path.join(home, 'attachments'))
   const hostPool = options.warmPool
@@ -248,6 +262,7 @@ export async function runServer(
   let server: Awaited<ReturnType<typeof startServer>>
   try {
     server = await startServer({
+      supervised: config.agentSupervisor === true,
       port: config.port,
       host: config.host,
       guard: config.guard,

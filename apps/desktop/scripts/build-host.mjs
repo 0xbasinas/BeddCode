@@ -90,6 +90,13 @@ await build({
   logLevel: 'warning',
 })
 
+// The agent supervisor runs as its own program (packages/provider-claude/src/supervisor), so it
+// cannot be inside the bundle: the host starts it by file, from next to main.mjs.
+cpSync(
+  path.join(root, 'packages/shared/src/supervisor/daemon.mjs'),
+  path.join(out, 'server/daemon.mjs'),
+)
+
 // What stays outside, installed beside the bundle for this platform.
 const dependencies = {
   '@lydell/node-pty': installedVersion('@lydell/node-pty', requireFromServer),

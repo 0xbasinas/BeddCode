@@ -45,6 +45,9 @@ function scriptedAdapter() {
     onPrompt: (_emit: (e: Draft) => void): void | Promise<void> => {},
     onInterrupt: (_emit: (e: Draft) => void) => {},
     failResume: undefined as string | undefined,
+    /** The session reports it took over an agent that was still running (a supervised one). */
+    reattached: false,
+    detached: 0,
   }
   const emit = (e: Draft) =>
     current?.push({ sessionId, at: Date.now(), ...e } as unknown as SessionEvent)
@@ -84,6 +87,11 @@ function scriptedAdapter() {
         setPermissionMode: async () => {},
         respondToApproval: async () => {},
         close: async () => queue.close(),
+        reattached: state.reattached,
+        detach: async () => {
+          state.detached++
+          queue.close()
+        },
       } satisfies ProviderSession
     },
   }
@@ -137,6 +145,61 @@ afterEach(() => {
 })
 
 describe('SessionManager robustness', () => {
+  it('leaves a supervised agent running when the host stops, and carries its turn on after the restart without sending the prompt again', async () => {
+    const first = setup()
+    first.state.onPrompt = (emit) => emit({ type: 'turn.started', turnId: 't1' })
+    const { sessionId } = await first.manager.create({ instanceId: 'stub' })
+    await first.manager.prompt(sessionId, 'long task')
+    await until(() => first.events(sessionId).some((e) => e.type === 'turn.started'))
+    const resumable = await first.manager.prepareForRestart()
+    expect(first.state.detached).toBe(1)
+    expect(resumable).toHaveLength(1)
+
+    // A new host on the same store: the agent is still there and still in its turn.
+    const stub = scriptedAdapter()
+    stub.state.reattached = true
+    const manager = new SessionManager({
+      attachments,
+      git: new GitService(),
+      store: first.store,
+      adapters: [stub.adapter],
+      log: createLogger('test', 'error'),
+      defaultCwd: os.tmpdir(),
+    })
+    await manager.resumeAfterRestart([{ sessionId, turnId: 't1' }])
+    expect(stub.starts[0]).toMatchObject({ reattach: true })
+    expect(stub.prompts).toEqual([])
+    stub.emit({ type: 'turn.completed', turnId: 't1', reason: 'done' })
+    await until(() => first.events(sessionId).some((e) => e.type === 'turn.completed'))
+    expect(first.events(sessionId).filter((e) => e.type === 'turn.completed')).toHaveLength(1)
+    await manager.close()
+  })
+
+  it('cancels the turn when the agent a restart expected is gone and there is no prompt to send', async () => {
+    const first = setup()
+    first.state.onPrompt = (emit) => emit({ type: 'turn.started', turnId: 't1' })
+    const { sessionId } = await first.manager.create({ instanceId: 'stub' })
+    await first.manager.prompt(sessionId, 'long task')
+    await until(() => first.events(sessionId).some((e) => e.type === 'turn.started'))
+    await first.manager.close()
+    const stub = scriptedAdapter() // reattached stays false: a new process
+    const manager = new SessionManager({
+      attachments,
+      git: new GitService(),
+      store: first.store,
+      adapters: [stub.adapter],
+      log: createLogger('test', 'error'),
+      defaultCwd: os.tmpdir(),
+    })
+    await manager.resumeAfterRestart([{ sessionId, turnId: 't1' }])
+    expect(stub.prompts).toEqual([])
+    expect(first.events(sessionId).at(-1)).toMatchObject({
+      type: 'turn.completed',
+      reason: 'cancelled',
+    })
+    await manager.close()
+  })
+
   it('ends the open turn with a reason when the agent process dies mid-reply, and resumes on the next message', async () => {
     const { manager, events, state, crash, starts } = setup()
     state.onPrompt = (emit) => {

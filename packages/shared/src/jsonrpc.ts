@@ -9,6 +9,8 @@ export interface Transport {
   onLine(handler: (line: string) => void): void
   onClose(handler: () => void): void
   close(): void
+  /** Lets go of the agent without ending it (supervised agents only). */
+  detach?(): void
   /** The last lines the process wrote to stderr, to explain why it died. */
   stderrTail?(): string
 }
@@ -68,14 +70,20 @@ export class JsonRpcClient {
     throw new JsonRpcError(-32601, `Method not found: ${method}`)
   }
   private closeHandler: () => void = () => {}
+  private orphanHandler: (id: number | string, result: Json, error?: unknown) => void = () => {}
   private closed = false
 
   constructor(
     private readonly transport: Transport,
     private readonly log?: Logger,
     /** Standard JSON-RPC 2.0 (ACP) wants a `jsonrpc` field; Codex's app-server omits it. */
-    private readonly options: { jsonrpc2?: boolean } = {},
+    private readonly options: {
+      jsonrpc2?: boolean
+      /** First request id; a host that reattached starts high so old answers cannot match new requests. */
+      idStart?: number
+    } = {},
   ) {
+    if (options.idStart) this.nextId = options.idStart
     transport.onLine((line) => this.receive(line))
     transport.onClose(() => {
       this.failAll(new Error('The agent process ended'))
@@ -90,6 +98,14 @@ export class JsonRpcClient {
 
   onNotification(handler: NotificationHandler) {
     this.notificationHandler = handler
+  }
+
+  /**
+   * An answer nobody here asked for: the previous host's request, answered while no host was
+   * attached (ACP ends a turn that way, with the answer to `session/prompt`).
+   */
+  onOrphanResponse(handler: (id: number | string, result: Json, error?: unknown) => void) {
+    this.orphanHandler = handler
   }
 
   onRequest(handler: RequestHandler) {
@@ -141,6 +157,12 @@ export class JsonRpcClient {
     this.transport.close()
   }
 
+  /** The host is stopping but the agent keeps running (see the supervisor). */
+  detach() {
+    this.failAll(new Error('detached'))
+    this.transport.detach?.()
+  }
+
   private receive(line: string) {
     if (!line.trim()) return
     let msg: {
@@ -172,7 +194,10 @@ export class JsonRpcClient {
           ? Number(msg.id)
           : msg.id
       const p = this.pending.get(key)
-      if (!p) return
+      if (!p) {
+        this.orphanHandler(msg.id, msg.result, msg.error)
+        return
+      }
       this.pending.delete(key)
       if (msg.error) {
         p.reject(

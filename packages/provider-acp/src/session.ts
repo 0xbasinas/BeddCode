@@ -10,11 +10,13 @@ import type {
 import type { ConfigOption, SessionEvent } from '@beddcode/contracts'
 import type { ProviderSession, PromptInput, StartSessionInput } from '@beddcode/provider-core'
 import {
+  asSupervised,
   JsonRpcClient,
   JsonRpcError,
   createAsyncQueue,
   describeRpcError,
   type Logger,
+  type SupervisedTransport,
   type Transport,
 } from '@beddcode/shared'
 import { evaluateIdleTick, idleTiming, isProgress, replaySettled } from './idle.ts'
@@ -185,6 +187,10 @@ export class AcpSession implements ProviderSession {
   private endTurn: (() => void) | undefined
   private canSendImages = false
   private canCloseSession = false
+  /** The agent's process when the supervisor owns it. */
+  private readonly supervised: SupervisedTransport | undefined
+  /** This session took over an agent that was already running (and maybe mid-turn). */
+  readonly reattached: boolean
 
   constructor(
     private readonly input: StartSessionInput,
@@ -194,7 +200,31 @@ export class AcpSession implements ProviderSession {
     this.mapper = new AcpEventMapper(input.sessionId, Date.now, (id) => this.terminals.peek(id))
     if (input.resumeId) this.mapper.continuesEarlierConversation()
     this.terminals = new TerminalManager(input.cwd, input.terminalHost)
-    this.rpc = new JsonRpcClient(deps.transport, deps.log, { jsonrpc2: true })
+    this.supervised = asSupervised(deps.transport)
+    const meta = this.supervised?.reattached ? this.supervised.meta : undefined
+    this.reattached = meta !== undefined
+    if (meta) {
+      // Pick up where the previous host stopped: same agent session, turn numbering and turn.
+      this.acpSessionId = typeof meta.acpSessionId === 'string' ? meta.acpSessionId : null
+      this.turnCount = Number(meta.turnCount) || 0
+      if (meta.active === true) {
+        this.inflightTurn = `turn-${this.turnCount}`
+        this.mapper.setTurn(this.inflightTurn)
+      }
+    }
+    this.supervised?.setAckGate(() => this.queue.idle)
+    this.rpc = new JsonRpcClient(deps.transport, deps.log, {
+      jsonrpc2: true,
+      idStart: this.supervised?.idStart,
+    })
+    // The answer to the previous host's `session/prompt` is how a turn that ended in between ends.
+    if (this.reattached && this.inflightTurn) this.startWatchdog(this.inflightTurn)
+    this.rpc.onOrphanResponse((_id, result) => {
+      const res = result as { stopReason?: string } | undefined
+      if (this.inflightTurn && typeof res?.stopReason === 'string') {
+        this.finishTurn(res as never, this.inflightTurn)
+      }
+    })
     this.rpc.onNotification((method, params) => this.onNotification(method, params))
     this.rpc.onRequest((method, params) => this.onClientRequest(method, params))
     this.rpc.onClose(() => this.fail(this.endMessage()))
@@ -276,8 +306,18 @@ export class AcpSession implements ProviderSession {
       let configOptions: SessionConfigOption[] | null | undefined
       let models: unknown
 
-      if (this.input.resumeId) {
+      if (this.reattached && this.acpSessionId) {
+        // The agent has this session open already; setup is answered from its first answer.
+        const res = await this.reopen<SetupResponse>('session/resume', {
+          sessionId: this.acpSessionId,
+          ...base,
+        })
+        modes = res.modes
+        configOptions = res.configOptions
+        models = res.models
+      } else if (this.input.resumeId) {
         this.acpSessionId = this.input.resumeId
+        this.syncMeta()
         if (caps?.sessionCapabilities?.resume) {
           const res = await this.reopen<SetupResponse>('session/resume', {
             sessionId: this.acpSessionId,
@@ -319,6 +359,7 @@ export class AcpSession implements ProviderSession {
       } else {
         const res = await this.setup<SetupResponse & { sessionId: string }>('session/new', base)
         this.acpSessionId = res.sessionId
+        this.syncMeta()
         modes = res.modes
         configOptions = res.configOptions
         models = res.models
@@ -547,6 +588,7 @@ export class AcpSession implements ProviderSession {
 
     const turnId = `turn-${++this.turnCount}`
     this.inflightTurn = turnId
+    this.syncMeta()
     this.mapper.setTurn(turnId)
     this.emit({ type: 'turn.started' }, turnId)
     // A turn the agent never answers (it hangs, or ignores a cancel) is ended from outside.
@@ -567,26 +609,12 @@ export class AcpSession implements ProviderSession {
       const res = await Promise.race([request, forced])
       if (res === 'forced') return
       // What the turn used, when the agent says; counted even if the turn was cut short.
-      const reported = promptUsage(res)
-      if (reported.some((u) => u.costUsd !== undefined)) this.mapper.noteTurnCost()
-      for (const event of usageEvents(reported)) this.emit(event, turnId)
-      if (this.inflightTurn !== turnId) return
-      this.inflightTurn = null
-      switch (res.stopReason) {
-        case 'end_turn':
-          this.emit({ type: 'turn.completed', reason: 'done' }, turnId)
-          break
-        case 'cancelled':
-          this.emit({ type: 'turn.completed', reason: 'cancelled' }, turnId)
-          break
-        default:
-          this.emit({ type: 'error', message: this.stopMessage(res.stopReason) }, turnId)
-          this.emit({ type: 'turn.completed', reason: 'error' }, turnId)
-      }
+      this.finishTurn(res, turnId)
     } catch (err) {
       // `fail` already reported a dead process; otherwise finish the turn here.
       if (this.inflightTurn !== turnId) return
       this.inflightTurn = null
+      this.syncMeta()
       this.emit(
         {
           type: 'error',
@@ -601,6 +629,32 @@ export class AcpSession implements ProviderSession {
       this.stopWatchdog()
       this.endTurn = undefined
     }
+  }
+
+  /** The turn's end, from the answer to `session/prompt` (ours, or the previous host's). */
+  private finishTurn(
+    res: { stopReason: string; _meta?: unknown; usage?: unknown },
+    turnId: string,
+  ) {
+    // What the turn used, when the agent says; counted even if the turn was cut short.
+    const reported = promptUsage(res)
+    if (reported.some((u) => u.costUsd !== undefined)) this.mapper.noteTurnCost()
+    for (const event of usageEvents(reported)) this.emit(event, turnId)
+    if (this.inflightTurn !== turnId) return
+    this.inflightTurn = null
+    this.syncMeta()
+    switch (res.stopReason) {
+      case 'end_turn':
+        this.emit({ type: 'turn.completed', reason: 'done' }, turnId)
+        break
+      case 'cancelled':
+        this.emit({ type: 'turn.completed', reason: 'cancelled' }, turnId)
+        break
+      default:
+        this.emit({ type: 'error', message: this.stopMessage(res.stopReason) }, turnId)
+        this.emit({ type: 'turn.completed', reason: 'error' }, turnId)
+    }
+    this.stopWatchdog()
   }
 
   /** What a stop reason other than a normal end or a cancel means, in words. */
@@ -630,6 +684,7 @@ export class AcpSession implements ProviderSession {
   private forceEnd(turnId: string, reason: 'error' | 'cancelled', message?: string) {
     if (this.inflightTurn !== turnId) return
     this.inflightTurn = null
+    this.syncMeta()
     this.cancelAllPending()
     if (message) this.emit({ type: 'error', message }, turnId)
     this.emit({ type: 'turn.completed', reason }, turnId)
@@ -760,6 +815,26 @@ export class AcpSession implements ProviderSession {
     this.pending.delete(requestId)
     answer(optionId)
     this.emit({ type: 'approval.resolved', requestId, optionId }, this.currentTurn())
+  }
+
+  /** What a later host needs to know to pick this agent up: which session and turn it is in. */
+  private syncMeta() {
+    this.supervised?.setMeta({
+      acpSessionId: this.acpSessionId,
+      turnCount: this.turnCount,
+      active: this.inflightTurn !== null,
+    })
+  }
+
+  /** The host is stopping but the agent is to keep running (see docs/agent-supervisor.md). */
+  async detach() {
+    if (this.closed) return
+    this.closed = true
+    this.cancelAllPending()
+    this.terminals.releaseAll()
+    this.stopWatchdog()
+    this.rpc.detach()
+    this.queue.close()
   }
 
   async close() {
@@ -1031,6 +1106,7 @@ export class AcpSession implements ProviderSession {
     if (this.inflightTurn) {
       this.emit({ type: 'turn.completed', reason: 'error' }, this.inflightTurn)
       this.inflightTurn = null
+      this.syncMeta()
     }
     this.queue.close()
     this.rpc.close()
