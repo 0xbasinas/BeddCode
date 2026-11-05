@@ -19,6 +19,7 @@ import { LinearSync } from '../linear/linearSync.ts'
 import { LinearKeyStore, LinearTools } from '../linear/linearTools.ts'
 import { ScheduleService } from './schedules.ts'
 import { TelegramBridge } from '../telegram/bridge.ts'
+import { GithubBridge } from '../github/bridge.ts'
 
 /** The Desktop pane's view of a session's computer use. */
 export interface ComputerPane {
@@ -154,6 +155,23 @@ export function createAutomation(deps: AutomationDeps) {
       subscribe,
     },
   })
+  // Comments like "@beddcode fix this" on GitHub, picked up from your Worker (see packages/github-app).
+  const github = new GithubBridge({
+    file: path.join(home, 'github.json'),
+    log: createLogger('github'),
+    host: {
+      create: (params) => create(params, {}),
+      prompt,
+      interrupt: (id) => sessions.interrupt(id),
+      askUser: (id, ask) => sessions.askUser(id, ask),
+      readSession,
+      providers: () => sessions.listProviders(),
+      subscribe,
+      sessionCwd: (id) => sessions.sessionInfo(id)?.cwd,
+      hostId: deps.hostId,
+      hostLabel: os.hostname(),
+    },
+  })
   const stopAlerts = store.subscribe((stored) => {
     alerts.onEvent(stored)
     if (stored.event.type === 'session.deleted') agentTools.forget(stored.event.sessionId)
@@ -183,6 +201,7 @@ export function createAutomation(deps: AutomationDeps) {
     designs,
     designLink,
     telegram,
+    github,
     linear: {
       setKey(key: string | null) {
         linearKey.set(key)
@@ -193,6 +212,7 @@ export function createAutomation(deps: AutomationDeps) {
     stop() {
       schedules.stop()
       telegram.stop()
+      github.stop()
       stopAlerts()
       void computer.dispose()
     },

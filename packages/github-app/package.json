@@ -1,0 +1,20 @@
+{
+  "name": "@beddcode/github-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A GitHub App webhook receiver on Cloudflare. It checks who may ask, queues the job, and lets your own BeddCode host pick it up. No code runs in the cloud.",
+  "exports": {
+    "./protocol": "./src/protocol.ts",
+    "./commands": "./src/commands.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "deploy": "npx wrangler deploy -c wrangler.toml"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "@types/node": "^22.0.0"
+  }
+}
