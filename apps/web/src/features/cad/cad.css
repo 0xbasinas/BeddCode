@@ -402,6 +402,88 @@
   font-size: var(--fs-small);
 }
 
+/* Muted focus for property fields. */
+.cad-field > input:focus {
+  outline: 1px solid var(--text-faint);
+  outline-offset: 1px;
+  border-color: var(--text-muted);
+}
+
+.cad-field span.cad-field-error {
+  color: var(--danger-text);
+}
+
+.cad-spin {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border-radius: var(--corner-sm);
+}
+
+.cad-field .cad-spin input {
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.cad-spin:focus-within {
+  outline: 1px solid var(--text-faint);
+  outline-offset: 1px;
+}
+
+.cad-spin:focus-within input,
+.cad-spin:focus-within .cad-spin-steps {
+  border-color: var(--text-muted);
+}
+
+.cad-spin input:focus {
+  outline: none;
+}
+
+.cad-spin-steps {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-left: 0;
+  border-radius: 0 var(--corner-sm) var(--corner-sm) 0;
+  background: var(--bg-input);
+  overflow: hidden;
+}
+
+.cad-spin-steps button {
+  display: grid;
+  place-items: center;
+  flex: 1 1 auto;
+  width: calc(16px * var(--ui-scale));
+  padding: 0;
+  color: var(--text-faint);
+  line-height: 0;
+}
+
+.cad-spin-steps button + button {
+  border-top: 1px solid var(--border);
+}
+
+.cad-spin-steps button:hover {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+
+.cad-spin-steps button:focus-visible {
+  outline: 1px solid var(--text-faint);
+  outline-offset: -1px;
+}
+
+.cad-spin[data-invalid='true'] input,
+.cad-spin[data-invalid='true'] .cad-spin-steps,
+.cad-spin[data-invalid='true']:focus-within input,
+.cad-spin[data-invalid='true']:focus-within .cad-spin-steps {
+  border-color: var(--danger-border);
+}
+
 .cad-check {
   display: flex;
   align-items: center;

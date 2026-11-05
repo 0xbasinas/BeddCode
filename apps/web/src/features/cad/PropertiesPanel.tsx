@@ -1,4 +1,6 @@
+import { useState, type KeyboardEvent } from 'react'
 import type { CadFeature, ParamValue } from './model/CadDocument.ts'
+import { SpinInput } from './SpinInput.tsx'
 
 const ORDER = [
   'width',
@@ -61,6 +63,52 @@ function labelOf(key: string): string {
   return LABELS[key] ?? key.charAt(0).toUpperCase() + key.slice(1)
 }
 
+/** Text property. The draft stays local until Enter or blur. Escape restores the model text. */
+function TextParam({
+  label,
+  value,
+  onCommit,
+}: {
+  label: string
+  value: string
+  onCommit(next: string): void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+
+  const commit = () => {
+    if (draft === null) return
+    const next = draft
+    setDraft(null)
+    if (next !== value) onCommit(next)
+  }
+
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    event.stopPropagation()
+    if (event.nativeEvent.isComposing) return
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      commit()
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      setDraft(null)
+    }
+  }
+
+  return (
+    <label className="cad-field">
+      <span>{label}</span>
+      <input
+        value={draft ?? value}
+        autoComplete="off"
+        spellCheck={false}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={onKeyDown}
+      />
+    </label>
+  )
+}
+
 export function PropertiesPanel({
   feature,
   error,
@@ -79,10 +127,7 @@ export function PropertiesPanel({
         <p className="cad-empty">Select a feature to edit its parameters.</p>
       ) : (
         <div className="cad-prop-body">
-          <label className="cad-field">
-            <span>Name</span>
-            <input value={feature.name} onChange={(event) => onName(event.target.value)} />
-          </label>
+          <TextParam key={feature.id} label="Name" value={feature.name} onCommit={onName} />
           <div className="cad-kind">{feature.kind}</div>
           {error ? <p className="cad-empty">{error}</p> : null}
           {orderedKeys(feature.params).map((key) => {
@@ -102,26 +147,22 @@ export function PropertiesPanel({
             }
             if (typeof value === 'string') {
               return (
-                <label key={key} className="cad-field">
-                  <span>{labelOf(key)}</span>
-                  <input value={value} onChange={(event) => onParam(key, event.target.value)} />
-                </label>
+                <TextParam
+                  key={`${feature.id}:${key}`}
+                  label={labelOf(key)}
+                  value={value}
+                  onCommit={(next) => onParam(key, next)}
+                />
               )
             }
+            if (typeof value !== 'number') return null
             return (
-              <label key={key} className="cad-field">
-                <span>{labelOf(key)}</span>
-                <input
-                  type="number"
-                  step="any"
-                  value={Number.isFinite(value) ? value : 0}
-                  onChange={(event) => {
-                    const next = Number(event.target.value)
-                    if (!Number.isFinite(next)) return
-                    onParam(key, next)
-                  }}
-                />
-              </label>
+              <SpinInput
+                key={`${feature.id}:${key}`}
+                label={labelOf(key)}
+                value={value}
+                onCommit={(next) => onParam(key, next)}
+              />
             )
           })}
         </div>
