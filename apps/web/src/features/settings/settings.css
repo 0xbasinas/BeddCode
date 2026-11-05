@@ -40,6 +40,10 @@
   font: inherit;
   font-size: var(--fs-body);
 }
+.settings-search:focus-within {
+  outline: 2px solid var(--text-muted);
+  outline-offset: 2px;
+}
 .settings-nav nav {
   flex: 1;
   overflow: auto;
