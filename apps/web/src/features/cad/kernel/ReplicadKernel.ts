@@ -11,7 +11,7 @@ import {
   measureShapeVolumeProperties,
   setOC,
 } from '../vendor/replicad'
-import type { AnyShape, Shape3D } from '../vendor/replicad'
+import type { AnyShape, Edge, Shape3D } from '../vendor/replicad'
 import type { GeometryKernel } from './GeometryKernel'
 import { exactBuffer } from './buffers'
 import { planRebuild } from './featureOps'
@@ -19,6 +19,7 @@ import type {
   AxisName,
   BBox,
   BooleanMode,
+  ExtrudeOptions,
   FeatureDocument,
   FeatureOp,
   MeasureResult,
@@ -40,14 +41,61 @@ function asSolid(shape: AnyShape): Shape3D {
   return shape
 }
 
+/**
+ * Vite rewrites the WASM import to `/@fs/<absolute path>` in Vitest. Node's
+ * loader reads that with `fs`, so the prefix has to come off. Browsers fetch
+ * the original URL.
+ */
+export function locateWasm(url: string): string {
+  const onNode =
+    typeof process !== 'undefined' && !!process.versions?.node && typeof window === 'undefined'
+  if (onNode && url.startsWith('/@fs/')) return url.slice(4)
+  return url
+}
+
 function toMesh(shape: Shape3D): MeshBuffer {
   const raw = shape.mesh()
+  const wires = shape.meshEdges()
   const normals =
     raw.normals.length === raw.vertices.length ? raw.normals : raw.vertices.map(() => 0)
   return {
     positions: Float32Array.from(raw.vertices),
     normals: Float32Array.from(normals),
     indices: Uint32Array.from(raw.triangles),
+    faceGroups: raw.faceGroups.map((group) => ({
+      start: group.start,
+      count: group.count,
+      faceId: group.faceId,
+    })),
+    edgeGroups: wires.edgeGroups.map((group) => ({
+      start: group.start,
+      count: group.count,
+      edgeId: group.edgeId,
+    })),
+    edges: { positions: Float32Array.from(wires.lines) },
+  }
+}
+
+/** A number fillets every edge. A function fillets only the given hashes. */
+function radiiForEdges(
+  radius: number,
+  edgeIds?: number[],
+): number | ((edge: Edge) => number | null) {
+  if (!edgeIds || edgeIds.length === 0) return radius
+  const wanted = new Set(edgeIds)
+  return (edge) => (wanted.has(edge.hashCode) ? radius : null)
+}
+
+function extrudeSolid(profile: Profile2D, distance: number, bothSides: boolean): Shape3D {
+  if (!bothSides) return solidFromProfile(profile, (sketch) => sketch.extrude(distance))
+  const positive = solidFromProfile(profile, (sketch) => sketch.extrude(distance))
+  let negative: Shape3D | null = null
+  try {
+    negative = solidFromProfile(profile, (sketch) => sketch.extrude(-distance))
+    return asSolid(positive.fuse(negative))
+  } finally {
+    positive.delete()
+    negative?.delete()
   }
 }
 
@@ -107,7 +155,7 @@ export class ReplicadKernel implements GeometryKernel {
   }
 
   private async load(): Promise<void> {
-    const oc = await initOC({ locateFile: () => wasmUrl })
+    const oc = await initOC({ locateFile: () => locateWasm(wasmUrl) })
     setOC(oc)
     this.ready = true
   }
@@ -126,15 +174,47 @@ export class ReplicadKernel implements GeometryKernel {
     return this.keep(this.makePrimitive(op.kind, op.params), id)
   }
 
-  async extrude(profile: Profile2D, distance: number, id?: string): Promise<ShapeResult> {
+  async extrude(
+    profile: Profile2D,
+    distance: number,
+    options?: ExtrudeOptions,
+    id?: string,
+  ): Promise<ShapeResult> {
     this.assertReady()
-    const op = planRebuild({
-      version: 1,
-      ops: [{ op: 'extrude', id: id ?? 'check', profile, distance }],
-    })[0]
+    const bothSides = options?.bothSides === true
+    const cut = options?.cut === true
+    const targetId = options?.target
+    if (cut && !targetId) throw new Error('extrude cut target is missing')
+    const ops: unknown[] = []
+    if (cut && targetId) {
+      ops.push({
+        op: 'primitive' as const,
+        id: targetId,
+        kind: 'sphere' as const,
+        params: { radius: 1 },
+      })
+    }
+    ops.push({
+      op: 'extrude' as const,
+      id: id ?? 'check',
+      profile,
+      distance,
+      ...(bothSides ? { bothSides: true } : {}),
+      ...(cut && targetId ? { cut: true, target: targetId } : {}),
+    })
+    const op = planRebuild({ version: 1, ops }).at(-1)
     if (!op || op.op !== 'extrude') throw new Error('profile is missing')
-    const shape = solidFromProfile(op.profile, (sketch) => sketch.extrude(op.distance))
-    return this.keep(shape, id)
+    const target = op.cut && op.target ? this.require(op.target, 'extrude cut target') : null
+    let solid = extrudeSolid(op.profile, op.distance, op.bothSides === true)
+    if (target) {
+      const tool = solid
+      try {
+        solid = asSolid(target.cut(tool))
+      } finally {
+        tool.delete()
+      }
+    }
+    return this.keep(solid, id)
   }
 
   async revolve(
@@ -144,39 +224,73 @@ export class ReplicadKernel implements GeometryKernel {
     id?: string,
   ): Promise<ShapeResult> {
     this.assertReady()
+    if (!profile || !Array.isArray(profile.points) || profile.points.length === 0) {
+      throw new Error('revolve profile is missing')
+    }
     const op = planRebuild({
       version: 1,
       ops: [{ op: 'revolve', id: id ?? 'check', profile, angle, ...(axis ? { axis } : {}) }],
     })[0]
-    if (!op || op.op !== 'revolve') throw new Error('profile is missing')
-    const shape = solidFromProfile(op.profile, (sketch) =>
-      sketch.revolve(op.axis ?? 'Z', { angle: op.angle }),
-    )
+    if (!op || op.op !== 'revolve') throw new Error('revolve profile is missing')
+    let shape: Shape3D
+    try {
+      shape = solidFromProfile(op.profile, (sketch) =>
+        sketch.revolve(op.axis ?? 'Z', { angle: op.angle }),
+      )
+    } catch (error) {
+      if (error instanceof Error && /missing|axis/i.test(error.message)) throw error
+      const detail = error instanceof Error ? error.message : String(error)
+      throw new Error(`revolve failed: ${detail}`)
+    }
     return this.keep(shape, id)
   }
 
-  async fillet(targetId: string, radius: number, id?: string): Promise<ShapeResult> {
+  async fillet(
+    targetId: string,
+    radius: number,
+    edgeIds?: number[],
+    id?: string,
+  ): Promise<ShapeResult> {
     this.assertReady()
     planRebuild({
       version: 1,
       ops: [
         { op: 'primitive', id: targetId, kind: 'sphere', params: { radius: 1 } },
-        { op: 'fillet', id: id ?? 'check', target: targetId, radius },
+        {
+          op: 'fillet',
+          id: id ?? 'check',
+          target: targetId,
+          radius,
+          ...(edgeIds && edgeIds.length > 0 ? { edgeIds } : {}),
+        },
       ],
     })
-    return this.keep(asSolid(this.require(targetId).fillet(radius)), id)
+    const shape = this.require(targetId, 'fillet target')
+    return this.keep(this.editEdges(shape, radius, edgeIds, 'fillet'), id)
   }
 
-  async chamfer(targetId: string, radius: number, id?: string): Promise<ShapeResult> {
+  async chamfer(
+    targetId: string,
+    radius: number,
+    edgeIds?: number[],
+    id?: string,
+  ): Promise<ShapeResult> {
     this.assertReady()
     planRebuild({
       version: 1,
       ops: [
         { op: 'primitive', id: targetId, kind: 'sphere', params: { radius: 1 } },
-        { op: 'chamfer', id: id ?? 'check', target: targetId, radius },
+        {
+          op: 'chamfer',
+          id: id ?? 'check',
+          target: targetId,
+          radius,
+          ...(edgeIds && edgeIds.length > 0 ? { edgeIds } : {}),
+        },
       ],
     })
-    return this.keep(asSolid(this.require(targetId).chamfer(radius)), id)
+    const shape = this.require(targetId, 'chamfer target')
+    return this.keep(this.editEdges(shape, radius, edgeIds, 'chamfer'), id)
   }
 
   async boolean(
@@ -187,6 +301,8 @@ export class ReplicadKernel implements GeometryKernel {
   ): Promise<ShapeResult> {
     this.assertReady()
     if (targetId === toolId) throw new Error('boolean target and tool must differ')
+    if (!targetId) throw new Error('boolean target is missing')
+    if (!toolId) throw new Error('boolean tool is missing')
     planRebuild({
       version: 1,
       ops: [
@@ -195,8 +311,8 @@ export class ReplicadKernel implements GeometryKernel {
         { op: 'boolean', id: id ?? 'check', mode, target: targetId, tool: toolId },
       ],
     })
-    const target = this.require(targetId)
-    const tool = this.require(toolId)
+    const target = this.require(targetId, 'boolean target')
+    const tool = this.require(toolId, 'boolean tool')
     const next =
       mode === 'fuse'
         ? target.fuse(tool)
@@ -258,13 +374,18 @@ export class ReplicadKernel implements GeometryKernel {
       case 'primitive':
         return this.keep(this.makePrimitive(op.kind, op.params), op.id)
       case 'extrude':
-        return this.extrude(op.profile, op.distance, op.id)
+        return this.extrude(
+          op.profile,
+          op.distance,
+          { bothSides: op.bothSides, cut: op.cut, target: op.target },
+          op.id,
+        )
       case 'revolve':
         return this.revolve(op.profile, op.angle, op.axis, op.id)
       case 'fillet':
-        return this.fillet(op.target, op.radius, op.id)
+        return this.fillet(op.target, op.radius, op.edgeIds, op.id)
       case 'chamfer':
-        return this.chamfer(op.target, op.radius, op.id)
+        return this.chamfer(op.target, op.radius, op.edgeIds, op.id)
       case 'boolean':
         return this.boolean(op.mode, op.target, op.tool, op.id)
       case 'importStep': {
@@ -300,9 +421,27 @@ export class ReplicadKernel implements GeometryKernel {
     return { id: shapeId, mesh: toMesh(shape), bbox: toBBox(shape) }
   }
 
-  private require(id: string): Shape3D {
+  private editEdges(
+    shape: Shape3D,
+    radius: number,
+    edgeIds: number[] | undefined,
+    kind: 'fillet' | 'chamfer',
+  ): Shape3D {
+    const config = radiiForEdges(radius, edgeIds)
+    try {
+      const next = kind === 'fillet' ? shape.fillet(config) : shape.chamfer(config)
+      return asSolid(next)
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('no edge was selected')) {
+        throw new Error(`${kind} edges not found`)
+      }
+      throw error
+    }
+  }
+
+  private require(id: string, label?: string): Shape3D {
     const shape = this.shapes.get(id)
-    if (!shape) throw new Error(`unknown shape ${id}`)
+    if (!shape) throw new Error(label ? `${label} ${id} is missing` : `unknown shape ${id}`)
     return shape
   }
 

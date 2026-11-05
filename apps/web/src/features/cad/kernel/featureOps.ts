@@ -90,6 +90,35 @@ function knownShape(value: unknown, seen: Set<string>): string {
   return value
 }
 
+/** A shape id that must already exist. Names the missing piece in the error. */
+function requiredShape(value: unknown, seen: Set<string>, label: string): string {
+  if (typeof value !== 'string' || value.length === 0) throw new Error(`${label} is missing`)
+  if (value.length > 128) throw new Error('feature id must be a non-empty string')
+  if (!seen.has(value)) throw new Error(`${label} ${value} is missing`)
+  return value
+}
+
+function optionalBoolean(name: string, value: unknown): boolean {
+  if (value === undefined) return false
+  if (typeof value !== 'boolean') throw new Error(`${name} must be a boolean`)
+  return value
+}
+
+/** Empty means "every edge", same as omitting the field. */
+function optionalEdgeIds(value: unknown): number[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value)) throw new Error('edgeIds must be an array of integers')
+  if (value.length === 0) return undefined
+  const ids: number[] = []
+  for (const id of value) {
+    if (!isFiniteNumber(id) || !Number.isInteger(id)) {
+      throw new Error('edgeIds must be an array of integers')
+    }
+    ids.push(id)
+  }
+  return ids
+}
+
 function readOp(value: unknown, seen: Set<string>): FeatureOp {
   if (!value || typeof value !== 'object') throw new Error('feature op must be an object')
   const record = value as Record<string, unknown>
@@ -108,17 +137,27 @@ function readOp(value: unknown, seen: Set<string>): FeatureOp {
     }
     case 'extrude': {
       assertNonZero('distance', record.distance)
+      const bothSides = optionalBoolean('bothSides', record.bothSides)
+      const cut = optionalBoolean('cut', record.cut)
+      if (record.target !== undefined && !cut) throw new Error('extrude target requires cut')
+      const target = cut ? requiredShape(record.target, seen, 'extrude cut target') : undefined
       feature = {
         op: 'extrude',
         id: record.id,
         profile: normalizeProfile(record.profile),
         distance: record.distance,
+        ...(bothSides ? { bothSides: true } : {}),
+        ...(target ? { cut: true, target } : {}),
       }
       break
     }
     case 'revolve': {
       assertNonZero('angle', record.angle)
       if (Math.abs(record.angle) > 360) throw new Error('revolve angle must be within 360 degrees')
+      if (record.profile === undefined || record.profile === null) {
+        throw new Error('revolve profile is missing')
+      }
+      if (record.axis === null || record.axis === '') throw new Error('revolve axis is missing')
       const axis = record.axis === undefined ? undefined : record.axis
       if (axis !== undefined && !isAxis(axis)) throw new Error('unknown revolve axis')
       feature = {
@@ -132,29 +171,33 @@ function readOp(value: unknown, seen: Set<string>): FeatureOp {
     }
     case 'fillet': {
       assertPositive('radius', record.radius)
+      const edgeIds = optionalEdgeIds(record.edgeIds)
       feature = {
         op: 'fillet',
         id: record.id,
         target: knownShape(record.target, seen),
         radius: record.radius,
+        ...(edgeIds ? { edgeIds } : {}),
       }
       break
     }
     case 'chamfer': {
       assertPositive('radius', record.radius)
+      const edgeIds = optionalEdgeIds(record.edgeIds)
       feature = {
         op: 'chamfer',
         id: record.id,
         target: knownShape(record.target, seen),
         radius: record.radius,
+        ...(edgeIds ? { edgeIds } : {}),
       }
       break
     }
     case 'boolean': {
       if (!(BOOLEANS as readonly string[]).includes(String(record.mode)))
         throw new Error('unknown boolean mode')
-      const target = knownShape(record.target, seen)
-      const tool = knownShape(record.tool, seen)
+      const target = requiredShape(record.target, seen, 'boolean target')
+      const tool = requiredShape(record.tool, seen, 'boolean tool')
       if (target === tool) throw new Error('boolean target and tool must differ')
       feature = { op: 'boolean', id: record.id, mode: record.mode as BooleanMode, target, tool }
       break

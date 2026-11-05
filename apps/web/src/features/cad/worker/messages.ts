@@ -2,6 +2,7 @@ import { exactBuffer } from '../kernel/buffers'
 import type {
   AxisName,
   BooleanMode,
+  ExtrudeOptions,
   FeatureDocument,
   MeasureResult,
   PrimitiveKind,
@@ -13,10 +14,10 @@ import type {
 export type CadRequest =
   | { id: number; kind: 'init' }
   | { id: number; kind: 'createPrimitive'; primitive: PrimitiveKind; params: PrimitiveParams }
-  | { id: number; kind: 'extrude'; profile: Profile2D; distance: number }
+  | ({ id: number; kind: 'extrude'; profile: Profile2D; distance: number } & ExtrudeOptions)
   | { id: number; kind: 'revolve'; profile: Profile2D; angle: number; axis?: AxisName }
-  | { id: number; kind: 'fillet'; targetId: string; radius: number }
-  | { id: number; kind: 'chamfer'; targetId: string; radius: number }
+  | { id: number; kind: 'fillet'; targetId: string; radius: number; edgeIds?: number[] }
+  | { id: number; kind: 'chamfer'; targetId: string; radius: number; edgeIds?: number[] }
   | { id: number; kind: 'boolean'; mode: BooleanMode; targetId: string; toolId: string }
   | { id: number; kind: 'measure'; targetId: string }
   | { id: number; kind: 'importStep'; bytes: ArrayBuffer }
@@ -40,11 +41,14 @@ export type CadResponse =
   | { id: number; ok: false; error: string }
 
 export function meshTransfers(shape: ShapeResult): ArrayBuffer[] {
-  return [
+  const buffers = [
     exactBuffer(shape.mesh.positions),
     exactBuffer(shape.mesh.normals),
     exactBuffer(shape.mesh.indices),
   ]
+  const edges = shape.mesh.edges?.positions
+  if (edges) buffers.push(exactBuffer(edges))
+  return [...new Set(buffers)]
 }
 
 export function responseTransfers(response: CadResponse): ArrayBuffer[] {

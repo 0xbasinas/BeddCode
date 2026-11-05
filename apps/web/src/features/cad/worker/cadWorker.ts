@@ -60,7 +60,11 @@ async function dispatch(request: CadRequest): Promise<void> {
           id: request.id,
           ok: true,
           type: 'shape',
-          shape: await cad.extrude(request.profile, request.distance),
+          shape: await cad.extrude(request.profile, request.distance, {
+            bothSides: request.bothSides,
+            cut: request.cut,
+            target: request.target,
+          }),
         })
         return
       case 'revolve':
@@ -76,7 +80,7 @@ async function dispatch(request: CadRequest): Promise<void> {
           id: request.id,
           ok: true,
           type: 'shape',
-          shape: await cad.fillet(request.targetId, request.radius),
+          shape: await cad.fillet(request.targetId, request.radius, request.edgeIds),
         })
         return
       case 'chamfer':
@@ -84,7 +88,7 @@ async function dispatch(request: CadRequest): Promise<void> {
           id: request.id,
           ok: true,
           type: 'shape',
-          shape: await cad.chamfer(request.targetId, request.radius),
+          shape: await cad.chamfer(request.targetId, request.radius, request.edgeIds),
         })
         return
       case 'boolean':
