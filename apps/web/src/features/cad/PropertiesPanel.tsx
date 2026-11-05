@@ -1,6 +1,27 @@
 import type { CadFeature, ParamValue } from './model/CadDocument.ts'
 
-const ORDER = ['width', 'depth', 'height', 'radius', 'x', 'y', 'z']
+const ORDER = [
+  'width',
+  'depth',
+  'height',
+  'radius',
+  'distance',
+  'angle',
+  'bothSides',
+  'cut',
+  'targetId',
+  'toolId',
+  'target',
+  'tool',
+  'edgeIds',
+  'axis',
+  'plane',
+  'fileName',
+  'sketchId',
+  'x',
+  'y',
+  'z',
+]
 
 function orderedKeys(params: CadFeature['params']): string[] {
   return Object.keys(params).sort((a, b) => {
@@ -19,10 +40,12 @@ function labelOf(key: string): string {
 
 export function PropertiesPanel({
   feature,
+  error,
   onName,
   onParam,
 }: {
   feature: CadFeature | null
+  error?: string
   onName(name: string): void
   onParam(key: string, value: ParamValue): void
 }) {
@@ -38,6 +61,7 @@ export function PropertiesPanel({
             <input value={feature.name} onChange={(event) => onName(event.target.value)} />
           </label>
           <div className="cad-kind">{feature.kind}</div>
+          {error ? <p className="cad-empty">{error}</p> : null}
           {orderedKeys(feature.params).map((key) => {
             const value = feature.params[key]
             if (typeof value === 'boolean') {

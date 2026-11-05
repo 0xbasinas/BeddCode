@@ -4,6 +4,8 @@ import {
   emptyDocument,
   isCadDocument,
   makeBoxFeature,
+  makeCylinderFeature,
+  makeSphereFeature,
   moveFeature,
   removeFeature,
   updateFeature,
@@ -27,6 +29,25 @@ describe('CadDocument', () => {
     const second = makeBoxFeature(once, 'b')
     expect(second.params.x).toBe(30)
     expect(second.name).toBe('Box 2')
+  })
+
+  it('builds a cylinder and a sphere with editable sizes', () => {
+    const doc = emptyDocument()
+    const cylinder = makeCylinderFeature(doc, 'c1')
+    expect(cylinder.kind).toBe('cylinder')
+    expect(cylinder.name).toBe('Cylinder 1')
+    expect(cylinder.params).toMatchObject({ radius: 10, height: 20, y: 10 })
+    const withCylinder = appendFeature(doc, cylinder)
+    const second = makeCylinderFeature(withCylinder, 'c2')
+    expect(second.name).toBe('Cylinder 2')
+    expect(second.params.x).toBe(30)
+    const sphere = makeSphereFeature(doc, 's1')
+    expect(sphere.kind).toBe('sphere')
+    expect(sphere.name).toBe('Sphere 1')
+    expect(sphere.params).toMatchObject({ radius: 10, y: 10 })
+    const secondSphere = makeSphereFeature(appendFeature(doc, sphere), 's2')
+    expect(secondSphere.name).toBe('Sphere 2')
+    expect(secondSphere.params.x).toBe(30)
   })
 
   it('edits, moves, and removes features', () => {
