@@ -3,6 +3,7 @@ import type { GeometryKernel } from './GeometryKernel'
 import type {
   AxisName,
   BooleanMode,
+  ExtrudeOptions,
   FeatureDocument,
   MeasureResult,
   PrimitiveKind,
@@ -78,21 +79,43 @@ export function createCadClient(): GeometryKernel {
       await client.init()
       return shapeOf(await send({ kind: 'createPrimitive', primitive: kind, params }))
     },
-    async extrude(profile: Profile2D, distance: number) {
+    async extrude(profile: Profile2D, distance: number, options?: ExtrudeOptions) {
       await client.init()
-      return shapeOf(await send({ kind: 'extrude', profile, distance }))
+      return shapeOf(
+        await send({
+          kind: 'extrude',
+          profile,
+          distance,
+          ...(options?.bothSides ? { bothSides: true } : {}),
+          ...(options?.cut ? { cut: true, target: options.target } : {}),
+        }),
+      )
     },
     async revolve(profile: Profile2D, angle: number, axis?: AxisName) {
       await client.init()
       return shapeOf(await send({ kind: 'revolve', profile, angle, axis }))
     },
-    async fillet(targetId: string, radius: number) {
+    async fillet(targetId: string, radius: number, edgeIds?: number[]) {
       await client.init()
-      return shapeOf(await send({ kind: 'fillet', targetId, radius }))
+      return shapeOf(
+        await send({
+          kind: 'fillet',
+          targetId,
+          radius,
+          ...(edgeIds && edgeIds.length > 0 ? { edgeIds } : {}),
+        }),
+      )
     },
-    async chamfer(targetId: string, radius: number) {
+    async chamfer(targetId: string, radius: number, edgeIds?: number[]) {
       await client.init()
-      return shapeOf(await send({ kind: 'chamfer', targetId, radius }))
+      return shapeOf(
+        await send({
+          kind: 'chamfer',
+          targetId,
+          radius,
+          ...(edgeIds && edgeIds.length > 0 ? { edgeIds } : {}),
+        }),
+      )
     },
     async boolean(mode: BooleanMode, targetId: string, toolId: string) {
       await client.init()

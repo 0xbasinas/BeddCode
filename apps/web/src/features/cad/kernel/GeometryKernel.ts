@@ -5,6 +5,7 @@ import type {
   FeatureDocument,
   MeasureResult,
   MeshBuffer,
+  ExtrudeOptions,
   PrimitiveKind,
   PrimitiveParams,
   Profile2D,
@@ -20,10 +21,12 @@ export type { BBox, MeasureResult, MeshBuffer, ShapeResult }
 export interface GeometryKernel {
   init(): Promise<void>
   createPrimitive(kind: PrimitiveKind, params: PrimitiveParams): Promise<ShapeResult>
-  extrude(profile: Profile2D, distance: number): Promise<ShapeResult>
+  extrude(profile: Profile2D, distance: number, options?: ExtrudeOptions): Promise<ShapeResult>
   revolve(profile: Profile2D, angle: number, axis?: AxisName): Promise<ShapeResult>
-  fillet(targetId: string, radius: number): Promise<ShapeResult>
-  chamfer(targetId: string, radius: number): Promise<ShapeResult>
+  /** Fillets every edge, or only `edgeIds` (mesh edge hashes) when those are set. */
+  fillet(targetId: string, radius: number, edgeIds?: number[]): Promise<ShapeResult>
+  /** Chamfers every edge, or only `edgeIds` (mesh edge hashes) when those are set. */
+  chamfer(targetId: string, radius: number, edgeIds?: number[]): Promise<ShapeResult>
   boolean(mode: BooleanMode, targetId: string, toolId: string): Promise<ShapeResult>
   measure(targetId: string): Promise<MeasureResult>
   importStep(bytes: Uint8Array): Promise<ShapeResult>
