@@ -43,12 +43,6 @@ export function HistoryDialog({
   const [opening, setOpening] = useState<string>()
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !opening && onClose()
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose, opening])
-
-  useEffect(() => {
     if (!instanceId) return
     let cancelled = false
     setEntries(null)
@@ -88,7 +82,9 @@ export function HistoryDialog({
       <DialogContent
         showCloseButton={false}
         aria-describedby={undefined}
-        onOpenAutoFocus={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => {
+          if (opening) e.preventDefault()
+        }}
         className="modal max-w-none gap-0 p-0 sm:max-w-none"
       >
         <header className="modal-head">

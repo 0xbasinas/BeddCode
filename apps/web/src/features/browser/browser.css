@@ -1,0 +1,39 @@
+.browser .browser-annotations {
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--text);
+  font-size: var(--fs-small);
+}
+
+.browser .browser-annotation {
+  flex-wrap: wrap;
+  gap: var(--gap);
+  padding-top: var(--gap);
+  font-size: var(--fs-small);
+}
+
+.browser-annotation textarea {
+  padding: var(--gap);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--corner-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+}
+
+.browser-annotation button {
+  padding: var(--gap);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--corner-sm);
+  background: var(--bg-raised);
+  color: var(--text-secondary);
+  font: inherit;
+}
+
+.browser-annotation button:hover {
+  background: var(--bg-hover);
+}
+
+.browser-annotation :is(textarea, button):focus-visible {
+  outline: 2px solid var(--text-secondary);
+  outline-offset: 2px;
+}

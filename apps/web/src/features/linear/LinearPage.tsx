@@ -17,7 +17,6 @@ import {
   Lightbulb,
   KeyRound,
   LoaderCircle,
-  LogOut,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -721,6 +720,11 @@ function Workspace({
 
       <div className="lin-split">
         <div className="lin-scroll">
+          {loading && rows.length === 0 && (
+            <p className="lin-muted lin-note" role="status">
+              Loading issues…
+            </p>
+          )}
           {!loading && !error && visible.length === 0 && !note && (
             <div className="lin-empty">
               <span className="linear-empty-icon">

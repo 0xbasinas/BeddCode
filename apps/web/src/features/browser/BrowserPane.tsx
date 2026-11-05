@@ -1,3 +1,4 @@
+import './browser.css'
 import { createElement, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'

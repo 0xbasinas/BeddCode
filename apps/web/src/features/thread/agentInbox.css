@@ -1,0 +1,24 @@
+.orchestration-actions button {
+  padding: calc(var(--gap) / 2) calc(var(--gap) * 1.5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+}
+.orchestration-actions button:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.orchestration-actions button[aria-pressed='true'] {
+  color: var(--text);
+  background: var(--bg-active);
+  border-color: var(--border-strong);
+}
+.orchestration-row small {
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+.orchestration-row p {
+  white-space: pre-wrap;
+  margin: calc(var(--gap) / 2) 0 0;
+}

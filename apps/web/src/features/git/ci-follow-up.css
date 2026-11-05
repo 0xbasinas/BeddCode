@@ -1,0 +1,56 @@
+.ci-follow-up {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gap);
+  padding: calc(10px * var(--ui-scale));
+  color: var(--text);
+  font-size: var(--fs-small);
+}
+
+.ci-follow-up > div {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gap);
+}
+
+.ci-follow-up p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.ci-follow-up button:not([role='checkbox']) {
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: var(--corner-md);
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ci-follow-up button:not([role='checkbox']):hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.ci-follow-up button:disabled {
+  opacity: var(--disabled-opacity);
+  cursor: default;
+}
+
+.ci-follow-up textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: calc(180px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: var(--corner-md);
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}

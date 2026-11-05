@@ -15,7 +15,7 @@ export function AutoHandoffSettings({ hostKey }: { hostKey: string }) {
       <div className="settings-section-head">
         <h3>Automatic handoff</h3>
       </div>
-      <div className="settings-card">
+      <div className="settings-card handoff-settings">
         <p className="settings-notice">
           Choose an ordered list of agents for this host. Automatic handoff runs while this app is
           open.
@@ -46,9 +46,10 @@ export function AutoHandoffSettings({ hostKey }: { hostKey: string }) {
         </label>
         <p className="settings-notice">Fallback order (first available is used)</p>
         {policy.fallback.map((id, i) => (
-          <div key={id}>
+          <div className="handoff-fallback" key={id}>
             {providers.find((p) => p.id === id)?.label ?? id}{' '}
             <button
+              className="settings-button"
               disabled={i === 0}
               onClick={() => {
                 const next = [...policy.fallback]
@@ -59,6 +60,7 @@ export function AutoHandoffSettings({ hostKey }: { hostKey: string }) {
               Move up
             </button>{' '}
             <button
+              className="settings-button"
               onClick={() =>
                 update(hostKey, project, {
                   ...policy,

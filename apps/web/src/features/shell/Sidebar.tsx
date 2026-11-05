@@ -1,3 +1,4 @@
+import './sidebarPolish.css'
 import { StatusTimer } from '../../ui/StatusTimer.tsx'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'

@@ -7,11 +7,17 @@ export function AllMcpServers({ hostKey, online }: { hostKey: string; online: bo
   const [overview, setOverview] = useState<RpcResult<'mcp.overview'>>()
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState('')
   const load = useCallback(async () => {
+    setLoading(true)
+    setLoadError('')
     try {
       setOverview(await hostRequest(hostKey, 'mcp.overview', {}))
     } catch {
-      setMessage('Could not load MCP servers')
+      setLoadError('Could not load MCP servers.')
+    } finally {
+      setLoading(false)
     }
   }, [hostKey])
   useEffect(() => {
@@ -41,7 +47,7 @@ export function AllMcpServers({ hostKey, online }: { hostKey: string; online: bo
         <Button
           variant="app"
           className="settings-button"
-          disabled={!online || busy}
+          disabled={!online || busy || loading}
           onClick={() => void load()}
         >
           Refresh
@@ -52,13 +58,21 @@ export function AllMcpServers({ hostKey, online }: { hostKey: string; online: bo
           {message}
         </p>
       )}
+      {loadError && (
+        <p className="settings-error" role="alert">
+          {loadError}
+        </p>
+      )}
       {overview?.errors.map((error) => (
         <p className="settings-error" key={error.instanceId}>
           {error.label}: {error.error}
         </p>
       ))}
       <div className="settings-card">
-        {!overview && <p className="settings-empty">Checking servers…</p>}
+        {!overview && !online && (
+          <p className="settings-empty">Connect to this host to view MCP servers.</p>
+        )}
+        {!overview && online && !loadError && <p className="settings-empty">Checking servers…</p>}
         {overview?.servers.length === 0 && <p className="settings-empty">No MCP servers yet.</p>}
         {overview?.servers.map((row) => (
           <div className="setting-row" key={row.name}>

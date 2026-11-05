@@ -1,0 +1,57 @@
+.folders-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--gap) var(--pane-pad-x);
+  color: var(--text-muted);
+  font-size: var(--fs-small);
+}
+.folders-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+.project-group-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  width: 100%;
+  padding: var(--gap) var(--pane-pad-x);
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+  text-align: left;
+}
+.project-group-heading:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.folder-chip,
+.folder-host {
+  color: var(--text-faint);
+  font-size: var(--fs-caption);
+}
+.folder-host {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap);
+  min-width: 0;
+}
+.folder-host-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folder-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  margin: var(--gap) var(--pane-pad-x);
+  padding: var(--gap);
+  border-radius: var(--radius-control);
+  color: var(--text-muted);
+  font-size: var(--fs-small);
+}
+.folder-empty:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}

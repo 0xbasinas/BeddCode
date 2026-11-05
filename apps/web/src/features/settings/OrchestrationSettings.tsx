@@ -125,14 +125,23 @@ export function OrchestrationSettings({ hostKey }: { hostKey: string }) {
               </option>
             </select>
           </label>
-          <button type="button" disabled={busy} onClick={() => void save()}>
+          <button
+            className="settings-button primary"
+            type="button"
+            disabled={busy}
+            onClick={() => void save()}
+          >
             Save settings
           </button>
           {saved && <span role="status"> Settings saved</span>}
         </>
       )}
       {connection !== 'connected' && <p>Host disconnected.</p>}
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p className="settings-error" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

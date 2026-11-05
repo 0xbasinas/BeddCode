@@ -4,6 +4,7 @@ import type { CiReport } from '@beddcode/contracts'
 import { hostRequest } from '../../stores/host.ts'
 import { composerDraftKey, useComposerDrafts } from '../composer/drafts.ts'
 import { ciPrompt } from './ciPrompt.ts'
+import './ci-follow-up.css'
 
 /** Reading CI never starts a turn. The user chooses logs and reviews the resulting prompt. */
 export function CiFollowUp({
@@ -121,7 +122,6 @@ export function CiFollowUp({
             aria-label="CI follow-up"
             value={text}
             onChange={(event) => setText(event.target.value)}
-            style={{ width: '100%', minHeight: 180 }}
           />
           <button
             disabled={busy || !selected.length || !text.trim()}
