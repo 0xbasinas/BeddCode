@@ -286,6 +286,26 @@ describe('replica', () => {
     expect(view.status).toBe('running')
   })
 
+  it('goes back to idle when a request made after the turn ended is answered', () => {
+    const s = fold([
+      created,
+      { type: 'turn.started' },
+      { type: 'turn.completed', reason: 'done' },
+      {
+        type: 'approval.requested',
+        requestId: 'push',
+        title: 'Push?',
+        options: [{ id: 'allow', label: 'Allow', kind: 'allow' }],
+      },
+    ])
+    expect(s.sessions.s1!.status).toBe('needs-you')
+    const resolved = applyEvent(s, {
+      seq: 99,
+      event: { ...base, type: 'approval.resolved', requestId: 'push', optionId: 'allow' },
+    })
+    expect(resolved.sessions.s1!.status).toBe('idle')
+  })
+
   it('tracks tools, diffs and approvals, and derives status', () => {
     const s = fold([
       created,
