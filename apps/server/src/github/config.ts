@@ -16,6 +16,8 @@ export interface RunSettings {
 export interface RepoSettings extends RunSettings {
   /** The local clone this host works in. */
   path: string
+  /** A branch to start issue work from instead of the repository's default, e.g. a long-lived dev branch. */
+  baseBranch?: string
   approval?: Partial<ApprovalPolicy>
 }
 
@@ -108,6 +110,7 @@ export function readGithubConfig(file: string): GithubConfig | undefined {
     if (!repoPath || !/^[\w.-]+\/[\w.-]+$/.test(name)) continue
     repos[name.toLowerCase()] = {
       path: repoPath,
+      baseBranch: str(o.baseBranch),
       ...run(o),
       approval: o.approval ? policy(o.approval, approvals) : undefined,
     }
