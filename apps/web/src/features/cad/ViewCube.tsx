@@ -1,28 +1,53 @@
 export type ViewName = 'front' | 'top' | 'right' | 'iso'
 
-const VIEWS: { id: ViewName; label: string; short: string }[] = [
-  { id: 'front', label: 'Front', short: 'Front' },
-  { id: 'top', label: 'Top', short: 'Top' },
-  { id: 'right', label: 'Right', short: 'Right' },
-  { id: 'iso', label: 'Iso', short: 'Iso' },
-]
+const FACES: { id: ViewName; label: string; points: string; text: string; x: number; y: number }[] =
+  [
+    { id: 'top', label: 'Top', points: '32,6 56,18 32,30 8,18', text: 'Top', x: 32, y: 20 },
+    { id: 'front', label: 'Front', points: '8,18 32,30 32,58 8,46', text: 'Front', x: 20, y: 40 },
+    { id: 'right', label: 'Right', points: '32,30 56,18 56,46 32,58', text: 'Right', x: 44, y: 40 },
+  ]
 
 /** Clickable standard views. Our own control, not a third-party view cube. */
 export function ViewCube({ active, onView }: { active: ViewName; onView(view: ViewName): void }) {
   return (
     <div className="cad-viewcube" role="group" aria-label="Standard views">
-      {VIEWS.map((view) => (
+      <svg className="cad-viewcube-svg" viewBox="0 0 64 64" aria-hidden="true">
+        {FACES.map((face) => (
+          <g
+            key={face.id}
+            className={active === face.id ? 'is-active' : undefined}
+            onClick={() => onView(face.id)}
+          >
+            <polygon points={face.points} />
+            <text x={face.x} y={face.y}>
+              {face.text}
+            </text>
+          </g>
+        ))}
+      </svg>
+      <div className="cad-viewcube-list">
+        {FACES.map((face) => (
+          <button
+            key={face.id}
+            type="button"
+            aria-pressed={active === face.id}
+            aria-label={face.label}
+            title={face.label}
+            onClick={() => onView(face.id)}
+          >
+            {face.label}
+          </button>
+        ))}
         <button
-          key={view.id}
           type="button"
-          aria-pressed={active === view.id}
-          aria-label={view.label}
-          title={view.label}
-          onClick={() => onView(view.id)}
+          aria-pressed={active === 'iso'}
+          aria-label="Iso"
+          title="Isometric"
+          onClick={() => onView('iso')}
         >
-          {view.short}
+          Iso
         </button>
-      ))}
+      </div>
     </div>
   )
 }

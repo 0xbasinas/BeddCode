@@ -7,15 +7,19 @@ import {
   Combine,
   Cylinder,
   Download,
+  DraftingCompass,
   MousePointer2,
   Pencil,
+  PenLine,
   RotateCw,
   Ruler,
   Scissors,
   Spline,
+  Square,
   Triangle,
   Upload,
 } from 'lucide-react'
+import type { SketchToolName } from './sketcher/project.ts'
 
 export type CadTool =
   | 'select'
@@ -33,6 +37,16 @@ export type CadTool =
   | 'measure'
   | 'import'
   | 'export'
+
+/** Sketch sub-tools. Separate from `CadTool` so the main toolbar stays compatible. */
+export type SketchTool = SketchToolName
+
+export const SKETCH_TOOLS: { id: SketchTool; label: string; title: string; Icon: LucideIcon }[] = [
+  { id: 'line', label: 'Line', title: 'Sketch line', Icon: PenLine },
+  { id: 'rectangle', label: 'Rect', title: 'Sketch rectangle', Icon: Square },
+  { id: 'circle', label: 'Circle', title: 'Sketch circle', Icon: Circle },
+  { id: 'arc', label: 'Arc', title: 'Sketch arc', Icon: DraftingCompass },
+]
 
 export const CAD_TOOLS: { id: CadTool; label: string; title: string; Icon: LucideIcon }[] = [
   { id: 'select', label: 'Select', title: 'Select', Icon: MousePointer2 },
@@ -55,9 +69,14 @@ export const CAD_TOOLS: { id: CadTool; label: string; title: string; Icon: Lucid
 export function Toolbar({
   active,
   onCommand,
+  sketchTool = null,
+  onSketchTool,
 }: {
   active: CadTool
   onCommand(tool: CadTool): void
+  /** When `onSketchTool` is set, line / rect / circle / arc sit beside the main tools. */
+  sketchTool?: SketchTool | null
+  onSketchTool?(tool: SketchTool): void
 }) {
   return (
     <div className="cad-toolbar" role="toolbar" aria-label="CAD tools">
@@ -75,6 +94,24 @@ export function Toolbar({
           {label}
         </button>
       ))}
+      {onSketchTool ? (
+        <div className="cad-sketch-tools" role="group" aria-label="Sketch tools">
+          {SKETCH_TOOLS.map(({ id, label, title, Icon }) => (
+            <button
+              key={id}
+              type="button"
+              className="cad-tool"
+              aria-pressed={sketchTool === id}
+              aria-label={title}
+              title={title}
+              onClick={() => onSketchTool(id)}
+            >
+              <Icon size={14} />
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
