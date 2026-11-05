@@ -15,6 +15,7 @@ import { createClaudeMcp } from './mcp.ts'
 import { readClaudeLimits } from './limits.ts'
 import { generateSessionText } from '@beddcode/provider-core'
 import { randomUUID } from 'node:crypto'
+import type { SupervisorClient } from './supervisor/client.ts'
 
 export const CLAUDE_INSTANCE_ID = 'claude'
 
@@ -71,6 +72,8 @@ export interface ClaudeAdapterOptions {
   /** Injected in tests. */
   queryFn?: QueryFn
   historySdk?: ClaudeHistorySdk
+  /** Keeps agents running across host restarts (off unless given; see docs/agent-supervisor.md). */
+  supervisor?: SupervisorClient
 }
 
 export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): ProviderAdapter {
@@ -154,12 +157,22 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
     async startSession(_instanceId, input) {
       const exe = executable()
       if (!exe) throw new Error('Claude Code is not installed on this host')
+      const attached = input.reattach
+        ? await options.supervisor?.attach(input.sessionId).catch((err: unknown) => {
+            log.warn(`could not reattach ${input.sessionId}; starting a new agent`, err)
+            return undefined
+          })
+        : undefined
+      if (attached)
+        log.info(`reattached ${input.sessionId} to its running agent (pid ${attached.pid})`)
       return new ClaudeSession(input, {
         queryFn,
         log,
         executablePath: exe,
         env,
         modes: claudeCapabilities.permissionModes,
+        supervisor: options.supervisor,
+        attached,
       })
     },
     listHistory: (_instanceId, cwd) => history.list(cwd),

@@ -32,6 +32,11 @@ export interface StartSessionInput {
    * watch. Without it adapters run them as plain child processes.
    */
   terminalHost?: AgentTerminalHost
+  /**
+   * The host restarted while this session's agent may still be running under a supervisor: take
+   * it over if it is, instead of starting a new process. Providers without a supervisor ignore it.
+   */
+  reattach?: boolean
 }
 
 export interface AgentCommandRequest {
@@ -98,6 +103,13 @@ export interface ProviderSession {
   /** Answer a `question.requested` event; `answers` is absent when the user dismissed it. */
   answerQuestion?(requestId: string, answers?: Record<string, string[]>): Promise<void>
   close(): Promise<void>
+  /**
+   * The host is shutting down but the agent should keep running (only providers whose agents are
+   * supervised have it). The host calls `close` for a session the user ended.
+   */
+  detach?(): Promise<void>
+  /** This session took over an agent that was already running, so its turn needs no new prompt. */
+  readonly reattached?: boolean
 }
 
 /** A conversation the agent's own CLI keeps, as listed before it is imported. */
