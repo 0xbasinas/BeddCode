@@ -20,7 +20,7 @@ const headers = (token: string) => ({
 export class Github {
   constructor(
     private readonly env: GithubEnv,
-    private readonly doFetch: Fetch = fetch,
+    private readonly doFetch: Fetch = (input, init) => fetch(input, init),
   ) {}
 
   /**

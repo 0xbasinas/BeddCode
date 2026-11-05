@@ -57,9 +57,22 @@ async function webhook(request: Request, env: Env, ctx: ExecutionContext): Promi
   // Ignored deliveries get the same quiet 202, so outsiders learn nothing about the rules.
   if (!result.ok) return new Response('ignored', { status: 202 })
   ctx.waitUntil(
-    accept(env, result.request).catch((err) => console.error('accept failed', String(err))),
+    accept(env, result.request).catch((err) => failed(env, result.request, err)),
   )
   return new Response('accepted', { status: 202 })
+}
+
+/** Something broke after the sender was verified. Say so on the thread, so it is not silent. */
+async function failed(env: Env, ask: AskRequest, err: unknown): Promise<void> {
+  const message = String(err instanceof Error ? err.message : err).slice(0, 300)
+  console.error('accept failed', ask.repo, ask.number, message)
+  try {
+    const github = new Github(env)
+    const token = await github.token(ask.installationId)
+    await github.comment(token, ask.repo, ask.number, `@${ask.sender} I could not queue that: ${message}`)
+  } catch (inner) {
+    console.error('could not report the failure', String(inner))
+  }
 }
 
 /** Builds the job's context, queues it, and tells the sender what happened. */
