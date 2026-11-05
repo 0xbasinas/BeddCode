@@ -1,3 +1,4 @@
+// Policy checks for GitHub webhooks: sender allowlist, fork detection and per-sender rate limiting.
 /** Who a webhook says did something. */
 export interface Actor {
   login: string
