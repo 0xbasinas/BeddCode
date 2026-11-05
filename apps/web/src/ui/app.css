@@ -1095,7 +1095,7 @@ button.chip-lite:hover {
   opacity: var(--disabled-opacity);
 }
 .menu-row.danger .menu-title {
-  color: var(--accent);
+  color: var(--warn-text);
 }
 .menu-text {
   display: flex;

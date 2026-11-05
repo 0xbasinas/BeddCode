@@ -587,7 +587,7 @@ export function EditedFilesCard({
   cwd: string
   onOpenFile?(path: string): void
 }) {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
   const { added, removed } = totalChanges(files)
   return (
     <div className="edits">
@@ -600,12 +600,12 @@ export function EditedFilesCard({
         {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
       </button>
       {open &&
-        files.map((file, i) => (
+        files.map((file) => (
           <FileDiff
             key={file.path}
             file={file}
             cwd={cwd}
-            initiallyOpen={i === 0}
+            initiallyOpen={false}
             onOpenFile={onOpenFile}
           />
         ))}

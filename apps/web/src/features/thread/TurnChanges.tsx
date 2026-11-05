@@ -44,7 +44,7 @@ export function TurnChangesCard({
   offerPr?: boolean
   onOpenFile?(path: string): void
 }) {
-  const [open, setOpen] = useState(item.files.length <= 3 && !item.reverted)
+  const [open, setOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [undoing, setUndoing] = useState(false)
   const [error, setError] = useState<string>()
