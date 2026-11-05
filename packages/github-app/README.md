@@ -81,6 +81,14 @@ Quoted lines and code blocks are ignored, so quoting a command never runs it.
 }
 ```
 
+**Names are matched against what the host really has.** `agent`, `model`, `effort` and `permissionMode` can be written
+loosely, in the config or in a comment: `sonnet 5.5`, `GPT-5 mini`, `fast model`, `think hard`, `full`. The host reads the
+agent's own list of models, efforts and modes and picks the closest; anything it cannot match is mentioned in the reply
+and the default is used. `permissionMode: "full"` means the agent's full-access (no prompts) mode, so a job never stalls on
+a tool approval. Use it only on a host you are happy to let act on your repos. A name only counts when it is chosen
+("with codex", "use sonnet", "on high"), so "fix the codex bug" does not switch agents. If an approval is left
+unanswered for a minute, the job says so on the thread.
+
 Settings layer: `defaults`, then the repo, then the command, then what the comment asked for.
 
 **Several hosts:** each lists the repos it serves. The online host with the lowest `priority` gets the job; if it

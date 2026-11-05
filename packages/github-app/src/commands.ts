@@ -61,7 +61,8 @@ export function parseCommand(body: string, slug: string): Command | undefined {
   return natural((match[2] ?? '').trim(), { agent, model, effort })
 }
 
-const FAMILIES = /\b(sonnet|opus|haiku)\b(?:\s*v?\d+(?:\.\d+)?)?/i
+/** Words that introduce a choice: "with codex", "use sonnet", "on medium". Without one, a name is just a topic. */
+const BY = '(?:with|using|use|via|by|on|model|agent)(?:\\s+the)?\\s+'
 const LEVEL = '(low|medium|high|xhigh|max)'
 
 /**
@@ -77,8 +78,8 @@ function natural(
   if (!text) return undefined
   let { agent, model, effort } = found
   const lower = text.toLowerCase()
-  agent ??= /\b(claude|codex|gemini|grok)\b/.exec(lower)?.[1]
-  model ??= FAMILIES.exec(lower)?.[1]
+  agent ??= new RegExp(`\\b${BY}(claude|codex|gemini|grok)\\b`).exec(lower)?.[1]
+  model ??= new RegExp(`\\b${BY}(sonnet|opus|haiku)\\b`).exec(lower)?.[1]
   effort ??=
     new RegExp(`\\beffort\\s*[=:]?\\s*${LEVEL}\\b`).exec(lower)?.[1] ??
     new RegExp(`\\b${LEVEL}\\s+effort\\b`).exec(lower)?.[1] ??

@@ -87,8 +87,8 @@ function setup(over: { approval?: object; repos?: object } = {}) {
       readSession: () => events,
       providers: async () =>
         [
-          { id: 'claude-1', label: 'Claude Code' },
-          { id: 'codex-1', label: 'Codex' },
+          { id: 'claude-1', kind: 'claude', label: 'Claude Code', status: 'ready', capabilities: { permissionModes: [{ id: 'plan', label: 'Plan mode' }, { id: 'bypassPermissions', label: 'Full access', dangerous: true }], models: [{ id: 'sonnet', label: 'Sonnet' }] } },
+          { id: 'codex-1', kind: 'codex', label: 'Codex', status: 'ready', capabilities: { permissionModes: [{ id: 'plan', label: 'Plan mode' }], models: [{ id: 'gpt-5', label: 'GPT-5', efforts: ['low', 'high'] }] } },
         ] as never,
       subscribe: (l) => {
         listener = l
