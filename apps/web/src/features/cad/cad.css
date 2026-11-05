@@ -44,6 +44,14 @@
   color: var(--text);
 }
 
+.cad-sketch-tools {
+  display: inline-flex;
+  gap: calc(2px * var(--ui-scale));
+  margin-left: calc(4px * var(--ui-scale));
+  padding-left: calc(6px * var(--ui-scale));
+  border-left: 1px solid var(--border-subtle);
+}
+
 .cad-body {
   display: flex;
   flex: 1;
@@ -84,10 +92,10 @@
 
 .cad-empty {
   margin: 0;
-  padding: calc(4px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(12px * var(--ui-scale));
   color: var(--text-faint);
   font-size: var(--fs-caption);
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .cad-feature-list {
@@ -167,12 +175,88 @@
   min-height: 0;
   background: var(--bg-code);
   overflow: hidden;
+  outline: none;
 }
 
-.cad-viewport canvas {
+.cad-viewport-stage {
+  position: absolute;
+  inset: 0;
+}
+
+.cad-viewport canvas,
+.cad-viewport-stage canvas {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* Face and edge highlights are neutral grays in the WebGL materials, never saturated. */
+
+.cad-viewport-empty {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  z-index: 1;
+  margin: 0;
+  transform: translate(-50%, -50%);
+  color: var(--text-faint);
+  font-size: var(--fs-caption);
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+}
+
+.cad-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--bg-code) 78%, transparent);
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+
+.cad-loading span {
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  background: var(--bg-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--corner-sm);
+}
+
+.cad-sketch-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.cad-sketch-label,
+.cad-measure-label,
+.cad-measure-readout {
+  color: var(--text-muted);
+  font-size: var(--fs-micro);
+  line-height: 1.2;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--bg-panel) 82%, transparent);
+  border-radius: var(--corner-xs);
+}
+
+.cad-sketch-label,
+.cad-measure-label {
+  position: absolute;
+  padding: 1px calc(4px * var(--ui-scale));
+  transform: translate(8px, -14px);
+}
+
+.cad-measure-readout {
+  position: absolute;
+  left: calc(8px * var(--ui-scale));
+  bottom: calc(8px * var(--ui-scale));
+  z-index: 1;
+  padding: calc(3px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  pointer-events: none;
 }
 
 .cad-viewport-chrome {
@@ -187,6 +271,38 @@
 }
 
 .cad-viewcube {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: calc(4px * var(--ui-scale));
+}
+
+.cad-viewcube-svg {
+  width: calc(84px * var(--ui-scale));
+  height: auto;
+  display: block;
+}
+
+.cad-viewcube-svg polygon {
+  fill: var(--bg-raised);
+  stroke: var(--border);
+  stroke-width: 1;
+  cursor: pointer;
+}
+
+.cad-viewcube-svg g.is-active polygon,
+.cad-viewcube-svg g:hover polygon {
+  fill: var(--bg-active);
+}
+
+.cad-viewcube-svg text {
+  fill: var(--text-muted);
+  font-size: 7px;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.cad-viewcube-list {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1px;
@@ -197,23 +313,26 @@
 }
 
 .cad-viewcube button,
+.cad-viewcube-list button,
 .cad-viewport-actions button {
   background: var(--bg-raised);
   color: var(--text-muted);
   font-size: var(--fs-micro);
 }
 
-.cad-viewcube button {
-  min-width: calc(44px * var(--ui-scale));
-  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+.cad-viewcube-list button {
+  min-width: calc(40px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
 }
 
-.cad-viewcube button[aria-pressed='true'] {
+.cad-viewcube button[aria-pressed='true'],
+.cad-viewcube-list button[aria-pressed='true'] {
   background: var(--bg-active);
   color: var(--text);
 }
 
 .cad-viewcube button:hover,
+.cad-viewcube-list button:hover,
 .cad-viewport-actions button:hover {
   color: var(--text);
   background: var(--bg-hover);
