@@ -24,6 +24,16 @@ GitHub webhook ──▶ Worker (verify signature, allow-list, rate limit, build
 | `stop` | issue or PR | interrupts the running job |
 
 `@beddcode codex model=gpt-5 effort=high fix this` picks the agent, model and effort for that one job.
+**Plain words work too.** Anything that is not one of the commands above, such as
+`@beddcode go ahead and tackle this with claude on sonnet on low`, is read by the agent on your host. It decides
+whether to fix, review, explain, rebase, just answer, or ask you a question back, then carries on in the same
+session. Agent, model and effort are picked out of the sentence.
+
+**Labels.** Adding the label `beddcode` starts a fix on an issue or a review on a pull request; `beddcode:fix`,
+`beddcode:review`, `beddcode:fix-ci`, `beddcode:explain` and `beddcode:rebase` choose the command. Create the labels
+once in the repo. Only an allowed login applying the label counts. (GitHub does not list apps in the `@` picker, so
+the label is the way to trigger it without typing.)
+
 Quoted lines and code blocks are ignored, so quoting a command never runs it.
 
 ## Safety
@@ -70,6 +80,14 @@ Quoted lines and code blocks are ignored, so quoting a command never runs it.
   }
 }
 ```
+
+**Names are matched against what the host really has.** `agent`, `model`, `effort` and `permissionMode` can be written
+loosely, in the config or in a comment: `sonnet 5.5`, `GPT-5 mini`, `fast model`, `think hard`, `full`. The host reads the
+agent's own list of models, efforts and modes and picks the closest; anything it cannot match is mentioned in the reply
+and the default is used. `permissionMode: "full"` means the agent's full-access (no prompts) mode, so a job never stalls on
+a tool approval. Use it only on a host you are happy to let act on your repos. A name only counts when it is chosen
+("with codex", "use sonnet", "on high"), so "fix the codex bug" does not switch agents. If an approval is left
+unanswered for a minute, the job says so on the thread.
 
 Settings layer: `defaults`, then the repo, then the command, then what the comment asked for.
 

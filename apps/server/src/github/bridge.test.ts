@@ -33,6 +33,8 @@ function setup(over: { approval?: object; repos?: object } = {}) {
   const calls: string[] = []
   const created: Record<string, unknown>[] = []
   const asked: string[] = []
+  const replies: string[] = []
+  const prompts: string[] = []
   const gitCalls: { args: string[]; env?: Record<string, string> }[] = []
   let listener: ((s: StoredEvent) => void) | undefined
   let answer = true
@@ -67,12 +69,13 @@ function setup(over: { approval?: object; repos?: object } = {}) {
         created.push(params as unknown as Record<string, unknown>)
         return { sessionId: 'abcd1234-0000' }
       },
-      prompt: async (sessionId) => {
+      prompt: async (sessionId, text) => {
+        prompts.push(text)
         queueMicrotask(() => {
           append({ type: 'session.created', sessionId, at: 0, title: 't', cwd: '/x', instanceId: 'claude-1' })
           append({ type: 'turn.started', sessionId, at: 1 })
           append({ type: 'message.delta', sessionId, at: 1, role: 'user', text: 'go' })
-          append({ type: 'message.delta', sessionId, at: 2, role: 'assistant', text: 'Fixed the null check.' })
+          append({ type: 'message.delta', sessionId, at: 2, role: 'assistant', text: replies.shift() ?? 'Fixed the null check.' })
           append({ type: 'turn.completed', sessionId, at: 3, reason: 'done' })
         })
       },
@@ -84,8 +87,8 @@ function setup(over: { approval?: object; repos?: object } = {}) {
       readSession: () => events,
       providers: async () =>
         [
-          { id: 'claude-1', label: 'Claude Code' },
-          { id: 'codex-1', label: 'Codex' },
+          { id: 'claude-1', kind: 'claude', label: 'Claude Code', status: 'ready', capabilities: { permissionModes: [{ id: 'plan', label: 'Plan mode' }, { id: 'bypassPermissions', label: 'Full access', dangerous: true }], models: [{ id: 'sonnet', label: 'Sonnet' }] } },
+          { id: 'codex-1', kind: 'codex', label: 'Codex', status: 'ready', capabilities: { permissionModes: [{ id: 'plan', label: 'Plan mode' }], models: [{ id: 'gpt-5', label: 'GPT-5', efforts: ['low', 'high'] }] } },
         ] as never,
       subscribe: (l) => {
         listener = l
@@ -96,7 +99,7 @@ function setup(over: { approval?: object; repos?: object } = {}) {
       hostLabel: 'my-pc',
     },
   })
-  return { bridge, config, reports, calls, created, asked, gitCalls, deny: () => (answer = false) }
+  return { bridge, config, reports, calls, replies, prompts, created, asked, gitCalls, deny: () => (answer = false) }
 }
 
 const job = (over: Partial<Job> = {}): Job => ({
@@ -175,6 +178,42 @@ describe('GithubBridge', () => {
     const t = setup()
     await t.bridge.handle(job({ command: { verb: 'fix', agent: 'grok', extra: '' } }), t.config)
     expect(t.reports.at(-1)).toMatchObject({ status: 'refused' })
+  })
+})
+
+describe('ask: the agent reads the comment', () => {
+  const ask = (extra = 'sort this out') => job({ command: { verb: 'ask', extra } })
+  it('answers a question without touching the repo', async () => {
+    const t = setup()
+    t.replies.push('DECISION: answer\nIt crashes because x is null.')
+    await t.bridge.handle(ask(), t.config)
+    expect(t.prompts).toHaveLength(1)
+    expect(t.gitCalls.some((c) => c.args[0] === 'push')).toBe(false)
+    expect(t.reports.at(-1)!.message).toContain('It crashes because x is null.')
+    expect(t.reports.at(-1)!.message).not.toContain('DECISION')
+  })
+  it('asks back when the request is unclear', async () => {
+    const t = setup()
+    t.replies.push('DECISION: clarify\nWhich composer do you mean?')
+    await t.bridge.handle(ask(), t.config)
+    expect(t.reports.at(-1)!.message).toContain('Which composer do you mean?')
+  })
+  it('continues in the same session when it decides to fix, then asks before pushing', async () => {
+    const t = setup()
+    t.replies.push('DECISION: fix\nI will shrink the composer.', 'Made it shorter.')
+    await t.bridge.handle(ask(), t.config)
+    expect(t.created).toHaveLength(1)
+    expect(t.prompts).toHaveLength(2)
+    expect(t.prompts[1]).toContain('Fix issue #4')
+    expect(t.asked).toHaveLength(1)
+    expect(t.reports.at(-1)!.message).toContain('pull/9')
+  })
+  it('does not act when the reply has no decision', async () => {
+    const t = setup()
+    t.replies.push('Sure, on it!')
+    await t.bridge.handle(ask(), t.config)
+    expect(t.prompts).toHaveLength(1)
+    expect(t.gitCalls.some((c) => c.args[0] === 'push')).toBe(false)
   })
 })
 

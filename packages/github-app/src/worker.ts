@@ -57,9 +57,22 @@ async function webhook(request: Request, env: Env, ctx: ExecutionContext): Promi
   // Ignored deliveries get the same quiet 202, so outsiders learn nothing about the rules.
   if (!result.ok) return new Response('ignored', { status: 202 })
   ctx.waitUntil(
-    accept(env, result.request).catch((err) => console.error('accept failed', String(err))),
+    accept(env, result.request).catch((err) => failed(env, result.request, err)),
   )
   return new Response('accepted', { status: 202 })
+}
+
+/** Something broke after the sender was verified. Say so on the thread, so it is not silent. */
+async function failed(env: Env, ask: AskRequest, err: unknown): Promise<void> {
+  const message = String(err instanceof Error ? err.message : err).slice(0, 300)
+  console.error('accept failed', ask.repo, ask.number, message)
+  try {
+    const github = new Github(env)
+    const token = await github.token(ask.installationId)
+    await github.comment(token, ask.repo, ask.number, `@${ask.sender} I could not queue that: ${message}`)
+  } catch (inner) {
+    console.error('could not report the failure', String(inner))
+  }
 }
 
 /** Builds the job's context, queues it, and tells the sender what happened. */
@@ -68,7 +81,7 @@ async function accept(env: Env, ask: AskRequest): Promise<void> {
   const token = await github.token(ask.installationId)
   const queue = queueOf(env)
   const react = (content: string) =>
-    github.react(token, ask.repo, ask.commentId, ask.commentKind, content).catch(() => undefined)
+    github.react(token, ask.repo, { kind: ask.commentKind, id: ask.commentId, number: ask.number }, content).catch(() => undefined)
   const say = (body: string) => github.comment(token, ask.repo, ask.number, body).catch(() => undefined)
 
   if (!(await queue.admit(ask.sender, num(env.MAX_JOBS_PER_HOUR, 10))))
@@ -95,7 +108,7 @@ async function accept(env: Env, ask: AskRequest): Promise<void> {
     issue.body ?? '(no description)',
     ...comments.slice(-15).map((c) => `--- ${c.user.login} wrote:\n${c.body}`),
   ]
-  if (ask.command.verb === 'fix-ci' && head)
+  if ((ask.command.verb === 'fix-ci' || ask.command.verb === 'ask') && head)
     parts.push(`## Failing checks on ${head.sha.slice(0, 7)}\n${await github.failedChecks(token, ask.repo, head.sha)}`)
 
   const job: Job = {
@@ -182,7 +195,7 @@ async function host(request: Request, url: URL, env: Env): Promise<Response> {
   }
   const report = body as unknown as JobReport
   const reaction = { started: 'eyes', done: 'rocket', failed: 'confused', refused: 'confused', stopped: '-1', working: '' }[report.status]
-  if (reaction) await github.react(token, job.repo, job.commentId, job.commentKind, reaction).catch(() => undefined)
+  if (reaction) await github.react(token, job.repo, { kind: job.commentKind, id: job.commentId, number: job.number }, reaction).catch(() => undefined)
   if (report.message) await github.comment(token, job.repo, job.number, String(report.message).slice(0, 60_000))
   if (['done', 'failed', 'stopped', 'refused'].includes(report.status)) await queue.finish(job.id)
   return json({ ok: true })

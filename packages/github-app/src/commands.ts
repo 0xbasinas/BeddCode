@@ -1,4 +1,4 @@
-export type Verb = 'fix' | 'review' | 'fix-ci' | 'explain' | 'rebase' | 'stop'
+export type Verb = 'fix' | 'review' | 'fix-ci' | 'explain' | 'rebase' | 'stop' | 'ask'
 
 /** What a comment asked for. Unset agent, model and effort mean the host's defaults. */
 export interface Command {
@@ -19,9 +19,9 @@ const clean = (word: string | undefined) => (word ?? '').toLowerCase().replace(/
 
 /**
  * Reads `@beddcode [codex] [model=x] [effort=high] fix this | review | fix ci | explain |
- * rebase [on main] | stop` from a comment. Returns undefined when the comment does not mention the
- * app or names no known command, so ordinary conversation never starts a job. Quoted lines and
- * code blocks are ignored.
+ * rebase [on main] | stop` from a comment. Anything else the person wrote becomes `ask`: the
+ * agent reads it and decides what to do (see `natural`). A bare mention returns undefined, so it
+ * never starts anything. Quoted lines and code blocks are ignored.
  */
 export function parseCommand(body: string, slug: string): Command | undefined {
   const text = body.replace(/```[\s\S]*?```/g, ' ').replace(/^\s*>.*$/gm, ' ')
@@ -57,6 +57,32 @@ export function parseCommand(body: string, slug: string): Command | undefined {
   } else if (head === 'review' || head === 'explain' || head === 'rebase' || head === 'stop') {
     verb = head
   }
-  if (!verb) return undefined
-  return { verb, agent, model, effort, extra: rest.slice(used).join(' ').trim() }
+  if (verb) return { verb, agent, model, effort, extra: rest.slice(used).join(' ').trim() }
+  return natural((match[2] ?? '').trim(), { agent, model, effort })
+}
+
+/** Words that introduce a choice: "with codex", "use sonnet", "on medium". Without one, a name is just a topic. */
+const BY = '(?:with|using|use|via|by|on|model|agent)(?:\\s+the)?\\s+'
+const LEVEL = '(low|medium|high|xhigh|max)'
+
+/**
+ * A comment in plain words: "go ahead and tackle this with claude on sonnet 5.5 on low". Agent,
+ * model and effort are picked out wherever they appear. What is actually wanted is left to the
+ * agent on the host (`ask`): it reads the whole comment and decides to fix, review, explain,
+ * rebase, answer or ask back. Keywords would misread "can you explain why the fix fails?".
+ */
+function natural(
+  text: string,
+  found: { agent?: string; model?: string; effort?: string },
+): Command | undefined {
+  if (!text) return undefined
+  let { agent, model, effort } = found
+  const lower = text.toLowerCase()
+  agent ??= new RegExp(`\\b${BY}(claude|codex|gemini|grok)\\b`).exec(lower)?.[1]
+  model ??= new RegExp(`\\b${BY}(sonnet|opus|haiku)\\b`).exec(lower)?.[1]
+  effort ??=
+    new RegExp(`\\beffort\\s*[=:]?\\s*${LEVEL}\\b`).exec(lower)?.[1] ??
+    new RegExp(`\\b${LEVEL}\\s+effort\\b`).exec(lower)?.[1] ??
+    new RegExp(`\\bon\\s+${LEVEL}\\b`).exec(lower)?.[1]
+  return { verb: 'ask', agent, model, effort, extra: text }
 }

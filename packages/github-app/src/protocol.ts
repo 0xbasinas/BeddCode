@@ -13,7 +13,7 @@ export interface Job {
   sender: string
   /** The comment that asked, so progress reactions and replies can target it. */
   commentId: number
-  commentKind: 'issue' | 'review'
+  commentKind: 'issue' | 'review' | 'thread'
   /** Title, body, recent comments and (for `fix ci`) the failing log, as plain text. */
   context: string
   /** Pull requests: the branch to push to. */
