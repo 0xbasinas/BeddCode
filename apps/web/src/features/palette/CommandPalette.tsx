@@ -311,10 +311,11 @@ function PaletteDialog() {
   }, [navigate, session, sessionId, hostKey, editors, entries, runtimes, sessions])
 
   const shown = useMemo(() => rankCommands(commands, query, 60), [commands, query])
+  const activeIndex = Math.min(selected, shown.length - 1)
   useEffect(() => setSelected(0), [query])
   useEffect(() => {
     list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
-  }, [selected])
+  }, [activeIndex])
 
   const run = (command: Command | undefined) => {
     if (!command) return
@@ -340,6 +341,7 @@ function PaletteDialog() {
             role="combobox"
             aria-expanded="true"
             aria-controls="palette-list"
+            aria-activedescendant={activeIndex >= 0 ? `palette-option-${activeIndex}` : undefined}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
@@ -347,13 +349,13 @@ function PaletteDialog() {
                 close()
               } else if (e.key === 'ArrowDown') {
                 e.preventDefault()
-                setSelected((i) => Math.min(shown.length - 1, i + 1))
+                setSelected((i) => Math.max(0, Math.min(shown.length - 1, i + 1)))
               } else if (e.key === 'ArrowUp') {
                 e.preventDefault()
                 setSelected((i) => Math.max(0, i - 1))
               } else if (e.key === 'Enter') {
                 e.preventDefault()
-                run(shown[selected])
+                run(shown[activeIndex])
               }
             }}
           />
@@ -364,8 +366,10 @@ function PaletteDialog() {
           {shown.map((command, i) => (
             <button
               key={command.id}
+              id={`palette-option-${i}`}
               role="option"
-              aria-selected={i === selected}
+              aria-selected={i === activeIndex}
+              tabIndex={-1}
               className="palette-row"
               onMouseMove={() => setSelected(i)}
               onClick={() => run(command)}
