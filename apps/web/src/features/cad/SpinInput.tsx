@@ -63,7 +63,7 @@ export function classifySpinText(
   return { kind: 'number', value }
 }
 
-export function editSpin(edit: SpinEdit, action: SpinAction, step = SPIN_STEP): SpinEditResult {
+export function editSpin(edit: SpinEdit, action: SpinAction, step = SPIN_STEP, min = -Infinity): SpinEditResult {
   if (action.type === 'type') {
     return { edit: { ...edit, draft: action.text, error: null }, commit: null }
   }
@@ -71,9 +71,9 @@ export function editSpin(edit: SpinEdit, action: SpinAction, step = SPIN_STEP): 
     return { edit: { committed: edit.committed, draft: null, error: null }, commit: null }
   }
   if (action.type === 'step') {
-    const next = roundSpin(
+    const next = Math.max(min, roundSpin(
       stepBase(edit) + action.direction * step * (action.shift ? SHIFT_FACTOR : 1),
-    )
+    ))
     if (next === edit.committed) {
       return { edit: { committed: edit.committed, draft: null, error: null }, commit: null }
     }
@@ -87,10 +87,11 @@ export function editSpin(edit: SpinEdit, action: SpinAction, step = SPIN_STEP): 
   if (parsed.kind === 'invalid') {
     return { edit: { ...edit, error: parsed.message }, commit: null }
   }
-  if (parsed.value === edit.committed) {
+  const next = Math.max(min, parsed.value)
+  if (next === edit.committed) {
     return { edit: { committed: edit.committed, draft: null, error: null }, commit: null }
   }
-  return { edit: { committed: parsed.value, draft: null, error: null }, commit: parsed.value }
+  return { edit: { committed: next, draft: null, error: null }, commit: next }
 }
 
 const DECIMAL = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/
@@ -120,11 +121,17 @@ export function SpinInput({
   value,
   onCommit,
   step = SPIN_STEP,
+  min,
+  disabled = false,
+  className = 'cad-field',
 }: {
   label: string
   value: number
   onCommit(next: number): void
   step?: number
+  min?: number
+  disabled?: boolean
+  className?: string
 }) {
   const errorId = useId()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -145,7 +152,7 @@ export function SpinInput({
   editRef.current = view
 
   const apply = (action: SpinAction) => {
-    const result = editSpin(editRef.current, action, step)
+    const result = editSpin(editRef.current, action, step, min)
     editRef.current = result.edit
     setEdit(result.edit)
     if (result.commit !== null) onCommitRef.current(result.commit)
@@ -198,7 +205,7 @@ export function SpinInput({
   }
 
   return (
-    <label className="cad-field">
+    <label className={className}>
       <span>{label}</span>
       <div
         className="cad-spin"
@@ -208,6 +215,8 @@ export function SpinInput({
       >
         <input
           ref={inputRef}
+          aria-label={label}
+          disabled={disabled}
           value={spinDisplay(view)}
           inputMode="decimal"
           autoComplete="off"
@@ -222,6 +231,7 @@ export function SpinInput({
           <button
             type="button"
             tabIndex={-1}
+            disabled={disabled}
             aria-label={`Increase ${label}`}
             onMouseDown={keepFocus}
             onClick={(event) => apply({ type: 'step', direction: 1, shift: event.shiftKey })}
@@ -231,6 +241,7 @@ export function SpinInput({
           <button
             type="button"
             tabIndex={-1}
+            disabled={disabled}
             aria-label={`Decrease ${label}`}
             onMouseDown={keepFocus}
             onClick={(event) => apply({ type: 'step', direction: -1, shift: event.shiftKey })}
