@@ -568,6 +568,8 @@ export const RpcMethods = {
       computerTools: z.boolean().optional(),
       /** Let the agent read the user's Linear issues (BeddCode's Linear tools). */
       linearTools: z.boolean().optional(),
+      /** Let the agent read and edit the host's CAD documents (BeddCode's CAD tools). */
+      cadTools: z.boolean().optional(),
     }),
     result: z.object({ sessionId: z.string() }),
   },

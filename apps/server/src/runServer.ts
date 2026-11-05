@@ -300,6 +300,7 @@ export async function runServer(
         agentTools: automation.agentTools,
         alerts,
         designs,
+        cads: automation.cads,
         computer: automation.computerPane,
         linear: automation.linear,
         telegram: automation.telegram,
@@ -307,6 +308,7 @@ export async function runServer(
       agentTools,
       browser: automation.browser,
       designLink: automation.designLink,
+      cadLink: automation.cadLink,
       log,
     })
   } catch (err) {

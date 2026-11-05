@@ -1,5 +1,6 @@
 import path from 'node:path'
 import type { DesignTools } from '../design/designTools.ts'
+import type { CadTools } from '../cad/cadTools.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ProviderInstance, SessionEvent, StoredEvent } from '@beddcode/contracts'
 import {
@@ -492,6 +493,50 @@ describe('AgentTools', () => {
         (tool) => tool.name,
       ),
     ).toContain('design_add')
+  })
+
+  it('exposes cad tools only to sessions created with them', async () => {
+    const { host, append } = fakeHost()
+    const t = new AgentTools(
+      host,
+      { file: '/bridge.mjs', url: () => 'http://127.0.0.1:1/agent-tools' },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {} as CadTools,
+    )
+    t.serversFor('starting', { cadTools: true })
+    const names = (
+      (await t.handle('starting', 'tools/list', {})) as { tools: { name: string }[] }
+    ).tools.map((tool) => tool.name)
+    expect(names).toContain('cad_add_feature')
+    expect(names).toContain('cad_screenshot')
+    expect(names).not.toContain('start_session')
+    expect(await t.handle('starting', 'instructions', {})).toContain('millimetres')
+    append({
+      type: 'session.created',
+      sessionId: 'starting',
+      at: 0,
+      title: 'CAD',
+      cwd: '/p',
+      instanceId: 'claude',
+      cadTools: true,
+    })
+    expect(
+      ((await t.handle('starting', 'tools/list', {})) as { tools: { name: string }[] }).tools.map(
+        (tool) => tool.name,
+      ),
+    ).toContain('cad_get_tree')
+    const denied = (await new AgentTools(host, {
+      file: '/bridge.mjs',
+      url: () => 'http://127.0.0.1:1/agent-tools',
+    }).handle('starting', 'tools/call', { name: 'cad_list', arguments: {} })) as {
+      isError?: boolean
+      content: { text: string }[]
+    }
+    expect(denied.isError).toBe(true)
+    expect(denied.content[0]!.text).toMatch(/may not use the CAD pane/)
   })
 
   it('gives each session its own key and lists the tools', async () => {

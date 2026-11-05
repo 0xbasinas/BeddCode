@@ -135,6 +135,8 @@ export const SessionEvent = z.discriminatedUnion('type', [
     computerTools: z.boolean().optional(),
     /** The agent may read the user's Linear issues through BeddCode's Linear tools. */
     linearTools: z.boolean().optional(),
+    /** The agent may read and edit the host's CAD documents through BeddCode's CAD tools. */
+    cadTools: z.boolean().optional(),
     /** Set when a schedule started this session. */
     schedule: z.object({ id: z.string(), name: z.string() }).optional(),
     mcpGateway: z.boolean().optional(),

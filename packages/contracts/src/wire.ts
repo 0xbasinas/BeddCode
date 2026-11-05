@@ -111,6 +111,53 @@ export const ClientFrame = z.discriminatedUnion('t', [
     image: z.object({ data: z.string(), mime: z.string() }).optional(),
     error: z.string().optional(),
   }),
+  /**
+   * Whether this client can draw CAD models for agents (the web and desktop apps can), and which
+   * document it has open. Sent again whenever that changes.
+   */
+  z.object({
+    t: z.literal('cad.view'),
+    canRender: z.boolean(),
+    documentId: z.string().optional(),
+    selection: z.array(z.string()).max(200).optional(),
+  }),
+  /** The answer to a `cad.render`: a picture, or why there is none. */
+  z.object({
+    t: z.literal('cad.rendered'),
+    id: z.string(),
+    image: z.object({ data: z.string(), mime: z.string() }).optional(),
+    error: z.string().optional(),
+  }),
+  /** The answer to a `cad.query`: a measurement, or why there is none. */
+  z.object({
+    t: z.literal('cad.queried'),
+    id: z.string(),
+    geometry: z.unknown().optional(),
+    error: z.string().optional(),
+  }),
+  /** The answer to a `cad.import`: features and sketches the file became, or why it did not. */
+  z.object({
+    t: z.literal('cad.imported'),
+    id: z.string(),
+    features: z.array(z.unknown()).max(500).optional(),
+    sketches: z.array(z.unknown()).max(200).optional(),
+    error: z.string().optional(),
+  }),
+  /** The answer to a `cad.export`: file bytes, or why there are none. */
+  z.object({
+    t: z.literal('cad.exported'),
+    id: z.string(),
+    file: z
+      .object({ data: z.string(), mime: z.string(), filename: z.string().optional() })
+      .optional(),
+    error: z.string().optional(),
+  }),
+  /** The answer to a `cad.rebuild`: the model was rebuilt, or why it was not. */
+  z.object({
+    t: z.literal('cad.rebuilt'),
+    id: z.string(),
+    error: z.string().optional(),
+  }),
 ])
 export type ClientFrame = z.infer<typeof ClientFrame>
 
@@ -206,6 +253,57 @@ export const ServerFrame = z.discriminatedUnion('t', [
     id: z.string(),
     svg: z.string().max(200_000),
     width: z.number().optional(),
+  }),
+  /** A CAD document was saved or changed (by a client or an agent). */
+  z.object({
+    t: z.literal('cad.changed'),
+    id: z.string(),
+    rev: z.number().int(),
+    origin: z.string().optional(),
+    touched: z.array(z.string()).max(500).optional(),
+  }),
+  /** An agent wants a picture of a CAD model; only sent to clients that can render. */
+  z.object({
+    t: z.literal('cad.render'),
+    id: z.string(),
+    documentId: z.string(),
+    document: z.unknown().optional(),
+    featureId: z.string().optional(),
+    scale: z.number().optional(),
+  }),
+  /** An agent wants a measurement of a CAD model. */
+  z.object({
+    t: z.literal('cad.query'),
+    id: z.string(),
+    documentId: z.string(),
+    document: z.unknown().optional(),
+    featureId: z.string().optional(),
+    what: z.string().optional(),
+  }),
+  /** An agent wants a CAD file turned into features. */
+  z.object({
+    t: z.literal('cad.import'),
+    id: z.string(),
+    format: z.string(),
+    data: z.string().max(8_000_000),
+    filename: z.string().max(200).optional(),
+    documentId: z.string().optional(),
+  }),
+  /** An agent wants a CAD model written to a STEP or STL file. */
+  z.object({
+    t: z.literal('cad.export'),
+    id: z.string(),
+    documentId: z.string(),
+    document: z.unknown().optional(),
+    format: z.string(),
+    featureId: z.string().optional(),
+  }),
+  /** After an agent's edit: rebuild the solid and answer with `cad.rebuilt`. */
+  z.object({
+    t: z.literal('cad.rebuild'),
+    id: z.string(),
+    documentId: z.string(),
+    document: z.unknown().optional(),
   }),
   z.object({ t: z.literal('browser.call'), id: z.string(), call: BrowserUseCall }),
 ])

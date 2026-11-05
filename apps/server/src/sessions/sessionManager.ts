@@ -85,6 +85,7 @@ export interface SessionManagerDeps {
       designTools?: boolean
       computerTools?: boolean
       linearTools?: boolean
+      cadTools?: boolean
     },
   ) => SessionMcpServer[]
   /** Shows the commands agents run in the Terminal pane (and runs ACP agents' commands there). */
@@ -473,7 +474,8 @@ export class SessionManager {
             params.browserTools ||
             params.designTools ||
             params.computerTools ||
-            params.linearTools,
+            params.linearTools ||
+            params.cadTools,
           params.designTools,
           params,
         ),
@@ -538,6 +540,7 @@ export class SessionManager {
       computerTools:
         (params.computerTools && this.deps.agentToolServers !== undefined) || undefined,
       linearTools: (params.linearTools && this.deps.agentToolServers !== undefined) || undefined,
+      cadTools: (params.cadTools && this.deps.agentToolServers !== undefined) || undefined,
       start: { warm, ms: Math.max(0, Math.round(now() - startedAt)) },
     })
     if (source?.type === 'session.created') {
@@ -837,7 +840,8 @@ export class SessionManager {
             created.browserTools ||
             created.designTools ||
             created.computerTools ||
-            created.linearTools,
+            created.linearTools ||
+            created.cadTools,
           created.designTools,
         ),
       }
@@ -1118,9 +1122,12 @@ export class SessionManager {
       .readSession(sessionId)
       .find(({ event }) => event.type === 'session.created')?.event
     const design = created?.type === 'session.created' && created.designTools === true
+    const cad = created?.type === 'session.created' && created.cadTools === true
     const context = design
       ? 'This message comes from the BeddCode Design canvas. For design requests, create or edit the editable canvas using the BeddCode design MCP tools (design_list, design_read, design_add and related tools). Load design_skill for guidance. Match the requested style and density; align repeated rows, icon containers, text columns, padding and spacing. Inspect the whole frame and a representative panel with design_screenshot, correct visible clipping, tiny text, inconsistent icons or alignment, and inspect again. Use design_read for actual sizes; large screenshots may be downscaled. Do not substitute an HTML file or code unless the user explicitly asks for code. If the design tools are unavailable, tell the user; do not silently create a file instead. The user request follows:\n\n'
-      : ''
+      : cad
+        ? 'This message comes from the BeddCode CAD pane. For model requests, create or edit the CAD document using the BeddCode CAD MCP tools (cad_list, cad_get_tree, cad_add_sketch, cad_add_feature and related tools). Units are millimetres. Use cad_query_geometry and cad_screenshot when the CAD pane is open. Do not substitute a mesh file or code unless the user explicitly asks for a file. If the CAD tools are unavailable, tell the user. The user request follows:\n\n'
+        : ''
     const instructions =
       created?.type === 'session.created' ? created.projectInstructions : undefined
     const rules = instructions
@@ -2020,7 +2027,8 @@ export class SessionManager {
           created.event.browserTools ||
           created.event.designTools ||
           created.event.computerTools ||
-          created.event.linearTools,
+          created.event.linearTools ||
+          created.event.cadTools,
         created.event.designTools,
       ),
     }
@@ -2110,6 +2118,7 @@ export class SessionManager {
       designTools?: boolean
       computerTools?: boolean
       linearTools?: boolean
+      cadTools?: boolean
     },
   ) {
     if (!wanted || !this.deps.agentToolServers) return undefined
@@ -2310,6 +2319,7 @@ export class SessionManager {
             designTools: false,
             computerTools: false,
             linearTools: false,
+            cadTools: false,
           }
         : {}),
       forkedFrom: { sessionId: params.sessionId, title: created.title },
