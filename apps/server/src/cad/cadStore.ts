@@ -7,6 +7,11 @@ import { writeFileAtomic } from '@beddcode/shared'
 export interface CadFeature {
   id: string
   type: string
+  /**
+   * Same value as `type`. The CAD pane reads `kind`, so both names stay on the
+   * stored document and the pane can rebuild what an agent just wrote.
+   */
+  kind?: string
   name: string
   params: Record<string, unknown>
   sketchId?: string
@@ -113,7 +118,7 @@ export class CadStore {
 
   /** Keeps units in millimetres and the history cursor inside the feature list. */
   private normalize(doc: CadDocument): CadDocument {
-    const features = Array.isArray(doc.features) ? doc.features : []
+    const features = (Array.isArray(doc.features) ? doc.features : []).map(alignFeature)
     const history = Number.isFinite(doc.historyIndex)
       ? Math.floor(doc.historyIndex)
       : features.length
@@ -121,7 +126,7 @@ export class CadStore {
       ...doc,
       units: 'mm',
       features,
-      sketches: Array.isArray(doc.sketches) ? doc.sketches : [],
+      sketches: (Array.isArray(doc.sketches) ? doc.sketches : []).map(alignSketch),
       params: doc.params && typeof doc.params === 'object' ? doc.params : {},
       historyIndex: Math.min(Math.max(history, 0), features.length),
     }
@@ -216,4 +221,37 @@ export class CadStore {
     for (const l of this.listeners)
       l({ id: doc.id, rev: doc.rev, origin, ...(touched?.length ? { touched } : {}) })
   }
+}
+
+/** The pane reads `kind`. Agents write `type`. Keep both when either one is set. */
+function alignFeature(feature: CadFeature): CadFeature {
+  if (!feature || typeof feature !== 'object') return feature
+  const named =
+    typeof feature.type === 'string' && feature.type
+      ? feature.type
+      : typeof feature.kind === 'string'
+        ? feature.kind
+        : ''
+  return {
+    ...feature,
+    ...(named ? { type: named, kind: named } : {}),
+    suppressed: feature.suppressed === true,
+  }
+}
+
+function alignSketch(sketch: CadSketch): CadSketch {
+  if (!sketch || typeof sketch !== 'object') return sketch
+  return {
+    ...sketch,
+    entities: Array.isArray(sketch.entities) ? sketch.entities.map(alignSketchEntity) : [],
+  }
+}
+
+/** Sketch profiles on the pane look at `kind`. Agents often send `type`. */
+function alignSketchEntity(entity: unknown): unknown {
+  if (!entity || typeof entity !== 'object' || Array.isArray(entity)) return entity
+  const record = entity as Record<string, unknown>
+  if (typeof record.kind === 'string' && record.kind.trim()) return record
+  if (typeof record.type !== 'string' || !record.type.trim()) return record
+  return { ...record, kind: record.type }
 }

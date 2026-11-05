@@ -19,8 +19,8 @@ interface FlatBox {
 
 /**
  * Best-effort bounds from stored feature parameters. This is not a measurement
- * of a rebuilt solid: fillets, imports and revolves are skipped or copied from
- * their target, and booleans use the target boxes only.
+ * of a rebuilt solid: fillets, holes, imports and revolves are skipped or copied
+ * from their target, and booleans use the target boxes only.
  */
 export function estimateBBox(doc: CadDocument, featureId?: string): EstimatedBBox | undefined {
   const chosen = featureId
@@ -56,6 +56,7 @@ function featureBox(
     case 'fillet':
     case 'chamfer':
     case 'cut':
+    case 'hole':
       return firstTarget(feature, doc, seen)
     case 'union':
       return unionBoxes(targetBoxes(feature, doc, seen))
@@ -176,10 +177,14 @@ function mapPlane(flat: FlatBox, distance: number, plane: string): EstimatedBBox
 
 function targetIds(params: Record<string, unknown>): string[] {
   const ids: string[] = []
-  if (typeof params.target === 'string') ids.push(params.target)
-  if (typeof params.feature === 'string') ids.push(params.feature)
+  const add = (id: unknown) => {
+    if (typeof id === 'string' && id && !ids.includes(id)) ids.push(id)
+  }
+  add(params.target)
+  add(params.targetId)
+  add(params.feature)
   if (Array.isArray(params.targets)) {
-    for (const id of params.targets) if (typeof id === 'string' && id) ids.push(id)
+    for (const id of params.targets) add(id)
   }
   return ids
 }

@@ -479,4 +479,237 @@ describe('CAD tools', () => {
     )
     expect(whole.geometry).toEqual({ min: [0, -10, -5], max: [8, 10, 5] })
   })
+
+  it('stores a box at its exact size, a boss, a hole at a point, and fillet edges', async () => {
+    const box = run('cad_add_feature', {
+      type: 'box',
+      name: 'Plate',
+      params: { width: 40, depth: 20, height: 10 },
+    })
+    expect(box.error).toBe(false)
+    const docId = box.json.document as string
+    expect(run('cad_get_tree', { document: docId }).json.features[0].params).toEqual({
+      width: 40,
+      depth: 20,
+      height: 10,
+    })
+
+    const sketch = run('cad_add_sketch', {
+      document: docId,
+      plane: 'XY',
+      entities: [{ type: 'rect', width: 30, height: 16 }],
+    })
+    const boss = run('cad_add_feature', {
+      document: docId,
+      type: 'extrude',
+      name: 'Boss',
+      sketch: sketch.json.sketch,
+      params: { distance: 12 },
+    })
+    expect(boss.error).toBe(false)
+    expect(boss.json).toMatchObject({ type: 'extrude' })
+
+    const face = run('cad_add_feature', {
+      document: docId,
+      type: 'hole',
+      params: {
+        targetId: box.json.feature,
+        plane: 'XY',
+        x: 6,
+        y: -3,
+        diameter: 5,
+      },
+    })
+    expect(face.error).toBe(false)
+    const world = run('cad_add_feature', {
+      document: docId,
+      type: 'hole',
+      params: {
+        targetId: box.json.feature,
+        point: [1, 2, 10],
+        diameter: 4,
+      },
+    })
+    expect(world.error).toBe(false)
+
+    const ref = { kind: 'edge', mid: [1, 0, 5], dir: [0, 0, 1], length: 10 }
+    const fillet = run('cad_add_feature', {
+      document: docId,
+      type: 'fillet',
+      params: {
+        targetId: box.json.feature,
+        radius: 4,
+        edgeIds: [11, 4],
+        edgeRefs: [ref],
+      },
+    })
+    expect(fillet.error).toBe(false)
+    // The same edges as a comma list and a JSON string, which is how the pane stores them.
+    expect(
+      run('cad_edit_feature', {
+        document: docId,
+        id: fillet.json.feature,
+        params: { edgeIds: '11, 4', edgeRefs: JSON.stringify([ref]) },
+      }).error,
+    ).toBe(false)
+
+    const saved = store.get(docId)!
+    expect(saved.sketches[0]!.entities[0]).toMatchObject({ type: 'rect', kind: 'rect' })
+    expect(saved.features.map((feature) => feature.type)).toEqual([
+      'box',
+      'extrude',
+      'hole',
+      'hole',
+      'fillet',
+    ])
+    expect(saved.features.every((feature) => feature.kind === feature.type)).toBe(true)
+    expect(saved.features.every((feature) => feature.suppressed === false)).toBe(true)
+    expect(saved.features[0]!.params).toEqual({ width: 40, depth: 20, height: 10 })
+    expect(saved.features[1]!.params).toEqual({ distance: 12 })
+    expect(saved.features[1]!.sketchId).toBe(sketch.json.sketch)
+    expect(saved.features[2]!.params).toEqual({
+      target: box.json.feature,
+      targetId: box.json.feature,
+      x: 6,
+      y: -3,
+      z: 10,
+      diameter: 5,
+      throughAll: true,
+      direction: '-Z',
+    })
+    expect(saved.features[3]!.params).toEqual({
+      target: box.json.feature,
+      targetId: box.json.feature,
+      x: 1,
+      y: 2,
+      z: 10,
+      diameter: 4,
+      throughAll: true,
+    })
+    expect(saved.features[4]!.params).toMatchObject({
+      target: box.json.feature,
+      targetId: box.json.feature,
+      radius: 4,
+      edgeIds: '11,4',
+    })
+    expect(JSON.parse(String(saved.features[4]!.params.edgeRefs))).toEqual([ref])
+
+    const measured = JSON.parse(
+      (
+        (await tools.callAsync('cad_query_geometry', { document: docId, what: 'bbox' }))
+          .content[0] as {
+          text: string
+        }
+      ).text,
+    )
+    expect(measured.geometry).toEqual({ min: [-20, -10, 0], max: [20, 10, 12] })
+    expect(measured.accuracy).toBe('approximate')
+    const plate = JSON.parse(
+      (
+        (
+          await tools.callAsync('cad_query_geometry', {
+            document: docId,
+            feature: box.json.feature,
+            what: 'bbox',
+          })
+        ).content[0] as { text: string }
+      ).text,
+    )
+    expect(plate.geometry).toEqual({ min: [-20, -10, 0], max: [20, 10, 10] })
+
+    const png = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)
+    link.registerScreenshot(async (request) => {
+      expect(request.documentId).toBe(docId)
+      const body = request.document as { features: { type: string; kind?: string }[] }
+      expect(body.features.map((feature) => feature.kind)).toEqual([
+        'box',
+        'extrude',
+        'hole',
+        'hole',
+        'fillet',
+      ])
+      return png
+    })
+    const shot = await tools.callAsync('cad_screenshot', { document: docId })
+    expect(shot.isError).toBeUndefined()
+    expect(shot.content[1]).toEqual({
+      type: 'image',
+      data: Buffer.from(png).toString('base64'),
+      mimeType: 'image/png',
+    })
+  })
+
+  it('places a hole on the YZ face from plane x and y', () => {
+    const box = run('cad_add_feature', {
+      type: 'box',
+      params: { width: 40, depth: 20, height: 10 },
+    })
+    const hole = run('cad_add_feature', {
+      type: 'hole',
+      params: { targetId: box.json.feature, plane: 'YZ', x: 1, y: 4, diameter: 3 },
+    })
+    expect(hole.error).toBe(false)
+    const saved = store.get(hole.json.document as string)!.features[1]!
+    expect(saved.params).toMatchObject({
+      x: 20,
+      y: 1,
+      z: 4,
+      direction: '-X',
+      diameter: 3,
+      throughAll: true,
+    })
+  })
+
+  it('rejects a hole with no point and a fillet with bad edges', () => {
+    const box = run('cad_add_feature', {
+      type: 'box',
+      params: { width: 10, depth: 10, height: 4 },
+    })
+    const docId = box.json.document as string
+    expect(
+      run('cad_add_feature', { document: docId, type: 'hole', params: { x: 1, y: 2 } }).text,
+    ).toMatch(/targetId/)
+    expect(
+      run('cad_add_feature', {
+        document: docId,
+        type: 'hole',
+        params: { targetId: box.json.feature },
+      }).text,
+    ).toMatch(/face plane|world point/)
+    expect(
+      run('cad_add_feature', {
+        document: docId,
+        type: 'hole',
+        params: { targetId: 'missing', x: 0, y: 0 },
+      }).text,
+    ).toMatch(/No feature missing/)
+    expect(
+      run('cad_add_feature', {
+        document: docId,
+        type: 'hole',
+        params: { targetId: box.json.feature, plane: 'AB', x: 0, y: 0 },
+      }).text,
+    ).toMatch(/unknown hole plane/)
+    expect(
+      run('cad_add_feature', {
+        document: docId,
+        type: 'fillet',
+        params: { radius: 0, edgeIds: [1] },
+      }).text,
+    ).toMatch(/radius must be a positive number/)
+    expect(
+      run('cad_add_feature', {
+        document: docId,
+        type: 'fillet',
+        params: { radius: 4, targetId: box.json.feature, edgeIds: [11, -2] },
+      }).text,
+    ).toMatch(/edgeIds/)
+    expect(
+      run('cad_add_feature', {
+        document: docId,
+        type: 'fillet',
+        params: { radius: 4, edgeRefs: [{ kind: 'face' }] },
+      }).text,
+    ).toMatch(/edgeRefs/)
+  })
 })

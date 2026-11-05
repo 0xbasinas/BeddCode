@@ -29,6 +29,7 @@ const FEATURE_TYPES = new Set([
   'revolve',
   'fillet',
   'chamfer',
+  'hole',
   'union',
   'cut',
   'intersect',
@@ -93,7 +94,7 @@ export const CAD_TOOL_DEFINITIONS = [
   {
     name: 'cad_add_feature',
     description:
-      'Appends a feature and makes it the current history tip (features after the old tip are dropped). type is box, cylinder, sphere, extrude, revolve, fillet, chamfer, union, cut, intersect, or import. params holds sizes in millimetres. extrude and revolve take a sketch id. Returns the feature id. The user sees it in the CAD pane.',
+      'Appends a feature and makes it the current history tip (features after the old tip are dropped). type is box, cylinder, sphere, extrude, revolve, fillet, chamfer, hole, union, cut, intersect, or import. params holds sizes in millimetres. extrude and revolve take a sketch id. A hole takes targetId and a point. Returns the feature id. The user sees it in the CAD pane.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -108,6 +109,7 @@ export const CAD_TOOL_DEFINITIONS = [
             'revolve',
             'fillet',
             'chamfer',
+            'hole',
             'union',
             'cut',
             'intersect',
@@ -119,7 +121,7 @@ export const CAD_TOOL_DEFINITIONS = [
         params: {
           type: 'object',
           description:
-            'Sizes in millimetres. Box: width, depth, height. Cylinder: radius, height. Sphere: radius. Extrude: distance. Revolve: angle. Fillet and chamfer: radius. Booleans: target ids in a targets array.',
+            'Sizes in millimetres. Box: width, depth, height. Cylinder: radius, height. Sphere: radius. Extrude: distance. Revolve: angle. Hole: targetId, diameter (default 8), and x/y on a face plane (plane XY, YZ, or ZX) or a world point (x, y, z or point). Fillet and chamfer: radius, edgeIds, and edgeRefs. Booleans: target ids in a targets array.',
         },
         suppressed: { type: 'boolean' },
       },
@@ -224,7 +226,7 @@ export const CAD_TOOL_DEFINITIONS = [
 
 export const CAD_INSTRUCTIONS = `BeddCode CAD. The user is asking you to create or edit a solid model on the CAD pane. Use the BeddCode CAD tools (cad_list, cad_create, cad_get_tree, cad_add_sketch, cad_add_feature, cad_edit_feature, cad_delete_feature, cad_set_params, cad_query_geometry, cad_screenshot, cad_import, cad_export), not a mesh file or code, unless the user explicitly asks for a file. Units are millimetres. If the CAD tools are unavailable, explain that; do not substitute a file.
 
-Read cad_get_tree before changing a document you did not just create. Add sketches on a plane (XY, YZ or ZX), then features (box, cylinder, sphere, extrude, revolve, fillet, chamfer, union, cut, intersect). After an edit the pane rebuilds the solid when it is open. cad_screenshot needs that pane. cad_query_geometry uses it when it is open; a bbox without the pane is only an estimate from feature parameters. cad_export of JSON is the document on the host; STEP and STL need the pane. If a tool says it needs an open CAD pane, say so instead of claiming you checked or exported the solid.`
+Read cad_get_tree before changing a document you did not just create. Add sketches on a plane (XY, YZ or ZX), then features (box, cylinder, sphere, extrude, revolve, hole, fillet, chamfer, union, cut, intersect). A box stores the width, depth, and height you pass. A hole needs targetId and either x and y on a face plane or a world point (x, y, z or point). A fillet stores radius plus edgeIds and edgeRefs when you pass them. After an edit the pane rebuilds the solid when it is open. cad_screenshot needs that pane. cad_query_geometry uses it when it is open; a bbox without the pane is only an estimate from feature parameters. cad_export of JSON is the document on the host; STEP and STL need the pane. If a tool says it needs an open CAD pane, say so instead of claiming you checked or exported the solid.`
 
 type Args = Record<string, unknown>
 export interface CadMcpResult {
@@ -282,19 +284,31 @@ function buildFeature(raw: Args): CadFeature {
   const type = typeof raw.type === 'string' ? raw.type : ''
   if (!FEATURE_TYPES.has(type))
     throw new Error(
-      `Unknown feature type ${type || '(missing)'}. Use box, cylinder, sphere, extrude, revolve, fillet, chamfer, union, cut, intersect, or import.`,
+      `Unknown feature type ${type || '(missing)'}. Use box, cylinder, sphere, extrude, revolve, fillet, chamfer, hole, union, cut, intersect, or import.`,
     )
   const params = raw.params === undefined ? {} : plainObject(raw.params)
   if (!params) throw new Error('params must be an object')
   const feature: CadFeature = {
     id: newId(type),
     type,
+    kind: type,
     name: nameOf(raw.name, type),
     params,
+    suppressed: raw.suppressed === true,
   }
   if (typeof raw.sketch === 'string' && raw.sketch) feature.sketchId = raw.sketch
-  if (raw.suppressed === true) feature.suppressed = true
   return feature
+}
+
+/**
+ * Resolves hole and fillet params into the shape the pane rebuilds.
+ * A hole stores a world point. x/y on a face plane are placed on the outer face
+ * of the target. Fillet edgeIds are a comma list and edgeRefs are JSON.
+ */
+function finishFeature(feature: CadFeature, doc: CadDocument): void {
+  feature.kind = feature.type
+  feature.suppressed = feature.suppressed === true
+  feature.params = normalizeParams(feature.type, feature.params, doc, feature.id)
 }
 
 function buildSketch(raw: Args): CadSketch {
@@ -502,7 +516,10 @@ export class CadTools {
         if (doc.features.length + features.length > MAX_FEATURES)
           throw new Error(`A document can hold ${MAX_FEATURES} features`)
         doc.sketches.push(...sketches)
-        doc.features.push(...features)
+        for (const feature of features) {
+          finishFeature(feature, doc)
+          doc.features.push(feature)
+        }
         doc.historyIndex = doc.features.length
       },
       'agent',
@@ -580,7 +597,10 @@ export class CadTools {
         if (doc.features.length + features.length > MAX_FEATURES)
           throw new Error(`A document can hold ${MAX_FEATURES} features`)
         doc.sketches.push(...sketches)
-        doc.features.push(...features)
+        for (const feature of features) {
+          finishFeature(feature, doc)
+          doc.features.push(feature)
+        }
         doc.historyIndex = doc.features.length
       },
       'agent',
@@ -647,6 +667,7 @@ export class CadTools {
               throw new Error(`No sketch ${made.sketchId}`)
             const at = Math.min(Math.max(0, doc.historyIndex), doc.features.length)
             doc.features = doc.features.slice(0, at)
+            finishFeature(made, doc)
             if (doc.features.length >= MAX_FEATURES)
               throw new Error(`A document can hold ${MAX_FEATURES} features`)
             doc.features.push(made)
@@ -689,6 +710,7 @@ export class CadTools {
                 if (value === null) delete feature.params[key]
                 else feature.params[key] = value
               }
+              feature.params = normalizeParams(feature.type, feature.params, doc, feature.id)
             }
           },
           'agent',
@@ -733,6 +755,340 @@ export class CadTools {
       }
     }
   }
+}
+
+const HOLE_DIRECTIONS = new Set(['X', 'Y', 'Z', '-X', '-Y', '-Z', 'normal'])
+const HOLE_SKIP = new Set([
+  'plane',
+  'point',
+  'origin',
+  'facePoint',
+  'feature',
+  'counterbore',
+  'target',
+  'targetId',
+  'x',
+  'y',
+  'z',
+  'diameter',
+  'throughAll',
+  'depth',
+  'direction',
+  'cboreDiameter',
+  'cboreDepth',
+])
+
+function normalizeParams(
+  type: string,
+  params: Record<string, unknown>,
+  doc: CadDocument,
+  selfId?: string,
+): Record<string, unknown> {
+  if (type === 'hole') return normalizeHoleParams(params, doc, selfId)
+  if (type === 'fillet' || type === 'chamfer') return normalizeEdgeParams(type, params, doc, selfId)
+  if (type === 'box' || type === 'cylinder' || type === 'sphere')
+    return normalizeSolidParams(type, params)
+  if (type === 'extrude') return normalizeExtrudeParams(params)
+  return params
+}
+
+/** Keeps a box, cylinder, or sphere at the exact sizes the agent passed. */
+function normalizeSolidParams(
+  type: string,
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  const keys =
+    type === 'box'
+      ? ['width', 'depth', 'height']
+      : type === 'sphere'
+        ? ['radius']
+        : ['radius', 'height']
+  const next = { ...params }
+  for (const key of keys) {
+    if (next[key] === undefined) continue
+    next[key] = requiredPositive(next[key], key)
+  }
+  for (const key of ['x', 'y', 'z'] as const) {
+    if (next[key] === undefined) continue
+    next[key] = requiredFinite(next[key], key)
+  }
+  return next
+}
+
+function normalizeExtrudeParams(params: Record<string, unknown>): Record<string, unknown> {
+  if (params.distance === undefined) return params
+  const distance = finiteNumber(params.distance)
+  if (distance === undefined || distance === 0) {
+    throw new Error('distance must be a non-zero number')
+  }
+  return { ...params, distance }
+}
+
+/**
+ * x and y are coordinates on the face plane (u, v). XY maps u→X v→Y, YZ maps
+ * u→Y v→Z, ZX maps u→Z v→X. The missing axis is the outer face of the target.
+ * A world point (point, origin, facePoint, or x, y, and z) is stored as-is.
+ */
+function normalizeHoleParams(
+  params: Record<string, unknown>,
+  doc: CadDocument,
+  selfId?: string,
+): Record<string, unknown> {
+  const targetId = firstString(params.targetId, params.target, params.feature)
+  if (!targetId) throw new Error('hole needs a targetId')
+  if (selfId && targetId === selfId) throw new Error('hole target must be another feature')
+  if (!doc.features.some((feature) => feature.id === targetId)) {
+    throw new Error(`No feature ${targetId}`)
+  }
+  const point = resolveHolePoint(params, doc, targetId)
+  const diameter = params.diameter === undefined ? 8 : requiredPositive(params.diameter, 'diameter')
+  const throughAll = flagOf(params.throughAll) ?? true
+  const depth = params.depth === undefined ? undefined : requiredPositive(params.depth, 'depth')
+  if (!throughAll && depth === undefined) throw new Error('hole depth is missing')
+  const next: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(params)) {
+    if (!HOLE_SKIP.has(key)) next[key] = value
+  }
+  next.target = targetId
+  next.targetId = targetId
+  next.x = point.x
+  next.y = point.y
+  next.z = point.z
+  next.diameter = diameter
+  next.throughAll = throughAll
+  if (depth !== undefined) next.depth = depth
+  const direction = firstString(params.direction)
+  if (direction) next.direction = holeDirection(direction)
+  else if (point.direction) next.direction = point.direction
+  const counterbore = readCounterbore(params, diameter)
+  if (counterbore) {
+    next.cboreDiameter = counterbore.diameter
+    next.cboreDepth = counterbore.depth
+  }
+  return next
+}
+
+function resolveHolePoint(
+  params: Record<string, unknown>,
+  doc: CadDocument,
+  targetId: string,
+): { x: number; y: number; z: number; direction?: string } {
+  const listed = readVec(params.point) ?? readVec(params.origin) ?? readVec(params.facePoint)
+  if (listed) return { x: listed[0], y: listed[1], z: listed[2] }
+  const x = params.x === undefined ? undefined : requiredFinite(params.x, 'x')
+  const y = params.y === undefined ? undefined : requiredFinite(params.y, 'y')
+  const z = params.z === undefined ? undefined : requiredFinite(params.z, 'z')
+  const plane = firstString(params.plane)
+  if (plane) {
+    if (x === undefined || y === undefined) throw new Error('hole on a face plane needs x and y')
+    return placeOnPlane(plane, x, y, doc, targetId)
+  }
+  if (x !== undefined && y !== undefined && z !== undefined) return { x, y, z }
+  if (x !== undefined && y !== undefined) return placeOnPlane('XY', x, y, doc, targetId)
+  throw new Error('hole needs x and y on a face plane, or a world point and targetId')
+}
+
+function placeOnPlane(
+  plane: string,
+  u: number,
+  v: number,
+  doc: CadDocument,
+  targetId: string,
+): { x: number; y: number; z: number; direction: string } {
+  const name = canonicalPlane(plane)
+  const box = estimateBBox(doc, targetId)
+  const faceX = box?.max[0] ?? 0
+  const faceY = box?.max[1] ?? 0
+  const faceZ = box?.max[2] ?? 0
+  if (name === 'YZ') return { x: faceX, y: u, z: v, direction: '-X' }
+  if (name === 'ZX') return { x: v, y: faceY, z: u, direction: '-Y' }
+  return { x: u, y: v, z: faceZ, direction: '-Z' }
+}
+
+function canonicalPlane(plane: string): 'XY' | 'YZ' | 'ZX' {
+  const name = plane.trim().toUpperCase()
+  if (name === 'XY' || name === 'YX') return 'XY'
+  if (name === 'YZ' || name === 'ZY') return 'YZ'
+  if (name === 'ZX' || name === 'XZ') return 'ZX'
+  throw new Error(`unknown hole plane ${plane}`)
+}
+
+function readCounterbore(
+  params: Record<string, unknown>,
+  diameter: number,
+): { diameter: number; depth: number } | undefined {
+  let boreDiameter = params.cboreDiameter
+  let boreDepth = params.cboreDepth
+  const nested = params.counterbore
+  if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+    const record = nested as Record<string, unknown>
+    if (boreDiameter === undefined) boreDiameter = record.diameter
+    if (boreDepth === undefined) boreDepth = record.depth
+  }
+  if (boreDiameter === undefined && boreDepth === undefined) return undefined
+  if (boreDiameter === undefined || boreDepth === undefined) {
+    throw new Error('counterbore needs a diameter and a depth')
+  }
+  const bore = requiredPositive(boreDiameter, 'counterbore diameter')
+  const depth = requiredPositive(boreDepth, 'counterbore depth')
+  if (bore <= diameter) throw new Error('counterbore diameter must be larger than the hole')
+  return { diameter: bore, depth }
+}
+
+function normalizeEdgeParams(
+  type: string,
+  params: Record<string, unknown>,
+  doc: CadDocument,
+  selfId?: string,
+): Record<string, unknown> {
+  const next = { ...params }
+  const targetId = firstString(params.targetId, params.target, params.feature)
+  if (targetId) {
+    if (selfId && targetId === selfId) throw new Error(`${type} target must be another feature`)
+    if (!doc.features.some((feature) => feature.id === targetId)) {
+      throw new Error(`No feature ${targetId}`)
+    }
+    next.target = targetId
+    next.targetId = targetId
+    delete next.feature
+  }
+  if (params.radius !== undefined) next.radius = requiredPositive(params.radius, 'radius')
+  if (params.edgeIds !== undefined) {
+    const edgeIds = normalizeEdgeIds(params.edgeIds)
+    if (edgeIds) next.edgeIds = edgeIds
+    else delete next.edgeIds
+  }
+  if (params.edgeRefs !== undefined) {
+    const edgeRefs = normalizeEdgeRefs(params.edgeRefs)
+    if (edgeRefs) next.edgeRefs = edgeRefs
+    else delete next.edgeRefs
+  }
+  return next
+}
+
+function normalizeEdgeIds(value: unknown): string {
+  if (typeof value === 'number') {
+    if (!Number.isInteger(value) || value < 0) throw new Error('edgeIds must be integers')
+    return String(value)
+  }
+  if (typeof value === 'string') {
+    if (!value.trim()) return ''
+    const ids = value
+      .split(',')
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0)
+    for (const id of ids) {
+      if (!/^\d+$/.test(id)) throw new Error('edgeIds must be comma-separated integers')
+    }
+    return ids.join(',')
+  }
+  if (Array.isArray(value)) {
+    const ids: string[] = []
+    for (const item of value) {
+      if (typeof item === 'number' && Number.isInteger(item) && item >= 0) {
+        ids.push(String(item))
+        continue
+      }
+      if (typeof item === 'string' && /^\d+$/.test(item.trim())) {
+        ids.push(String(Number(item)))
+        continue
+      }
+      throw new Error('edgeIds must be integers')
+    }
+    return ids.join(',')
+  }
+  throw new Error('edgeIds must be integers or a comma-separated list')
+}
+
+function normalizeEdgeRefs(value: unknown): string {
+  let list: unknown = value
+  if (typeof value === 'string') {
+    if (!value.trim()) return ''
+    try {
+      list = JSON.parse(value)
+    } catch {
+      throw new Error('edgeRefs must be a JSON array')
+    }
+  }
+  if (!Array.isArray(list)) throw new Error('edgeRefs must be edge signatures')
+  if (list.length === 0) return ''
+  return JSON.stringify(list.map((item) => readEdgeRef(item)))
+}
+
+function readEdgeRef(value: unknown): {
+  kind: 'edge'
+  mid: [number, number, number]
+  dir: [number, number, number]
+  length: number
+} {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('edgeRefs must be edge signatures')
+  }
+  const ref = value as Record<string, unknown>
+  if (ref.kind !== 'edge') throw new Error('edgeRefs must be edge signatures')
+  const length = finiteNumber(ref.length)
+  if (length === undefined || length < 0) throw new Error('edgeRefs length must be a number')
+  return {
+    kind: 'edge',
+    mid: readVecRequired(ref.mid, 'edgeRefs mid'),
+    dir: readVecRequired(ref.dir, 'edgeRefs dir'),
+    length,
+  }
+}
+
+function readVec(value: unknown): [number, number, number] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value) || value.length !== 3) throw new Error('hole point must be x, y, z')
+  return readVecRequired(value, 'point')
+}
+
+function readVecRequired(value: unknown, label: string): [number, number, number] {
+  if (!Array.isArray(value) || value.length !== 3) throw new Error(`${label} must be x, y, z`)
+  return [
+    requiredFinite(value[0], `${label} x`),
+    requiredFinite(value[1], `${label} y`),
+    requiredFinite(value[2], `${label} z`),
+  ]
+}
+
+function holeDirection(value: string): string {
+  if (!HOLE_DIRECTIONS.has(value)) throw new Error('unknown hole direction')
+  return value
+}
+
+function flagOf(value: unknown): boolean | undefined {
+  if (value === undefined) return undefined
+  if (value === true || value === 'true') return true
+  if (value === false || value === 'false') return false
+  throw new Error('throughAll must be a boolean')
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return undefined
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return undefined
+}
+
+function requiredFinite(value: unknown, label: string): number {
+  const number = finiteNumber(value)
+  if (number === undefined) throw new Error(`${label} must be a finite number`)
+  return number
+}
+
+function requiredPositive(value: unknown, label: string): number {
+  const number = finiteNumber(value)
+  if (number === undefined || number <= 0) throw new Error(`${label} must be a positive number`)
+  return number
 }
 
 /** OCCT import/export failed because the solid lives on the pane, or the pane did not answer. */
