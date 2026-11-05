@@ -24,6 +24,16 @@ GitHub webhook ──▶ Worker (verify signature, allow-list, rate limit, build
 | `stop` | issue or PR | interrupts the running job |
 
 `@beddcode codex model=gpt-5 effort=high fix this` picks the agent, model and effort for that one job.
+**Plain words work too.** Anything that is not one of the commands above, such as
+`@beddcode go ahead and tackle this with claude on sonnet on low`, is read by the agent on your host. It decides
+whether to fix, review, explain, rebase, just answer, or ask you a question back, then carries on in the same
+session. Agent, model and effort are picked out of the sentence.
+
+**Labels.** Adding the label `beddcode` starts a fix on an issue or a review on a pull request; `beddcode:fix`,
+`beddcode:review`, `beddcode:fix-ci`, `beddcode:explain` and `beddcode:rebase` choose the command. Create the labels
+once in the repo. Only an allowed login applying the label counts. (GitHub does not list apps in the `@` picker, so
+the label is the way to trigger it without typing.)
+
 Quoted lines and code blocks are ignored, so quoting a command never runs it.
 
 ## Safety

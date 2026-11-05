@@ -68,22 +68,11 @@ async function accept(env: Env, ask: AskRequest): Promise<void> {
   const token = await github.token(ask.installationId)
   const queue = queueOf(env)
   const react = (content: string) =>
-    github.react(token, ask.repo, ask.commentId, ask.commentKind, content).catch(() => undefined)
+    github.react(token, ask.repo, { kind: ask.commentKind, id: ask.commentId, number: ask.number }, content).catch(() => undefined)
   const say = (body: string) => github.comment(token, ask.repo, ask.number, body).catch(() => undefined)
 
   if (!(await queue.admit(ask.sender, num(env.MAX_JOBS_PER_HOUR, 10))))
     return void (await say(`@${ask.sender} that is more than ${num(env.MAX_JOBS_PER_HOUR, 10)} requests this hour. Try again later.`))
-
-  if (ask.command.verb === 'help')
-    return void (await say(`@${ask.sender} I did not find a command in that. Try one of:
-
-- \`@${env.APP_SLUG ?? 'beddcode'} fix this\`
-- \`@${env.APP_SLUG ?? 'beddcode'} review\` / \`explain\`
-- \`@${env.APP_SLUG ?? 'beddcode'} fix ci\`
-- \`@${env.APP_SLUG ?? 'beddcode'} rebase on main\`
-- \`@${env.APP_SLUG ?? 'beddcode'} stop\`
-
-Add an agent, model or effort anywhere: \`codex\`, \`model=sonnet\`, \`effort=high\`, or in words like "with claude on sonnet, low effort".`))
 
   let head: Job['head']
   let base: Job['base']
@@ -106,7 +95,7 @@ Add an agent, model or effort anywhere: \`codex\`, \`model=sonnet\`, \`effort=hi
     issue.body ?? '(no description)',
     ...comments.slice(-15).map((c) => `--- ${c.user.login} wrote:\n${c.body}`),
   ]
-  if (ask.command.verb === 'fix-ci' && head)
+  if ((ask.command.verb === 'fix-ci' || ask.command.verb === 'ask') && head)
     parts.push(`## Failing checks on ${head.sha.slice(0, 7)}\n${await github.failedChecks(token, ask.repo, head.sha)}`)
 
   const job: Job = {
@@ -193,7 +182,7 @@ async function host(request: Request, url: URL, env: Env): Promise<Response> {
   }
   const report = body as unknown as JobReport
   const reaction = { started: 'eyes', done: 'rocket', failed: 'confused', refused: 'confused', stopped: '-1', working: '' }[report.status]
-  if (reaction) await github.react(token, job.repo, job.commentId, job.commentKind, reaction).catch(() => undefined)
+  if (reaction) await github.react(token, job.repo, { kind: job.commentKind, id: job.commentId, number: job.number }, reaction).catch(() => undefined)
   if (report.message) await github.comment(token, job.repo, job.number, String(report.message).slice(0, 60_000))
   if (['done', 'failed', 'stopped', 'refused'].includes(report.status)) await queue.finish(job.id)
   return json({ ok: true })

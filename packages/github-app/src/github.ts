@@ -62,11 +62,18 @@ export class Github {
     })
   }
 
-  react(token: string, repo: string, commentId: number, kind: 'issue' | 'review', content: string) {
+  react(
+    token: string,
+    repo: string,
+    target: { kind: 'issue' | 'review' | 'thread'; id: number; number: number },
+    content: string,
+  ) {
     const path =
-      kind === 'review'
-        ? `/repos/${repo}/pulls/comments/${commentId}/reactions`
-        : `/repos/${repo}/issues/comments/${commentId}/reactions`
+      target.kind === 'review'
+        ? `/repos/${repo}/pulls/comments/${target.id}/reactions`
+        : target.kind === 'thread'
+          ? `/repos/${repo}/issues/${target.number}/reactions`
+          : `/repos/${repo}/issues/comments/${target.id}/reactions`
     return this.call(token, 'POST', path, { content })
   }
 

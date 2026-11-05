@@ -43,15 +43,15 @@ describe('parseCommand', () => {
   })
   it('understands plain words, with agent, model and effort picked out', () => {
     expect(parseCommand('@beddcode go ahead and tackle this with claude on sonnet 5.5 on low', slug)).toMatchObject({
-      verb: 'fix',
+      verb: 'ask',
       agent: 'claude',
       model: 'sonnet',
       effort: 'low',
       extra: expect.stringContaining('tackle this'),
     })
-    expect(parseCommand('@beddcode could you review this using codex, high effort?', slug)).toMatchObject({ verb: 'review', agent: 'codex', effort: 'high' })
-    expect(parseCommand('@beddcode the CI is failing, please sort it', slug)?.verb).toBe('fix-ci')
-    expect(parseCommand('@beddcode what do you think?', slug)?.verb).toBe('help')
+    expect(parseCommand('@beddcode could you review this using codex, high effort?', slug)).toMatchObject({ verb: 'ask', agent: 'codex', effort: 'high' })
+    expect(parseCommand('@beddcode the CI is failing, please sort it', slug)?.verb).toBe('ask')
+    expect(parseCommand('@beddcode what do you think?', slug)?.verb).toBe('ask')
   })
   it('ignores quotes and code blocks', () => {
     expect(parseCommand('> @beddcode fix this\nlooks good', slug)).toBeUndefined()
@@ -126,6 +126,29 @@ describe('triage', () => {
     })
     expect(triage('pull_request_review_comment', pr('o/r'), rules).ok).toBe(true)
     expect(triage('pull_request_review_comment', pr('evil/r'), rules).ok).toBe(false)
+  })
+})
+
+describe('label triggers', () => {
+  const rules = { slug: 'beddcode', allowed: ['0xbasinas'] }
+  const owner = { login: '0xbasinas', type: 'User' }
+  const labeled = (event: 'issues' | 'pull_request', name: string, sender = owner) => ({
+    action: 'labeled',
+    installation: { id: 7 },
+    repository: { full_name: 'o/r' },
+    sender,
+    label: { name },
+    issue: { number: 3, html_url: 'u' },
+    pull_request: { number: 5, html_url: 'u', head: { ref: 'f', sha: 'a', repo: { full_name: 'o/r' } }, base: { ref: 'main', repo: { full_name: 'o/r' } } },
+  })
+  it('fixes a labeled issue and reviews a labeled pull request', () => {
+    expect(triage('issues', labeled('issues', 'beddcode'), rules)).toMatchObject({ ok: true, request: { number: 3, commentKind: 'thread', command: { verb: 'fix' } } })
+    expect(triage('pull_request', labeled('pull_request', 'beddcode'), rules)).toMatchObject({ ok: true, request: { number: 5, isPullRequest: true, command: { verb: 'review' } } })
+    expect(triage('issues', labeled('issues', 'beddcode:explain'), rules)).toMatchObject({ ok: true, request: { command: { verb: 'explain' } } })
+  })
+  it('ignores other labels and labels applied by anyone else', () => {
+    expect(triage('issues', labeled('issues', 'bug'), rules).ok).toBe(false)
+    expect(triage('issues', labeled('issues', 'beddcode', { login: 'mallory', type: 'User' }), rules).ok).toBe(false)
   })
 })
 
