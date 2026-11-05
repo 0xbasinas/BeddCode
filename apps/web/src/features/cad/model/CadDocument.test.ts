@@ -231,6 +231,20 @@ describe('CadDocument', () => {
     expect(onBoss.feature.params.targetId).toBe('boss')
     expect(onBoss.feature.params).toMatchObject({ x: 0, y: 0, z: 12, direction: '-Z' })
 
+    const sideHole = addHoleFromFace(doc, {
+      targetId: 'plate',
+      point: [-20.2, 3.125, 4],
+      normal: [-1, 0, 0],
+      planeOrigin: [-20, 0, 0],
+      diameter: 5.5,
+      throughAll: false,
+      depth: 6,
+    })
+    expect(sideHole.feature.params).toMatchObject({
+      targetId: 'plate', x: -20, y: 3.125, z: 4,
+      direction: 'X', diameter: 5.5, throughAll: false, depth: 6,
+    })
+
     expect(() =>
       addHoleFromFace(doc, {
         targetId: 'missing',

@@ -494,4 +494,17 @@ describe('hole placement from a face point', () => {
     expect(axis.origin[2]).toBeCloseTo(8)
     expect(axis.direction).toBe('-Z')
   })
+
+  it('uses outward mesh normals when triangle winding is reversed', () => {
+    const frame = faceFrameFromMesh({
+      positions: new Float32Array([0, 0, 8, 0, 10, 8, 10, 0, 8]),
+      normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    }, 0)
+    expect(frame).not.toBeNull()
+    expect(holeAxisFromFacePoint({
+      point: [3.25, 4.5, 8.1],
+      normal: frame!.normal,
+      planeOrigin: frame!.origin,
+    })).toEqual({ origin: [3.25, 4.5, 8], direction: '-Z' })
+  })
 })
