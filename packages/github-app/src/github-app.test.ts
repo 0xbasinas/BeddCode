@@ -152,6 +152,28 @@ describe('label triggers', () => {
   })
 })
 
+describe('commands in a new issue', () => {
+  const rules = { slug: 'beddcode', allowed: ['0xbasinas'] }
+  const owner = { login: '0xbasinas', type: 'User' }
+  const opened = (body: string, user = owner) => ({
+    action: 'opened',
+    installation: { id: 7 },
+    repository: { full_name: 'o/r' },
+    sender: user,
+    issue: { number: 104, html_url: 'u', body, user },
+  })
+  it('starts a job from the issue text, as plain words for the agent', () => {
+    expect(triage('issues', opened('@beddcode please make the composer less tall slightly, use sonnet 5.5 on medium'), rules)).toMatchObject({
+      ok: true,
+      request: { number: 104, commentKind: 'thread', command: { verb: 'ask', model: 'sonnet', effort: 'medium' } },
+    })
+  })
+  it('ignores strangers and issues that do not mention the app', () => {
+    expect(triage('issues', opened('@beddcode fix this', { login: 'mallory', type: 'User' }), rules).ok).toBe(false)
+    expect(triage('issues', opened('the composer is too tall'), rules).ok).toBe(false)
+  })
+})
+
 describe('appJwt', () => {
   it('signs with a PKCS#1 key as GitHub hands them out', async () => {
     const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })

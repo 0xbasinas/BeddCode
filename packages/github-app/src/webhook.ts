@@ -28,8 +28,8 @@ interface Payload {
   installation?: { id?: number }
   repository?: { full_name?: string; archived?: boolean }
   sender?: Actor
-  issue?: { number: number; html_url?: string; pull_request?: unknown }
-  pull_request?: PullInfo & { number: number; html_url?: string }
+  issue?: { number: number; html_url?: string; pull_request?: unknown; body?: string | null; user?: Actor }
+  pull_request?: PullInfo & { number: number; html_url?: string; body?: string | null; user?: Actor }
   comment?: { id: number; body?: string; user?: Actor; html_url?: string }
   review?: { id: number; body?: string | null; user?: Actor; html_url?: string }
   label?: { name?: string }
@@ -64,6 +64,34 @@ export function triage(event: string, payload: Payload, rules: Rules): Triage {
   const installationId = payload.installation?.id
   if (!repo || !installationId) return no('no repository or installation')
   if (payload.repository?.archived) return no('archived repository')
+  // A command in the text of a new issue or pull request, like "@beddcode please fix this".
+  if (payload.action === 'opened' && (event === 'issues' || event === 'pull_request')) {
+    const isPullRequest = event === 'pull_request'
+    const thing = isPullRequest ? payload.pull_request : payload.issue
+    const number = thing?.number
+    const author = thing?.user
+    if (!number || !thing?.body) return no('empty body')
+    if (!allowedSender(author, rules.allowed) || !allowedSender(payload.sender, rules.allowed))
+      return no('sender not allowed')
+    const command = parseCommand(thing.body, rules.slug)
+    if (!command) return no('no command')
+    if (isPullRequest && fromFork(payload.pull_request ?? {})) return no('pull request from a fork')
+    return {
+      ok: true,
+      request: {
+        repo,
+        installationId,
+        number,
+        isPullRequest,
+        sender: author!.login,
+        command,
+        commentId: 0,
+        commentKind: 'thread',
+        url: thing.html_url ?? '',
+        pull: isPullRequest ? payload.pull_request : undefined,
+      },
+    }
+  }
   if (payload.action === 'labeled' && (event === 'issues' || event === 'pull_request')) {
     // Whoever applied the label must be allowed; that is the only identity a label carries.
     const isPullRequest = event === 'pull_request'
