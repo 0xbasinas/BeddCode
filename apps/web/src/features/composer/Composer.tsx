@@ -431,7 +431,7 @@ export function Composer(props: ComposerProps) {
           aria-label={props.editing ? 'Edit queued message' : 'Message'}
           value={text}
           placeholder={props.placeholder}
-          rows={2}
+          rows={1}
           autoFocus={props.autoFocus}
           onChange={(e) => {
             setText(e.target.value)
