@@ -1,6 +1,19 @@
 import { ChevronDown, ChevronUp, Eye, EyeOff, Trash2 } from 'lucide-react'
 import type { CadFeature } from './model/CadDocument.ts'
 
+/** Kind line in the tree. Holes include the diameter. Failures use `errors`. */
+export function featureDetail(feature: CadFeature): string {
+  if (feature.kind === 'hole') {
+    const diameter = feature.params.diameter
+    if (typeof diameter === 'number' && Number.isFinite(diameter)) {
+      const shown = Math.round(diameter * 1000) / 1000
+      return `Hole · ⌀${shown}`
+    }
+    return 'Hole'
+  }
+  return feature.kind
+}
+
 export function FeatureTree({
   features,
   historyIndex,
@@ -44,9 +57,9 @@ export function FeatureTree({
                   onClick={() => onSelect(feature.id)}
                 >
                   <span>{feature.name}</span>
-                  <span className="cad-feature-kind">{feature.kind}</span>
+                  <span className="cad-feature-kind">{featureDetail(feature)}</span>
                   {error ? (
-                    <span className="cad-feature-kind" title={error}>
+                    <span className="cad-feature-error" title={error}>
                       {error}
                     </span>
                   ) : null}

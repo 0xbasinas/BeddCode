@@ -197,6 +197,7 @@ export function makeFilletFeature(
   targetId: string,
   edgeIds?: string,
   id: string = crypto.randomUUID(),
+  edgeRefs?: string,
 ): CadFeature {
   const count = countKind(doc, 'fillet')
   return {
@@ -204,7 +205,12 @@ export function makeFilletFeature(
     name: `Fillet ${count + 1}`,
     kind: 'fillet',
     suppressed: false,
-    params: { targetId, radius: 1, ...(edgeIds ? { edgeIds } : {}) },
+    params: {
+      targetId,
+      radius: 1,
+      ...(edgeIds ? { edgeIds } : {}),
+      ...(edgeRefs ? { edgeRefs } : {}),
+    },
   }
 }
 
@@ -213,6 +219,7 @@ export function makeChamferFeature(
   targetId: string,
   edgeIds?: string,
   id: string = crypto.randomUUID(),
+  edgeRefs?: string,
 ): CadFeature {
   const count = countKind(doc, 'chamfer')
   return {
@@ -220,16 +227,24 @@ export function makeChamferFeature(
     name: `Chamfer ${count + 1}`,
     kind: 'chamfer',
     suppressed: false,
-    params: { targetId, radius: 1, ...(edgeIds ? { edgeIds } : {}) },
+    params: {
+      targetId,
+      radius: 1,
+      ...(edgeIds ? { edgeIds } : {}),
+      ...(edgeRefs ? { edgeRefs } : {}),
+    },
   }
 }
 
-export interface AddHoleParams {
+
+export interface HoleParams {
+  /** Body the hole cuts. */
   target: string
-  diameter: number
+  diameter?: number
   depth?: number
+  /** Defaults to true. A blind hole uses `depth`. */
   throughAll?: boolean
-  /** Face point. `facePoint` wins when both are set. */
+  /** Face point in millimetres. `facePoint` wins when both are set. */
   x?: number
   y?: number
   z?: number
@@ -240,29 +255,61 @@ export interface AddHoleParams {
   id?: string
 }
 
-/** Appends a hole. The kernel cuts a cylinder from `target`. */
-export function addHole(doc: CadDocument, params: AddHoleParams): CadDocument {
+/** @deprecated Prefer HoleParams; kept for callers that imported AddHoleParams. */
+export type AddHoleParams = HoleParams
+
+function holeNumber(value: number | undefined, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+/**
+ * Builds a hole feature. Defaults: diameter 8, through-all, depth 10.
+ * The kernel maps this to a first-class hole op.
+ */
+export function makeHoleFeature(
+  doc: CadDocument,
+  params: HoleParams,
+  id: string = crypto.randomUUID(),
+): CadFeature {
   const count = countKind(doc, 'hole')
-  const point = params.facePoint ?? [params.x ?? 0, params.y ?? 0, params.z ?? 0]
-  const feature: CadFeature = {
-    id: params.id ?? crypto.randomUUID(),
+  const point = params.facePoint ?? [
+    holeNumber(params.x, 0),
+    holeNumber(params.y, 0),
+    holeNumber(params.z, 0),
+  ]
+  const throughAll = params.throughAll !== false
+  return {
+    id: params.id ?? id,
     name: `Hole ${count + 1}`,
     kind: 'hole',
     suppressed: false,
     params: {
       target: params.target,
-      diameter: params.diameter,
+      diameter: holeNumber(params.diameter, 8),
+      ...(throughAll ? { throughAll: true } : { throughAll: false, depth: holeNumber(params.depth, 10) }),
+      ...(throughAll && params.depth !== undefined ? { depth: params.depth } : {}),
       x: point[0],
       y: point[1],
       z: point[2],
-      ...(params.depth !== undefined ? { depth: params.depth } : {}),
-      ...(params.throughAll ? { throughAll: true } : {}),
-      ...(params.cboreDiameter !== undefined ? { cboreDiameter: params.cboreDiameter } : {}),
-      ...(params.cboreDepth !== undefined ? { cboreDepth: params.cboreDepth } : {}),
+      ...(holeNumber(params.cboreDiameter, 0) > 0 && holeNumber(params.cboreDepth, 0) > 0
+        ? {
+            cboreDiameter: holeNumber(params.cboreDiameter, 0),
+            cboreDepth: holeNumber(params.cboreDepth, 0),
+          }
+        : {}),
       ...(params.direction ? { direction: params.direction } : {}),
     },
   }
-  return appendFeature(doc, feature)
+}
+
+/** Appends a hole and returns the new document plus the feature just added. */
+export function addHole(
+  doc: CadDocument,
+  params: HoleParams,
+  id?: string,
+): { doc: CadDocument; feature: CadFeature } {
+  const feature = makeHoleFeature(doc, params, id ?? params.id ?? crypto.randomUUID())
+  return { feature, doc: appendFeature(doc, feature) }
 }
 
 export function makeBooleanFeature(

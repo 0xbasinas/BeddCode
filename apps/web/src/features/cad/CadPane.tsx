@@ -7,11 +7,30 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from 'react'
+import { useHostKey } from '../../stores/HostScope.tsx'
+import { reportCadView } from '../../stores/host.ts'
+import {
+  emitCadMaximize,
+  registerCadExportProvider,
+  registerCadImportProvider,
+  registerCadQueryProvider,
+  registerCadRebuildProvider,
+  registerCadScreenshotProvider,
+  setCadView,
+  decodeTransferBytes,
+  decodeTransferText,
+  type CadExportRequest,
+  type CadImportRequest,
+  type CadQueryRequest,
+  type CadRebuildRequest,
+} from './cadHostBridge.ts'
 import { FeatureTree } from './FeatureTree.tsx'
 import { PropertiesPanel } from './PropertiesPanel.tsx'
-import { CAD_TOOLS, Toolbar, type CadTool, type SketchTool } from './Toolbar.tsx'
+import { Toolbar, type CadTool, type SketchTool } from './Toolbar.tsx'
 import { Viewport, type PickHit, type ViewportHandle } from './Viewport.tsx'
+import { mergeEdgeParams, roundMm, signatureForEdge } from './edgeRefs.ts'
 import {
+  addHole,
   appendFeature,
   appendSketch,
   emptyDocument,
@@ -43,8 +62,12 @@ import './cad.css'
  * CAD pane: toolbar, feature tree, viewport, properties, and a status bar.
  * The arrangement follows a common solid modeler. It does not share code with Chili3D.
  * Solids are rebuilt through createCadClient() and OpenCascade.
+ *
+ * Maximize dispatches `beddcode:cad-maximize` with `{ maximized: boolean }` and sets
+ * `.cad-pane--max`. The shell listens and toggles `.right.cad-open.cad-maximized`.
  */
 export function CadPane() {
+  const hostKey = useHostKey()
   const stack = useRef(new UndoStack(emptyDocument()))
   const viewport = useRef<ViewportHandle>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -61,8 +84,17 @@ export function CadPane() {
   const [activePlane, setActivePlane] = useState<CadSketch['plane']>('XY')
   const [sketchTool, setSketchTool] = useState<SketchTool>('rectangle')
   const [measureLabel, setMeasureLabel] = useState<string | null>(null)
+  const [maximized, setMaximized] = useState(false)
 
   const { meshes, errors, loading, failure, getClient } = useCadRebuild(doc, stepFiles)
+  const docRef = useRef(doc)
+  const meshesRef = useRef(meshes)
+  const selectedRef = useRef(selectedId)
+  const getClientRef = useRef(getClient)
+  docRef.current = doc
+  meshesRef.current = meshes
+  selectedRef.current = selectedId
+  getClientRef.current = getClient
   const meshKey = meshes.map((mesh) => mesh.id).join('|')
 
   useEffect(() => {
@@ -70,6 +102,86 @@ export function CadPane() {
     fitArmed.current = false
     setFitRequest((value) => value + 1)
   }, [meshKey, loading])
+
+  useEffect(() => {
+    const selection = selectedId ? [selectedId] : []
+    setCadView({ canRender: true, documentId: doc.id, selection })
+    reportCadView(hostKey, { documentId: doc.id, selection })
+  }, [hostKey, doc.id, selectedId])
+
+  useEffect(() => {
+    return () => {
+      setCadView({ canRender: false, selection: [] })
+      reportCadView(hostKey, null)
+      emitCadMaximize(false)
+    }
+  }, [hostKey])
+
+  useEffect(() => {
+    const shapeId = (): string | null => {
+      const current = docRef.current
+      const selected = current.features.find((feature) => feature.id === selectedRef.current)
+      if (selected && isSolidFeature(selected)) return selected.id
+      const meshesNow = meshesRef.current
+      return meshesNow[meshesNow.length - 1]?.id ?? null
+    }
+    const applyDocument = (next: CadDocument) => {
+      stack.current.push(next)
+      setDoc(stack.current.current())
+      setMessage('Rebuilt from the host')
+      fitArmed.current = true
+    }
+    const stopShot = registerCadScreenshotProvider(() => viewport.current?.screenshot() ?? '')
+    const stopExport = registerCadExportProvider(async (request: CadExportRequest) => {
+      const format = request.format.trim().toLowerCase()
+      const current = docRef.current
+      const id =
+        request.featureId && current.features.some((feature) => feature.id === request.featureId)
+          ? request.featureId
+          : shapeId()
+      if (format === 'json') return JSON.stringify(current)
+      if (!id) throw new Error('Select a solid to export')
+      const client = getClientRef.current()
+      if (format === 'step' || format === 'stp') return client.exportStep(id)
+      if (format === 'stl') return client.exportStl(id)
+      throw new Error(`Unknown export format ${request.format}`)
+    })
+    const stopQuery = registerCadQueryProvider(async (request: CadQueryRequest) => {
+      const id = request.featureId ?? shapeId()
+      if (!id) throw new Error('Select a solid to measure')
+      return getClientRef.current().measure(id)
+    })
+    const stopRebuild = registerCadRebuildProvider(async (request: CadRebuildRequest) => {
+      if (request.document === undefined) return
+      if (!isCadDocument(request.document)) throw new Error('That document is not a CAD part')
+      applyDocument(request.document)
+    })
+    const stopImport = registerCadImportProvider(async (request: CadImportRequest) => {
+      const format = request.format.trim().toLowerCase()
+      if (format === 'json') {
+        const parsed: unknown = JSON.parse(decodeTransferText(request.data))
+        if (!isCadDocument(parsed)) throw new Error('That file is not a CAD document')
+        applyDocument(parsed)
+        return { features: parsed.features, sketches: parsed.sketches }
+      }
+      if (format === 'step' || format === 'stp') {
+        const bytes = decodeTransferBytes(request.data)
+        const current = docRef.current
+        const feature = makeImportFeature(current, request.filename ?? 'import.step')
+        setStepFiles((files) => ({ ...files, [feature.id]: bytes }))
+        applyDocument(appendFeature(current, feature))
+        return { features: [feature], sketches: [] }
+      }
+      throw new Error(`Cannot import ${request.format} in the pane`)
+    })
+    return () => {
+      stopShot()
+      stopExport()
+      stopQuery()
+      stopRebuild()
+      stopImport()
+    }
+  }, [hostKey])
 
   const commit = (next: CadDocument) => {
     if (next === doc) return
@@ -163,22 +275,21 @@ export function CadPane() {
       return
     }
     if (next === 'fillet' || next === 'chamfer') {
-      const selectedSolid = selected && isSolidFeature(selected) ? selected : null
-      const edge =
-        pick?.kind === 'edge' && (!selectedSolid || pick.featureId === selectedSolid.id)
-          ? edgeToken(pick)
-          : undefined
-      const targetId = edge ? pick?.featureId : selectedSolid?.id
       setTool(next)
-      if (!targetId) {
-        setMessage('Select an edge or a solid')
+      if (pick?.kind === 'edge') {
+        placeEdge(pick, next)
         return
       }
-      const feature =
-        next === 'fillet'
-          ? makeFilletFeature(doc, targetId, edge)
-          : makeChamferFeature(doc, targetId, edge)
-      addSolid(feature, next)
+      setMessage(next === 'fillet' ? 'Pick edges to fillet' : 'Pick edges to chamfer')
+      return
+    }
+    if (next === 'hole') {
+      setTool('hole')
+      if (pick?.point) {
+        placeHole(pick)
+        return
+      }
+      setMessage('Pick a face to place the hole')
       return
     }
     if (next === 'union' || next === 'cut' || next === 'intersect') {
@@ -302,10 +413,79 @@ export function CadPane() {
     }
   }
 
+  const placeHole = (hit: PickHit) => {
+    if (!hit.point) {
+      setMessage('Pick a face to place the hole')
+      return
+    }
+    const placed = addHole(doc, {
+      target: hit.featureId,
+      diameter: 8,
+      depth: 10,
+      throughAll: true,
+      x: roundMm(hit.point[0]),
+      y: roundMm(hit.point[1]),
+      z: roundMm(hit.point[2]),
+    })
+    commit(placed.doc)
+    choose(placed.feature.id)
+    setTool('hole')
+    setMessage(`Hole ⌀8 · ${placed.feature.name}`)
+    rememberFit()
+  }
+
+  const placeEdge = (hit: PickHit, kind: 'fillet' | 'chamfer') => {
+    const mesh = meshes.find((item) => item.id === hit.featureId)
+    const found = mesh ? signatureForEdge(mesh, hit.edgeId, hit.index) : null
+    const edgeId = found?.edgeId ?? hit.edgeId ?? hit.index
+    const added = { edgeId, ref: found?.ref ?? null }
+    const current = doc.features.find((feature) => feature.id === selectedId)
+    const sameTarget =
+      current?.kind === kind &&
+      (current.params.targetId === hit.featureId || current.params.target === hit.featureId)
+    const label = kind === 'fillet' ? 'Fillet' : 'Chamfer'
+    if (sameTarget && current) {
+      const merged = mergeEdgeParams(current.params.edgeIds, current.params.edgeRefs, added)
+      commit(
+        updateFeature(doc, current.id, {
+          params: {
+            edgeIds: merged.edgeIds,
+            edgeRefs: merged.edgeRefs ?? '',
+          },
+        }),
+      )
+      setMessage(`${label} edges ${merged.edgeIds}`)
+      return
+    }
+    const merged = mergeEdgeParams(undefined, undefined, added)
+    const feature =
+      kind === 'fillet'
+        ? makeFilletFeature(doc, hit.featureId, merged.edgeIds, undefined, merged.edgeRefs)
+        : makeChamferFeature(doc, hit.featureId, merged.edgeIds, undefined, merged.edgeRefs)
+    addSolid(feature, kind)
+    setMessage(`${label} edges ${merged.edgeIds}`)
+  }
+
+  const toggleMaximize = () => {
+    setMaximized((value) => {
+      const next = !value
+      emitCadMaximize(next)
+      return next
+    })
+  }
+
   const onPick = (hit: PickHit | null) => {
     setPick(hit)
     if (!hit) {
-      setMessage('Nothing picked')
+      setMessage(tool === 'hole' ? 'Pick a face to place the hole' : 'Nothing picked')
+      return
+    }
+    if (tool === 'hole') {
+      placeHole(hit)
+      return
+    }
+    if ((tool === 'fillet' || tool === 'chamfer') && hit.kind === 'edge') {
+      placeEdge(hit, tool)
       return
     }
     choose(hit.featureId)
@@ -338,7 +518,7 @@ export function CadPane() {
 
   return (
     <div
-      className="cad-pane"
+      className={`cad-pane${maximized ? ' cad-pane--max' : ''}`}
       tabIndex={0}
       data-active-sketch={activeSketchId ?? undefined}
       data-sketch-plane={activePlane}
@@ -348,6 +528,8 @@ export function CadPane() {
       <Toolbar
         active={tool}
         onCommand={onCommand}
+        maximized={maximized}
+        onMaximize={toggleMaximize}
         sketchTool={tool === 'sketch' ? sketchTool : null}
         onSketchTool={(next) => {
           setSketchTool(next)

@@ -1,8 +1,10 @@
+import { parseEdgeRefs } from '../edgeRefs.ts'
 import type { CadDocument, CadFeature, CadSketch, SketchEntity } from './CadDocument.ts'
 import type {
   AxisName,
   BooleanMode,
   Counterbore,
+  EdgeTopologyRef,
   FeatureDocument,
   FeatureOp,
   HoleDirection,
@@ -16,13 +18,14 @@ import type {
  * Limits:
  * - Primitive x/y/z are ignored. The kernel builds boxes, cylinders, and
  *   spheres at the origin. Offsets stay on the feature for the properties panel.
- * - bothSides is two extrudes (distance and -distance) fused together. The
- *   kernel feature op has no bothSides flag.
+ * - bothSides on a sketch extrude is two extrudes fused together.
  * - An extrude with cut true subtracts that solid from the previous body.
  * - params.edgeIds is a comma-separated edge list copied onto the fillet or
- *   chamfer op.
+ *   chamfer op. params.edgeRefs is a JSON array of edge signatures copied
+ *   beside it. The kernel fillets those edges, not every edge.
  * - A hole feature becomes a hole op. The kernel cuts a cylinder from the target.
  */
+
 
 const AXES = new Set<string>(['X', 'Y', 'Z', '-X', '-Y', '-Z'])
 const HOLE_DIRECTIONS = new Set<string>(['X', 'Y', 'Z', '-X', '-Y', '-Z', 'normal'])
@@ -219,11 +222,15 @@ function edgeFeature(
   if (!produced.has(target)) throw new Error(`unknown shape ${target}`)
   const radius = positive(feature, 'radius', 1)
   const edgeIds = edgeIdsOf(feature)
+  const edgeRefs = edgeRefsOf(feature)
   const base: FeatureOp =
     op === 'fillet'
       ? { op: 'fillet', id: feature.id, target, radius }
       : { op: 'chamfer', id: feature.id, target, radius }
-  const next = edgeIds.length > 0 ? Object.assign({}, base, { edgeIds }) : base
+  const next: FeatureOp = edgeIds.length > 0 ? Object.assign({}, base, { edgeIds }) : base
+  if (edgeRefs.length > 0) {
+    Object.assign(next, { edgeRefs })
+  }
   return { ops: [next], bodyId: feature.id }
 }
 
@@ -490,6 +497,8 @@ function counterboreOf(
   const boreDiameter = feature.params.cboreDiameter
   const boreDepth = feature.params.cboreDepth
   if (boreDiameter === undefined && boreDepth === undefined) return undefined
+  if (boreDiameter === 0 && boreDepth === 0) return undefined
+  if (boreDiameter === 0 || boreDepth === 0) return undefined
   if (typeof boreDiameter !== 'number' || typeof boreDepth !== 'number') {
     throw new Error('counterbore needs a diameter and a depth')
   }
@@ -533,6 +542,15 @@ function text(feature: CadFeature, key: string): string | null {
   const value = feature.params[key]
   return typeof value === 'string' && value.length > 0 ? value : null
 }
+
+function edgeRefsOf(feature: CadFeature): EdgeTopologyRef[] {
+  const raw = feature.params.edgeRefs
+  if (typeof raw !== 'string' || raw.trim() === '') return []
+  return parseEdgeRefs(raw).filter((ref): ref is EdgeTopologyRef => ref.kind === 'edge')
+}
+
+
+
 
 function edgeIdsOf(feature: CadFeature): number[] {
   const raw = feature.params.edgeIds

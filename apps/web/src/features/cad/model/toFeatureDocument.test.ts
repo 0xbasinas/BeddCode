@@ -161,7 +161,7 @@ describe('toFeatureDocument', () => {
     expect(missing.document.ops.map((op) => op.id)).toEqual(['base', 'pad::tool', 'pad'])
   })
 
-  it('maps a hole feature onto a hole op', () => {
+  it('maps a hole feature onto a hole op and keeps fillet edge refs', () => {
     let doc = appendFeature(emptyDocument(), makeBoxFeature(emptyDocument(), 'base'))
     doc = addHole(doc, {
       id: 'drill',
@@ -172,7 +172,9 @@ describe('toFeatureDocument', () => {
       cboreDiameter: 8,
       cboreDepth: 2,
       direction: '-Z',
-    })
+    }).doc
+    const refs = JSON.stringify([{ kind: 'edge', mid: [1, 0, 0], dir: [1, 0, 0], length: 10 }])
+    doc = appendFeature(doc, makeFilletFeature(doc, 'drill', '7', 'round', refs))
     const plan = toFeatureDocument(doc)
     expect(plan.errors).toEqual({})
     expect(plan.document.ops[1]).toEqual({
@@ -185,8 +187,11 @@ describe('toFeatureDocument', () => {
       direction: '-Z',
       counterbore: { diameter: 8, depth: 2 },
     })
-    expect(planRebuild(plan.document).map((op) => op.id)).toEqual(['base', 'drill'])
-    expect(visibleShapeIds(plan.document.ops)).toEqual(['drill'])
+    const fillet = plan.document.ops[2] as { edgeIds?: number[]; edgeRefs?: unknown }
+    expect(fillet.edgeIds).toEqual([7])
+    expect(fillet.edgeRefs).toEqual([{ kind: 'edge', mid: [1, 0, 0], dir: [1, 0, 0], length: 10 }])
+    expect(planRebuild(plan.document).map((op) => op.id)).toEqual(['base', 'drill', 'round'])
+    expect(visibleShapeIds(plan.document.ops)).toEqual(['round'])
 
     const blind = toFeatureDocument(
       addHole(appendFeature(emptyDocument(), makeBoxFeature(emptyDocument(), 'base')), {
@@ -194,10 +199,11 @@ describe('toFeatureDocument', () => {
         target: 'base',
         diameter: 5,
         depth: 3,
+        throughAll: false,
         x: 0,
         y: 0,
         z: 10,
-      }),
+      }).doc,
     )
     expect(blind.errors).toEqual({})
     expect(blind.document.ops[1]).toEqual({
@@ -210,7 +216,7 @@ describe('toFeatureDocument', () => {
     })
 
     const missing = toFeatureDocument(
-      addHole(emptyDocument(), { id: 'h', target: 'gone', diameter: 4, throughAll: true }),
+      addHole(emptyDocument(), { id: 'h', target: 'gone', diameter: 4, throughAll: true }).doc,
     )
     expect(missing.errors.h).toMatch(/unknown shape gone/)
   })
