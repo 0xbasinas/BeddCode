@@ -69,13 +69,16 @@ export function CommitsTab({
   }
 
   const n = log.unpushed.length
-  if (n === 0 && log.pushed.length === 0 && !busy) {
+  if (n === 0 && log.pushed.length === 0 && !busy && !refreshError) {
     return <div className="git-empty">No commits on this branch yet.</div>
   }
 
   return (
     <>
       <div className="git-scroll">
+        {n === 0 && log.pushed.length === 0 && !busy && (
+          <div className="git-empty">No commits on this branch yet.</div>
+        )}
         {n > 0 && (
           <>
             <div className="section-title">Not pushed · {n}</div>

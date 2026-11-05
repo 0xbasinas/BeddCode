@@ -37,7 +37,12 @@ export function FilesPane({ workspace }: { workspace: PaneWorkspace }) {
   const folder = useFiles((s) => s.byCwd[cwd] ?? EMPTY_FOLDER)
   const { loadDir, collapseAll, changed, create } = useFiles.getState()
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<string[] | null>(null)
+  const [search, setSearch] = useState<{
+    cwd: string
+    query: string
+    paths?: string[]
+    error?: string
+  }>()
   const [creating, setCreating] = useState<'file' | 'dir' | null>(null)
   const [error, setError] = useState<string>()
 
@@ -59,24 +64,25 @@ export function FilesPane({ workspace }: { workspace: PaneWorkspace }) {
 
   // Search as you type, ignoring answers that arrive out of order.
   useEffect(() => {
-    if (!query.trim()) {
-      setResults(null)
-      return
-    }
+    if (!query.trim()) return
     let cancelled = false
     const timer = setTimeout(() => {
       hostRequest(hostKey, 'files.search', { cwd: realCwd, query }).then(
-        (r) => !cancelled && setResults(r.paths),
-        () => !cancelled && setResults([]),
+        (r) => !cancelled && setSearch({ cwd, query, paths: r.paths }),
+        (err: unknown) =>
+          !cancelled &&
+          setSearch({ cwd, query, error: err instanceof Error ? err.message : String(err) }),
       )
     }, 150)
     return () => {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [hostKey, realCwd, query])
+  }, [hostKey, realCwd, cwd, query])
 
   const active = folder.active ? folder.docs[folder.active] : undefined
+  const searching = Boolean(query.trim())
+  const currentSearch = search?.cwd === cwd && search.query === query ? search : undefined
   const project = paneProject(workspace)
   const attach = (path: string) =>
     void attachWorkspaceFile(hostKey, workspace.draftId, realCwd, path)
@@ -118,6 +124,7 @@ export function FilesPane({ workspace }: { workspace: PaneWorkspace }) {
         <div className="search-box">
           <Search size={14} />
           <input
+            aria-label="Search files"
             placeholder="Search files"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -145,11 +152,17 @@ export function FilesPane({ workspace }: { workspace: PaneWorkspace }) {
         )}
         {error && <div className="composer-error pane-error">{error}</div>}
         <div className="tree-scroll">
-          {results ? (
-            results.length === 0 ? (
+          {searching ? (
+            !currentSearch ? (
+              <div className="muted tree-note">Searching…</div>
+            ) : currentSearch.error ? (
+              <div className="composer-error pane-error" role="alert">
+                Could not search files: {currentSearch.error}
+              </div>
+            ) : currentSearch.paths?.length === 0 ? (
               <div className="muted tree-note">No files match.</div>
             ) : (
-              results.map((path) => (
+              currentSearch.paths?.map((path) => (
                 <FileRow
                   key={path}
                   path={path}
@@ -164,7 +177,9 @@ export function FilesPane({ workspace }: { workspace: PaneWorkspace }) {
                 </FileRow>
               ))
             )
-          ) : (
+          ) : !connected && !folder.entries[''] ? (
+            <div className="muted tree-note">Waiting for connection…</div>
+          ) : error && !folder.entries[''] ? null : (
             <FileTree cwd={cwd} onAttach={attach} />
           )}
         </div>
