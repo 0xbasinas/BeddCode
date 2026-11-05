@@ -1,3 +1,4 @@
+import { faceCandidatesFromMesh } from './topologyRefs'
 import type {
   AxisName,
   BooleanMode,
@@ -5,9 +6,11 @@ import type {
   Counterbore,
   CylinderParams,
   EdgeTopologyRef,
+  FaceGroup,
   FeatureDocument,
   FeatureOp,
   HoleDirection,
+  MeshBuffer,
   PlaneName,
   PrimitiveKind,
   PrimitiveParams,
@@ -349,4 +352,159 @@ function stable(value: unknown): unknown {
 export function serializeFeatureDocument(input: unknown): string {
   const ops = planRebuild(input)
   return JSON.stringify(stable({ version: 1, ops }))
+}
+
+type Vec3 = [number, number, number]
+
+/** Click on a face, plus the plane that face lies in. `normal` points out of the solid. */
+export interface HoleFacePoint {
+  point: readonly [number, number, number]
+  normal: readonly [number, number, number]
+  /** Any point on the face plane. Defaults to `point` when the hit is already on it. */
+  planeOrigin?: readonly [number, number, number]
+}
+
+/** Hole center on the face, and the drill axis into the solid. */
+export interface HoleAxis {
+  origin: Vec3
+  direction: HoleDirection
+}
+
+const DRILL_AXES: readonly { name: HoleDirection; vector: Vec3 }[] = [
+  { name: 'X', vector: [1, 0, 0] },
+  { name: '-X', vector: [-1, 0, 0] },
+  { name: 'Y', vector: [0, 1, 0] },
+  { name: '-Y', vector: [0, -1, 0] },
+  { name: 'Z', vector: [0, 0, 1] },
+  { name: '-Z', vector: [0, 0, -1] },
+]
+
+function tidy(value: number): number {
+  const rounded = Math.round(value * 1e6) / 1e6
+  return rounded === 0 ? 0 : rounded
+}
+
+function asUnit(value: readonly [number, number, number]): Vec3 | null {
+  const length = Math.hypot(value[0], value[1], value[2])
+  if (length < 1e-9) return null
+  return [value[0] / length, value[1] / length, value[2] / length]
+}
+
+function readVertex(positions: ArrayLike<number>, index: number): Vec3 | null {
+  const x = positions[index * 3]
+  const y = positions[index * 3 + 1]
+  const z = positions[index * 3 + 2]
+  if (typeof x !== 'number' || typeof y !== 'number' || typeof z !== 'number') return null
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null
+  return [x, y, z]
+}
+
+/**
+ * Projects the click onto the face and aims the drill into the material.
+ * An axis-aligned outward normal becomes `-X`…`Z`. Any other face stays
+ * `normal`, which the kernel resolves on the target solid.
+ */
+export function holeAxisFromFacePoint(face: HoleFacePoint): HoleAxis {
+  const normal = asUnit(face.normal)
+  if (!normal) throw new Error('hole face normal is missing')
+  const anchor = face.planeOrigin ?? face.point
+  const distance =
+    (face.point[0] - anchor[0]) * normal[0] +
+    (face.point[1] - anchor[1]) * normal[1] +
+    (face.point[2] - anchor[2]) * normal[2]
+  const origin: Vec3 = [
+    tidy(face.point[0] - normal[0] * distance),
+    tidy(face.point[1] - normal[1] * distance),
+    tidy(face.point[2] - normal[2] * distance),
+  ]
+  const into: Vec3 = [-normal[0], -normal[1], -normal[2]]
+  let direction: HoleDirection = 'normal'
+  for (const axis of DRILL_AXES) {
+    const dot = into[0] * axis.vector[0] + into[1] * axis.vector[1] + into[2] * axis.vector[2]
+    if (dot > 0.999) {
+      direction = axis.name
+      break
+    }
+  }
+  return { origin, direction }
+}
+
+/** Plane of one triangle. The normal follows vertex normals when those point outward. */
+export function frameFromTriangle(
+  positions: ArrayLike<number>,
+  indices: ArrayLike<number> | undefined,
+  triangleIndex: number,
+  normals?: ArrayLike<number>,
+): { origin: Vec3; normal: Vec3 } | null {
+  if (!Number.isInteger(triangleIndex) || triangleIndex < 0) return null
+  const corners: number[] = []
+  for (let slot = 0; slot < 3; slot += 1) {
+    const raw = indices ? indices[triangleIndex * 3 + slot] : triangleIndex * 3 + slot
+    if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 0) return null
+    corners.push(raw)
+  }
+  const first = corners[0]
+  const second = corners[1]
+  const third = corners[2]
+  if (first === undefined || second === undefined || third === undefined) return null
+  const a = readVertex(positions, first)
+  const b = readVertex(positions, second)
+  const c = readVertex(positions, third)
+  if (!a || !b || !c) return null
+  const ab: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]
+  const ac: Vec3 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]]
+  let normal = asUnit([
+    ab[1] * ac[2] - ab[2] * ac[1],
+    ab[2] * ac[0] - ab[0] * ac[2],
+    ab[0] * ac[1] - ab[1] * ac[0],
+  ])
+  if (!normal) return null
+  if (normals) {
+    const samples: Vec3[] = []
+    for (const index of corners) {
+      const sample = readVertex(normals, index)
+      if (sample) samples.push(sample)
+    }
+    if (samples.length > 0) {
+      const averaged = asUnit([
+        samples.reduce((sum, sample) => sum + sample[0], 0),
+        samples.reduce((sum, sample) => sum + sample[1], 0),
+        samples.reduce((sum, sample) => sum + sample[2], 0),
+      ])
+      if (averaged) {
+        const dot = normal[0] * averaged[0] + normal[1] * averaged[1] + normal[2] * averaged[2]
+        if (dot < 0) normal = [-normal[0], -normal[1], -normal[2]]
+      }
+    }
+  }
+  return { origin: a, normal }
+}
+
+export interface FaceMesh {
+  positions: Float32Array
+  normals?: Float32Array
+  indices?: Uint32Array
+  faceGroups?: FaceGroup[]
+}
+
+/**
+ * Plane of the picked face. A `faceId` uses the whole face. Otherwise the
+ * hit triangle supplies the plane.
+ */
+export function faceFrameFromMesh(
+  mesh: FaceMesh,
+  triangleIndex: number,
+  faceId?: number,
+): { origin: Vec3; normal: Vec3 } | null {
+  if (faceId !== undefined && mesh.faceGroups && mesh.indices && mesh.normals) {
+    const buffer: MeshBuffer = {
+      positions: mesh.positions,
+      normals: mesh.normals,
+      indices: mesh.indices,
+      faceGroups: mesh.faceGroups,
+    }
+    const found = faceCandidatesFromMesh(buffer).find((face) => face.faceId === faceId)
+    if (found) return { origin: found.origin, normal: found.normal }
+  }
+  return frameFromTriangle(mesh.positions, mesh.indices, triangleIndex, mesh.normals)
 }

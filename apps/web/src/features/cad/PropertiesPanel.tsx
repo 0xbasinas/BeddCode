@@ -10,6 +10,7 @@ const ORDER = [
   'radius',
   'distance',
   'angle',
+  'direction',
   'throughAll',
   'bothSides',
   'cut',
@@ -46,6 +47,15 @@ const LABELS: Record<string, string> = {
   fileName: 'File',
   diameter: 'Diameter',
   depth: 'Depth',
+  direction: 'Axis',
+  radius: 'Radius',
+}
+
+/** Fields for the active hole, fillet, or chamfer tool. */
+export interface PlacementField {
+  key: string
+  label: string
+  value: number | boolean
 }
 
 function orderedKeys(params: CadFeature['params']): string[] {
@@ -112,26 +122,40 @@ function TextParam({
 export function PropertiesPanel({
   feature,
   error,
+  placement,
+  onPlacement,
   onName,
   onParam,
 }: {
   feature: CadFeature | null
   error?: string
+  /** Hole diameter or fillet radius for the next click. */
+  placement?: { title: string; fields: PlacementField[] } | null
+  onPlacement?(key: string, value: ParamValue): void
   onName(name: string): void
   onParam(key: string, value: ParamValue): void
 }) {
   return (
     <aside className="cad-props" aria-label="Properties">
       <div className="cad-side-title">Properties</div>
-      {!feature ? (
+      {placement && placement.fields.length > 0 ? (
+        <div className="cad-prop-body">
+          <div className="cad-kind">{placement.title}</div>
+          {placement.fields.map((field) => (
+            <PlacementControl key={field.key} field={field} onPlacement={onPlacement} />
+          ))}
+        </div>
+      ) : null}
+      {!feature && !placement ? (
         <p className="cad-empty">Select a feature to edit its parameters.</p>
-      ) : (
+      ) : !feature ? null : (
         <div className="cad-prop-body">
           <TextParam key={feature.id} label="Name" value={feature.name} onCommit={onName} />
           <div className="cad-kind">{feature.kind}</div>
           {error ? <p className="cad-empty">{error}</p> : null}
           {orderedKeys(feature.params).map((key) => {
             if (HIDDEN.has(key)) return null
+            if (key === 'target' && typeof feature.params.targetId === 'string') return null
             const value = feature.params[key]
             if (typeof value === 'boolean') {
               return (
@@ -168,5 +192,41 @@ export function PropertiesPanel({
         </div>
       )}
     </aside>
+  )
+}
+
+function PlacementControl({
+  field,
+  onPlacement,
+}: {
+  field: PlacementField
+  onPlacement?(key: string, value: ParamValue): void
+}) {
+  if (typeof field.value === 'boolean') {
+    return (
+      <label className="cad-check">
+        <input
+          type="checkbox"
+          checked={field.value}
+          onChange={(event) => onPlacement?.(field.key, event.target.checked)}
+        />
+        <span>{field.label}</span>
+      </label>
+    )
+  }
+  return (
+    <label className="cad-field">
+      <span>{field.label}</span>
+      <input
+        type="number"
+        step="any"
+        value={Number.isFinite(field.value) ? field.value : 0}
+        onChange={(event) => {
+          const next = Number(event.target.value)
+          if (!Number.isFinite(next)) return
+          onPlacement?.(field.key, next)
+        }}
+      />
+    </label>
   )
 }

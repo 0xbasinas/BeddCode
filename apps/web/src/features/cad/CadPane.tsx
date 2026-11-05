@@ -25,11 +25,13 @@ import {
   type CadRebuildRequest,
 } from './cadHostBridge.ts'
 import { FeatureTree } from './FeatureTree.tsx'
-import { PropertiesPanel } from './PropertiesPanel.tsx'
+import { PropertiesPanel, type PlacementField } from './PropertiesPanel.tsx'
 import { Toolbar, type CadTool, type SketchTool } from './Toolbar.tsx'
 import { PICK_KINDS, type PickKind } from './selection.ts'
 import { Viewport, type PickHit, type ViewportHandle } from './Viewport.tsx'
 import { mergeEdgeParams, roundMm, signatureForEdge } from './edgeRefs.ts'
+import { faceFrameFromMesh, holeAxisFromFacePoint } from './kernel/featureOps.ts'
+import type { HoleDirection } from './kernel/types.ts'
 import {
   addHole,
   appendFeature,
@@ -46,6 +48,7 @@ import {
   makeImportFeature,
   makeRevolveFeature,
   makeSphereFeature,
+  holeTargetId,
   moveFeature,
   removeFeature,
   setSketchEntities,
@@ -89,6 +92,10 @@ export function CadPane() {
   const [sketchTool, setSketchTool] = useState<SketchTool>('rectangle')
   const [measureLabel, setMeasureLabel] = useState<string | null>(null)
   const [maximized, setMaximized] = useState(false)
+  const [holeDiameter, setHoleDiameter] = useState(8)
+  const [holeThroughAll, setHoleThroughAll] = useState(true)
+  const [holeDepth, setHoleDepth] = useState(10)
+  const [edgeRadius, setEdgeRadius] = useState(4)
 
   const { meshes, errors, loading, failure, getClient } = useCadRebuild(doc, stepFiles)
   const docRef = useRef(doc)
@@ -280,20 +287,12 @@ export function CadPane() {
     }
     if (next === 'fillet' || next === 'chamfer') {
       setTool(next)
-      if (pick?.kind === 'edge') {
-        placeEdge(pick, next)
-        return
-      }
-      setMessage(next === 'fillet' ? 'Pick edges to fillet' : 'Pick edges to chamfer')
+      setMessage(EDGE_STATUS)
       return
     }
     if (next === 'hole') {
       setTool('hole')
-      if (pick?.point) {
-        placeHole(pick)
-        return
-      }
-      setMessage('Pick a face to place the hole')
+      setMessage(HOLE_STATUS)
       return
     }
     if (next === 'union' || next === 'cut' || next === 'intersect') {
@@ -418,23 +417,56 @@ export function CadPane() {
   }
 
   const placeHole = (hit: PickHit) => {
-    if (!hit.point) {
-      setMessage('Pick a face to place the hole')
+    const point = hit.point
+    const owner = doc.features.find((feature) => feature.id === hit.featureId)
+    if (hit.kind !== 'face' || !point || !owner) {
+      setMessage(HOLE_STATUS)
       return
     }
+    const mesh = meshes.find((item) => item.id === hit.featureId)
+    const frame = mesh ? faceFrameFromMesh(mesh, hit.index, hit.faceId) : null
+    let origin = point
+    let direction: HoleDirection = 'normal'
+    if (frame) {
+      const axis = holeAxisFromFacePoint({
+        point,
+        normal: frame.normal,
+        planeOrigin: frame.origin,
+      })
+      origin = axis.origin
+      direction = axis.direction
+    }
+    const throughAll =
+      selected?.kind === 'hole' && typeof selected.params.throughAll === 'boolean'
+        ? selected.params.throughAll
+        : holeThroughAll
+    const diameter =
+      selected?.kind === 'hole' &&
+      typeof selected.params.diameter === 'number' &&
+      selected.params.diameter > 0
+        ? selected.params.diameter
+        : holeDiameter
+    const depth =
+      selected?.kind === 'hole' &&
+      typeof selected.params.depth === 'number' &&
+      selected.params.depth > 0
+        ? selected.params.depth
+        : holeDepth
     const placed = addHole(doc, {
-      target: hit.featureId,
-      diameter: 8,
-      depth: 10,
-      throughAll: true,
-      x: roundMm(hit.point[0]),
-      y: roundMm(hit.point[1]),
-      z: roundMm(hit.point[2]),
+      target: holeTargetId(doc.features, owner.id),
+      diameter,
+      throughAll,
+      ...(throughAll ? {} : { depth }),
+      facePoint: [roundMm(origin[0]), roundMm(origin[1]), roundMm(origin[2])],
+      direction,
     })
     commit(placed.doc)
     choose(placed.feature.id)
     setTool('hole')
-    setMessage(`Hole ⌀8 · ${placed.feature.name}`)
+    setHoleDiameter(diameter)
+    setHoleThroughAll(throughAll)
+    if (!throughAll) setHoleDepth(depth)
+    setMessage(HOLE_STATUS)
     rememberFit()
   }
 
@@ -447,7 +479,13 @@ export function CadPane() {
     const sameTarget =
       current?.kind === kind &&
       (current.params.targetId === hit.featureId || current.params.target === hit.featureId)
-    const label = kind === 'fillet' ? 'Fillet' : 'Chamfer'
+    const radius =
+      current &&
+      current.kind === kind &&
+      typeof current.params.radius === 'number' &&
+      current.params.radius > 0
+        ? current.params.radius
+        : edgeRadius
     if (sameTarget && current) {
       const merged = mergeEdgeParams(current.params.edgeIds, current.params.edgeRefs, added)
       commit(
@@ -455,19 +493,24 @@ export function CadPane() {
           params: {
             edgeIds: merged.edgeIds,
             edgeRefs: merged.edgeRefs ?? '',
+            radius,
           },
         }),
       )
-      setMessage(`${label} edges ${merged.edgeIds}`)
+      setMessage(EDGE_STATUS)
       return
     }
     const merged = mergeEdgeParams(undefined, undefined, added)
     const feature =
       kind === 'fillet'
-        ? makeFilletFeature(doc, hit.featureId, merged.edgeIds, undefined, merged.edgeRefs)
-        : makeChamferFeature(doc, hit.featureId, merged.edgeIds, undefined, merged.edgeRefs)
-    addSolid(feature, kind)
-    setMessage(`${label} edges ${merged.edgeIds}`)
+        ? makeFilletFeature(doc, hit.featureId, merged.edgeIds, undefined, merged.edgeRefs, radius)
+        : makeChamferFeature(doc, hit.featureId, merged.edgeIds, undefined, merged.edgeRefs, radius)
+    commit(appendFeature(doc, feature))
+    choose(feature.id)
+    setTool(kind)
+    setEdgeRadius(radius)
+    setMessage(EDGE_STATUS)
+    rememberFit()
   }
 
   const toggleMaximize = () => {
@@ -479,9 +522,10 @@ export function CadPane() {
   }
 
   const onPick = (hit: PickHit | null) => {
-    setPick(hit)
     if (!hit) {
-      setMessage(tool === 'hole' ? 'Pick a face to place the hole' : 'Nothing picked')
+      if (tool === 'hole') setMessage(HOLE_STATUS)
+      else if (tool === 'fillet' || tool === 'chamfer') setMessage(EDGE_STATUS)
+      else setMessage('Nothing picked')
       return
     }
     if (tool === 'hole') {
@@ -490,6 +534,10 @@ export function CadPane() {
     }
     if ((tool === 'fillet' || tool === 'chamfer') && hit.kind === 'edge') {
       placeEdge(hit, tool)
+      return
+    }
+    if (tool === 'fillet' || tool === 'chamfer') {
+      setMessage(EDGE_STATUS)
       return
     }
     choose(hit.featureId)
@@ -517,6 +565,15 @@ export function CadPane() {
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return
     event.currentTarget.focus()
   }
+
+  const placementFields = holePlacement(
+    tool,
+    selected,
+    holeDiameter,
+    holeThroughAll,
+    holeDepth,
+    edgeRadius,
+  )
 
   const status = loading ? 'Loading geometry…' : (failure ?? message)
 
@@ -603,6 +660,13 @@ export function CadPane() {
         <PropertiesPanel
           feature={selected}
           error={selected ? errors[selected.id] : undefined}
+          placement={placementFields}
+          onPlacement={(key, value) => {
+            if (key === 'diameter' && typeof value === 'number' && value > 0) setHoleDiameter(value)
+            if (key === 'throughAll' && typeof value === 'boolean') setHoleThroughAll(value)
+            if (key === 'depth' && typeof value === 'number' && value > 0) setHoleDepth(value)
+            if (key === 'radius' && typeof value === 'number' && value > 0) setEdgeRadius(value)
+          }}
           onName={(name) => {
             if (!selected) return
             commit(updateFeature(doc, selected.id, { name }))
@@ -610,6 +674,22 @@ export function CadPane() {
           onParam={(key, value) => {
             if (!selected) return
             commit(updateFeature(doc, selected.id, { params: { [key]: value } }))
+            if (selected.kind === 'hole' && key === 'diameter' && typeof value === 'number') {
+              setHoleDiameter(value)
+            }
+            if (selected.kind === 'hole' && key === 'throughAll' && typeof value === 'boolean') {
+              setHoleThroughAll(value)
+            }
+            if (selected.kind === 'hole' && key === 'depth' && typeof value === 'number') {
+              setHoleDepth(value)
+            }
+            if (
+              (selected.kind === 'fillet' || selected.kind === 'chamfer') &&
+              key === 'radius' &&
+              typeof value === 'number'
+            ) {
+              setEdgeRadius(value)
+            }
           }}
         />
       </div>
@@ -665,6 +745,34 @@ export function CadPane() {
       />
     </div>
   )
+}
+
+const HOLE_STATUS = 'Click a face to place hole'
+const EDGE_STATUS = 'Shift-click edges then set radius'
+
+function holePlacement(
+  tool: CadTool,
+  selected: CadFeature | null,
+  diameter: number,
+  throughAll: boolean,
+  depth: number,
+  radius: number,
+): { title: string; fields: PlacementField[] } | null {
+  if (tool === 'hole' && selected?.kind !== 'hole') {
+    const fields: PlacementField[] = [
+      { key: 'diameter', label: 'Diameter', value: diameter },
+      { key: 'throughAll', label: 'Through all', value: throughAll },
+    ]
+    if (!throughAll) fields.push({ key: 'depth', label: 'Depth', value: depth })
+    return { title: 'Hole', fields }
+  }
+  if ((tool === 'fillet' || tool === 'chamfer') && selected?.kind !== tool) {
+    return {
+      title: tool === 'fillet' ? 'Fillet' : 'Chamfer',
+      fields: [{ key: 'radius', label: 'Radius', value: radius }],
+    }
+  }
+  return null
 }
 
 function edgeToken(hit: PickHit | null): string | undefined {

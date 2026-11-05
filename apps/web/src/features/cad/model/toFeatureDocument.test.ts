@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { planRebuild } from '../kernel/featureOps.ts'
+import { planRebuild, serializeFeatureDocument } from '../kernel/featureOps.ts'
 import {
   addHole,
   appendFeature,
@@ -65,7 +65,7 @@ describe('toFeatureDocument', () => {
       },
     })
     const fillet = plan.document.ops[2] as { edgeIds?: number[]; target?: string; radius?: number }
-    expect(fillet).toMatchObject({ op: 'fillet', id: 'edge', target: 'pad', radius: 1 })
+    expect(fillet).toMatchObject({ op: 'fillet', id: 'edge', target: 'pad', radius: 4 })
     expect(fillet.edgeIds).toEqual([3, 4])
     expect(planRebuild(plan.document).map((op) => op.id)).toEqual(['base', 'pad', 'edge'])
     expect(visibleShapeIds(plan.document.ops)).toEqual(['base', 'edge'])
@@ -219,5 +219,29 @@ describe('toFeatureDocument', () => {
       addHole(emptyDocument(), { id: 'h', target: 'gone', diameter: 4, throughAll: true }).doc,
     )
     expect(missing.errors.h).toMatch(/unknown shape gone/)
+  })
+
+  it('serializes only the picked fillet edges', () => {
+    let doc = appendFeature(emptyDocument(), makeBoxFeature(emptyDocument(), 'plate'))
+    const refs = JSON.stringify([{ kind: 'edge', mid: [10, 15, 5], dir: [0, 0, 1], length: 10 }])
+    doc = appendFeature(doc, makeFilletFeature(doc, 'plate', '11', 'round', refs))
+    const plan = toFeatureDocument(doc)
+    expect(plan.errors).toEqual({})
+    expect(plan.document.ops[1]).toEqual({
+      op: 'fillet',
+      id: 'round',
+      target: 'plate',
+      radius: 4,
+      edgeIds: [11],
+      edgeRefs: [{ kind: 'edge', mid: [10, 15, 5], dir: [0, 0, 1], length: 10 }],
+    })
+    const text = serializeFeatureDocument(plan.document)
+    expect(text).toContain('"edgeIds":[11]')
+    expect(text).toContain('"dir":[0,0,1]')
+
+    const bare = makeFilletFeature(doc, 'plate', undefined, 'bare')
+    const failed = toFeatureDocument(appendFeature(doc, bare))
+    expect(failed.errors.bare).toMatch(/selected edges/)
+    expect(failed.document.ops.some((op) => op.id === 'bare')).toBe(false)
   })
 })

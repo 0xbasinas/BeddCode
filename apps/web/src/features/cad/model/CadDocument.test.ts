@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   addHole,
+  addHoleFromFace,
   appendFeature,
   emptyDocument,
   isCadDocument,
@@ -132,9 +133,60 @@ describe('CadDocument', () => {
     const fillet = makeFilletFeature(placed.doc, 'base', '3,4', 'f', '[{"kind":"edge"}]')
     expect(fillet.params).toMatchObject({
       targetId: 'base',
+      radius: 4,
       edgeIds: '3,4',
       edgeRefs: '[{"kind":"edge"}]',
     })
+  })
+
+  it('places a hole from the clicked plate face', () => {
+    let doc = appendFeature(emptyDocument(), {
+      ...makeBoxFeature(emptyDocument(), 'plate'),
+      name: 'Plate',
+      params: { width: 40, depth: 30, height: 8, x: 0, y: 4, z: 0 },
+    })
+    doc = appendFeature(doc, {
+      ...makeBoxFeature(doc, 'boss'),
+      name: 'Boss',
+      params: { width: 10, depth: 10, height: 12, x: 0, y: 6, z: 0 },
+    })
+    const placed = addHoleFromFace(doc, {
+      id: 'drill',
+      targetId: 'plate',
+      point: [12.2, -4, 8.4],
+      normal: [0, 0, 1],
+      planeOrigin: [0, 0, 8],
+    })
+    expect(placed.feature.params).toMatchObject({
+      target: 'plate',
+      targetId: 'plate',
+      x: 12.2,
+      y: -4,
+      z: 8,
+      diameter: 8,
+      throughAll: true,
+      direction: '-Z',
+    })
+    expect(placed.feature.params).not.toHaveProperty('depth')
+    expect(placed.doc.features.map((feature) => feature.id)).toEqual(['plate', 'boss', 'drill'])
+
+    const onBoss = addHoleFromFace(doc, {
+      id: 'boss-hole',
+      targetId: 'boss',
+      point: [0, 0, 12.2],
+      normal: [0, 0, 1],
+      planeOrigin: [0, 0, 12],
+    })
+    expect(onBoss.feature.params.targetId).toBe('boss')
+    expect(onBoss.feature.params).toMatchObject({ x: 0, y: 0, z: 12, direction: '-Z' })
+
+    expect(() =>
+      addHoleFromFace(doc, {
+        targetId: 'missing',
+        point: [1, 2, 3],
+        normal: [0, 0, 1],
+      }),
+    ).toThrow(/owns the face/)
   })
 
   it('recognizes a document and rejects other json', () => {

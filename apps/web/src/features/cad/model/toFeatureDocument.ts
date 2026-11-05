@@ -22,10 +22,10 @@ import type {
  * - An extrude with cut true subtracts that solid from the previous body.
  * - params.edgeIds is a comma-separated edge list copied onto the fillet or
  *   chamfer op. params.edgeRefs is a JSON array of edge signatures copied
- *   beside it. The kernel fillets those edges, not every edge.
+ *   beside it. The kernel fillets those edges. A fillet with neither list
+ *   is an error, so a missing ref does not round every edge.
  * - A hole feature becomes a hole op. The kernel cuts a cylinder from the target.
  */
-
 
 const AXES = new Set<string>(['X', 'Y', 'Z', '-X', '-Y', '-Z'])
 const HOLE_DIRECTIONS = new Set<string>(['X', 'Y', 'Z', '-X', '-Y', '-Z', 'normal'])
@@ -220,17 +220,30 @@ function edgeFeature(
   const target = text(feature, 'targetId') ?? text(feature, 'target')
   if (!target) throw new Error(`${op} needs a target feature`)
   if (!produced.has(target)) throw new Error(`unknown shape ${target}`)
-  const radius = positive(feature, 'radius', 1)
   const edgeIds = edgeIdsOf(feature)
   const edgeRefs = edgeRefsOf(feature)
-  const base: FeatureOp =
-    op === 'fillet'
-      ? { op: 'fillet', id: feature.id, target, radius }
-      : { op: 'chamfer', id: feature.id, target, radius }
-  const next: FeatureOp = edgeIds.length > 0 ? Object.assign({}, base, { edgeIds }) : base
-  if (edgeRefs.length > 0) {
-    Object.assign(next, { edgeRefs })
+  if (edgeIds.length === 0 && edgeRefs.length === 0) {
+    throw new Error(`${op} needs selected edges`)
   }
+  const radius = positive(feature, 'radius', 4)
+  const next: FeatureOp =
+    op === 'fillet'
+      ? {
+          op: 'fillet',
+          id: feature.id,
+          target,
+          radius,
+          ...(edgeIds.length > 0 ? { edgeIds } : {}),
+          ...(edgeRefs.length > 0 ? { edgeRefs } : {}),
+        }
+      : {
+          op: 'chamfer',
+          id: feature.id,
+          target,
+          radius,
+          ...(edgeIds.length > 0 ? { edgeIds } : {}),
+          ...(edgeRefs.length > 0 ? { edgeRefs } : {}),
+        }
   return { ops: [next], bodyId: feature.id }
 }
 
@@ -548,9 +561,6 @@ function edgeRefsOf(feature: CadFeature): EdgeTopologyRef[] {
   if (typeof raw !== 'string' || raw.trim() === '') return []
   return parseEdgeRefs(raw).filter((ref): ref is EdgeTopologyRef => ref.kind === 'edge')
 }
-
-
-
 
 function edgeIdsOf(feature: CadFeature): number[] {
   const raw = feature.params.edgeIds

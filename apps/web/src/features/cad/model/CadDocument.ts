@@ -1,5 +1,6 @@
 /** A CAD part stored as JSON. Edits return a new document and bump `rev`. */
 
+import { holeAxisFromFacePoint } from '../kernel/featureOps.ts'
 import type { SketchEntity } from '../sketcher/types.ts'
 
 export type LengthUnit = 'mm' | 'cm' | 'm' | 'in'
@@ -198,6 +199,7 @@ export function makeFilletFeature(
   edgeIds?: string,
   id: string = crypto.randomUUID(),
   edgeRefs?: string,
+  radius = 4,
 ): CadFeature {
   const count = countKind(doc, 'fillet')
   return {
@@ -207,7 +209,7 @@ export function makeFilletFeature(
     suppressed: false,
     params: {
       targetId,
-      radius: 1,
+      radius,
       ...(edgeIds ? { edgeIds } : {}),
       ...(edgeRefs ? { edgeRefs } : {}),
     },
@@ -220,6 +222,7 @@ export function makeChamferFeature(
   edgeIds?: string,
   id: string = crypto.randomUUID(),
   edgeRefs?: string,
+  radius = 4,
 ): CadFeature {
   const count = countKind(doc, 'chamfer')
   return {
@@ -229,13 +232,12 @@ export function makeChamferFeature(
     suppressed: false,
     params: {
       targetId,
-      radius: 1,
+      radius,
       ...(edgeIds ? { edgeIds } : {}),
       ...(edgeRefs ? { edgeRefs } : {}),
     },
   }
 }
-
 
 export interface HoleParams {
   /** Body the hole cuts. */
@@ -285,8 +287,11 @@ export function makeHoleFeature(
     suppressed: false,
     params: {
       target: params.target,
+      targetId: params.target,
       diameter: holeNumber(params.diameter, 8),
-      ...(throughAll ? { throughAll: true } : { throughAll: false, depth: holeNumber(params.depth, 10) }),
+      ...(throughAll
+        ? { throughAll: true }
+        : { throughAll: false, depth: holeNumber(params.depth, 10) }),
       ...(throughAll && params.depth !== undefined ? { depth: params.depth } : {}),
       x: point[0],
       y: point[1],
@@ -310,6 +315,56 @@ export function addHole(
 ): { doc: CadDocument; feature: CadFeature } {
   const feature = makeHoleFeature(doc, params, id ?? params.id ?? crypto.randomUUID())
   return { feature, doc: appendFeature(doc, feature) }
+}
+
+export interface HoleFacePick {
+  /** Feature that owns the picked face. This is the body the hole cuts. */
+  targetId: string
+  point: [number, number, number]
+  /** Outward normal of that face. */
+  normal: [number, number, number]
+  /** A point on the face plane, when the click is not already on it. */
+  planeOrigin?: [number, number, number]
+  diameter?: number
+  throughAll?: boolean
+  depth?: number
+  id?: string
+}
+
+/**
+ * The picked face's feature. A click on the plate stays on the plate.
+ * It does not retarget a later body such as a boss.
+ */
+export function holeTargetId(features: readonly { id: string }[], pickedId: string): string {
+  const owner = features.find((feature) => feature.id === pickedId)
+  if (!owner) throw new Error('hole needs the feature that owns the face')
+  return owner.id
+}
+
+/**
+ * Places a hole from a face click. The center is the click projected onto
+ * the face. The axis points into the solid. Diameter defaults to 8 and the
+ * hole goes through unless `throughAll` is false.
+ */
+export function addHoleFromFace(
+  doc: CadDocument,
+  pick: HoleFacePick,
+): { doc: CadDocument; feature: CadFeature } {
+  const target = holeTargetId(doc.features, pick.targetId)
+  const axis = holeAxisFromFacePoint({
+    point: pick.point,
+    normal: pick.normal,
+    planeOrigin: pick.planeOrigin,
+  })
+  return addHole(doc, {
+    id: pick.id,
+    target,
+    facePoint: axis.origin,
+    direction: axis.direction,
+    diameter: pick.diameter,
+    throughAll: pick.throughAll,
+    depth: pick.depth,
+  })
 }
 
 export function makeBooleanFeature(
