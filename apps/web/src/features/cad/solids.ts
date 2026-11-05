@@ -139,3 +139,15 @@ export function meshForFeature(feature: CadFeature): MeshBuffers | null {
     faceGroups: faceGroups.length > 0 ? faceGroups : undefined,
   }
 }
+
+/** First triangle of a face, so a stored faceId can be turned back into a highlight. */
+export function faceTriangle(
+  groups: readonly FaceGroup[] | undefined,
+  faceId: number,
+  indexCount: number,
+): number | null {
+  if (!groups?.length) return null
+  const group = groups.find((item) => item.faceId === faceId)
+  if (!group) return null
+  return groupSpace(groups, indexCount) === 'index' ? Math.floor(group.start / 3) : group.start
+}
