@@ -42,11 +42,10 @@ import {
 import { Viewport, type PickHit, type ViewportHandle } from './Viewport.tsx'
 import { planeFromFace } from './sketcher/facePlane.ts'
 import { workPlaneFromNormal, type PlaneArg } from './sketcher/project.ts'
-import { mergeEdgeParams, roundMm, signatureForEdge } from './edgeRefs.ts'
-import { faceFrameFromMesh, holeAxisFromFacePoint } from './kernel/featureOps.ts'
-import type { HoleDirection } from './kernel/types.ts'
+import { mergeEdgeParams, signatureForEdge } from './edgeRefs.ts'
+import { faceFrameFromMesh } from './kernel/featureOps.ts'
 import {
-  addHole,
+  addHoleFromFace,
   appendFeature,
   emptyDocument,
   isCadDocument,
@@ -60,7 +59,6 @@ import {
   makeImportFeature,
   makeRevolveFeature,
   makeSphereFeature,
-  holeTargetId,
   moveFeature,
   openFaceSketch,
   removeFeature,
@@ -613,26 +611,20 @@ export function CadPane() {
     }
     const mesh = meshes.find((item) => item.id === hit.featureId)
     const frame = mesh ? faceFrameFromMesh(mesh, hit.index, hit.faceId) : null
-    let origin = point
-    let direction: HoleDirection = 'normal'
-    if (frame) {
-      const axis = holeAxisFromFacePoint({
-        point,
-        normal: frame.normal,
-        planeOrigin: frame.origin,
-      })
-      origin = axis.origin
-      direction = axis.direction
+    if (!frame) {
+      setMessage(HOLE_STATUS)
+      return
     }
     const { holeThroughAll: throughAll, holeDiameter: diameter } = optionsRef.current
     const depth = holeDepth
-    const placed = addHole(doc, {
-      target: holeTargetId(doc.features, owner.id),
+    const placed = addHoleFromFace(doc, {
+      targetId: owner.id,
       diameter,
       throughAll,
       ...(throughAll ? {} : { depth }),
-      facePoint: [roundMm(origin[0]), roundMm(origin[1]), roundMm(origin[2])],
-      direction,
+      point,
+      normal: frame.normal,
+      planeOrigin: frame.origin,
     })
     commit(placed.doc)
     draftRef.current = placed.feature.id
