@@ -67,6 +67,24 @@ describe('ui store', () => {
     expect(loadPaneState(store)).toEqual({ lastPane: 'git', paneCollapsed: true })
   })
 
+  it('maximizes CAD and clears that when the pane closes', () => {
+    const ui = () => useUiStore.getState()
+    ui().openPane('cad')
+    ui().setCadMaximized(true)
+    expect(ui()).toMatchObject({ activePane: 'cad', cadMaximized: true })
+    ui().openPane('files')
+    expect(ui().cadMaximized).toBe(false)
+    ui().openPane('cad')
+    ui().setCadMaximized(true)
+    ui().collapsePane()
+    expect(ui()).toMatchObject({ activePane: null, cadMaximized: false, lastPane: 'cad' })
+    ui().togglePaneCollapsed()
+    expect(ui()).toMatchObject({ activePane: 'cad', cadMaximized: false })
+    ui().setCadMaximized(true)
+    ui().togglePane('cad')
+    expect(ui()).toMatchObject({ activePane: null, cadMaximized: false })
+  })
+
   it('saves what it changes', () => {
     const data = new Map<string, string>()
     vi.stubGlobal('localStorage', {

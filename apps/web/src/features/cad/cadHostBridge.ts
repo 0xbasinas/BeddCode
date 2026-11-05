@@ -34,6 +34,24 @@ export function emitCadMaximize(
   return detail
 }
 
+/** Reads `{ maximized }` from a `beddcode:cad-maximize` event. */
+export function cadMaximizedFromEvent(event: Event): boolean | null {
+  if (!('detail' in event)) return null
+  const detail = (event as CustomEvent<{ maximized?: unknown }>).detail
+  if (!detail || typeof detail !== 'object') return null
+  if (typeof detail.maximized !== 'boolean') return null
+  return detail.maximized
+}
+
+/**
+ * The shell calls this when the CAD pane is shown or hidden.
+ * Closing clears the offer so agents stop asking for screenshots.
+ */
+export function setCadPaneOpen(open: boolean): void {
+  if (open) return
+  setCadView({ canRender: false, selection: [] })
+}
+
 export interface CadViewOffer {
   canRender: boolean
   documentId?: string

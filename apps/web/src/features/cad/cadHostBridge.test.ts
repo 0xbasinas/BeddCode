@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   CAD_MAXIMIZE_EVENT,
   cadMaximizeDetail,
+  cadMaximizedFromEvent,
+  setCadPaneOpen,
   decodeTransferText,
   emitCadMaximize,
   getCadView,
@@ -64,5 +66,18 @@ describe('cad host bridge', () => {
   it('reads JSON that arrived as text or base64', () => {
     expect(decodeTransferText('{"id":"a"}')).toBe('{"id":"a"}')
     expect(decodeTransferText(btoa('{"id":"a"}'))).toBe('{"id":"a"}')
+  })
+
+  it('reads maximize events and clears the offer when the pane closes', () => {
+    expect(
+      cadMaximizedFromEvent(new CustomEvent(CAD_MAXIMIZE_EVENT, { detail: { maximized: true } })),
+    ).toBe(true)
+    expect(
+      cadMaximizedFromEvent(new CustomEvent(CAD_MAXIMIZE_EVENT, { detail: { maximized: false } })),
+    ).toBe(false)
+    expect(cadMaximizedFromEvent(new CustomEvent(CAD_MAXIMIZE_EVENT, { detail: {} }))).toBeNull()
+    setCadView({ canRender: true, documentId: 'part', selection: ['a'] })
+    setCadPaneOpen(false)
+    expect(getCadView()).toEqual({ canRender: false, selection: [] })
   })
 })

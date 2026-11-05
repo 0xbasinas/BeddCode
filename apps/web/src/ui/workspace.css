@@ -585,6 +585,22 @@ a {
     z-index: 10;
     box-shadow: -12px 0 28px #0005;
   }
+  /* CAD wants a wide column on a short window too, not the browser's 720px cap. */
+  .right.cad-open {
+    width: min(calc(1400px * var(--ui-scale)), calc(100vw - 280px - (4 * var(--gap))));
+  }
+}
+/* Maximized CAD covers most of the window. Welcome and the composer stay underneath. */
+.right.cad-open.cad-maximized {
+  position: fixed;
+  z-index: 40;
+  top: var(--gap);
+  right: var(--gap);
+  bottom: auto;
+  height: calc(100vh - 2 * var(--gap));
+  width: calc(100vw - var(--sidebar-width, 280px) - (4 * var(--gap)));
+  max-width: none;
+  box-shadow: -12px 0 28px #0005;
 }
 @media (max-width: 1040px) {
   .welcome-content {
