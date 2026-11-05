@@ -193,6 +193,11 @@ export const TOOL_DEFINITIONS = [
         prompt: { type: 'string', description: 'The task for the new session.' },
         title: { type: 'string', description: 'A short name for the session.' },
         model: { type: 'string', description: 'Model id; the agent default when omitted.' },
+        effort: {
+          type: 'string',
+          description:
+            "Reasoning effort for the model (for example low, medium, high); the model's default when omitted. See list_agents for what each model offers.",
+        },
         mode: {
           type: 'string',
           description:
@@ -1189,6 +1194,7 @@ export class AgentTools {
         title: str(args, 'title')?.slice(0, 80),
         permissionMode,
         model,
+        effort: str(args, 'effort'),
         workspace: worktree ? { mode: 'worktree' } : undefined,
         // Even the deepest level gets the server, for report_result.
         agentTools: true,

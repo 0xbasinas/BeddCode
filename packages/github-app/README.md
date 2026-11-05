@@ -91,6 +91,16 @@ unanswered for a minute, the job says so on the thread.
 
 Settings layer: `defaults`, then the repo, then the command, then what the comment asked for.
 
+**Planner (agent orchestration).** For a request in plain words the host starts a *planner*: a main agent with BeddCode's
+agent tools. It reads the request, then starts the agents that do the work (`start_session`), choosing agent, model and
+effort for each (what you asked for, else by task size), waits for them, has a different agent check a non-trivial change
+(`review_changes`) and sends fixes back to the worker. Code workers run one at a time in the job's own worktree, so
+everything lands on one branch; read-only helpers can run in parallel. The host then pushes and opens one pull request, as
+before, with your approval policy, and the reply lists the agents used. Configure it in `github.json`:
+`"planner": { "mode": "ask", "maxWorkers": 3 }`. `ask` = only plain-words requests (default), `always` = `fix this`,
+`fix ci` and `rebase` too, `off` = a single agent does everything. Workers are normal sessions, so you can watch or take
+over from the app.
+
 **Several hosts:** each lists the repos it serves. The online host with the lowest `priority` gets the job; if it
 goes quiet, another host serving the repo takes over. If none is online, the Worker replies on the issue
 (`REPLY_WHEN_OFFLINE`).
