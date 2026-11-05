@@ -565,7 +565,10 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.status = waiting(next.items)
         ? 'needs-you'
         : current.status === 'needs-you'
-          ? 'running'
+          ? // A request the host made after the turn ended (a push approval) leaves it idle, not running.
+            current.lastTurnReason !== undefined
+            ? 'idle'
+            : 'running'
           : current.status
       break
     case 'prompt.queued':
@@ -616,7 +619,10 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       next.status = waiting(next.items)
         ? 'needs-you'
         : current.status === 'needs-you'
-          ? 'running'
+          ? // A request the host made after the turn ended (a push approval) leaves it idle, not running.
+            current.lastTurnReason !== undefined
+            ? 'idle'
+            : 'running'
           : current.status
       break
     }
