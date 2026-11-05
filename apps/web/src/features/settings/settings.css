@@ -933,25 +933,27 @@
 
 .orchestration-settings {
   display: grid;
-  gap: 14px;
+  gap: calc(var(--gap) * 2);
   max-width: 620px;
 }
 .orchestration-settings label {
   display: grid;
-  gap: 5px;
+  gap: var(--gap);
+  font-size: var(--fs-small);
 }
 .orchestration-settings input,
 .orchestration-settings select {
-  color: inherit;
-  background: var(--bg);
+  color: var(--text);
+  background: var(--bg-input);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 7px;
+  border-radius: var(--radius-control);
+  padding: calc(7px * var(--ui-scale));
+  font: inherit;
 }
 .orchestration-setting-control {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: calc(var(--gap) * 2);
 }
 .orchestration-settings button {
   justify-self: start;
@@ -960,4 +962,40 @@
 .warm-pool-input {
   width: calc(96px * var(--ui-scale));
   text-align: right;
+}
+
+.handoff-settings {
+  padding: calc(var(--gap) * 2);
+  color: var(--text);
+  font-size: var(--fs-small);
+}
+.handoff-settings > .settings-notice {
+  margin: 0 0 calc(var(--gap) * 2);
+}
+.handoff-settings label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap);
+  margin: 0 var(--gap) var(--gap) 0;
+}
+.handoff-settings select,
+.handoff-settings input {
+  min-width: 0;
+  max-width: 100%;
+  padding: calc(7px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+}
+.handoff-settings input[type='number'] {
+  width: calc(80px * var(--ui-scale));
+}
+.handoff-fallback {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  padding: var(--gap) 0;
 }
