@@ -10,16 +10,57 @@
   background: var(--bg-panel);
 }
 
+.cad-chrome {
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
 .cad-toolbar {
   display: flex;
-  flex-wrap: wrap;
-  gap: calc(2px * var(--ui-scale));
-  align-items: center;
+  align-items: flex-start;
+  gap: calc(6px * var(--ui-scale));
   min-height: var(--pane-head);
   padding: calc(6px * var(--ui-scale)) calc(var(--island-w) + 8px * var(--ui-scale))
-    calc(6px * var(--ui-scale)) var(--toggle-reach);
-  border-bottom: 1px solid var(--border-subtle);
-  flex-shrink: 0;
+    calc(2px * var(--ui-scale)) var(--toggle-reach);
+}
+
+.cad-tool-groups {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale));
+  min-width: 0;
+}
+
+.cad-tool-group {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: calc(2px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale));
+  border-right: 1px solid var(--border-subtle);
+}
+
+.cad-tool-group:last-child {
+  border-right: 0;
+}
+
+.cad-tool-group-buttons {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+}
+
+.cad-tool-group-label {
+  padding-bottom: calc(3px * var(--ui-scale));
+  color: var(--text-faint);
+  font-size: var(--fs-micro);
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .cad-tool {
@@ -44,12 +85,11 @@
   color: var(--text);
 }
 
-.cad-sketch-tools {
-  display: inline-flex;
-  gap: calc(2px * var(--ui-scale));
-  margin-left: calc(4px * var(--ui-scale));
-  padding-left: calc(6px * var(--ui-scale));
-  border-left: 1px solid var(--border-subtle);
+.cad-tool:focus-visible,
+.cad-option-planes button:focus-visible,
+.cad-viewcube-list button:focus-visible {
+  outline: 1px solid var(--border);
+  outline-offset: 1px;
 }
 
 /* Shell listens for beddcode:cad-maximize and grows the column. This marks the pane. */
@@ -57,8 +97,85 @@
   min-width: 0;
 }
 
+.cad-pane--max .cad-tree {
+  flex-basis: calc(208px * var(--ui-scale));
+  width: calc(208px * var(--ui-scale));
+}
+
+.cad-pane--max .cad-props {
+  flex-basis: calc(220px * var(--ui-scale));
+  width: calc(220px * var(--ui-scale));
+}
+
 .cad-maximize {
-  margin-left: auto;
+  align-self: flex-start;
+}
+
+.cad-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  min-height: calc(32px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(var(--island-w) + 8px * var(--ui-scale))
+    calc(6px * var(--ui-scale)) var(--toggle-reach);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.cad-options-hint {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+
+.cad-option {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+
+.cad-option input[type='number'] {
+  width: calc(76px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--corner-sm);
+  color: var(--text);
+  font-size: var(--fs-small);
+}
+
+.cad-option input[type='checkbox'] {
+  margin: 0;
+  accent-color: var(--text-muted);
+}
+
+.cad-option-planes {
+  display: inline-flex;
+  gap: 1px;
+  padding: 1px;
+  background: var(--border);
+  border-radius: var(--corner-sm);
+  overflow: hidden;
+}
+
+.cad-option-planes button {
+  min-width: calc(32px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  font-size: var(--fs-micro);
+}
+
+.cad-option-planes button[aria-pressed='true'] {
+  background: var(--bg-active);
+  color: var(--text);
+}
+
+.cad-option-planes button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
 }
 
 .cad-body {
@@ -122,6 +239,15 @@
 
 .cad-feature[aria-selected='true'] {
   background: var(--bg-active);
+  box-shadow: inset 2px 0 0 var(--text-faint);
+}
+
+.cad-feature.failed {
+  box-shadow: inset 2px 0 0 var(--border);
+}
+
+.cad-feature.failed[aria-selected='true'] {
+  box-shadow: inset 2px 0 0 var(--text-muted);
 }
 
 .cad-feature-name {
@@ -147,14 +273,35 @@
 .cad-feature-error {
   max-width: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--text-faint);
   font-size: var(--fs-micro);
 }
 
+.cad-feature-kind {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cad-feature-error {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(3px * var(--ui-scale));
+}
+
+.cad-feature-error span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .cad-feature.failed .cad-feature-error {
-  color: var(--text-secondary);
+  color: var(--text-muted);
+}
+
+.cad-feature-mark {
+  flex: 0 0 auto;
+  color: var(--text-muted);
 }
 
 .cad-feature.suppressed .cad-feature-name {
@@ -362,6 +509,22 @@ button.cad-sketch-label {
   fill: var(--bg-active);
 }
 
+.cad-viewcube-svg g.is-active polygon {
+  stroke: var(--text-muted);
+}
+
+.cad-viewcube-svg g.is-active text {
+  fill: var(--text);
+}
+
+.cad-viewcube-caption {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--fs-micro);
+  line-height: 1.2;
+  text-align: right;
+}
+
 .cad-viewcube-svg text {
   fill: var(--text-muted);
   font-size: 7px;
@@ -544,7 +707,6 @@ button.cad-sketch-label {
   display: flex;
   align-items: center;
   gap: calc(10px * var(--ui-scale));
-  height: calc(28px * var(--ui-scale));
   min-height: calc(28px * var(--ui-scale));
   padding: 0 calc(8px * var(--ui-scale));
   border-top: 1px solid var(--border-subtle);
@@ -553,7 +715,17 @@ button.cad-sketch-label {
   flex-shrink: 0;
 }
 
+.cad-status-hint {
+  flex: 1.4;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
 .cad-status-message {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

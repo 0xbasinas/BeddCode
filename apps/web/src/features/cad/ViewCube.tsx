@@ -15,6 +15,7 @@ const FACES: { id: ViewName; label: string; points: string; text: string; x: num
 export function ViewCube({ active, onView }: { active: ViewName; onView(view: ViewName): void }) {
   return (
     <div className="cad-viewcube" role="group" aria-label="Standard views">
+      <p className="cad-viewcube-caption">Views</p>
       <svg className="cad-viewcube-svg" viewBox="0 0 64 64" aria-hidden="true">
         {FACES.map((face) => (
           <g
