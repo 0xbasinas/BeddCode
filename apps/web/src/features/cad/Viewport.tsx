@@ -38,7 +38,7 @@ import { faceAt, faceTriangle } from './solids.ts'
 import {
   boxSelect,
   mergeSelection,
-  rankHits,
+  rankedHits,
   sameItem,
   segmentDistancePx,
   selectionKey,
@@ -265,6 +265,8 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
   let downY = 0
   let down = false
   let lastPointer: PointerEvent | null = null
+  let cycleHits: Found[] = []
+  let cycleIndex = 0
   let selection: SelectionItem[] = []
   let boxing = false
   let boxFrame: HTMLDivElement | null = null
@@ -595,7 +597,9 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       if (!mesh) return null
       const groups = mesh.userData.faceGroups as FaceGroup[] | null | undefined
       const indexAttr = mesh.geometry.getIndex()
-      const total = indexAttr ? indexAttr.count : (mesh.geometry.getAttribute('position')?.count ?? 0)
+      const total = indexAttr
+        ? indexAttr.count
+        : (mesh.geometry.getAttribute('position')?.count ?? 0)
       if (!groups?.length) return item.id * 3 < total ? { index: item.id } : null
       const triangle = faceTriangle(groups, item.id, total)
       return triangle == null ? null : { index: triangle }
@@ -703,10 +707,10 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     }
   }
 
-  /** Best hit under the cursor for the active filter, or null. */
-  const findHit = (event: { clientX: number; clientY: number }): Found | null => {
+  /** Ordered hits under the cursor for the active filter. */
+  const findHits = (event: { clientX: number; clientY: number }): Found[] => {
     const ray = pointerRay(event)
-    if (!ray) return null
+    if (!ray) return []
     const box = renderer.domElement.getBoundingClientRect()
     const cx = event.clientX - box.left
     const cy = event.clientY - box.top
@@ -714,28 +718,34 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     const lines = parts.children.filter((child) => child instanceof LineSegments)
     const filter = session.pickMode
     const candidates: Found[] = []
-    const face = raycaster.intersectObjects(meshes, false)[0]
+    raycaster.firstHitOnly = false
+    const faces = raycaster.intersectObjects(meshes, false)
+    raycaster.firstHitOnly = true
+    const face = faces[0]
     const faceDepth = face ? face.distance : Number.POSITIVE_INFINITY
     // Lines lying on a face tie with it, so allow a small slack before calling them hidden.
     const slack = camera.position.distanceTo(controls.target) * 0.01
 
-    if (filter === 'face' && face?.object instanceof Mesh && face.faceIndex != null) {
-      const groups = face.object.userData.faceGroups as FaceGroup[] | undefined
-      const indexAttr = face.object.geometry.getIndex()
-      const total = indexAttr
-        ? indexAttr.count
-        : (face.object.geometry.getAttribute('position')?.count ?? 0)
-      const found = faceAt(groups, face.faceIndex, total)
-      candidates.push({
-        kind: 'face',
-        featureId: featureIdOf(face.object),
-        id: found?.faceId ?? face.faceIndex,
-        depth: face.distance,
-        screenPx: 0,
-        object: face.object,
-        index: face.faceIndex,
-        point: face.point,
-      })
+    if (filter === 'face') {
+      for (const face of faces) {
+        if (!(face.object instanceof Mesh) || face.faceIndex == null) continue
+        const groups = face.object.userData.faceGroups as FaceGroup[] | undefined
+        const indexAttr = face.object.geometry.getIndex()
+        const total = indexAttr
+          ? indexAttr.count
+          : (face.object.geometry.getAttribute('position')?.count ?? 0)
+        const found = faceAt(groups, face.faceIndex, total)
+        candidates.push({
+          kind: 'face',
+          featureId: featureIdOf(face.object),
+          id: found?.faceId ?? face.faceIndex,
+          depth: face.distance,
+          screenPx: 0,
+          object: face.object,
+          index: face.faceIndex,
+          point: face.point,
+        })
+      }
     } else if (filter === 'edge') {
       for (const child of lines) {
         const line = child as LineSegments
@@ -785,8 +795,7 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
         }
       }
     }
-    const best = rankHits(candidates, filter)
-    return best ? (best as Found) : null
+    return rankedHits(candidates, filter)
   }
 
   const hitOf = (found: Found): PickHit => {
@@ -807,7 +816,9 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       clearHover()
       return
     }
-    showHover(findHit(event))
+    cycleHits = findHits(event)
+    cycleIndex = 0
+    showHover(cycleHits[0] ?? null)
   }
 
   const selectionHits = (): PickHit[] => {
@@ -848,7 +859,10 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
   }
 
   const pick = (event: PointerEvent): PickHit | null => {
-    const found = findHit(event)
+    const found =
+      lastPointer && event.clientX === lastPointer.clientX && event.clientY === lastPointer.clientY
+        ? (cycleHits[cycleIndex] ?? null)
+        : (findHits(event)[0] ?? null)
     const additive = event.shiftKey
     const next = toggleSelection(selection, found, additive)
     setSelection(next)
@@ -962,7 +976,10 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
   }
 
   const onPointerMove = (event: PointerEvent) => {
+    const moved =
+      !lastPointer || event.clientX !== lastPointer.clientX || event.clientY !== lastPointer.clientY
     lastPointer = event
+    if (!moved && !boxing) return
     if (boxing && boxFrame) {
       const box = renderer.domElement.getBoundingClientRect()
       const x = event.clientX - box.left
@@ -1028,6 +1045,9 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
   }
 
   const onPointerLeave = () => {
+    lastPointer = null
+    cycleHits = []
+    cycleIndex = 0
     session.cursor = null
     session.snapKind = null
     if (session.sketchMode) redrawPreview()
@@ -1035,7 +1055,28 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
   }
 
   const onKey = (event: KeyboardEvent) => {
-    if (event.key !== 'Shift' || !lastPointer) return
+    if (!lastPointer) return
+    if (
+      event.type === 'keydown' &&
+      event.key === 'Tab' &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      !(
+        event.target instanceof HTMLElement &&
+        (event.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName))
+      ) &&
+      !session.sketchMode &&
+      !boxing &&
+      cycleHits.length > 1
+    ) {
+      event.preventDefault()
+      cycleIndex = (cycleIndex + 1) % cycleHits.length
+      showHover(cycleHits[cycleIndex])
+      return
+    }
+    if (event.key !== 'Shift') return
     if (session.sketchMode) {
       const snap = sketchCursor({
         clientX: lastPointer.clientX,
@@ -1047,7 +1088,6 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       redrawPreview()
       return
     }
-    hoverAt(lastPointer)
   }
 
   host.addEventListener('pointerdown', onBoxStart, true)
@@ -1059,6 +1099,8 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
   window.addEventListener('keyup', onKey)
 
   const clearParts = () => {
+    cycleHits = []
+    cycleIndex = 0
     clearHover()
     for (const child of [...parts.children]) {
       disposeObject(child)
@@ -1123,6 +1165,8 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     session.snap = next.snap
     if (next.pickMode !== session.pickMode) {
       session.pickMode = next.pickMode
+      cycleHits = []
+      cycleIndex = 0
       clearHover()
       setSelection(keepKind(selection, next.pickMode))
     }
@@ -1134,7 +1178,13 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       session.snapKind = null
     }
     renderer.domElement.style.cursor = session.sketchMode ? 'crosshair' : ''
-    if (!session.sketchMode) clearHover()
+    if (session.sketchMode) {
+      cycleHits = []
+      cycleIndex = 0
+      clearHover()
+    } else if (lastPointer && cycleHits.length === 0) {
+      hoverAt(lastPointer)
+    }
     syncGrid()
     redrawCommitted()
     redrawPreview()

@@ -45,19 +45,32 @@ function threshold(kind: PickKind, edgePx: number, vertexPx: number): number {
  * be inside their pixel threshold. Ties go to the nearer screen distance, then
  * the nearer depth, then the lower id so results stay stable.
  */
+export function rankedHits<T extends HitCandidate>(
+  candidates: readonly T[],
+  filter: PickKind,
+  edgePx = EDGE_PICK_PX,
+  vertexPx = VERTEX_PICK_PX,
+): T[] {
+  const sorted = candidates
+    .filter((hit) => hit.kind === filter && hit.screenPx <= threshold(hit.kind, edgePx, vertexPx))
+    .slice()
+    .sort(compareHits)
+  const seen = new Set<string>()
+  return sorted.filter((hit) => {
+    const key = selectionKey(hit)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 export function rankHits(
   candidates: readonly HitCandidate[],
   filter: PickKind,
   edgePx = EDGE_PICK_PX,
   vertexPx = VERTEX_PICK_PX,
 ): HitCandidate | null {
-  let best: HitCandidate | null = null
-  for (const hit of candidates) {
-    if (hit.kind !== filter) continue
-    if (hit.screenPx > threshold(hit.kind, edgePx, vertexPx)) continue
-    if (!best || compareHits(hit, best) < 0) best = hit
-  }
-  return best
+  return rankedHits(candidates, filter, edgePx, vertexPx)[0] ?? null
 }
 
 function compareHits(a: HitCandidate, b: HitCandidate): number {
@@ -146,6 +159,7 @@ export function segmentDistancePx(
   const dx = bx - ax
   const dy = by - ay
   const lengthSq = dx * dx + dy * dy
-  const t = lengthSq === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSq))
+  const t =
+    lengthSq === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSq))
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy))
 }
