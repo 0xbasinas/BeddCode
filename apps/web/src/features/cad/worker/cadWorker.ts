@@ -80,7 +80,12 @@ async function dispatch(request: CadRequest): Promise<void> {
           id: request.id,
           ok: true,
           type: 'shape',
-          shape: await cad.fillet(request.targetId, request.radius, request.edgeIds),
+          shape: await cad.fillet(
+            request.targetId,
+            request.radius,
+            request.edgeIds,
+            request.edgeRefs,
+          ),
         })
         return
       case 'chamfer':
@@ -88,7 +93,27 @@ async function dispatch(request: CadRequest): Promise<void> {
           id: request.id,
           ok: true,
           type: 'shape',
-          shape: await cad.chamfer(request.targetId, request.radius, request.edgeIds),
+          shape: await cad.chamfer(
+            request.targetId,
+            request.radius,
+            request.edgeIds,
+            request.edgeRefs,
+          ),
+        })
+        return
+      case 'hole':
+        reply({
+          id: request.id,
+          ok: true,
+          type: 'shape',
+          shape: await cad.hole(request.targetId, {
+            origin: request.origin,
+            diameter: request.diameter,
+            ...(request.direction ? { direction: request.direction } : {}),
+            ...(request.depth !== undefined ? { depth: request.depth } : {}),
+            ...(request.throughAll ? { throughAll: true } : {}),
+            ...(request.counterbore ? { counterbore: request.counterbore } : {}),
+          }),
         })
         return
       case 'boolean':

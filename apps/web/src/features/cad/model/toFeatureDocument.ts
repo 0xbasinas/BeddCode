@@ -2,8 +2,10 @@ import type { CadDocument, CadFeature, CadSketch, SketchEntity } from './CadDocu
 import type {
   AxisName,
   BooleanMode,
+  Counterbore,
   FeatureDocument,
   FeatureOp,
+  HoleDirection,
   PlaneName,
   Profile2D,
 } from '../kernel/types.ts'
@@ -18,11 +20,12 @@ import type {
  *   kernel feature op has no bothSides flag.
  * - An extrude with cut true subtracts that solid from the previous body.
  * - params.edgeIds is a comma-separated edge list copied onto the fillet or
- *   chamfer op. The worker's planRebuild drops unknown fields, so this kernel
- *   still fillets the whole solid until it keeps edgeIds.
+ *   chamfer op.
+ * - A hole feature becomes a hole op. The kernel cuts a cylinder from the target.
  */
 
 const AXES = new Set<string>(['X', 'Y', 'Z', '-X', '-Y', '-Z'])
+const HOLE_DIRECTIONS = new Set<string>(['X', 'Y', 'Z', '-X', '-Y', '-Z', 'normal'])
 const PLANES = new Set<string>(['XY', 'YZ', 'ZX', 'XZ', 'YX', 'ZY'])
 const CIRCLE_SEGMENTS = 16
 
@@ -71,7 +74,7 @@ export function toFeatureDocument(
 export function visibleShapeIds(ops: readonly FeatureOp[]): string[] {
   const consumed = new Set<string>()
   for (const op of ops) {
-    if (op.op === 'fillet' || op.op === 'chamfer') consumed.add(op.target)
+    if (op.op === 'fillet' || op.op === 'chamfer' || op.op === 'hole') consumed.add(op.target)
     if (op.op === 'boolean') {
       consumed.add(op.target)
       consumed.add(op.tool)
@@ -142,6 +145,8 @@ function convertFeature(
       return edgeFeature(feature, 'fillet', produced)
     case 'chamfer':
       return edgeFeature(feature, 'chamfer', produced)
+    case 'hole':
+      return holeFeature(feature, produced)
     case 'union':
       return booleanFeature(feature, 'fuse', produced)
     case 'cut':
@@ -220,6 +225,30 @@ function edgeFeature(
       : { op: 'chamfer', id: feature.id, target, radius }
   const next = edgeIds.length > 0 ? Object.assign({}, base, { edgeIds }) : base
   return { ops: [next], bodyId: feature.id }
+}
+
+function holeFeature(feature: CadFeature, produced: ReadonlySet<string>): Built {
+  const target = text(feature, 'targetId') ?? text(feature, 'target')
+  if (!target) throw new Error('hole needs a target feature')
+  if (!produced.has(target)) throw new Error(`unknown shape ${target}`)
+  const diameter = requiredPositive(feature, 'diameter')
+  const throughAll = flag(feature, 'throughAll')
+  const depth = optionalDepth(feature)
+  if (!throughAll && depth === undefined) throw new Error('hole depth is missing')
+  const counterbore = counterboreOf(feature, diameter, depth, throughAll)
+  const direction = holeDirectionOf(feature)
+  const op: FeatureOp = {
+    op: 'hole',
+    id: feature.id,
+    target,
+    origin: [coord(feature, 'x'), coord(feature, 'y'), coord(feature, 'z')],
+    diameter,
+    ...(direction ? { direction } : {}),
+    ...(depth !== undefined ? { depth } : {}),
+    ...(throughAll ? { throughAll: true } : {}),
+    ...(counterbore ? { counterbore } : {}),
+  }
+  return { ops: [op], bodyId: feature.id }
 }
 
 function booleanFeature(
@@ -417,6 +446,64 @@ function requiredField(entity: LooseEntity, key: string): number {
   const value = field(entity, key)
   if (value === undefined) throw new Error('sketch line is missing points')
   return value
+}
+
+function requiredPositive(feature: CadFeature, key: string): number {
+  const value = feature.params[key]
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`${key} must be a positive number`)
+  }
+  return value
+}
+
+function optionalDepth(feature: CadFeature): number | undefined {
+  const value = feature.params.depth
+  if (value === undefined) return undefined
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    throw new Error('depth must be a positive number')
+  }
+  return value
+}
+
+function coord(feature: CadFeature, key: string): number {
+  const value = feature.params[key]
+  if (value === undefined) return 0
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`hole ${key} must be a finite number`)
+  }
+  return value
+}
+
+function holeDirectionOf(feature: CadFeature): HoleDirection | undefined {
+  const raw = feature.params.direction
+  if (raw === undefined || raw === '') return undefined
+  if (typeof raw === 'string' && HOLE_DIRECTIONS.has(raw)) return raw as HoleDirection
+  throw new Error('unknown hole direction')
+}
+
+function counterboreOf(
+  feature: CadFeature,
+  diameter: number,
+  depth: number | undefined,
+  throughAll: boolean,
+): Counterbore | undefined {
+  const boreDiameter = feature.params.cboreDiameter
+  const boreDepth = feature.params.cboreDepth
+  if (boreDiameter === undefined && boreDepth === undefined) return undefined
+  if (typeof boreDiameter !== 'number' || typeof boreDepth !== 'number') {
+    throw new Error('counterbore needs a diameter and a depth')
+  }
+  if (!Number.isFinite(boreDiameter) || boreDiameter <= 0) {
+    throw new Error('counterbore diameter must be a positive number')
+  }
+  if (!Number.isFinite(boreDepth) || boreDepth <= 0) {
+    throw new Error('counterbore depth must be a positive number')
+  }
+  if (boreDiameter <= diameter) throw new Error('counterbore diameter must be larger than the hole')
+  if (!throughAll && depth !== undefined && boreDepth >= depth) {
+    throw new Error('counterbore depth must be shorter than the hole')
+  }
+  return { diameter: boreDiameter, depth: boreDepth }
 }
 
 function positive(feature: CadFeature, key: string, fallback: number): number {

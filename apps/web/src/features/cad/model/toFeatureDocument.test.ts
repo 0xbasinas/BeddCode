@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { planRebuild } from '../kernel/featureOps.ts'
 import {
+  addHole,
   appendFeature,
   appendSketch,
   emptyDocument,
@@ -158,5 +159,59 @@ describe('toFeatureDocument', () => {
     const missing = toFeatureDocument(doc)
     expect(missing.errors.step).toMatch(/STEP/)
     expect(missing.document.ops.map((op) => op.id)).toEqual(['base', 'pad::tool', 'pad'])
+  })
+
+  it('maps a hole feature onto a hole op', () => {
+    let doc = appendFeature(emptyDocument(), makeBoxFeature(emptyDocument(), 'base'))
+    doc = addHole(doc, {
+      id: 'drill',
+      target: 'base',
+      diameter: 4,
+      throughAll: true,
+      facePoint: [1, 2, 10],
+      cboreDiameter: 8,
+      cboreDepth: 2,
+      direction: '-Z',
+    })
+    const plan = toFeatureDocument(doc)
+    expect(plan.errors).toEqual({})
+    expect(plan.document.ops[1]).toEqual({
+      op: 'hole',
+      id: 'drill',
+      target: 'base',
+      origin: [1, 2, 10],
+      diameter: 4,
+      throughAll: true,
+      direction: '-Z',
+      counterbore: { diameter: 8, depth: 2 },
+    })
+    expect(planRebuild(plan.document).map((op) => op.id)).toEqual(['base', 'drill'])
+    expect(visibleShapeIds(plan.document.ops)).toEqual(['drill'])
+
+    const blind = toFeatureDocument(
+      addHole(appendFeature(emptyDocument(), makeBoxFeature(emptyDocument(), 'base')), {
+        id: 'pocket',
+        target: 'base',
+        diameter: 5,
+        depth: 3,
+        x: 0,
+        y: 0,
+        z: 10,
+      }),
+    )
+    expect(blind.errors).toEqual({})
+    expect(blind.document.ops[1]).toEqual({
+      op: 'hole',
+      id: 'pocket',
+      target: 'base',
+      origin: [0, 0, 10],
+      diameter: 5,
+      depth: 3,
+    })
+
+    const missing = toFeatureDocument(
+      addHole(emptyDocument(), { id: 'h', target: 'gone', diameter: 4, throughAll: true }),
+    )
+    expect(missing.errors.h).toMatch(/unknown shape gone/)
   })
 })

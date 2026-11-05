@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  addHole,
   appendFeature,
   emptyDocument,
   isCadDocument,
@@ -64,6 +65,46 @@ describe('CadDocument', () => {
     expect(doc.features.map((feature) => feature.id)).toEqual(['b'])
     expect(doc.historyIndex).toBe(0)
     expect(removeFeature(doc, 'missing')).toBe(doc)
+  })
+
+  it('adds a hole on a face point', () => {
+    const start = appendFeature(emptyDocument(), makeBoxFeature(emptyDocument(), 'base'))
+    const next = addHole(start, {
+      id: 'h1',
+      target: 'base',
+      diameter: 6,
+      depth: 4,
+      x: 1,
+      y: 2,
+      z: 3,
+    })
+    expect(next.features[1]).toMatchObject({
+      id: 'h1',
+      kind: 'hole',
+      name: 'Hole 1',
+      params: { target: 'base', diameter: 6, depth: 4, x: 1, y: 2, z: 3 },
+    })
+    expect(next.historyIndex).toBe(1)
+    expect(next.rev).toBe(start.rev + 1)
+    const second = addHole(next, {
+      id: 'h2',
+      target: 'base',
+      diameter: 2,
+      throughAll: true,
+      facePoint: [0, 0, 20],
+      cboreDiameter: 5,
+      cboreDepth: 1,
+    })
+    expect(second.features[2]?.name).toBe('Hole 2')
+    expect(second.features[2]?.params).toMatchObject({
+      throughAll: true,
+      x: 0,
+      y: 0,
+      z: 20,
+      diameter: 2,
+      cboreDiameter: 5,
+      cboreDepth: 1,
+    })
   })
 
   it('recognizes a document and rejects other json', () => {

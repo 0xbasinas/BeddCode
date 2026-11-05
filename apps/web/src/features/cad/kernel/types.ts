@@ -90,6 +90,52 @@ export interface ExtrudeOptions {
   target?: string
 }
 
+/** Principal axis, or the face normal at the hole origin. */
+export type HoleDirection = AxisName | 'normal'
+
+/** A larger shallow cylinder at the mouth of a hole. */
+export interface Counterbore {
+  diameter: number
+  depth: number
+}
+
+/**
+ * A drilled hole. `origin` is a world point on the face, in millimetres.
+ * `direction` is the drill axis. It defaults to -Z, which goes through a
+ * plate that sits on XY. `normal` uses the face normal at `origin` and drills
+ * into the solid.
+ */
+export interface HoleParams {
+  origin: [number, number, number]
+  direction?: HoleDirection
+  diameter: number
+  /** Blind depth. Required unless `throughAll` is set. */
+  depth?: number
+  throughAll?: boolean
+  counterbore?: Counterbore
+}
+
+/**
+ * Geometric signature of one edge. Values are rounded to 0.01 mm so a rebuild
+ * can find the same edge after OCCT hashes change.
+ * `dir` is a unit vector. The opposite direction is the same edge.
+ */
+export interface EdgeTopologyRef {
+  kind: 'edge'
+  mid: [number, number, number]
+  dir: [number, number, number]
+  length: number
+}
+
+/** Geometric signature of one face. `normal` points out of the solid. */
+export interface FaceTopologyRef {
+  kind: 'face'
+  origin: [number, number, number]
+  normal: [number, number, number]
+}
+
+export type TopologyRef = EdgeTopologyRef | FaceTopologyRef
+
 export type FeatureOp =
   | { op: 'primitive'; id: string; kind: PrimitiveKind; params: PrimitiveParams }
   | {
@@ -107,8 +153,25 @@ export type FeatureOp =
       target?: string
     }
   | { op: 'revolve'; id: string; profile: Profile2D; angle: number; axis?: AxisName }
-  | { op: 'fillet'; id: string; target: string; radius: number; edgeIds?: number[] }
-  | { op: 'chamfer'; id: string; target: string; radius: number; edgeIds?: number[] }
+  | {
+      op: 'fillet'
+      id: string
+      target: string
+      radius: number
+      /** OCCT edge hashes from the mesh this op was picked on. */
+      edgeIds?: number[]
+      /** Geometric signatures used when those hashes are gone. */
+      edgeRefs?: EdgeTopologyRef[]
+    }
+  | {
+      op: 'chamfer'
+      id: string
+      target: string
+      radius: number
+      edgeIds?: number[]
+      edgeRefs?: EdgeTopologyRef[]
+    }
+  | ({ op: 'hole'; id: string; target: string } & HoleParams)
   | { op: 'boolean'; id: string; mode: BooleanMode; target: string; tool: string }
   | { op: 'importStep'; id: string; name: string }
 
