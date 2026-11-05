@@ -12,6 +12,9 @@ import { writeBridge } from './bridge.ts'
 import { DesignStore } from '../design/designStore.ts'
 import { DesignTools } from '../design/designTools.ts'
 import { DesignLink } from '../design/designLink.ts'
+import { CadStore } from '../cad/cadStore.ts'
+import { CadTools } from '../cad/cadTools.ts'
+import { CadLink } from '../cad/cadLink.ts'
 import { BrowserBroker, BrowserTools, type BrowserToolsHost } from './browserUse.ts'
 import { auditFile } from '../computer/audit.ts'
 import { ComputerTools, type ComputerToolsHost } from '../computer/computerTools.ts'
@@ -112,6 +115,8 @@ export function createAutomation(deps: AutomationDeps) {
   )
   const designs = new DesignStore(path.join(home, 'designs'))
   const designLink = new DesignLink()
+  const cads = new CadStore(path.join(home, 'cad'))
+  const cadLink = new CadLink()
   const linearKey = new LinearKeyStore(path.join(home, 'linear.json'))
   const sync = new LinearSync(path.join(home, 'linear-sync.json'), linearKey)
   linearSync = sync
@@ -175,6 +180,7 @@ export function createAutomation(deps: AutomationDeps) {
     new DesignTools(designs, designLink),
     computer,
     new LinearTools(linearKey),
+    new CadTools(cads, cadLink),
   )
   const finish = new OrchestrationFinish({
     read: readSession,
@@ -273,6 +279,8 @@ export function createAutomation(deps: AutomationDeps) {
     browser: broker,
     designs,
     designLink,
+    cads,
+    cadLink,
     telegram,
     github,
     linear: {

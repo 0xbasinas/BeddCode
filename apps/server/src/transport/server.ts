@@ -25,6 +25,7 @@ import type { TokenStore } from '../auth/tokens.ts'
 import type { AgentTools } from '../automation/agentTools.ts'
 import type { BrowserBroker } from '../automation/browserUse.ts'
 import type { DesignLink } from '../design/designLink.ts'
+import type { CadLink } from '../cad/cadLink.ts'
 import type { TailscaleService } from '../network/tailscale.ts'
 import type { EventStore } from '../store/eventStore.ts'
 import type { AgentCatalog } from '../agents/catalog.ts'
@@ -117,6 +118,8 @@ export interface StartServerOptions {
   browser?: BrowserBroker
   /** Pictures of designs for agents, drawn by connected apps, and what they have selected. */
   designLink?: DesignLink
+  /** Pictures and measurements of CAD models, drawn by connected apps. */
+  cadLink?: CadLink
   /** Who may connect; defaults to this machine plus the tailnet, tokens for everyone else. */
   guard?: GuardOptions
   log: Logger
@@ -423,9 +426,13 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     // Joins the browser broker once it offers (the desktop app does).
     const browserClient = options.browser?.connect(send)
     const designClient = options.designLink?.connect(send)
+    const cadClient = options.cadLink?.connect(send)
     // Design canvases saved by anyone, so open editors can refresh.
     const stopDesigns = options.automation.designs.onChange((c) => {
       if (authed) send({ t: 'design.changed', ...c })
+    })
+    const stopCads = options.automation.cads.onChange((c) => {
+      if (authed) send({ t: 'cad.changed', ...c })
     })
     // Terminals that appear or change on their own (an agent's commands), so panes can show them.
     const stopTerminals = options.workspace.terminals.onChange((c) => {
@@ -451,7 +458,9 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       watching.forEach((release) => release())
       browserClient?.close()
       designClient?.close()
+      cadClient?.close()
       stopDesigns()
+      stopCads()
       stopTerminals()
     })
 
@@ -565,6 +574,14 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
         case 'design.imported':
         case 'design.laidout':
           designClient?.frame(frame)
+          break
+        case 'cad.view':
+        case 'cad.rendered':
+        case 'cad.queried':
+        case 'cad.imported':
+        case 'cad.exported':
+        case 'cad.rebuilt':
+          cadClient?.frame(frame)
           break
         case 'browser.offer':
         case 'browser.result':

@@ -66,6 +66,7 @@ export interface HostClientOptions {
           | 'term.changed'
           | 'fs.changed'
           | 'design.changed'
+          | 'cad.changed'
           | 'host.updating'
       }
     >,
@@ -79,6 +80,16 @@ export interface HostClientOptions {
   onDesignImport?(request: Extract<ServerFrame, { t: 'design.import' }>): void
   /** An agent's edit needs auto layout and text sizes worked out (same condition). */
   onDesignLayout?(request: Extract<ServerFrame, { t: 'design.layout' }>): void
+  /** An agent wants a picture of a CAD model (only after `offerCad` said this client can). */
+  onCadRender?(request: Extract<ServerFrame, { t: 'cad.render' }>): void
+  /** An agent wants a measurement of a CAD model (same condition). */
+  onCadQuery?(request: Extract<ServerFrame, { t: 'cad.query' }>): void
+  /** An agent wants a CAD file read into features (same condition). */
+  onCadImport?(request: Extract<ServerFrame, { t: 'cad.import' }>): void
+  /** An agent wants a CAD model written out (same condition). */
+  onCadExport?(request: Extract<ServerFrame, { t: 'cad.export' }>): void
+  /** An agent's edit needs the solid rebuilt (same condition). */
+  onCadRebuild?(request: Extract<ServerFrame, { t: 'cad.rebuild' }>): void
   /** How long a message waits for the connection to come back before it fails. Default 30 s. */
   queueWaitMs?: number
   /** Inject a socket for tests; defaults to the platform WebSocket. */
@@ -422,6 +433,19 @@ export class HostClient {
     this.send(frame)
   }
 
+  private cadView: Extract<ClientFrame, { t: 'cad.view' }> | null = null
+
+  /**
+   * Tells the host whether this client can draw CAD models for agents and which document it has
+   * open. Remembered and sent again on every reconnect.
+   */
+  offerCad(view: Omit<Extract<ClientFrame, { t: 'cad.view' }>, 't'>) {
+    const frame = { t: 'cad.view' as const, ...view }
+    if (JSON.stringify(frame) === JSON.stringify(this.cadView)) return
+    this.cadView = frame
+    this.send(frame)
+  }
+
   /** Sends a frame if connected. Returns false when it could not be sent (the caller may retry). */
   send(frame: ClientFrame): boolean {
     const ws = this.ws
@@ -562,6 +586,7 @@ export class HostClient {
         }
         if (this.browserOffer) ws.send(JSON.stringify(this.browserOffer))
         if (this.designView) ws.send(JSON.stringify(this.designView))
+        if (this.cadView) ws.send(JSON.stringify(this.cadView))
         for (const wake of [...this.waiting]) wake()
         break
       case 'denied':
@@ -607,6 +632,7 @@ export class HostClient {
       case 'term.changed':
       case 'fs.changed':
       case 'design.changed':
+      case 'cad.changed':
         this.options.onFrame?.(frame)
         break
       case 'browser.call':
@@ -620,6 +646,21 @@ export class HostClient {
         break
       case 'design.layout':
         this.options.onDesignLayout?.(frame)
+        break
+      case 'cad.render':
+        this.options.onCadRender?.(frame)
+        break
+      case 'cad.query':
+        this.options.onCadQuery?.(frame)
+        break
+      case 'cad.import':
+        this.options.onCadImport?.(frame)
+        break
+      case 'cad.export':
+        this.options.onCadExport?.(frame)
+        break
+      case 'cad.rebuild':
+        this.options.onCadRebuild?.(frame)
         break
       case 'res': {
         const p = this.pending.get(frame.id)

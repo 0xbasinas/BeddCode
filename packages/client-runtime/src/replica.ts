@@ -205,6 +205,8 @@ export interface SessionView {
   computerTools?: boolean
   /** The agent may read the user's Linear issues. */
   linearTools?: boolean
+  /** The agent may read and edit the host's CAD documents. */
+  cadTools?: boolean
   /** How long the agent took to become ready, and whether a warm process was used. */
   start?: { warm: boolean; ms: number }
   /** The agent's own per-session settings (model, thinking level, ...). */
@@ -359,6 +361,7 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       designTools: e.designTools,
       computerTools: e.computerTools,
       linearTools: e.linearTools,
+      cadTools: e.cadTools,
       start: e.start,
     }
     return {

@@ -38,6 +38,7 @@ import type { TelegramBridge } from '../telegram/bridge.ts'
 import type { ComputerPane } from '../automation/index.ts'
 import { previewTrigger } from '../automation/cron.ts'
 import type { DesignStore } from '../design/designStore.ts'
+import type { CadStore } from '../cad/cadStore.ts'
 import type { ScheduleService } from '../automation/schedules.ts'
 
 type Handlers = {
@@ -51,6 +52,7 @@ export interface AutomationServices {
   orchestration: OrchestrationSettingsService
   alerts: AlertService
   designs: DesignStore
+  cads: CadStore
   computer: ComputerPane
   linear: {
     setKey(key: string | null): boolean
