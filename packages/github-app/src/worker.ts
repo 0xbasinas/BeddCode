@@ -111,6 +111,19 @@ async function accept(env: Env, ask: AskRequest): Promise<void> {
   if ((ask.command.verb === 'fix-ci' || ask.command.verb === 'ask') && head)
     parts.push(`## Failing checks on ${head.sha.slice(0, 7)}\n${await github.failedChecks(token, ask.repo, head.sha)}`)
 
+  // "on PR 102" or "pull request #102": that pull request's branch is a candidate to start from.
+  let baseHint: Job['baseHint']
+  const mention = /\b(?:pr|pull request|pull)\s*#?(\d{1,6})\b/i.exec(`${ask.command.extra}\n${issue.body ?? ''}`)?.[1]
+  if (mention && Number(mention) !== ask.number && !ask.isPullRequest)
+    baseHint = await github
+      .pull(token, ask.repo, Number(mention))
+      .then((pr) =>
+        pr.head.repo?.full_name?.toLowerCase() === ask.repo.toLowerCase()
+          ? { ref: pr.head.ref, number: Number(mention) }
+          : undefined,
+      )
+      .catch(() => undefined)
+
   const job: Job = {
     id: crypto.randomUUID(),
     repo: ask.repo,
@@ -124,6 +137,7 @@ async function accept(env: Env, ask: AskRequest): Promise<void> {
     context: parts.join('\n\n').slice(0, MAX_CONTEXT),
     head,
     base,
+    baseHint,
     url: ask.url,
     budgetMinutes: num(env.JOB_MINUTES, 30),
     createdAt: Date.now(),

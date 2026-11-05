@@ -20,6 +20,8 @@ export interface Job {
   head?: { ref: string; sha: string }
   /** The branch to start from or compare against. */
   base?: { ref: string }
+  /** A pull request the text points at ("on PR 102"); its branch is a candidate to start from. */
+  baseHint?: { ref: string; number: number }
   url: string
   /** What a host may spend before the job is stopped. */
   budgetMinutes: number

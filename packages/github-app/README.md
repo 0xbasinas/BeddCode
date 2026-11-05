@@ -91,6 +91,12 @@ unanswered for a minute, the job says so on the thread.
 
 Settings layer: `defaults`, then the repo, then the command, then what the comment asked for.
 
+**Which branch it starts from.** A pull request always uses its own branch. For an issue the host picks, in order: a
+branch you name (`on branch X`, `from X`, `base=X`; it must exist on the remote), the branch of a pull request you point
+at (`on PR 102`), the repo's `baseBranch` in `github.json`, then the most recently updated branch that actually contains
+the files you mention (when the default branch does not), and finally the default branch. The reply says which branch
+was used and why, and the pull request targets that branch.
+
 **Planner (agent orchestration).** For a request in plain words the host starts a *planner*: a main agent with BeddCode's
 agent tools. It reads the request, then starts the agents that do the work (`start_session`), choosing agent, model and
 effort for each (what you asked for, else by task size), waits for them, has a different agent check a non-trivial change

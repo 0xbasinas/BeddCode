@@ -6,6 +6,7 @@ import type { ProviderInstance, StoredEvent } from '@beddcode/contracts'
 import type { Job, JobReport } from '@beddcode/github-app/protocol'
 import { digest } from '../automation/digest.ts'
 import { approvalFor, readGithubConfig, settingsFor, type GithubConfig } from './config.ts'
+import { chooseBase } from './branch.ts'
 import { resolveRun, type Resolved } from './resolve.ts'
 
 const WAIT_SECONDS = 20
@@ -312,7 +313,12 @@ export class GithubBridge {
       // Fresh refs so the worktree starts from what GitHub has, not what was fetched last week.
       const fetched = await this.git(repo.path, ['fetch', 'origin', '--prune'])
       if (fetched.code !== 0) throw new Error(`could not fetch from origin: ${fetched.out.slice(0, 300)}`)
-      const start = onPullRequest ? job.head!.ref : (job.base?.ref ?? 'main')
+      // Which branch the work starts from: the PR's own, one the comment names, or where the files are.
+      const chosen = await chooseBase(this.git, repo.path, job, {
+        text: `${job.command.extra}\n${job.context}`,
+        configured: repo.baseBranch,
+      })
+      const start = chosen.ref
       const branch = `beddcode/${onPullRequest ? 'pr' : 'issue'}-${job.number}-${randomBytes(2).toString('hex')}`
       const base = `origin/${start}`
       const code = verb === 'fix' || verb === 'fix-ci' || verb === 'rebase'
@@ -331,7 +337,7 @@ export class GithubBridge {
       sessionId = created.sessionId
       this.active.set(key, sessionId)
       const budget = job.budgetMinutes * 60_000
-      let via = `\n\n<sub>BeddCode on ${config.label ?? host.hostLabel} · ${agent.label}${run.model ? ` · ${run.model}` : ''}${run.effort ? ` · ${run.effort}` : ''} · session \`${sessionId.slice(0, 8)}\`</sub>${notes}`
+      let via = `\n\n<sub>BeddCode on ${config.label ?? host.hostLabel} · from \`${start}\` (${chosen.reason}) · ${agent.label}${run.model ? ` · ${run.model}` : ''}${run.effort ? ` · ${run.effort}` : ''} · session \`${sessionId.slice(0, 8)}\`</sub>${notes}`
       const waiting = (title: string) =>
         void this.report(config, job, {
           status: 'working',
@@ -421,7 +427,7 @@ ${team}${via}`
       )
         link = `\n\nPushed to \`${target}\`; the pull request was not approved.`
       else {
-        const pr = await this.openPull(config, job, target, `Fix #${job.number} (BeddCode)`, `${summary}\n\nCloses #${job.number}${via}`)
+        const pr = await this.openPull(config, job, target, start, `Fix #${job.number} (BeddCode)`, `${summary}\n\nCloses #${job.number}${via}`)
         link = `\n\nOpened ${pr}`
       }
       await this.report(config, job, { status: 'done', message: `${summary}${link}${note}${via}` })
@@ -514,11 +520,11 @@ ${team}${via}`
       throw new Error(`git push failed: ${redact(pushed.out, config, [token, header]).slice(0, 500)}`)
   }
 
-  private async openPull(config: GithubConfig, job: Job, head: string, title: string, body: string) {
+  private async openPull(config: GithubConfig, job: Job, head: string, base: string, title: string, body: string) {
     const response = await this.fetchImpl(`${config.workerUrl}/host/jobs/${job.id}/pr`, {
       method: 'POST',
       headers: this.headers(config),
-      body: JSON.stringify({ head, base: job.base?.ref, title, body }),
+      body: JSON.stringify({ head, base, title, body }),
     })
     if (!response.ok) throw new Error(`could not open the pull request (${response.status})`)
     return ((await response.json()) as { url: string }).url
