@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { estimateBBox } from './bboxEstimate.ts'
 import type { CadDocument, CadFeature, CadSketch, CadStore } from './cadStore.ts'
 import { NEEDS_CAD_PANE, type CadLink } from './cadLink.ts'
 
@@ -33,8 +34,9 @@ const FEATURE_TYPES = new Set([
   'intersect',
   'import',
 ])
-const IMPORT_FORMATS = new Set(['step', 'stp', 'stl', 'iges', 'igs'])
-const EXPORT_FORMATS = new Set(['step', 'stp', 'stl'])
+const IMPORT_FORMATS = new Set(['step', 'stp', 'stl', 'iges', 'igs', 'json'])
+const EXPORT_FORMATS = new Set(['step', 'stp', 'stl', 'json'])
+const FEATURE_ID = /^[\w-]{1,64}$/
 const QUERY_KINDS = new Set(['bbox', 'volume', 'area', 'center'])
 const MAX_FEATURES = 500
 const MAX_SKETCHES = 200
@@ -163,7 +165,7 @@ export const CAD_TOOL_DEFINITIONS = [
   {
     name: 'cad_query_geometry',
     description:
-      'Measures the rebuilt solid: bbox, volume, area, or center, for the whole model or one feature. Needs the CAD pane open on this host. If it is not open, say so; do not invent a measurement.',
+      'Measures the rebuilt solid: bbox, volume, area, or center, for the whole model or one feature. Uses the CAD pane when it is open. If it is not, bbox is an estimate from feature parameters and is labeled approximate; volume, area and center need the pane. Do not treat an approximate bbox as a rebuilt measurement.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -176,7 +178,7 @@ export const CAD_TOOL_DEFINITIONS = [
   {
     name: 'cad_screenshot',
     description:
-      'Draws the model (or one feature) to a picture and returns it. Needs the CAD pane open on this host. Look at it after a change and fix what is wrong. If the pane is not open, say so.',
+      'Draws the model (or one feature) to a PNG and returns it. Needs the CAD pane open on this host. Look at it after a change and fix what is wrong. If the pane is not open, say so.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -192,12 +194,12 @@ export const CAD_TOOL_DEFINITIONS = [
   {
     name: 'cad_import',
     description:
-      'Imports a STEP, IGES or STL file into the document. format is step, stp, stl, iges or igs. data is the file text or base64. Needs the CAD pane open to read the file. Returns the new feature ids.',
+      'Imports a file into the document. format json reads a CAD document on this host. format step, stp, stl, iges or igs needs the CAD pane to read the file. data is the file text or base64. Returns the new feature ids.',
     inputSchema: {
       type: 'object',
       properties: {
         document: documentId,
-        format: { type: 'string', enum: ['step', 'stp', 'stl', 'iges', 'igs'] },
+        format: { type: 'string', enum: ['step', 'stp', 'stl', 'iges', 'igs', 'json'] },
         data: { type: 'string' },
         filename: { type: 'string' },
       },
@@ -207,12 +209,12 @@ export const CAD_TOOL_DEFINITIONS = [
   {
     name: 'cad_export',
     description:
-      'Exports the model (or one feature) as STEP or STL. format is step, stp or stl. Needs the CAD pane open. Returns the file as base64 or text.',
+      'Exports the model (or one feature). format json writes the document stored on this host. format step, stp or stl needs the CAD pane, or bytes the pane already stored, and returns the file as base64 or text.',
     inputSchema: {
       type: 'object',
       properties: {
         document: documentId,
-        format: { type: 'string', enum: ['step', 'stp', 'stl'] },
+        format: { type: 'string', enum: ['step', 'stp', 'stl', 'json'] },
         feature: { type: 'string' },
       },
       required: ['format'],
@@ -222,7 +224,7 @@ export const CAD_TOOL_DEFINITIONS = [
 
 export const CAD_INSTRUCTIONS = `BeddCode CAD. The user is asking you to create or edit a solid model on the CAD pane. Use the BeddCode CAD tools (cad_list, cad_create, cad_get_tree, cad_add_sketch, cad_add_feature, cad_edit_feature, cad_delete_feature, cad_set_params, cad_query_geometry, cad_screenshot, cad_import, cad_export), not a mesh file or code, unless the user explicitly asks for a file. Units are millimetres. If the CAD tools are unavailable, explain that; do not substitute a file.
 
-Read cad_get_tree before changing a document you did not just create. Add sketches on a plane (XY, YZ or ZX), then features (box, cylinder, sphere, extrude, revolve, fillet, chamfer, union, cut, intersect). After an edit the pane rebuilds the solid when it is open. cad_query_geometry and cad_screenshot need that pane; if they say they need an open CAD pane, say so instead of claiming you checked the model.`
+Read cad_get_tree before changing a document you did not just create. Add sketches on a plane (XY, YZ or ZX), then features (box, cylinder, sphere, extrude, revolve, fillet, chamfer, union, cut, intersect). After an edit the pane rebuilds the solid when it is open. cad_screenshot needs that pane. cad_query_geometry uses it when it is open; a bbox without the pane is only an estimate from feature parameters. cad_export of JSON is the document on the host; STEP and STL need the pane. If a tool says it needs an open CAD pane, say so instead of claiming you checked or exported the solid.`
 
 type Args = Record<string, unknown>
 export interface CadMcpResult {
@@ -342,7 +344,11 @@ export class CadTools {
   constructor(
     private readonly documents: CadStore,
     private readonly link?: CadLink,
-  ) {}
+  ) {
+    // WebSocket clients already get `cad.changed` from the host. This forwards the same notice
+    // to an in-process pane so it rebuilds the document the tool just wrote.
+    this.documents.onChange((change) => this.link?.publish(change))
+  }
 
   private resolve(args: Args): string {
     const given = typeof args.document === 'string' ? args.document : undefined
@@ -432,7 +438,6 @@ export class CadTools {
   }
 
   private async query(args: Args): Promise<CadMcpResult> {
-    if (!this.link) return fail(NEEDS_CAD_PANE)
     const id = this.resolve(args)
     const doc = this.documents.get(id)!
     const featureId = typeof args.feature === 'string' ? args.feature : undefined
@@ -440,22 +445,43 @@ export class CadTools {
     const what = typeof args.what === 'string' && args.what ? args.what : 'bbox'
     if (!QUERY_KINDS.has(what))
       throw new Error(`Unknown measurement ${what}. Use bbox, volume, area, or center.`)
-    const result = await this.link.query({ documentId: id, document: doc, featureId, what })
-    if (!result.ok) return fail(result.error)
-    return ok({ document: id, feature: featureId, what, geometry: result.geometry })
+    let paneError = NEEDS_CAD_PANE
+    if (this.link) {
+      const result = await this.link.query({ documentId: id, document: doc, featureId, what })
+      if (result.ok)
+        return ok({ document: id, feature: featureId, what, geometry: result.geometry })
+      paneError = result.error
+    }
+    if (what === 'bbox') {
+      const geometry = estimateBBox(doc, featureId)
+      if (geometry) {
+        return ok({
+          document: id,
+          ...(featureId ? { feature: featureId } : {}),
+          what,
+          geometry,
+          accuracy: 'approximate',
+          source: 'feature-params',
+          note: 'Estimated from stored feature parameters. Not a measurement of the rebuilt solid.',
+        })
+      }
+    }
+    return fail(paneError)
   }
 
   private async importFile(args: Args): Promise<CadMcpResult> {
-    if (!this.link) return fail(NEEDS_CAD_PANE)
     const id = this.resolve(args)
     const format = typeof args.format === 'string' ? args.format.trim().toLowerCase() : ''
-    if (!IMPORT_FORMATS.has(format)) throw new Error('format must be step, stp, stl, iges, or igs')
+    if (!IMPORT_FORMATS.has(format))
+      throw new Error('format must be json, step, stp, stl, iges, or igs')
     const data = typeof args.data === 'string' ? args.data : ''
     if (!data.trim()) throw new Error('data must be the file text or base64')
     if (data.length > MAX_IMPORT) throw new Error('Import data is too large')
+    if (format === 'json') return this.importJson(id, data)
+    if (!this.link) return paneJob('import', NEEDS_CAD_PANE, { format, document: id })
     const filename = typeof args.filename === 'string' ? args.filename.slice(0, 200) : undefined
-    const result = await this.link.importFile({ format, data, filename, documentId: id })
-    if (!result.ok) return fail(result.error)
+    const result = await this.link.requestImport({ format, data, filename, documentId: id })
+    if (!result.ok) return paneJob('import', result.error, { format, document: id })
     const sketches = result.sketches
       .map((raw) => (raw && typeof raw === 'object' ? buildSketch(raw as Args) : undefined))
       .filter((s): s is CadSketch => s !== undefined)
@@ -490,26 +516,80 @@ export class CadTools {
   }
 
   private async exportFile(args: Args): Promise<CadMcpResult> {
-    if (!this.link) return fail(NEEDS_CAD_PANE)
     const id = this.resolve(args)
     const doc = this.documents.get(id)!
     const format = typeof args.format === 'string' ? args.format.trim().toLowerCase() : ''
-    if (!EXPORT_FORMATS.has(format)) throw new Error('format must be step, stp, or stl')
+    if (!EXPORT_FORMATS.has(format)) throw new Error('format must be json, step, stp, or stl')
     const featureId = typeof args.feature === 'string' ? args.feature : undefined
     if (featureId && !this.featureOf(doc, featureId)) throw new Error(`No feature ${featureId}`)
-    const result = await this.link.exportFile({
+    if (format === 'json') {
+      const body = documentForExport(doc, featureId)
+      return ok({
+        document: id,
+        format: 'json',
+        mime: 'application/json',
+        filename: exportName(doc.name, 'json'),
+        encoding: 'utf-8',
+        data: JSON.stringify(body),
+      })
+    }
+    if (!this.link)
+      return paneJob('export', NEEDS_CAD_PANE, { format, document: id, feature: featureId })
+    const result = await this.link.requestExport(format, {
       documentId: id,
       document: doc,
-      format,
       featureId,
     })
-    if (!result.ok) return fail(result.error)
+    if (!result.ok) {
+      return paneJob('export', result.error, { format, document: id, feature: featureId })
+    }
     return ok({
       document: id,
       format,
       mime: result.file.mime,
-      ...(result.file.filename ? { filename: result.file.filename } : {}),
+      filename: result.file.filename ?? exportName(doc.name, format),
       data: result.file.data,
+    })
+  }
+
+  /** JSON documents are applied on the host. STEP and STL still go through the pane. */
+  private importJson(id: string, data: string): CadMcpResult {
+    const parsed = parseJsonDocument(data)
+    const current = this.documents.get(id)!
+    const taken = new Set<string>([
+      ...current.sketches.map((sketch) => sketch.id),
+      ...current.features.map((feature) => feature.id),
+    ])
+    const sketches = parsed.sketches
+      .map((raw) => copySketch(raw, taken))
+      .filter((sketch): sketch is CadSketch => sketch !== undefined)
+    const features = parsed.features
+      .map((raw) => copyFeature(raw, taken))
+      .filter((feature): feature is CadFeature => feature !== undefined)
+    if (!features.length && !sketches.length)
+      throw new Error('The JSON document had no features or sketches')
+    this.documents.mutate(
+      id,
+      (doc) => {
+        if (doc.sketches.length + sketches.length > MAX_SKETCHES)
+          throw new Error(`A document can hold ${MAX_SKETCHES} sketches`)
+        doc.features = doc.features.slice(
+          0,
+          Math.min(Math.max(0, doc.historyIndex), doc.features.length),
+        )
+        if (doc.features.length + features.length > MAX_FEATURES)
+          throw new Error(`A document can hold ${MAX_FEATURES} features`)
+        doc.sketches.push(...sketches)
+        doc.features.push(...features)
+        doc.historyIndex = doc.features.length
+      },
+      'agent',
+      [...sketches.map((sketch) => sketch.id), ...features.map((feature) => feature.id)],
+    )
+    return ok({
+      document: id,
+      sketches: sketches.map((sketch) => sketch.id),
+      features: features.map((feature) => feature.id),
     })
   }
 
@@ -653,4 +733,117 @@ export class CadTools {
       }
     }
   }
+}
+
+/** OCCT import/export failed because the solid lives on the pane, or the pane did not answer. */
+function paneJob(
+  action: 'export' | 'import',
+  error: string,
+  fields: Record<string, unknown>,
+): CadMcpResult {
+  const needsPane = error === NEEDS_CAD_PANE || error.startsWith('Needs an open CAD pane')
+  return fail(
+    JSON.stringify(
+      {
+        needsPane,
+        action,
+        error,
+        ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)),
+      },
+      null,
+      2,
+    ),
+  )
+}
+
+function exportName(name: string, format: string): string {
+  const base =
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60) || 'part'
+  if (format === 'json') return `${base}.cad.json`
+  if (format === 'stp') return `${base}.step`
+  if (format === 'igs') return `${base}.iges`
+  return `${base}.${format}`
+}
+
+function documentForExport(doc: CadDocument, featureId?: string): CadDocument {
+  if (!featureId) return doc
+  const feature = doc.features.find((item) => item.id === featureId)
+  if (!feature) return doc
+  const sketches = feature.sketchId
+    ? doc.sketches.filter((sketch) => sketch.id === feature.sketchId)
+    : []
+  return {
+    ...doc,
+    features: [feature],
+    sketches,
+    historyIndex: feature.suppressed ? 0 : 1,
+  }
+}
+
+function parseJsonDocument(
+  data: string,
+  nested = false,
+): { features: unknown[]; sketches: unknown[] } {
+  const text = data.trim()
+  const source = text.startsWith('{') || text.startsWith('[') ? text : decodeJsonText(text)
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(source)
+  } catch {
+    throw new Error('Import data is not JSON')
+  }
+  if (Array.isArray(parsed)) return { features: parsed, sketches: [] }
+  if (!parsed || typeof parsed !== 'object') throw new Error('JSON import must be an object')
+  const root = parsed as Record<string, unknown>
+  if (
+    !nested &&
+    !Array.isArray(root.features) &&
+    !Array.isArray(root.sketches) &&
+    typeof root.data === 'string'
+  ) {
+    return parseJsonDocument(root.data, true)
+  }
+  return {
+    features: Array.isArray(root.features) ? root.features : [],
+    sketches: Array.isArray(root.sketches) ? root.sketches : [],
+  }
+}
+
+function decodeJsonText(data: string): string {
+  const compact = data.replace(/\s/g, '')
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(compact) || compact.length < 4) {
+    throw new Error('Import data is not JSON')
+  }
+  const text = Buffer.from(compact, 'base64').toString('utf8').trim()
+  if (!text.startsWith('{') && !text.startsWith('[')) throw new Error('Import data is not JSON')
+  return text
+}
+
+function copySketch(raw: unknown, taken: Set<string>): CadSketch | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const record = raw as Args
+  const sketch = buildSketch(record)
+  if (typeof record.id === 'string' && FEATURE_ID.test(record.id) && !taken.has(record.id)) {
+    sketch.id = record.id
+  }
+  taken.add(sketch.id)
+  return sketch
+}
+
+function copyFeature(raw: unknown, taken: Set<string>): CadFeature | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const record = { ...(raw as Args) }
+  if (typeof record.type !== 'string' && typeof record.kind === 'string') record.type = record.kind
+  const feature = buildFeature(record)
+  if (typeof record.id === 'string' && FEATURE_ID.test(record.id) && !taken.has(record.id)) {
+    feature.id = record.id
+  }
+  if (typeof record.sketchId === 'string' && record.sketchId) feature.sketchId = record.sketchId
+  taken.add(feature.id)
+  return feature
 }
