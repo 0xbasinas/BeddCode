@@ -22,6 +22,7 @@ const KIND_LABEL: Record<FeatureKind, string> = {
   cut: 'Cut',
   intersect: 'Intersect',
   sketch: 'Sketch',
+  import: 'Import',
 }
 
 /** Appends a feature. It rebuilds after the features already in the tree. */
@@ -100,6 +101,7 @@ function createFeature(doc: CadDocument, draft: FeatureDraft): CadFeature {
     kind,
     suppressed: draft.suppressed ?? false,
     params: { ...draft.params },
+    ...(draft.sketchId ? { sketchId: draft.sketchId } : {}),
   }
 }
 

@@ -5,6 +5,7 @@ export function FeatureTree({
   features,
   historyIndex,
   selectedId,
+  errors,
   onSelect,
   onSuppress,
   onDelete,
@@ -13,6 +14,8 @@ export function FeatureTree({
   features: CadFeature[]
   historyIndex: number
   selectedId: string | null
+  /** Per-feature rebuild or conversion failures. */
+  errors?: Record<string, string>
   onSelect(id: string): void
   onSuppress(id: string): void
   onDelete(id: string): void
@@ -27,11 +30,13 @@ export function FeatureTree({
         <ul className="cad-feature-list">
           {features.map((feature, index) => {
             const rolled = index > historyIndex
+            const error = errors?.[feature.id]
             return (
               <li
                 key={feature.id}
-                className={`cad-feature${feature.suppressed ? ' suppressed' : ''}${rolled ? ' rolled' : ''}`}
+                className={`cad-feature${feature.suppressed ? ' suppressed' : ''}${rolled ? ' rolled' : ''}${error ? ' failed' : ''}`}
                 aria-selected={selectedId === feature.id}
+                data-error={error ?? undefined}
               >
                 <button
                   type="button"
@@ -40,6 +45,11 @@ export function FeatureTree({
                 >
                   <span>{feature.name}</span>
                   <span className="cad-feature-kind">{feature.kind}</span>
+                  {error ? (
+                    <span className="cad-feature-kind" title={error}>
+                      {error}
+                    </span>
+                  ) : null}
                 </button>
                 <button
                   type="button"

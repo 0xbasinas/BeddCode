@@ -14,12 +14,13 @@ export type FeatureKind =
   | 'cut'
   | 'intersect'
   | 'sketch'
+  | 'import'
 
 export type ParamValue = number | string | boolean
 
 export interface SketchEntity {
   id: string
-  kind: 'line' | 'circle' | 'arc' | 'point'
+  kind: 'line' | 'circle' | 'arc' | 'point' | 'rect'
   params: Record<string, number>
 }
 
@@ -77,9 +78,13 @@ export function emptyDocument(partial: Partial<CadDocument> = {}): CadDocument {
 /** Alias used by the feature-tree helpers. */
 export const emptyCadDocument = emptyDocument
 
+function countKind(doc: CadDocument, kind: FeatureKind): number {
+  return doc.features.filter((feature) => feature.kind === kind).length
+}
+
 /** A box sitting on the ground plane, stepped along X so the next one does not overlap. */
 export function makeBoxFeature(doc: CadDocument, id: string = crypto.randomUUID()): CadFeature {
-  const count = doc.features.filter((feature) => feature.kind === 'box').length
+  const count = countKind(doc, 'box')
   const height = 20
   return {
     id,
@@ -88,6 +93,171 @@ export function makeBoxFeature(doc: CadDocument, id: string = crypto.randomUUID(
     suppressed: false,
     params: { width: 20, depth: 20, height, x: count * 30, y: height / 2, z: 0 },
   }
+}
+
+/** A cylinder standing on the ground plane, stepped along X. */
+export function makeCylinderFeature(doc: CadDocument, id: string = crypto.randomUUID()): CadFeature {
+  const count = countKind(doc, 'cylinder')
+  const height = 20
+  return {
+    id,
+    name: `Cylinder ${count + 1}`,
+    kind: 'cylinder',
+    suppressed: false,
+    params: { radius: 10, height, x: count * 30, y: height / 2, z: 0 },
+  }
+}
+
+/** A sphere sitting on the ground plane, stepped along X. */
+export function makeSphereFeature(doc: CadDocument, id: string = crypto.randomUUID()): CadFeature {
+  const count = countKind(doc, 'sphere')
+  const radius = 10
+  return {
+    id,
+    name: `Sphere ${count + 1}`,
+    kind: 'sphere',
+    suppressed: false,
+    params: { radius, x: count * 30, y: radius, z: 0 },
+  }
+}
+
+export function makeSketchFeature(
+  doc: CadDocument,
+  plane: CadSketch['plane'] = 'XY',
+  id: string = crypto.randomUUID(),
+): CadFeature {
+  const count = countKind(doc, 'sketch')
+  return {
+    id,
+    name: `Sketch ${count + 1}`,
+    kind: 'sketch',
+    suppressed: false,
+    sketchId: id,
+    params: { plane },
+  }
+}
+
+/** Adds an empty sketch feature and its sketch record in one revision. */
+export function appendSketch(
+  doc: CadDocument,
+  plane: CadSketch['plane'] = 'XY',
+  id?: string,
+): { doc: CadDocument; feature: CadFeature } {
+  const feature = id ? makeSketchFeature(doc, plane, id) : makeSketchFeature(doc, plane)
+  const sketch: CadSketch = { id: feature.id, name: feature.name, plane, entities: [] }
+  const features = [...doc.features, feature]
+  return {
+    feature,
+    doc: {
+      ...doc,
+      features,
+      sketches: [...doc.sketches.filter((item) => item.id !== sketch.id), sketch],
+      rev: doc.rev + 1,
+      historyIndex: features.length - 1,
+    },
+  }
+}
+
+export function makeExtrudeFeature(
+  doc: CadDocument,
+  sketchId: string,
+  id: string = crypto.randomUUID(),
+): CadFeature {
+  const count = countKind(doc, 'extrude')
+  return {
+    id,
+    name: `Extrude ${count + 1}`,
+    kind: 'extrude',
+    suppressed: false,
+    sketchId,
+    params: { sketchId, distance: 10, bothSides: false, cut: false },
+  }
+}
+
+export function makeRevolveFeature(
+  doc: CadDocument,
+  sketchId: string,
+  id: string = crypto.randomUUID(),
+): CadFeature {
+  const count = countKind(doc, 'revolve')
+  return {
+    id,
+    name: `Revolve ${count + 1}`,
+    kind: 'revolve',
+    suppressed: false,
+    sketchId,
+    params: { sketchId, angle: 360, axis: 'Z' },
+  }
+}
+
+export function makeFilletFeature(
+  doc: CadDocument,
+  targetId: string,
+  edgeIds?: string,
+  id: string = crypto.randomUUID(),
+): CadFeature {
+  const count = countKind(doc, 'fillet')
+  return {
+    id,
+    name: `Fillet ${count + 1}`,
+    kind: 'fillet',
+    suppressed: false,
+    params: { targetId, radius: 1, ...(edgeIds ? { edgeIds } : {}) },
+  }
+}
+
+export function makeChamferFeature(
+  doc: CadDocument,
+  targetId: string,
+  edgeIds?: string,
+  id: string = crypto.randomUUID(),
+): CadFeature {
+  const count = countKind(doc, 'chamfer')
+  return {
+    id,
+    name: `Chamfer ${count + 1}`,
+    kind: 'chamfer',
+    suppressed: false,
+    params: { targetId, radius: 1, ...(edgeIds ? { edgeIds } : {}) },
+  }
+}
+
+export function makeBooleanFeature(
+  doc: CadDocument,
+  kind: 'union' | 'cut' | 'intersect',
+  targetId: string,
+  toolId: string,
+  id: string = crypto.randomUUID(),
+): CadFeature {
+  const count = countKind(doc, kind)
+  const label = kind === 'union' ? 'Union' : kind === 'cut' ? 'Cut' : 'Intersect'
+  return {
+    id,
+    name: `${label} ${count + 1}`,
+    kind,
+    suppressed: false,
+    params: { targetId, toolId },
+  }
+}
+
+export function makeImportFeature(
+  doc: CadDocument,
+  fileName: string,
+  id: string = crypto.randomUUID(),
+): CadFeature {
+  const count = countKind(doc, 'import')
+  const label = fileName.replace(/\.(step|stp)$/i, '') || `Import ${count + 1}`
+  return {
+    id,
+    name: label,
+    kind: 'import',
+    suppressed: false,
+    params: { fileName },
+  }
+}
+
+export function isSolidFeature(feature: CadFeature): boolean {
+  return feature.kind !== 'sketch'
 }
 
 export function appendFeature(doc: CadDocument, feature: CadFeature): CadDocument {

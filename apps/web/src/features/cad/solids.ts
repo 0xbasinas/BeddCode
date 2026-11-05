@@ -8,6 +8,12 @@ export interface MeshBuffers {
   positions: Float32Array
   normals?: Float32Array
   indices?: Uint32Array
+  /** Present when the kernel meshes faces separately. Safe to omit. */
+  faceGroups?: { start: number; count: number; faceId: number }[]
+  /** Present when the kernel meshes edges separately. Safe to omit. */
+  edgeGroups?: { start: number; count: number; edgeId: number }[]
+  /** Optional wireframe positions. Safe to omit. */
+  edges?: { positions: Float32Array }
 }
 
 function num(value: ParamValue | undefined, fallback: number): number {
@@ -23,8 +29,8 @@ function copyAttr(
 }
 
 /**
- * A local preview mesh for features the pane can show without the geometry kernel.
- * Only boxes are built here, from three.js `BoxGeometry`.
+ * Dead local preview. The pane displays GeometryKernel meshes, not this box.
+ * Kept so older unit tests can still build a BoxGeometry buffer.
  */
 export function meshForFeature(feature: CadFeature): MeshBuffers | null {
   if (feature.suppressed || feature.kind !== 'box') return null

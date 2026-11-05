@@ -24,6 +24,7 @@ export interface RebuildKernel {
   cut(op: RebuildOp): void
   intersect(op: RebuildOp): void
   sketch?(op: RebuildOp): void
+  import?(op: RebuildOp): void
 }
 
 /** Features in tree order, skipping suppressed ones. */
@@ -45,7 +46,7 @@ export function rebuildPlan(doc: CadDocument): RebuildOp[] {
 /** Applies a plan. The kernel is called once per op, in order. */
 export function applyRebuild(plan: readonly RebuildOp[], kernel: RebuildKernel): void {
   for (const op of plan) {
-    const fn = kernel[op.kind as Exclude<FeatureKind, 'sketch'>]
+    const fn = kernel[op.kind as keyof RebuildKernel]
     if (typeof fn === 'function') fn.call(kernel, op)
   }
 }
