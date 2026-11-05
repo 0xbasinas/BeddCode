@@ -1,3 +1,4 @@
+import './agentInbox.css'
 import { useState } from 'react'
 import { inboxThreads, type SessionView } from '@beddcode/client-runtime'
 import { useHostStore } from '../../stores/host.ts'
@@ -49,7 +50,7 @@ export function AgentInbox({ session, hostKey }: { session: SessionView; hostKey
                   <small>
                     {name(message.senderId)} → {name(message.recipientId)}
                   </small>
-                  <p style={{ whiteSpace: 'pre-wrap' }}>{message.text}</p>
+                  <p>{message.text}</p>
                 </div>
               ))}
             </div>

@@ -1,0 +1,28 @@
+.auto-handoff-notice {
+  position: fixed;
+  right: calc(var(--gap) * 2);
+  bottom: calc(var(--gap) * 2);
+  z-index: 1000;
+  max-width: min(420px, calc(100vw - 4 * var(--gap)));
+  padding: calc(var(--gap) * 2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--bg-raised);
+  color: var(--text);
+  box-shadow: var(--shadow-pop);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+}
+.auto-handoff-notice button {
+  padding: var(--gap);
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+.auto-handoff-notice button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-active);
+}
+.auto-handoff-notice button:disabled {
+  opacity: var(--disabled-opacity);
+}

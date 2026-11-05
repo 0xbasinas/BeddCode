@@ -1,3 +1,4 @@
+import './autoHandoff.css'
 import { useEffect, useRef, useState } from 'react'
 import {
   chooseHandoffAgent,
@@ -144,19 +145,7 @@ export function AutoHandoff() {
   }, [pending, seconds])
   if (!pending && !error) return null
   return (
-    <div
-      role="status"
-      className="settings-notice"
-      style={{
-        position: 'fixed',
-        bottom: 16,
-        right: 16,
-        zIndex: 1000,
-        maxWidth: 420,
-        padding: 16,
-        background: 'var(--background)',
-      }}
-    >
+    <div role="status" className="auto-handoff-notice">
       {pending ? (
         <>
           Handing off to {pending.label} because {pending.reason}.{' '}
