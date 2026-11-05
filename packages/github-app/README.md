@@ -51,7 +51,9 @@ Quoted lines and code blocks are ignored, so quoting a command never runs it.
 ## Set up
 
 1. **GitHub App** (private, your account). Permissions: Contents RW, Pull requests RW, Issues RW, Checks R,
-   Actions R, Metadata R. Events: Issue comment, Pull request review comment, Pull request review.
+   Actions R, Metadata R. Subscribe to **Issues**, **Pull request**, **Issue comment**,
+   **Pull request review comment**, and **Pull request review** events. Issues and Pull request
+   events are needed for commands in new descriptions and for label triggers.
    Set a webhook secret, generate a private key, install it on your repos.
 2. **Deploy**, from this folder:
    ```sh
@@ -110,3 +112,10 @@ over from the app.
 **Several hosts:** each lists the repos it serves. The online host with the lowest `priority` gets the job; if it
 goes quiet, another host serving the repo takes over. If none is online, the Worker replies on the issue
 (`REPLY_WHEN_OFFLINE`).
+
+## If nothing happens
+
+- Check that the app is installed on the repository, your GitHub login is in `ALLOWED_USERS`, and the relevant event is subscribed above. The app deliberately ignores other users and fork pull requests without replying.
+- In the GitHub App's advanced settings, inspect the recent webhook delivery. A signature failure means the webhook secret does not match the Worker's `GITHUB_WEBHOOK_SECRET`.
+- If the app says no host is online, start BeddCode on a host with the repository listed in `github.json`. Check that `workerUrl` and `hostToken` match the deployed Worker and that the local repository path exists.
+- An eyes reaction means the request was queued. The host reports the outcome in the thread. Use `@beddcode stop` to interrupt a running session.

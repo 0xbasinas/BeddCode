@@ -101,7 +101,9 @@ export class JobQueue extends DurableObject {
   async finish(jobId: string): Promise<void> {
     const entry = await this.ctx.storage.get<{ job: Job }>(`claimed:${jobId}`)
     await this.ctx.storage.delete(`claimed:${jobId}`)
-    if (entry) await this.ctx.storage.delete(`active:${entry.job.repo}#${entry.job.number}`.toLowerCase())
+    // A stop request is a separate job. Finishing it must not forget the job it stopped.
+    if (entry && entry.job.command.verb !== 'stop')
+      await this.ctx.storage.delete(`active:${entry.job.repo}#${entry.job.number}`.toLowerCase())
   }
 
   async online(staleSeconds: number, now = Date.now()): Promise<{ label: string; repos: string[] }[]> {

@@ -56,6 +56,9 @@ describe('parseCommand', () => {
   it('ignores quotes and code blocks', () => {
     expect(parseCommand('> @beddcode fix this\nlooks good', slug)).toBeUndefined()
     expect(parseCommand('```\n@beddcode fix this\n```', slug)).toBeUndefined()
+    expect(parseCommand('~~~text\n@beddcode fix this\n~~~', slug)).toBeUndefined()
+    expect(parseCommand('```text\n@beddcode fix this', slug)).toBeUndefined()
+    expect(parseCommand('~~~\nexample\n~~~\n@beddcode review', slug)?.verb).toBe('review')
   })
 })
 

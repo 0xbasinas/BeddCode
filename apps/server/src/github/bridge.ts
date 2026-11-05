@@ -268,10 +268,20 @@ export class GithubBridge {
 
   private async stopThread(job: Job, config: GithubConfig) {
     const sessionId = this.active.get(thread(job))
-    if (sessionId) await this.options.host.interrupt(sessionId).catch(() => undefined)
+    if (sessionId) {
+      try {
+        await this.options.host.interrupt(sessionId)
+      } catch {
+        await this.report(config, job, {
+          status: 'failed',
+          message: 'I could not stop the session. Open BeddCode on the host to check it.',
+        })
+        return
+      }
+    }
     await this.report(config, job, {
       status: 'stopped',
-      message: sessionId ? 'Stopped. Work already committed stays in the worktree on the host.' : 'Nothing is running here to stop.',
+      message: sessionId ? 'Stop requested. Work already committed stays in the worktree on the host.' : 'Nothing is running here to stop.',
     })
   }
 
