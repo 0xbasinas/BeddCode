@@ -1,0 +1,27 @@
+name = "beddcode-github"
+main = "src/worker.ts"
+compatibility_date = "2025-01-01"
+
+[[durable_objects.bindings]]
+name = "QUEUE"
+class_name = "JobQueue"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["JobQueue"]
+
+[vars]
+# Who may trigger jobs: comma-separated GitHub logins. Everyone else is ignored.
+ALLOWED_USERS = "0xbasinas"
+# The app's slug (its bot is "<slug>[bot]"). Comments mentioning @<slug> are commands.
+APP_SLUG = "beddcode"
+# Per sender; extra requests get a short reply instead of a job.
+MAX_JOBS_PER_HOUR = "10"
+# What a host may spend on one job before it is stopped.
+JOB_MINUTES = "30"
+# A host that has not polled for this long counts as offline.
+HOST_STALE_SECONDS = "90"
+# Reply on the issue when no host can take the job.
+REPLY_WHEN_OFFLINE = "true"
+
+# Secrets (wrangler secret put): GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET, HOST_TOKEN

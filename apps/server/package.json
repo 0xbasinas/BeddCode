@@ -12,6 +12,7 @@
   "dependencies": {
     "@beddcode/client-runtime": "workspace:*",
     "@beddcode/contracts": "workspace:*",
+    "@beddcode/github-app": "workspace:*",
     "@beddcode/provider-acp": "workspace:*",
     "@beddcode/provider-claude": "workspace:*",
     "@beddcode/provider-codex": "workspace:*",

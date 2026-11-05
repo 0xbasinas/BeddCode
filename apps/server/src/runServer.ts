@@ -307,6 +307,7 @@ export async function runServer(
   schedules.start()
   log.info(`listening on ${config.host}:${server.port} (data: ${home})`)
   automation.telegram.start()
+  automation.github.start()
   if (!isLoopbackHost(config.host)) {
     log.info(
       `reachable from other machines: ${config.guard.allowLan ? 'tailnet and local network' : 'tailnet only'}, ` +

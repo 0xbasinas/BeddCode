@@ -24,6 +24,7 @@ import { OrchestrationSettingsService } from './orchestrationSettings.ts'
 import { deliverPeer, recoverPeerDeliveries } from './peerDelivery.ts'
 import type { PeerDelivery } from '../store/eventStore.ts'
 import { diffStat, OrchestrationFinish } from './orchestrationFinish.ts'
+import { GithubBridge } from '../github/bridge.ts'
 
 /** The Desktop pane's view of a session's computer use. */
 export interface ComputerPane {
@@ -224,6 +225,23 @@ export function createAutomation(deps: AutomationDeps) {
       subscribe,
     },
   })
+  // Comments like "@beddcode fix this" on GitHub, picked up from your Worker (see packages/github-app).
+  const github = new GithubBridge({
+    file: path.join(home, 'github.json'),
+    log: createLogger('github'),
+    host: {
+      create: (params) => create(params, {}),
+      prompt,
+      interrupt: (id) => sessions.interrupt(id),
+      askUser: (id, ask) => sessions.askUser(id, ask),
+      readSession,
+      providers: () => sessions.listProviders(),
+      subscribe,
+      sessionCwd: (id) => sessions.sessionInfo(id)?.cwd,
+      hostId: deps.hostId,
+      hostLabel: os.hostname(),
+    },
+  })
   const stopAlerts = store.subscribe((stored) => {
     alerts.onEvent(stored)
     finish.onEvent(stored.event)
@@ -255,6 +273,7 @@ export function createAutomation(deps: AutomationDeps) {
     designs,
     designLink,
     telegram,
+    github,
     linear: {
       setKey(key: string | null) {
         linearKey.set(key)
@@ -267,6 +286,7 @@ export function createAutomation(deps: AutomationDeps) {
       orchestration.stop()
       schedules.stop()
       telegram.stop()
+      github.stop()
       stopAlerts()
       void computer.dispose()
     },
