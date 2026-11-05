@@ -5,12 +5,13 @@ import { fileURLToPath } from 'node:url'
 
 // Hosts can be on any machine, and the browser pane and attached media come from anywhere, so
 // connections, images and frames stay open to the network; what is locked down is code: scripts
-// only from the app itself, no eval, no plugins, no re-pointing of the page's base or forms.
+// only from the app itself, no JS eval, no plugins, no re-pointing of the page's base or forms.
+// wasm-unsafe-eval lets the CAD worker compile the unmodified OpenCascade WASM module.
 const policy = (dev: boolean) =>
   [
     "default-src 'self'",
     // Vite's dev server injects an inline script for hot reload; the built app has none.
-    `script-src 'self'${dev ? " 'unsafe-inline'" : ''}`,
+    `script-src 'self' 'wasm-unsafe-eval'${dev ? " 'unsafe-inline'" : ''}`,
     // React style attributes and CodeMirror's own style elements.
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: http: https:",
@@ -44,6 +45,9 @@ export default defineConfig({
   // Relative base so the Electron build can load dist/index.html from disk.
   base: './',
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
+  // The CAD worker loads this package's WASM itself. Prebundling breaks locateFile.
+  optimizeDeps: { exclude: ['replicad-opencascadejs'] },
+  worker: { format: 'es' },
   // @linear/sdk reads its user agent from process.env, which browsers don't have.
   define: {
     'process.env.npm_package_name': JSON.stringify('@linear/sdk'),
