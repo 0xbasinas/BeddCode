@@ -37,6 +37,10 @@ describe('rankHits', () => {
     expect(rankHits([hit('face', 3, 8), hit('face', 2, 4)], 'face')?.id).toBe(2)
     expect(rankHits([hit('face', 5, 4), hit('face', 2, 4)], 'face')?.id).toBe(2)
   })
+  it('ranks all eligible edges and includes the pixel boundary', () => {
+    expect(rankHits([hit('edge', 1, 1, 7), hit('edge', 2, 4, 6)], 'edge')?.id).toBe(2)
+    expect(rankHits([hit('edge', 3, 8, 2), hit('edge', 4, 3, 2)], 'edge')?.id).toBe(4)
+  })
   it('returns null when nothing matches', () => {
     expect(rankHits([hit('face', 1, 1)], 'edge')).toBeNull()
     expect(rankHits([], 'face')).toBeNull()
