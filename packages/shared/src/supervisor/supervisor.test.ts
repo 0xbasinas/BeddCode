@@ -48,6 +48,22 @@ describe('what the supervisor acknowledges', () => {
   })
 })
 
+describe('a session that handles each line as it arrives', () => {
+  const s = scratch('codex', { FAKE_PARTS: '3', FAKE_TICK_MS: '50' })
+  afterAll(() => s.cleanup())
+
+  it('acknowledges within the same moment, so a crash can repeat next to nothing', async () => {
+    const proc = s.host().spawn('c', s.spec, {})
+    proc.ackDelayMs = 0
+    proc.stdout.on('data', () => {})
+    proc.stdin.write(JSON.stringify({ id: 5, method: 'turn/start', params: {} }) + '\n')
+    await new Promise((r) => setTimeout(r, 700)) // the fake finishes its three parts by then
+    const info = (await s.host().list()).find((a) => a.id === 'c')
+    expect(info?.acked).toBe(info?.size)
+    proc.kill()
+  })
+})
+
 describe('agents whose host never comes back', () => {
   const s = scratch(
     'codex',

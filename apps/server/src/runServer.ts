@@ -224,6 +224,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
   let server: Awaited<ReturnType<typeof startServer>>
   try {
     server = await startServer({
+      supervised: config.agentSupervisor === true,
       port: config.port,
       host: config.host,
       guard: config.guard,

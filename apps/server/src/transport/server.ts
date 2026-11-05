@@ -83,6 +83,8 @@ function readJson(req: IncomingMessage, limit = 4096): Promise<unknown> {
 }
 
 export interface StartServerOptions {
+  /** Agents run under the supervisor, so a host restart does not interrupt their turns. */
+  supervised?: boolean
   port: number
   host: string
   hostId: string
@@ -237,7 +239,15 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
 
     if (url === '/health' && req.method === 'GET') {
       res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ ok: true, protocol: PROTOCOL_VERSION, host: hostInfo }))
+      res.end(
+        JSON.stringify({
+          ok: true,
+          protocol: PROTOCOL_VERSION,
+          host: hostInfo,
+          // The dev reloader restarts at once when a restart cannot interrupt a turn.
+          supervised: options.supervised === true,
+        }),
+      )
       return
     }
 

@@ -301,6 +301,13 @@ export class SupervisedProcess extends EventEmitter {
    * session sets it; without one, output counts as processed after the short delay alone.
    */
   ackGate: () => boolean = () => true
+  /**
+   * How old output must be before it is acknowledged. A session that handles each line as it
+   * arrives (JSON-RPC, Pi) sets 0: with its queue idle the events are saved, and the acknowledgement
+   * follows in the same turn of the event loop. One that hears of lines later (Claude's SDK reads
+   * the pipe on its own) keeps the default.
+   */
+  ackDelayMs = ACK_DELAY_MS
   private readonly unacked: { off: number; at: number }[] = []
   private ackTimer: ReturnType<typeof setInterval> | undefined
   /** Leave the agent running: nothing more goes to it from here. */
@@ -369,6 +376,7 @@ export class SupervisedProcess extends EventEmitter {
           this.unacked.push({ off: off + Buffer.byteLength(data.slice(0, nl + 1)), at: Date.now() })
           this.ackTimer ??= setInterval(() => this.tryAck(), 40)
           this.ackTimer.unref?.()
+          if (this.ackDelayMs === 0) setImmediate(() => this.tryAck())
         }
       }
     } else if (f.op === 'err') {
@@ -396,7 +404,7 @@ export class SupervisedProcess extends EventEmitter {
       return
     }
     if (!this.ackGate()) return
-    const cutoff = Date.now() - ACK_DELAY_MS
+    const cutoff = Date.now() - this.ackDelayMs
     let upto = -1
     for (let i = 0; i < this.unacked.length; i++)
       if (force || this.unacked[i]!.at <= cutoff) upto = i

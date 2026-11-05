@@ -57,6 +57,8 @@ export function createSupervisedTransport(
     setMeta: (meta) => proc.setMeta(meta),
     setAckGate: (gate) => {
       proc.ackGate = gate
+      // Lines are handled as they arrive, so once the session is idle they have been saved.
+      proc.ackDelayMs = 0
     },
   }
 }

@@ -391,7 +391,10 @@ export class PiSession implements ProviderSession {
     this.supervised =
       this.deps.attached ??
       (this.deps.supervisor ? (child as never as SupervisedProcess) : undefined)
-    if (this.supervised) this.supervised.ackGate = () => this.queue.idle
+    if (this.supervised) {
+      this.supervised.ackGate = () => this.queue.idle
+      this.supervised.ackDelayMs = 0 // each line is handled as it arrives
+    }
     child.stdin.on('error', () => {})
     child.stdout.on('data', (chunk: Buffer) => this.readChunk(chunk))
     child.stderr.on('data', (chunk: Buffer) =>

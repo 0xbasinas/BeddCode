@@ -129,11 +129,17 @@ history and re-send the last prompt. A host that crashes with no marker still go
 
 ## Acknowledgements
 
-The host acknowledges output (at line ends) only once the session has processed it: the output is a
-moment old (120 ms) and the session's event queue is idle, which means its events have been saved.
-Acknowledging on receipt would lose whatever a host crash caught between receiving and saving.
-Because of the delay, a crash replays at most the last few lines, which are therefore processed
-twice; a planned restart (`detach`) acknowledges everything processed first, so nothing repeats.
+The host acknowledges output (at line ends) only once the session has processed it, meaning its
+event queue is idle and so its events are saved. Acknowledging on receipt would lose whatever a host
+crash caught between receiving and saving. How soon after that depends on the provider:
+
+- JSON-RPC providers (Codex, ACP agents) and Pi handle each line the moment it arrives, so they
+  acknowledge in the same turn of the event loop (`ackDelayMs = 0`). A crash can repeat output only
+  if it lands between saving an event and that acknowledgement, which is well under a millisecond.
+- Claude's SDK reads the pipe on its own schedule, so the host cannot tell when a line has been
+  processed; output must also be 120 ms old. A crash there can repeat the last few lines.
+
+A planned restart (`detach`) acknowledges everything processed first, so nothing repeats.
 
 ## Operational notes
 
@@ -141,6 +147,8 @@ twice; a planned restart (`detach`) acknowledges everything processed first, so 
   and `BEDDCODE_SUPERVISOR_ACTIVE_GRACE_MS` (60 min) when they were mid-turn; a turn that ends while
   nobody is attached switches the agent to the idle allowance. A conversation whose agent was ended
   is resumed from the agent's own history, the old path.
+- `/health` reports `supervised: true`; the dev reloader (`apps/server/scripts/dev.mjs`) then
+  restarts at once instead of waiting for running turns, since the agents carry on through it.
 - Two hosts starting the daemon at once is safe: whoever listens first is the daemon.
 
 - The log is bounded: once the host has taken in 4 MB, the front of the file is cut away; offsets
@@ -153,8 +161,9 @@ twice; a planned restart (`detach`) acknowledges everything processed first, so 
 
 ## Known limits
 
-- After a host crash the last few lines (see "Acknowledgements") can be processed twice, so a few
-  characters of a streamed message can repeat. A planned restart is exact.
+- After a host crash with Claude the last few lines can be processed twice (see
+  "Acknowledgements"); for the other providers the window is a fraction of a millisecond, and a
+  planned restart is exact.
 - Replay hands the new SDK a stream that starts mid-turn; the mapper tolerates this for
   `assistant`/`user`/`result` messages, mid-stream `stream_event` partials are best effort.
 - Output the host never takes in (a host that stays away for the whole grace period) is kept in the
@@ -166,8 +175,6 @@ twice; a planned restart (`detach`) acknowledges everything processed first, so 
 - Codex: items that began before the restart are unknown to the new host's mapper, so a replayed
   approval for one of them has a generic title.
 - One daemon per data folder.
-- The dev reloader (`apps/server/scripts/dev.mjs`, not in this branch) can stop waiting for running
-  turns when the host reports `supervised: true`; see the hand-over note.
 
 ## Test
 
