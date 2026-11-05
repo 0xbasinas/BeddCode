@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { parseFeatureDocument, planRebuild, serializeFeatureDocument } from './featureOps.ts'
+import {
+  faceFrameFromMesh,
+  frameFromTriangle,
+  holeAxisFromFacePoint,
+  parseFeatureDocument,
+  planRebuild,
+  serializeFeatureDocument,
+} from './featureOps.ts'
 
 const box = {
   op: 'primitive' as const,
@@ -431,5 +438,60 @@ describe('feature document rebuild plan', () => {
       depth: 4,
     })
     expect(blind[1]).not.toHaveProperty('throughAll')
+  })
+})
+
+describe('hole placement from a face point', () => {
+  it('projects the click onto the face and drills into the solid', () => {
+    const top = holeAxisFromFacePoint({
+      point: [12, -3, 8.25],
+      planeOrigin: [0, 0, 8],
+      normal: [0, 0, 1],
+    })
+    expect(top.origin).toEqual([12, -3, 8])
+    expect(top.direction).toBe('-Z')
+
+    const side = holeAxisFromFacePoint({
+      point: [20.4, 2, 4],
+      planeOrigin: [20, 0, 0],
+      normal: [1, 0, 0],
+    })
+    expect(side.origin).toEqual([20, 2, 4])
+    expect(side.direction).toBe('-X')
+
+    const tilted = holeAxisFromFacePoint({
+      point: [1, 2, 3],
+      normal: [1, 1, 1],
+    })
+    expect(tilted.direction).toBe('normal')
+    expect(tilted.origin).toEqual([1, 2, 3])
+    expect(() => holeAxisFromFacePoint({ point: [0, 0, 0], normal: [0, 0, 0] })).toThrow(/normal/)
+  })
+
+  it('reads the plane from the picked triangle', () => {
+    const positions = new Float32Array([0, 0, 8, 10, 0, 8, 0, 10, 8])
+    const frame = frameFromTriangle(positions, undefined, 0)
+    expect(frame?.origin).toEqual([0, 0, 8])
+    expect(frame?.normal[2]).toBeCloseTo(1)
+    const indexed = faceFrameFromMesh(
+      {
+        positions,
+        indices: new Uint32Array([0, 1, 2]),
+        normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+        faceGroups: [{ start: 0, count: 3, faceId: 7 }],
+      },
+      0,
+      7,
+    )
+    expect(indexed?.normal[2]).toBeCloseTo(1)
+    const axis = holeAxisFromFacePoint({
+      point: [2, 2, 9],
+      normal: indexed?.normal ?? [0, 0, 1],
+      planeOrigin: indexed?.origin ?? [0, 0, 8],
+    })
+    expect(axis.origin[0]).toBeCloseTo(2)
+    expect(axis.origin[1]).toBeCloseTo(2)
+    expect(axis.origin[2]).toBeCloseTo(8)
+    expect(axis.direction).toBe('-Z')
   })
 })

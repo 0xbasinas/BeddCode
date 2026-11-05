@@ -19,5 +19,11 @@ describe('feature detail', () => {
     )
     expect(featureDetail(feature({ kind: 'hole', params: {} }))).toBe('Hole')
     expect(featureDetail(feature({ kind: 'fillet' }))).toBe('fillet')
+    expect(
+      featureDetail(feature({ kind: 'hole', params: { diameter: 8 } }), 'hole depth is missing'),
+    ).toBe('Hole · ⌀8 · hole depth is missing')
+    expect(featureDetail(feature({ kind: 'fillet' }), 'fillet edges not found')).toBe(
+      'fillet · fillet edges not found',
+    )
   })
 })
