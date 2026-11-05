@@ -15,3 +15,11 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - react-resizable-panels@4.14.8
+
+permissions:
+  '@cloudflare/workers-oauth-provider':
+    skills: true
+  '@tanstack/react-router':
+    skills: true
+  e2e:
+    skills: true
