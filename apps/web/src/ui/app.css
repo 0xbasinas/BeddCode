@@ -777,7 +777,7 @@ kbd {
   cursor: text;
   -webkit-app-region: no-drag;
   gap: calc(8px * var(--ui-scale));
-  padding: calc(14px * var(--ui-scale)) calc(14px * var(--ui-scale)) calc(12px * var(--ui-scale))
+  padding: calc(12px * var(--ui-scale)) calc(14px * var(--ui-scale)) calc(12px * var(--ui-scale))
     calc(16px * var(--ui-scale));
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -794,7 +794,7 @@ kbd {
   color: var(--text);
   font: inherit;
   padding: 0;
-  min-height: calc(43px * var(--ui-scale));
+  min-height: calc(24px * var(--ui-scale));
   max-height: calc(240px * var(--ui-scale));
   line-height: 1.5;
   /* Grows with what is typed or pasted, up to max-height, then scrolls. Browsers without
