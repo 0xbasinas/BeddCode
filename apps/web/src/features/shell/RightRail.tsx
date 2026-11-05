@@ -1,4 +1,5 @@
 import {
+  Box,
   FolderOpen,
   GitBranch,
   Globe,
@@ -40,10 +41,13 @@ const FilesPane = lazy(() =>
 const GitPane = lazy(() => import('../git/GitPane.tsx').then((m) => ({ default: m.GitPane })))
 const loadTerminalPane = () => import('../terminal/TerminalPane.tsx')
 const TerminalPane = lazy(() => loadTerminalPane().then((m) => ({ default: m.TerminalPane })))
+const loadCadPane = () => import('../cad/CadPane.tsx')
+const CadPane = lazy(() => loadCadPane().then((m) => ({ default: m.CadPane })))
 
 /** The pane's chunk (xterm is most of it) is fetched before it is asked for. */
 const preloadPane: Partial<Record<PaneId, () => void>> = {
   terminal: () => void loadTerminalPane().catch(() => {}),
+  cad: () => void loadCadPane().catch(() => {}),
 }
 
 const panes: { id: PaneId; label: string; Icon: ComponentType<{ size?: number }> }[] = [
@@ -52,6 +56,7 @@ const panes: { id: PaneId; label: string; Icon: ComponentType<{ size?: number }>
   { id: 'git', label: 'Git', Icon: GitBranch },
   { id: 'browser', label: 'Browser', Icon: Globe },
   { id: 'desktop', label: 'Desktop', Icon: Monitor },
+  { id: 'cad', label: 'CAD', Icon: Box },
 ]
 
 /** The session the thread view shows, or in a split the pane last used. */
@@ -95,8 +100,15 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
     workspace ? (s.byCwd[folderId(hostKey, workspace.cwd)] ?? EMPTY_FOLDER).tabs.length > 0 : false,
   )
 
-  // Room for what is open: the editor wants a wide column, the browser a wider one still.
-  const wanted = activePane === 'browser' ? 680 : activePane === 'files' && editorOpen ? 640 : 0
+  // Room for what is open: the editor wants a wide column, the browser and CAD a wider one still.
+  const wanted =
+    activePane === 'cad'
+      ? 720
+      : activePane === 'browser'
+        ? 680
+        : activePane === 'files' && editorOpen
+          ? 640
+          : 0
   useEffect(() => {
     if (wanted) wantWidth(wanted)
   }, [wanted, wantWidth])
@@ -123,7 +135,7 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
 
   return (
     <div
-      className={`right ${activePane ? 'has-pane' : ''} ${activePane === 'browser' ? 'browser-open' : ''} ${activePane === 'files' && editorOpen ? 'editor-open' : ''}`}
+      className={`right ${activePane ? 'has-pane' : ''} ${activePane === 'browser' ? 'browser-open' : ''} ${activePane === 'cad' ? 'cad-open' : ''} ${activePane === 'files' && editorOpen ? 'editor-open' : ''}`}
     >
       {/* At the start of the open pane's header row, left of its tabs or title; with the pane
           collapsed, on the same line at the left of the rail and window buttons. */}
@@ -169,6 +181,7 @@ export function RightRail({ wantWidth }: { wantWidth(px: number): void }) {
                     }
                   />
                 )}
+                {activePane === 'cad' && <CadPane />}
                 {activePane === 'desktop' &&
                   (session ? (
                     <DesktopPane

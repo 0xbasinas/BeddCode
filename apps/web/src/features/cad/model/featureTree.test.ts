@@ -7,7 +7,7 @@ import {
   reorderFeature,
   suppressFeature,
 } from './featureTree.ts'
-import { current, createHistory, redo, undo, update } from './undo.ts'
+import { UndoStack } from './undo.ts'
 
 describe('feature tree', () => {
   it('reorders, suppresses, and deletes features', () => {
@@ -55,33 +55,33 @@ describe('feature tree', () => {
   })
 
   it('undo and redo restore the tree around each edit', () => {
-    let history = createHistory(emptyCadDocument())
-    history = update(history, (doc) =>
-      addFeature(doc, { id: 'box', kind: 'box', params: { width: 10, depth: 10, height: 10 } }),
+    const stack = new UndoStack(emptyCadDocument())
+    stack.push(
+      addFeature(stack.current(), {
+        id: 'box',
+        kind: 'box',
+        params: { width: 10, depth: 10, height: 10 },
+      }),
     )
-    history = update(history, (doc) =>
-      addFeature(doc, { id: 'cut', kind: 'cut', params: { targetId: 'box', toolId: 'box' } }),
+    stack.push(
+      addFeature(stack.current(), {
+        id: 'cut',
+        kind: 'cut',
+        params: { targetId: 'box', toolId: 'box' },
+      }),
     )
-    expect(current(history).features.map((feature) => feature.id)).toEqual(['box', 'cut'])
+    expect(stack.current().features.map((feature) => feature.id)).toEqual(['box', 'cut'])
 
-    history = undo(history)
-    expect(current(history).features.map((feature) => feature.id)).toEqual(['box'])
-    expect(current(history).historyIndex).toBe(1)
+    expect(stack.undo().features.map((feature) => feature.id)).toEqual(['box'])
+    expect(stack.undo().features).toEqual([])
+    expect(stack.undo().features).toEqual([])
 
-    history = undo(history)
-    expect(current(history).features).toEqual([])
+    expect(stack.redo().features.map((feature) => feature.id)).toEqual(['box'])
+    expect(stack.redo().features.map((feature) => feature.id)).toEqual(['box', 'cut'])
 
-    history = undo(history)
-    expect(current(history).features).toEqual([])
-
-    history = redo(history)
-    history = redo(history)
-    expect(current(history).features.map((feature) => feature.id)).toEqual(['box', 'cut'])
-
-    history = undo(history)
-    history = update(history, (doc) => deleteFeature(doc, 'box'))
-    expect(current(history).features).toEqual([])
-    history = redo(history)
-    expect(current(history).features).toEqual([])
+    stack.undo()
+    stack.push(deleteFeature(stack.current(), 'box'))
+    expect(stack.current().features).toEqual([])
+    expect(stack.canRedo()).toBe(false)
   })
 })

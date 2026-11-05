@@ -346,7 +346,7 @@ importers:
         specifier: ^6.0.2
         version: 6.0.2
       flatbush:
-        specifier: ^4.4.0
+        specifier: ^4.7.0
         version: 4.7.0
       html-to-image:
         specifier: ^1.11.13

@@ -73,24 +73,8 @@ describe('rebuild', () => {
     expect(calls.map((op) => op.featureId)).toEqual(['box', 'cut'])
   })
 
-  it('attaches the solved sketch on an extrude', () => {
+  it('keeps extrude params including the sketch id', () => {
     let doc = emptyCadDocument()
-    doc = {
-      ...doc,
-      sketches: [
-        {
-          id: 'profile',
-          name: 'Profile',
-          plane: 'XY',
-          entities: [{ id: 'r', kind: 'rect', x: 0, y: 0, width: 1, height: 1 }],
-          constraints: [],
-          dimensions: [
-            { id: 'w', kind: 'width', entityId: 'r', value: 30 },
-            { id: 'h', kind: 'height', entityId: 'r', value: 12 },
-          ],
-        },
-      ],
-    }
     doc = addFeature(doc, {
       id: 'pad',
       kind: 'extrude',
@@ -98,6 +82,6 @@ describe('rebuild', () => {
     })
     const [op] = rebuildPlan(doc)
     expect(op?.kind).toBe('extrude')
-    expect(op?.sketch?.entities[0]).toMatchObject({ kind: 'rect', width: 30, height: 12 })
+    expect(op?.params).toMatchObject({ sketchId: 'profile', distance: 5 })
   })
 })

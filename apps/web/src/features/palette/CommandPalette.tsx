@@ -25,6 +25,7 @@ import {
   Files,
   BellRing,
   ArrowRightLeft,
+  Box,
 } from 'lucide-react'
 import { prepareHandoff } from '../../stores/handoff.ts'
 import { openWaitingDialog } from '../shell/WaitingMarkDialog.tsx'
@@ -79,6 +80,12 @@ const PANES: { id: PaneId; label: string; icon: ReactNode; keywords: string[] }[
     keywords: ['shell', 'console'],
   },
   { id: 'browser', label: 'Browser', icon: <Globe size={14} />, keywords: ['preview', 'web'] },
+  {
+    id: 'cad',
+    label: 'CAD',
+    icon: <Box size={14} />,
+    keywords: ['model', 'solid', 'sketch', 'geometry', 'part'],
+  },
 ]
 
 const activeSessionId = (path: string) => /^\/session\/([^/]+)/.exec(path)?.[1]

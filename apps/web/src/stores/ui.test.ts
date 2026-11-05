@@ -59,6 +59,8 @@ describe('ui store', () => {
     expect(loadPaneState(store)).toEqual({ lastPane: 'git', paneCollapsed: true })
     data.set('beddcode.right-pane', JSON.stringify({ lastPane: 'browser', paneCollapsed: false }))
     expect(loadPaneState(store)).toEqual({ lastPane: 'browser', paneCollapsed: false })
+    data.set('beddcode.right-pane', JSON.stringify({ lastPane: 'cad', paneCollapsed: false }))
+    expect(loadPaneState(store)).toEqual({ lastPane: 'cad', paneCollapsed: false })
     data.set('beddcode.right-pane', '{"lastPane":"nope","paneCollapsed":"x"}')
     expect(loadPaneState(store)).toEqual({ lastPane: 'git', paneCollapsed: true })
     data.set('beddcode.right-pane', 'not json')

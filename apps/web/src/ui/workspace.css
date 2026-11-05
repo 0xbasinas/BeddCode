@@ -573,7 +573,8 @@ a {
   color: var(--text-secondary);
 }
 @media (max-width: 1279px) {
-  .right.browser-open {
+  .right.browser-open,
+  .right.cad-open {
     position: absolute;
     /* Over the thread, inside the same gutter as every other pane. */
     top: var(--gap);

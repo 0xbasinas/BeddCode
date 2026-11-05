@@ -1,15 +1,11 @@
-import type { Sketch } from '../sketcher/types.ts'
-import { solveSketch } from '../sketcher/solve.ts'
-import type { CadDocument, FeatureKind, FeatureNode } from './CadDocument.ts'
+import type { CadDocument, FeatureKind, FeatureNode, ParamValue } from './CadDocument.ts'
 
 /** One kernel call, in rebuild order. Suppressed features are not included. */
 export interface RebuildOp {
   featureId: string
   name: string
   kind: FeatureKind
-  params: FeatureNode['params']
-  /** Solved sketch when the feature names one that is on the document. */
-  sketch?: Sketch
+  params: Record<string, ParamValue>
 }
 
 /**
@@ -27,22 +23,20 @@ export interface RebuildKernel {
   union(op: RebuildOp): void
   cut(op: RebuildOp): void
   intersect(op: RebuildOp): void
+  sketch?(op: RebuildOp): void
 }
 
-/** Features in tree order, skipping suppressed ones. Sketch profiles are solved first. */
+/** Features in tree order, skipping suppressed ones. */
 export function rebuildPlan(doc: CadDocument): RebuildOp[] {
-  const sketches = new Map(doc.sketches.map((sketch) => [sketch.id, solveSketch(sketch)]))
   const ops: RebuildOp[] = []
   for (const feature of doc.features) {
     if (feature.suppressed) continue
-    const sketchId = sketchIdOf(feature)
-    const sketch = sketchId ? sketches.get(sketchId) : undefined
+    if (feature.kind === 'sketch') continue
     ops.push({
       featureId: feature.id,
       name: feature.name,
       kind: feature.kind,
       params: feature.params,
-      ...(sketch ? { sketch } : {}),
     })
   }
   return ops
@@ -50,7 +44,10 @@ export function rebuildPlan(doc: CadDocument): RebuildOp[] {
 
 /** Applies a plan. The kernel is called once per op, in order. */
 export function applyRebuild(plan: readonly RebuildOp[], kernel: RebuildKernel): void {
-  for (const op of plan) kernel[op.kind](op)
+  for (const op of plan) {
+    const fn = kernel[op.kind as Exclude<FeatureKind, 'sketch'>]
+    if (typeof fn === 'function') fn.call(kernel, op)
+  }
 }
 
 /** Plans `doc` and applies it. */
@@ -60,7 +57,4 @@ export function rebuild(doc: CadDocument, kernel: RebuildKernel): RebuildOp[] {
   return plan
 }
 
-function sketchIdOf(feature: FeatureNode): string | undefined {
-  if (feature.kind === 'extrude' || feature.kind === 'revolve') return feature.params.sketchId
-  return undefined
-}
+export type { FeatureNode }

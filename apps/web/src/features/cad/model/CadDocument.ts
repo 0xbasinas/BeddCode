@@ -1,109 +1,182 @@
-import type { Sketch } from '../sketcher/types.ts'
+/** A CAD part stored as JSON. Edits return a new document and bump `rev`. */
 
-export type CadUnits = 'mm' | 'cm' | 'm' | 'in'
+export type LengthUnit = 'mm' | 'cm' | 'm' | 'in'
 
-export interface BoxParams {
-  width: number
-  depth: number
-  height: number
+export type FeatureKind =
+  | 'box'
+  | 'cylinder'
+  | 'sphere'
+  | 'extrude'
+  | 'revolve'
+  | 'fillet'
+  | 'chamfer'
+  | 'union'
+  | 'cut'
+  | 'intersect'
+  | 'sketch'
+
+export type ParamValue = number | string | boolean
+
+export interface SketchEntity {
+  id: string
+  kind: 'line' | 'circle' | 'arc' | 'point'
+  params: Record<string, number>
 }
 
-export interface CylinderParams {
-  radius: number
-  height: number
-}
-
-export interface SphereParams {
-  radius: number
-}
-
-export interface ExtrudeParams {
-  sketchId: string
-  distance: number
-}
-
-export interface RevolveParams {
-  sketchId: string
-  /** Sweep in degrees. */
-  angle: number
-}
-
-export interface FilletParams {
-  radius: number
-  featureId?: string
-}
-
-export interface ChamferParams {
-  distance: number
-  featureId?: string
-}
-
-/** Boolean of `toolId` against `targetId`. */
-export interface BooleanParams {
-  targetId: string
-  toolId: string
-}
-
-interface FeatureBase {
+export interface CadSketch {
   id: string
   name: string
-  suppressed: boolean
+  plane: 'XY' | 'YZ' | 'ZX'
+  entities: SketchEntity[]
 }
 
-export type FeatureNode =
-  | (FeatureBase & { kind: 'box'; params: BoxParams })
-  | (FeatureBase & { kind: 'cylinder'; params: CylinderParams })
-  | (FeatureBase & { kind: 'sphere'; params: SphereParams })
-  | (FeatureBase & { kind: 'extrude'; params: ExtrudeParams })
-  | (FeatureBase & { kind: 'revolve'; params: RevolveParams })
-  | (FeatureBase & { kind: 'fillet'; params: FilletParams })
-  | (FeatureBase & { kind: 'chamfer'; params: ChamferParams })
-  | (FeatureBase & { kind: 'union'; params: BooleanParams })
-  | (FeatureBase & { kind: 'cut'; params: BooleanParams })
-  | (FeatureBase & { kind: 'intersect'; params: BooleanParams })
+export interface CadFeature {
+  id: string
+  name: string
+  kind: FeatureKind
+  /** Numbers the properties panel edits, plus the occasional label or flag. */
+  params: Record<string, ParamValue>
+  suppressed: boolean
+  sketchId?: string
+}
 
-export type FeatureKind = FeatureNode['kind']
-
-export type FeatureParamsOf<K extends FeatureKind> = Extract<FeatureNode, { kind: K }>['params']
-
-/** A feature before it is given an id. `id` and `name` may be filled in by the tree. */
-export type FeatureDraft = {
-  [K in FeatureKind]: {
-    id?: string
-    name?: string
-    suppressed?: boolean
-    kind: K
-    params: FeatureParamsOf<K>
-  }
-}[FeatureKind]
-
-/**
- * JSON document for one CAD part. `features` rebuild in array order.
- * `historyIndex` is the undo cursor (see undo.ts). `params` holds named numbers
- * shared by the part, such as a thickness used by more than one feature.
- */
 export interface CadDocument {
   id: string
   name: string
+  units: LengthUnit
+  /** Bumps on every edit. */
   rev: number
   updatedAt: number
-  units: CadUnits
-  features: FeatureNode[]
-  sketches: Sketch[]
-  params: Record<string, number>
+  /**
+   * Index of the last feature that is built. Features after it stay in the tree
+   * but are rolled back. `-1` means nothing is built.
+   */
   historyIndex: number
+  sketches: CadSketch[]
+  features: CadFeature[]
+  /** Named numbers shared by the part. */
+  params: Record<string, number>
 }
 
-export function emptyCadDocument(partial: Partial<CadDocument> = {}): CadDocument {
+const UNITS: readonly LengthUnit[] = ['mm', 'cm', 'm', 'in']
+
+export function emptyDocument(partial: Partial<CadDocument> = {}): CadDocument {
   return {
-    id: partial.id ?? 'part',
+    id: partial.id ?? crypto.randomUUID().replace(/-/g, '').slice(0, 12),
     name: partial.name ?? 'Part',
-    rev: partial.rev ?? 1,
-    updatedAt: partial.updatedAt ?? 0,
     units: partial.units ?? 'mm',
-    features: partial.features ?? [],
+    rev: partial.rev ?? 0,
+    updatedAt: partial.updatedAt ?? Date.now(),
+    historyIndex: partial.historyIndex ?? -1,
     sketches: partial.sketches ?? [],
+    features: partial.features ?? [],
     params: partial.params ?? {},
-    historyIndex: partial.historyIndex ?? 0,
   }
 }
+
+/** Alias used by the feature-tree helpers. */
+export const emptyCadDocument = emptyDocument
+
+/** A box sitting on the ground plane, stepped along X so the next one does not overlap. */
+export function makeBoxFeature(doc: CadDocument, id: string = crypto.randomUUID()): CadFeature {
+  const count = doc.features.filter((feature) => feature.kind === 'box').length
+  const height = 20
+  return {
+    id,
+    name: `Box ${count + 1}`,
+    kind: 'box',
+    suppressed: false,
+    params: { width: 20, depth: 20, height, x: count * 30, y: height / 2, z: 0 },
+  }
+}
+
+export function appendFeature(doc: CadDocument, feature: CadFeature): CadDocument {
+  const features = [...doc.features, feature]
+  return { ...doc, features, rev: doc.rev + 1, historyIndex: features.length - 1 }
+}
+
+export function updateFeature(
+  doc: CadDocument,
+  id: string,
+  patch: Partial<Pick<CadFeature, 'name' | 'params' | 'suppressed'>>,
+): CadDocument {
+  let changed = false
+  const features = doc.features.map((feature) => {
+    if (feature.id !== id) return feature
+    changed = true
+    return {
+      ...feature,
+      ...patch,
+      params: patch.params ? { ...feature.params, ...patch.params } : feature.params,
+    }
+  })
+  if (!changed) return doc
+  return { ...doc, features, rev: doc.rev + 1 }
+}
+
+export function removeFeature(doc: CadDocument, id: string): CadDocument {
+  const features = doc.features.filter((feature) => feature.id !== id)
+  if (features.length === doc.features.length) return doc
+  const historyIndex = features.length === 0 ? -1 : Math.min(doc.historyIndex, features.length - 1)
+  return { ...doc, features, rev: doc.rev + 1, historyIndex }
+}
+
+/** Swaps a feature with its neighbor. `direction` is `-1` (up) or `1` (down). */
+export function moveFeature(doc: CadDocument, id: string, direction: -1 | 1): CadDocument {
+  const index = doc.features.findIndex((feature) => feature.id === id)
+  const next = index + direction
+  if (index < 0 || next < 0 || next >= doc.features.length) return doc
+  const features = doc.features.slice()
+  const current = features[index]
+  const neighbor = features[next]
+  if (!current || !neighbor) return doc
+  features[index] = neighbor
+  features[next] = current
+  return { ...doc, features, rev: doc.rev + 1, historyIndex: features.length - 1 }
+}
+
+function isUnit(value: string): value is LengthUnit {
+  return (UNITS as readonly string[]).includes(value)
+}
+
+function isFeature(value: unknown): value is CadFeature {
+  if (!value || typeof value !== 'object') return false
+  const feature = value as Record<string, unknown>
+  return (
+    typeof feature.id === 'string' &&
+    typeof feature.name === 'string' &&
+    typeof feature.kind === 'string' &&
+    typeof feature.suppressed === 'boolean' &&
+    !!feature.params &&
+    typeof feature.params === 'object'
+  )
+}
+
+/** True when `value` has the document fields this pane reads and writes. */
+export function isCadDocument(value: unknown): value is CadDocument {
+  if (!value || typeof value !== 'object') return false
+  const doc = value as Record<string, unknown>
+  return (
+    typeof doc.id === 'string' &&
+    typeof doc.name === 'string' &&
+    typeof doc.units === 'string' &&
+    isUnit(doc.units) &&
+    typeof doc.rev === 'number' &&
+    typeof doc.updatedAt === 'number' &&
+    typeof doc.historyIndex === 'number' &&
+    Array.isArray(doc.sketches) &&
+    Array.isArray(doc.features) &&
+    doc.features.every(isFeature) &&
+    !!doc.params &&
+    typeof doc.params === 'object'
+  )
+}
+
+export type FeatureNode = CadFeature
+export type FeatureDraft = Omit<CadFeature, 'id' | 'name' | 'suppressed'> & {
+  id?: string
+  name?: string
+  suppressed?: boolean
+}
+export type FeatureParamsOf<_K extends FeatureKind> = Record<string, ParamValue>
+
