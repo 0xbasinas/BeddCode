@@ -1,0 +1,56 @@
+.file-conflict {
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+
+.file-conflict > span {
+  flex-basis: 100%;
+}
+
+.banner.file-conflict button {
+  padding: var(--gap);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--corner-sm);
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+  text-decoration: none;
+}
+
+.file-conflict button:hover {
+  background: var(--bg-hover);
+}
+
+.file-conflict pre {
+  flex-basis: 100%;
+  max-height: 12em;
+  overflow: auto;
+  padding: var(--gap);
+  border-radius: var(--corner-sm);
+  background: var(--bg-code);
+  color: var(--text-secondary);
+  font: var(--fs-small) var(--font-mono);
+}
+
+.file-conflict > div {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+
+.file-conflict input {
+  flex: 1 1 12em;
+  min-width: 0;
+  padding: var(--gap);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--corner-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+}
+
+.file-conflict :is(input, button):focus-visible {
+  outline: 2px solid var(--text-secondary);
+  outline-offset: 2px;
+}

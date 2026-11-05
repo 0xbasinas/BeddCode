@@ -1,3 +1,4 @@
+import './files.css'
 import { paneProject } from '../shell/paneProject.ts'
 import { Button } from '@/components/ui/button'
 import { confirmDialog } from '../../ui/confirm.tsx'
@@ -362,7 +363,7 @@ function EditorColumn({
       </div>
 
       {doc.conflict && (
-        <div className="banner">
+        <div className="banner file-conflict">
           <span>This file changed on disk{doc.dirty ? ' and you have unsaved edits' : ''}.</span>
           <button
             onClick={() =>
