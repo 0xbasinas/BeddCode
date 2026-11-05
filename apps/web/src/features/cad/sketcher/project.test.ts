@@ -14,6 +14,7 @@ import {
   snapToGrid,
   toWorld,
   viewDirection,
+  workPlaneFromNormal,
 } from './project.ts'
 
 /** Three's XYZ Euler on a GridHelper point (x, 0, z). */
@@ -103,6 +104,13 @@ describe('sketch projection', () => {
     expect(edgePickThreshold(distance)).toBeGreaterThan(0.45)
     expect(edgePickThreshold(distance * 4)).toBeGreaterThan(edgePickThreshold(distance))
     expect(edgePickThreshold(0)).toBe(0.6)
+  })
+
+  it('projects onto a face plane that does not pass through the origin', () => {
+    const frame = workPlaneFromNormal([0, 0, 20], [0, 0, 1])
+    expect(projectRayToPlane([5, 8, 30], [0, 0, -1], frame)).toEqual([5, 8])
+    expect(toWorld(frame, 5, 8)).toEqual([5, 8, 20])
+    expect(projectRayToPlane([5, 8, 10], [0, 0, -1], frame)).toBeNull()
   })
 
   it('misses a parallel ray and a ray aimed away from the plane', () => {

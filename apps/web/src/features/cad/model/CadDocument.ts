@@ -27,7 +27,26 @@ export interface CadSketch {
   id: string
   name: string
   plane: 'XY' | 'YZ' | 'ZX'
+  /**
+   * Face centroid when the sketch does not lie on a datum through the origin.
+   * Paired with `normal`. The named `plane` is only the nearest datum.
+   */
+  origin?: [number, number, number]
+  /** Outward normal of the picked face. */
+  normal?: [number, number, number]
+  /** Solid that owns the face, when the sketch was started from a pick. */
+  hostId?: string
+  faceId?: number
   entities: SketchEntity[]
+}
+
+/** Where a sketch-on-face should open. Omit origin and normal for a datum. */
+export interface FaceSketchPlacement {
+  plane: CadSketch['plane']
+  origin?: [number, number, number]
+  normal?: [number, number, number]
+  hostId?: string
+  faceId?: number
 }
 
 export interface CadFeature {
@@ -160,6 +179,99 @@ export function appendSketch(
   }
 }
 
+const FACE_MATCH = 0.05
+
+function closePoint(
+  a: readonly [number, number, number],
+  b: readonly [number, number, number],
+): boolean {
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) <= FACE_MATCH
+}
+
+function sameDirection(
+  a: readonly [number, number, number],
+  b: readonly [number, number, number],
+): boolean {
+  const da = Math.hypot(a[0], a[1], a[2]) || 1
+  const db = Math.hypot(b[0], b[1], b[2]) || 1
+  const dot = (a[0] / da) * (b[0] / db) + (a[1] / da) * (b[1] / db) + (a[2] / da) * (b[2] / db)
+  return dot > 0.999
+}
+
+function sameFaceSketch(sketch: CadSketch, placement: FaceSketchPlacement): boolean {
+  if (placement.hostId !== undefined && placement.faceId !== undefined) {
+    return sketch.hostId === placement.hostId && sketch.faceId === placement.faceId
+  }
+  if (placement.origin && placement.normal) {
+    if (!sketch.origin || !sketch.normal || sketch.hostId !== placement.hostId) return false
+    return (
+      closePoint(sketch.origin, placement.origin) && sameDirection(sketch.normal, placement.normal)
+    )
+  }
+  return (
+    sketch.plane === placement.plane && sketch.origin === undefined && sketch.hostId === undefined
+  )
+}
+
+/**
+ * Opens the sketch already tied to this face, or appends one.
+ * A datum stores only its plane name. Any other face also stores origin and normal
+ * on the sketch and on the feature params. Extrude still follows the named plane.
+ */
+export function openFaceSketch(
+  doc: CadDocument,
+  placement: FaceSketchPlacement,
+  id?: string,
+): { doc: CadDocument; feature: CadFeature; sketch: CadSketch; created: boolean } {
+  const existing = doc.sketches.find((sketch) => sameFaceSketch(sketch, placement))
+  if (existing) {
+    const feature = doc.features.find((item) => item.id === existing.id)
+    if (feature) return { doc, feature, sketch: existing, created: false }
+  }
+  const feature = id
+    ? makeSketchFeature(doc, placement.plane, id)
+    : makeSketchFeature(doc, placement.plane)
+  const params: CadFeature['params'] = { ...feature.params }
+  if (placement.origin) {
+    params.originX = placement.origin[0]
+    params.originY = placement.origin[1]
+    params.originZ = placement.origin[2]
+  }
+  if (placement.normal) {
+    params.normalX = placement.normal[0]
+    params.normalY = placement.normal[1]
+    params.normalZ = placement.normal[2]
+  }
+  const stored: CadFeature = { ...feature, params }
+  const sketch: CadSketch = {
+    id: stored.id,
+    name: stored.name,
+    plane: placement.plane,
+    entities: [],
+    ...(placement.origin
+      ? { origin: [placement.origin[0], placement.origin[1], placement.origin[2]] }
+      : {}),
+    ...(placement.normal
+      ? { normal: [placement.normal[0], placement.normal[1], placement.normal[2]] }
+      : {}),
+    ...(placement.hostId !== undefined ? { hostId: placement.hostId } : {}),
+    ...(placement.faceId !== undefined ? { faceId: placement.faceId } : {}),
+  }
+  const features = [...doc.features, stored]
+  return {
+    created: true,
+    feature: stored,
+    sketch,
+    doc: {
+      ...doc,
+      features,
+      sketches: [...doc.sketches.filter((item) => item.id !== sketch.id), sketch],
+      rev: doc.rev + 1,
+      historyIndex: features.length - 1,
+    },
+  }
+}
+
 export function makeExtrudeFeature(
   doc: CadDocument,
   sketchId: string,
@@ -236,7 +348,6 @@ export function makeChamferFeature(
   }
 }
 
-
 export interface HoleParams {
   /** Body the hole cuts. */
   target: string
@@ -286,7 +397,9 @@ export function makeHoleFeature(
     params: {
       target: params.target,
       diameter: holeNumber(params.diameter, 8),
-      ...(throughAll ? { throughAll: true } : { throughAll: false, depth: holeNumber(params.depth, 10) }),
+      ...(throughAll
+        ? { throughAll: true }
+        : { throughAll: false, depth: holeNumber(params.depth, 10) }),
       ...(throughAll && params.depth !== undefined ? { depth: params.depth } : {}),
       x: point[0],
       y: point[1],
