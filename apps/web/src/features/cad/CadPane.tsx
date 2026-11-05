@@ -26,7 +26,16 @@ import {
 } from './cadHostBridge.ts'
 import { FeatureTree } from './FeatureTree.tsx'
 import { PropertiesPanel } from './PropertiesPanel.tsx'
-import { Toolbar, type CadTool, type SketchTool } from './Toolbar.tsx'
+import {
+  Toolbar,
+  DEFAULT_TOOL_OPTIONS,
+  draftParamPatch,
+  draftWriteMode,
+  toolStatusHint,
+  type CadTool,
+  type SketchTool,
+  type ToolOptions,
+} from './Toolbar.tsx'
 import { Viewport, type PickHit, type ViewportHandle } from './Viewport.tsx'
 import { mergeEdgeParams, roundMm, signatureForEdge } from './edgeRefs.ts'
 import {
@@ -77,7 +86,8 @@ export function CadPane() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [previousId, setPreviousId] = useState<string | null>(null)
   const [tool, setTool] = useState<CadTool>('select')
-  const [message, setMessage] = useState('Ready')
+  const [message, setMessage] = useState(() => toolStatusHint('select'))
+  const [options, setOptions] = useState<ToolOptions>(DEFAULT_TOOL_OPTIONS)
   const [fitRequest, setFitRequest] = useState(0)
   const [pick, setPick] = useState<PickHit | null>(null)
   const [activeSketchId, setActiveSketchId] = useState<string | null>(null)
@@ -85,6 +95,12 @@ export function CadPane() {
   const [sketchTool, setSketchTool] = useState<SketchTool>('rectangle')
   const [measureLabel, setMeasureLabel] = useState<string | null>(null)
   const [maximized, setMaximized] = useState(false)
+  const optionsRef = useRef(options)
+  const draftRef = useRef<string | null>(null)
+  const draftTimer = useRef<number | null>(null)
+  const activeSketchRef = useRef<string | null>(null)
+  optionsRef.current = options
+  activeSketchRef.current = activeSketchId
 
   const { meshes, errors, loading, failure, getClient } = useCadRebuild(doc, stepFiles)
   const docRef = useRef(doc)
@@ -102,6 +118,12 @@ export function CadPane() {
     fitArmed.current = false
     setFitRequest((value) => value + 1)
   }, [meshKey, loading])
+
+  useEffect(() => {
+    return () => {
+      if (draftTimer.current !== null) window.clearTimeout(draftTimer.current)
+    }
+  }, [])
 
   useEffect(() => {
     const selection = selectedId ? [selectedId] : []
@@ -127,7 +149,9 @@ export function CadPane() {
     }
     const applyDocument = (next: CadDocument) => {
       stack.current.push(next)
-      setDoc(stack.current.current())
+      const saved = stack.current.current()
+      docRef.current = saved
+      setDoc(saved)
       setMessage('Rebuilt from the host')
       fitArmed.current = true
     }
@@ -184,16 +208,84 @@ export function CadPane() {
   }, [hostKey])
 
   const commit = (next: CadDocument) => {
-    if (next === doc) return
+    if (next === docRef.current) return
     stack.current.push(next)
-    setDoc(stack.current.current())
+    const saved = stack.current.current()
+    docRef.current = saved
+    setDoc(saved)
   }
 
-  const undo = () => setDoc(stack.current.undo())
-  const redo = () => setDoc(stack.current.redo())
+  const clearDraftTimer = () => {
+    if (draftTimer.current === null) return
+    window.clearTimeout(draftTimer.current)
+    draftTimer.current = null
+  }
+
+  /** Writes strip values onto the feature created by the active tool, not an older selection. */
+  const applyDraft = () => {
+    const id = draftRef.current
+    if (!id) return
+    const current = docRef.current
+    const feature = current.features.find((item) => item.id === id)
+    if (!feature) return
+    const raw = draftParamPatch(feature.kind, optionsRef.current)
+    if (!raw) return
+    const patch = { ...raw }
+    if (
+      feature.kind === 'hole' &&
+      patch.throughAll === false &&
+      typeof feature.params.depth !== 'number'
+    ) {
+      patch.depth = 10
+    }
+    const same = Object.entries(patch).every(([key, value]) => feature.params[key] === value)
+    if (same) return
+    commit(updateFeature(current, id, { params: patch }))
+  }
+
+  const onOptionsChange = (patch: Partial<ToolOptions>) => {
+    const next = { ...optionsRef.current, ...patch }
+    optionsRef.current = next
+    setOptions(next)
+    if (patch.sketchPlane) {
+      setActivePlane(patch.sketchPlane)
+      const sketchId = activeSketchRef.current
+      if (sketchId) commit(withSketchPlane(docRef.current, sketchId, patch.sketchPlane))
+    }
+    const mode = draftWriteMode(patch)
+    if (mode === 'none') return
+    clearDraftTimer()
+    if (mode === 'now') {
+      applyDraft()
+      return
+    }
+    draftTimer.current = window.setTimeout(() => {
+      draftTimer.current = null
+      applyDraft()
+    }, 320)
+  }
+
+  const undo = () => {
+    clearDraftTimer()
+    draftRef.current = null
+    const saved = stack.current.undo()
+    docRef.current = saved
+    setDoc(saved)
+  }
+  const redo = () => {
+    clearDraftTimer()
+    draftRef.current = null
+    const saved = stack.current.redo()
+    docRef.current = saved
+    setDoc(saved)
+  }
 
   const choose = (id: string | null) => {
     if (id && selectedId && id !== selectedId) setPreviousId(selectedId)
+    if (id !== draftRef.current) {
+      clearDraftTimer()
+      draftRef.current = null
+    }
     setSelectedId(id)
   }
 
@@ -210,17 +302,18 @@ export function CadPane() {
   const activeSketchEntities = (activeSketch?.entities ?? []) as unknown as DrawnEntity[]
 
   const addSolid = (feature: CadFeature, nextTool: CadTool) => {
-    commit(appendFeature(doc, feature))
+    commit(appendFeature(docRef.current, feature))
+    draftRef.current = feature.id
     choose(feature.id)
     setTool(nextTool)
     setMessage(`Added ${feature.name}`)
     rememberFit()
   }
 
-  const selectedPlane = (): CadSketch['plane'] => {
+  const planeFromSelection = (): CadSketch['plane'] | null => {
     const plane = selected?.params.plane
     if (plane === 'XY' || plane === 'YZ' || plane === 'ZX') return plane
-    return 'XY'
+    return null
   }
 
   const sketchTarget = (): CadFeature | null => {
@@ -239,22 +332,32 @@ export function CadPane() {
   }
 
   const onCommand = (next: CadTool) => {
+    clearDraftTimer()
+    draftRef.current = null
     if (next === 'box') {
-      addSolid(makeBoxFeature(doc), 'box')
+      addSolid(makeBoxFeature(docRef.current), 'box')
       return
     }
     if (next === 'cylinder') {
-      addSolid(makeCylinderFeature(doc), 'cylinder')
+      addSolid(makeCylinderFeature(docRef.current), 'cylinder')
       return
     }
     if (next === 'sphere') {
-      addSolid(makeSphereFeature(doc), 'sphere')
+      addSolid(makeSphereFeature(docRef.current), 'sphere')
       return
     }
     if (next === 'sketch') {
-      const plane = selectedPlane()
-      const appended = appendSketch(doc, plane)
+      const picked = planeFromSelection()
+      const plane = picked ?? optionsRef.current.sketchPlane
+      if (picked && picked !== optionsRef.current.sketchPlane) {
+        const nextOptions = { ...optionsRef.current, sketchPlane: picked }
+        optionsRef.current = nextOptions
+        setOptions(nextOptions)
+      }
+      const appended = appendSketch(docRef.current, plane)
       commit(appended.doc)
+      draftRef.current = appended.feature.id
+      activeSketchRef.current = appended.feature.id
       choose(appended.feature.id)
       setActiveSketchId(appended.feature.id)
       setActivePlane(plane)
@@ -266,11 +369,15 @@ export function CadPane() {
       const sketch = sketchTarget()
       setTool(next)
       if (!sketch) {
-        setMessage('Select a sketch first')
+        setMessage(next === 'extrude' ? 'Select a sketch first' : toolStatusHint(next))
         return
       }
-      const feature =
-        next === 'extrude' ? makeExtrudeFeature(doc, sketch.id) : makeRevolveFeature(doc, sketch.id)
+      const made =
+        next === 'extrude'
+          ? makeExtrudeFeature(docRef.current, sketch.id)
+          : makeRevolveFeature(docRef.current, sketch.id)
+      const patch = next === 'extrude' ? draftParamPatch('extrude', optionsRef.current) : null
+      const feature = patch ? { ...made, params: { ...made.params, ...patch } } : made
       addSolid(feature, next)
       return
     }
@@ -280,7 +387,7 @@ export function CadPane() {
         placeEdge(pick, next)
         return
       }
-      setMessage(next === 'fillet' ? 'Pick edges to fillet' : 'Pick edges to chamfer')
+      setMessage(toolStatusHint(next))
       return
     }
     if (next === 'hole') {
@@ -289,12 +396,12 @@ export function CadPane() {
         placeHole(pick)
         return
       }
-      setMessage('Pick a face to place the hole')
+      setMessage(toolStatusHint('hole'))
       return
     }
     if (next === 'union' || next === 'cut' || next === 'intersect') {
       const toolFeature = selected
-      const target = doc.features.find((feature) => feature.id === previousId) ?? null
+      const target = docRef.current.features.find((feature) => feature.id === previousId) ?? null
       setTool(next)
       if (
         !toolFeature ||
@@ -308,7 +415,7 @@ export function CadPane() {
         )
         return
       }
-      addSolid(makeBooleanFeature(doc, next, target.id, toolFeature.id), next)
+      addSolid(makeBooleanFeature(docRef.current, next, target.id, toolFeature.id), next)
       return
     }
     if (next === 'measure') {
@@ -323,17 +430,17 @@ export function CadPane() {
     }
     if (next === 'export') {
       setTool('export')
-      setMessage('Choose JSON, STEP, or STL')
+      setMessage(toolStatusHint('export'))
       return
     }
     setTool(next)
-    if (next === 'select') setMessage('Select a face. Shift-click an edge.')
+    setMessage(toolStatusHint(next))
   }
 
   const measure = async () => {
     const id = shapeId()
     if (!id) {
-      setMessage('Select a solid to measure')
+      setMessage(toolStatusHint('measure'))
       return
     }
     try {
@@ -415,22 +522,24 @@ export function CadPane() {
 
   const placeHole = (hit: PickHit) => {
     if (!hit.point) {
-      setMessage('Pick a face to place the hole')
+      setMessage(toolStatusHint('hole'))
       return
     }
-    const placed = addHole(doc, {
+    const opts = optionsRef.current
+    const placed = addHole(docRef.current, {
       target: hit.featureId,
-      diameter: 8,
+      diameter: opts.holeDiameter,
       depth: 10,
-      throughAll: true,
+      throughAll: opts.holeThroughAll,
       x: roundMm(hit.point[0]),
       y: roundMm(hit.point[1]),
       z: roundMm(hit.point[2]),
     })
     commit(placed.doc)
+    draftRef.current = placed.feature.id
     choose(placed.feature.id)
     setTool('hole')
-    setMessage(`Hole ⌀8 · ${placed.feature.name}`)
+    setMessage(`Hole ⌀${trim(opts.holeDiameter)} · ${placed.feature.name}`)
     rememberFit()
   }
 
@@ -439,7 +548,8 @@ export function CadPane() {
     const found = mesh ? signatureForEdge(mesh, hit.edgeId, hit.index) : null
     const edgeId = found?.edgeId ?? hit.edgeId ?? hit.index
     const added = { edgeId, ref: found?.ref ?? null }
-    const current = doc.features.find((feature) => feature.id === selectedId)
+    const currentDoc = docRef.current
+    const current = currentDoc.features.find((feature) => feature.id === selectedId)
     const sameTarget =
       current?.kind === kind &&
       (current.params.targetId === hit.featureId || current.params.target === hit.featureId)
@@ -447,7 +557,7 @@ export function CadPane() {
     if (sameTarget && current) {
       const merged = mergeEdgeParams(current.params.edgeIds, current.params.edgeRefs, added)
       commit(
-        updateFeature(doc, current.id, {
+        updateFeature(currentDoc, current.id, {
           params: {
             edgeIds: merged.edgeIds,
             edgeRefs: merged.edgeRefs ?? '',
@@ -458,10 +568,12 @@ export function CadPane() {
       return
     }
     const merged = mergeEdgeParams(undefined, undefined, added)
-    const feature =
+    const made =
       kind === 'fillet'
-        ? makeFilletFeature(doc, hit.featureId, merged.edgeIds, undefined, merged.edgeRefs)
-        : makeChamferFeature(doc, hit.featureId, merged.edgeIds, undefined, merged.edgeRefs)
+        ? makeFilletFeature(currentDoc, hit.featureId, merged.edgeIds, undefined, merged.edgeRefs)
+        : makeChamferFeature(currentDoc, hit.featureId, merged.edgeIds, undefined, merged.edgeRefs)
+    const patch = draftParamPatch(kind, optionsRef.current)
+    const feature = patch ? { ...made, params: { ...made.params, ...patch } } : made
     addSolid(feature, kind)
     setMessage(`${label} edges ${merged.edgeIds}`)
   }
@@ -477,7 +589,7 @@ export function CadPane() {
   const onPick = (hit: PickHit | null) => {
     setPick(hit)
     if (!hit) {
-      setMessage(tool === 'hole' ? 'Pick a face to place the hole' : 'Nothing picked')
+      setMessage(toolStatusHint(tool, tool === 'sketch' ? sketchTool : null))
       return
     }
     if (tool === 'hole') {
@@ -514,7 +626,9 @@ export function CadPane() {
     event.currentTarget.focus()
   }
 
-  const status = loading ? 'Loading geometry…' : (failure ?? message)
+  const hint = toolStatusHint(tool, tool === 'sketch' ? sketchTool : null)
+  const detail = loading ? 'Loading geometry…' : (failure ?? message)
+  const showDetail = detail.length > 0 && detail !== hint
 
   return (
     <div
@@ -532,24 +646,22 @@ export function CadPane() {
         onMaximize={toggleMaximize}
         sketchTool={tool === 'sketch' ? sketchTool : null}
         onSketchTool={(next) => {
+          if (tool !== 'sketch') {
+            clearDraftTimer()
+            draftRef.current = null
+          }
           setSketchTool(next)
           setTool('sketch')
-          setMessage(`Sketch ${next}`)
+          setMessage(toolStatusHint('sketch', next))
+        }}
+        options={options}
+        onOptionsChange={onOptionsChange}
+        onExport={(format) => {
+          if (format === 'json') exportJson()
+          else if (format === 'step') void exportStep()
+          else void exportStl()
         }}
       />
-      {tool === 'export' ? (
-        <div className="cad-toolbar" role="menu" aria-label="Export">
-          <button type="button" className="cad-tool" onClick={exportJson}>
-            JSON
-          </button>
-          <button type="button" className="cad-tool" onClick={() => void exportStep()}>
-            STEP
-          </button>
-          <button type="button" className="cad-tool" onClick={() => void exportStl()}>
-            STL
-          </button>
-        </div>
-      ) : null}
       <div className="cad-body">
         <FeatureTree
           features={doc.features}
@@ -578,6 +690,7 @@ export function CadPane() {
           sketchMode={tool === 'sketch'}
           sketchTool={sketchTool}
           plane={activePlane}
+          sketchSnap={options.sketchSnap}
           entities={activeSketchEntities}
           onSketchChange={(entities) => {
             const id = activeSketchId ?? activeSketch?.id
@@ -598,11 +711,13 @@ export function CadPane() {
           error={selected ? errors[selected.id] : undefined}
           onName={(name) => {
             if (!selected) return
-            commit(updateFeature(doc, selected.id, { name }))
+            if (selected.id === draftRef.current) clearDraftTimer()
+            commit(updateFeature(docRef.current, selected.id, { name }))
           }}
           onParam={(key, value) => {
             if (!selected) return
-            commit(updateFeature(doc, selected.id, { params: { [key]: value } }))
+            if (selected.id === draftRef.current) clearDraftTimer()
+            commit(updateFeature(docRef.current, selected.id, { params: { [key]: value } }))
           }}
         />
       </div>
@@ -627,12 +742,15 @@ export function CadPane() {
         >
           <Redo2 size={13} />
         </button>
+        <span className="cad-status-hint" title={hint}>
+          {hint}
+        </span>
         <span>{doc.units}</span>
         <span>
           {doc.features.length} {doc.features.length === 1 ? 'feature' : 'features'}
         </span>
         <span>rev {doc.rev}</span>
-        <span className="cad-status-message">{status}</span>
+        {showDetail ? <span className="cad-status-message">{detail}</span> : null}
       </footer>
       <input
         ref={fileRef}
@@ -644,6 +762,23 @@ export function CadPane() {
       />
     </div>
   )
+}
+
+function withSketchPlane(doc: CadDocument, id: string, plane: CadSketch['plane']): CadDocument {
+  const feature = doc.features.find((item) => item.id === id)
+  const sketch = doc.sketches.find((item) => item.id === id)
+  if (!feature && !sketch) return doc
+  if (feature?.params.plane === plane && (!sketch || sketch.plane === plane)) return doc
+  let next = doc
+  if (feature && feature.params.plane !== plane) {
+    next = updateFeature(next, id, { params: { plane } })
+  }
+  if (sketch && sketch.plane !== plane) {
+    const sketches = next.sketches.map((item) => (item.id === id ? { ...item, plane } : item))
+    if (next === doc) return { ...doc, sketches, rev: doc.rev + 1, updatedAt: Date.now() }
+    return { ...next, sketches }
+  }
+  return next
 }
 
 function edgeToken(hit: PickHit | null): string | undefined {

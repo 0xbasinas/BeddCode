@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Eye, EyeOff, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, CircleAlert, Eye, EyeOff, Trash2 } from 'lucide-react'
 import type { CadFeature } from './model/CadDocument.ts'
 
 /** Kind line in the tree. Holes include the diameter. Failures use `errors`. */
@@ -38,7 +38,7 @@ export function FeatureTree({
     <aside className="cad-tree" aria-label="Feature tree">
       <div className="cad-side-title">Features</div>
       {features.length === 0 ? (
-        <p className="cad-empty">No features yet. Use New box to add one.</p>
+        <p className="cad-empty">No features yet. Use Box to add one.</p>
       ) : (
         <ul className="cad-feature-list">
           {features.map((feature, index) => {
@@ -60,7 +60,8 @@ export function FeatureTree({
                   <span className="cad-feature-kind">{featureDetail(feature)}</span>
                   {error ? (
                     <span className="cad-feature-error" title={error}>
-                      {error}
+                      <CircleAlert className="cad-feature-mark" size={11} aria-hidden="true" />
+                      <span>{error}</span>
                     </span>
                   ) : null}
                 </button>
