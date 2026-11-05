@@ -3,7 +3,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PermissionModeOption, QuestionSpec, SessionEvent } from '@beddcode/contracts'
 import type { PromptInput, ProviderSession, StartSessionInput } from '@beddcode/provider-core'
-import { createAsyncQueue, deferred, type Deferred, type Logger } from '@beddcode/shared'
+import {
+  createAsyncQueue,
+  deferred,
+  type Deferred,
+  type Logger,
+  type SupervisedProcess,
+  type SupervisorClient,
+} from '@beddcode/shared'
 import { ClaudeEventMapper, toolKind, toolTitle } from '../mapper.ts'
 import { ApprovalBridge, SOCKET_ENV, type ApprovalRequest } from './approvalBridge.ts'
 import { ClaudeCliProcess } from './process.ts'
@@ -15,6 +22,12 @@ export interface ClaudeCliSessionDeps {
   env?: Record<string, string | undefined>
   log: Logger
   modes?: PermissionModeOption[]
+  /** Starts the agent under the supervisor, which keeps it running if the host restarts. */
+  supervisor?: SupervisorClient
+  /** An agent a previous host left with the supervisor, to carry on with instead of starting one. */
+  attached?: SupervisedProcess
+  /** See `CliOptions.launchArgs`. */
+  launchArgs?: string[]
 }
 
 export class ClaudeCliSession implements ProviderSession {
@@ -24,6 +37,8 @@ export class ClaudeCliSession implements ProviderSession {
   private readonly bridge?: ApprovalBridge
   private readonly ready: Promise<void>
   private process?: ClaudeCliProcess
+  /** This session took over an agent that was already running (and maybe mid-turn). */
+  readonly reattached: boolean
   private closed = false
   private active = false
   private currentTurn?: string
@@ -52,12 +67,27 @@ export class ClaudeCliSession implements ProviderSession {
       cwd: input.cwd,
       resumed: !!input.resumeId,
     })
-    if (input.permissionMode !== 'bypassPermissions')
-      this.bridge = new ApprovalBridge(
-        process.platform === 'win32'
-          ? `\\\\.\\pipe\\beddcode-${randomUUID()}`
-          : join(tmpdir(), `beddcode-${randomUUID()}.sock`),
-      )
+    this.reattached = deps.attached !== undefined
+    const meta = deps.attached?.meta
+    if (meta) {
+      // Carry on in the turn the previous host left, with the id Claude knows this conversation by.
+      if (typeof meta.providerId === 'string') this.providerId = meta.providerId
+      if (meta.turnActive === true && typeof meta.currentTurn === 'string') {
+        this.active = true
+        this.currentTurn = meta.currentTurn
+        this.mapper.setTurn(meta.currentTurn)
+      }
+    }
+    // A reattached agent's approval helper dials the address it was started with: serve that one.
+    const bridgePath =
+      typeof meta?.bridgePath === 'string'
+        ? meta.bridgePath
+        : deps.attached || input.permissionMode === 'bypassPermissions'
+          ? undefined
+          : process.platform === 'win32'
+            ? `\\\\.\\pipe\\beddcode-${randomUUID()}`
+            : join(tmpdir(), `beddcode-${randomUUID()}.sock`)
+    if (bridgePath) this.bridge = new ApprovalBridge(bridgePath)
     this.bridge?.on('request', (id: string, request: ApprovalRequest) => this.approval(id, request))
     this.ready = this.start()
     void this.ready.catch(() => {})
@@ -84,24 +114,50 @@ export class ClaudeCliSession implements ProviderSession {
         args: ['-e', approvalBridgeProgram],
         env: { [SOCKET_ENV]: this.bridge.path },
       }
-    this.process = new ClaudeCliProcess({
-      cwd: this.input.cwd,
-      executablePath: this.deps.executablePath,
-      env: this.deps.env,
-      model: this.model,
-      effort: this.effort,
-      resumeId: this.providerId,
-      sessionId: this.providerId ? undefined : (this.providerId = randomUUID()),
-      permissionMode: this.permissionMode ?? 'default',
-      additionalDirectories: this.input.additionalDirectories,
-      mcpConfig: Object.keys(servers).length ? JSON.stringify({ mcpServers: servers }) : undefined,
-      permissionPromptTool: this.bridge ? 'mcp__beddcode__approve' : undefined,
-    })
+    const attached = this.deps.attached
+    this.deps.attached = undefined // only the first start takes the running agent over
+    const supervisor = this.deps.supervisor
+    this.process = new ClaudeCliProcess(
+      {
+        cwd: this.input.cwd,
+        executablePath: this.deps.executablePath,
+        launchArgs: this.deps.launchArgs,
+        env: this.deps.env,
+        model: this.model,
+        effort: this.effort,
+        resumeId: this.providerId,
+        sessionId: this.providerId ? undefined : (this.providerId = randomUUID()),
+        permissionMode: this.permissionMode ?? 'default',
+        additionalDirectories: this.input.additionalDirectories,
+        mcpConfig: Object.keys(servers).length
+          ? JSON.stringify({ mcpServers: servers })
+          : undefined,
+        permissionPromptTool: this.bridge ? 'mcp__beddcode__approve' : undefined,
+      },
+      attached
+        ? () => attached
+        : supervisor
+          ? (spec) => supervisor.spawn(this.sessionId, { ...spec, protocol: 'claude' }, this.meta())
+          : undefined,
+    )
     void this.pump(this.process)
     this.scheduleIdle()
   }
   get events() {
     return this.queue
+  }
+  /** What a later host needs to know to pick this agent up: its turn, conversation and approval address. */
+  private meta() {
+    return {
+      turnActive: this.active,
+      active: this.active,
+      currentTurn: this.currentTurn,
+      providerId: this.providerId,
+      bridgePath: this.bridge?.path,
+    }
+  }
+  private syncMeta() {
+    this.process?.supervised?.setMeta(this.meta())
   }
   private emit(event: Draft, turnId?: string) {
     this.queue.push({ ...event, sessionId: this.sessionId, turnId, at: Date.now() } as SessionEvent)
@@ -134,6 +190,7 @@ export class ClaudeCliSession implements ProviderSession {
     const turn = (this.currentTurn = randomUUID())
     this.mapper.setTurn(turn)
     this.active = true
+    this.syncMeta()
     const done = deferred<void>()
     this.waiters.push(done)
     this.emit({ type: 'turn.started' }, turn)
@@ -291,6 +348,22 @@ export class ClaudeCliSession implements ProviderSession {
     }
     this.pending.clear()
   }
+  /**
+   * The host is going away but the agent is to keep running (see docs/agent-supervisor.md). Without
+   * the supervisor this is just `close`.
+   */
+  async detach() {
+    if (this.closed) return
+    if (!this.process?.supervised) return this.close()
+    this.closed = true
+    if (this.idleTimer) clearTimeout(this.idleTimer)
+    this.syncMeta()
+    this.process.detach()
+    this.process = undefined
+    await this.bridge?.stop()
+    for (const waiter of this.waiters.splice(0)) waiter.reject(new Error('session closed'))
+    this.queue.close()
+  }
   async close() {
     if (this.closed) return
     this.closed = true
@@ -311,6 +384,7 @@ export class ClaudeCliSession implements ProviderSession {
           this.queue.push(event)
           if (event.type === 'turn.completed') {
             this.active = false
+            this.syncMeta()
             this.waiters.shift()?.resolve()
             this.scheduleIdle()
           }

@@ -42,6 +42,8 @@ export class ApprovalBridge extends EventEmitter {
         }
       })
     })
+    // A host killed outright leaves its socket file behind; a restarted one takes the address over.
+    if (process.platform !== 'win32') await unlink(this.path).catch(() => {})
     await new Promise<void>((resolve, reject) => {
       this.server!.once('error', reject)
       this.server!.listen(this.path, () => {

@@ -3,7 +3,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { readFile } from 'node:fs/promises'
 import { extname } from 'node:path'
-import { trackChild } from '@beddcode/shared'
+import { trackChild, type SupervisedProcess } from '@beddcode/shared'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 
 export interface CliOptions {
@@ -18,6 +18,8 @@ export interface CliOptions {
   mcpConfig?: string
   permissionPromptTool?: string
   additionalDirectories?: string[]
+  /** Put before the CLI arguments: for a launcher that is run through another program (tests). */
+  launchArgs?: string[]
 }
 
 export function buildCliArgs(options: CliOptions): string[] {
@@ -46,21 +48,43 @@ export function buildCliArgs(options: CliOptions): string[] {
   return args
 }
 
+/** Starts the agent somewhere other than a plain child of the host (the supervisor, say). */
+export type CliSpawner = (spec: {
+  command: string
+  args: string[]
+  cwd: string
+  env: Record<string, string | undefined>
+}) => SupervisedProcess
+
 export class ClaudeCliProcess {
   readonly child: ChildProcessWithoutNullStreams
+  /** Set when the supervisor owns the agent's process. */
+  readonly supervised: SupervisedProcess | undefined
   private timer?: NodeJS.Timeout
   private controls = new Map<string, { resolve: () => void; reject: (error: Error) => void }>()
   stderr = ''
-  constructor(options: CliOptions) {
+  constructor(options: CliOptions, spawner?: CliSpawner) {
     const executable = options.executablePath ?? 'claude'
-    this.child = spawn(executable, buildCliArgs(options), {
-      cwd: options.cwd,
-      env: { ...process.env, ...options.env },
-      stdio: 'pipe',
-      windowsHide: true,
-      detached: process.platform !== 'win32',
-    })
-    trackChild(this.child, executable)
+    const env = { ...process.env, ...options.env }
+    if (spawner) {
+      // The supervisor's stand-in has the same pipes and events as a child process.
+      this.supervised = spawner({
+        command: executable,
+        args: [...(options.launchArgs ?? []), ...buildCliArgs(options)],
+        cwd: options.cwd,
+        env,
+      })
+      this.child = this.supervised as unknown as ChildProcessWithoutNullStreams
+    } else {
+      this.child = spawn(executable, [...(options.launchArgs ?? []), ...buildCliArgs(options)], {
+        cwd: options.cwd,
+        env,
+        stdio: 'pipe',
+        windowsHide: true,
+        detached: process.platform !== 'win32',
+      })
+      trackChild(this.child, executable)
+    }
     this.child.stderr.on('data', (chunk: Buffer) => {
       this.stderr = (this.stderr + chunk.toString()).slice(-2000)
     })
@@ -174,9 +198,13 @@ export class ClaudeCliProcess {
     this.timer = setTimeout(() => this.child.kill('SIGTERM'), timeout)
     this.timer.unref()
   }
+  /** The host is going away but the agent is to keep running. */
+  detach() {
+    this.supervised?.detach()
+  }
   close() {
     this.child.stdin.end()
-    if (process.platform !== 'win32' && this.child.pid) {
+    if (!this.supervised && process.platform !== 'win32' && this.child.pid) {
       try {
         process.kill(-this.child.pid, 'SIGTERM')
         return

@@ -34,7 +34,7 @@ export function collect<E>(session: { events: AsyncIterable<E> }) {
 
 /** A scratch folder with a supervisor of its own, and what the fake agent leaves in `state`. */
 export function scratch(
-  flavor: 'codex' | 'acp' | 'pi',
+  flavor: 'codex' | 'acp' | 'pi' | 'claude',
   extra: Record<string, string> = {},
   daemonEnv: Record<string, string> = {},
 ) {

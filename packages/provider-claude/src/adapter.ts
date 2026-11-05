@@ -186,13 +186,6 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
     async startSession(_instanceId, input) {
       const exe = executable()
       if (!exe) throw new Error('Claude Code is not installed on this host')
-      if ((input.claudeBackend ?? options.backend ?? 'sdk') === 'cli')
-        return new ClaudeCliSession(input, {
-          log,
-          executablePath: exe,
-          env,
-          modes: claudeCapabilities.permissionModes,
-        })
       const attached = input.reattach
         ? await options.supervisor?.attach(input.sessionId).catch((err: unknown) => {
             log.warn(`could not reattach ${input.sessionId}; starting a new agent`, err)
@@ -201,6 +194,15 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Provide
         : undefined
       if (attached)
         log.info(`reattached ${input.sessionId} to its running agent (pid ${attached.pid})`)
+      if ((input.claudeBackend ?? options.backend ?? 'sdk') === 'cli')
+        return new ClaudeCliSession(input, {
+          log,
+          executablePath: exe,
+          env,
+          modes: claudeCapabilities.permissionModes,
+          supervisor: options.supervisor,
+          attached,
+        })
       return new ClaudeSession(input, {
         queryFn,
         log,

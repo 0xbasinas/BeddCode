@@ -1,5 +1,5 @@
 // A stand-in for agent CLIs that talk JSON lines over stdio, for the supervisor tests. FAKE_FLAVOR
-// picks the dialect: `codex` (app-server JSON-RPC), `acp` (Agent Client Protocol) or `pi` (Pi RPC).
+// picks the dialect: `codex` (app-server JSON-RPC), `acp` (Agent Client Protocol) or `pi` (Pi RPC) or `claude` (the Claude CLI's stream-json, as `claude -p` speaks it).
 // For a prompt it "works" for a while, one message per tick, then ends the turn. With FAKE_ASK=1 it
 // first asks the host for permission and waits for the answer, as the real agents do.
 import fs from 'node:fs'
@@ -41,6 +41,31 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
   if (msg.method === undefined && msg.type === undefined && msg.id !== undefined) {
     answered(msg) // the host answered the agent's own request
     return
+  }
+  if (flavor === 'claude') {
+    // `claude -p --input-format stream-json`: one user message in, a turn of stream events out.
+    if (msg.type !== 'user') return
+    const session_id = 'claude-native-1'
+    return work(
+      (i) =>
+        out({
+          type: 'stream_event',
+          session_id,
+          parent_tool_use_id: null,
+          event: { type: 'content_block_delta', delta: { type: 'text_delta', text: `part ${i};` } },
+        }),
+      () => out({ type: 'system', subtype: 'init', session_id }),
+      () =>
+        out({
+          type: 'result',
+          subtype: 'success',
+          is_error: false,
+          result: 'done',
+          session_id,
+          modelUsage: {},
+        }),
+      () => {},
+    )
   }
   const reply = (result) =>
     out({ ...(flavor === 'acp' ? { jsonrpc: '2.0' } : {}), id: msg.id, result })
