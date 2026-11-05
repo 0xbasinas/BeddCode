@@ -2,7 +2,8 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import type { BoundingBox, Direction, Plane, PlaneName, Point } from './geom.js'
+import { BoundingBox, Plane } from './geom.js'
+import type { Direction, PlaneName, Point } from './geom.js'
 
 export interface Shape3DLike<ShapeT, MeshT, OtherT = ShapeT, MeshOptionsT = any> {
   fuse(other: ShapeT, options?: any): ShapeT

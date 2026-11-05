@@ -2,10 +2,11 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Face, Shape3D } from '../shapes'
-import { Point, AxisName } from '../geom'
+import { Face } from '../shapes'
+import type { Shape3D } from '../shapes'
+import type { Point, AxisName } from '../geom'
 
-import { ExtrusionProfile, LoftConfig } from '../addThickness.js'
+import type { ExtrusionProfile, LoftConfig } from '../addThickness.js'
 
 export interface ExtrudeUntilOptions {
   /** Defaults to the sketch's direction; its reverse is tried if needed. */

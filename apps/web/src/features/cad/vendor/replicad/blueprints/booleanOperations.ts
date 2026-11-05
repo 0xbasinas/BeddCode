@@ -4,12 +4,12 @@
 
 import zip from '../utils/zip'
 import {
-  Point2D,
   Curve2D,
   samePoint as defaultSamePoint,
   intersectCurves,
   removeDuplicatePoints,
 } from '../lib2d'
+import type { Point2D } from '../lib2d'
 
 import Blueprint from './Blueprint'
 import Blueprints from './Blueprints'

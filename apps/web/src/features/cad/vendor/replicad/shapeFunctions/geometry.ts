@@ -4,7 +4,8 @@
 
 import type { Adaptor3d_Surface, gp_Pnt, gp_Vec } from 'replicad-opencascadejs'
 
-import { findCurveType, type CurveType } from '../definitionMaps.js'
+import { findCurveType } from '../definitionMaps.js'
+import type { CurveType } from '../definitionMaps.js'
 import { Vector } from '../geom.js'
 import { getOC } from '../oclib.js'
 import { WrappingObj } from '../register.js'

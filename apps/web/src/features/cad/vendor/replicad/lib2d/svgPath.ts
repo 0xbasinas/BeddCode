@@ -2,12 +2,12 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Geom2dAdaptor_Curve, gp_Pnt2d } from 'replicad-opencascadejs'
+import type { Geom2dAdaptor_Curve, gp_Pnt2d } from 'replicad-opencascadejs'
 import { RAD2DEG } from '../constants'
 import { findCurveType } from '../definitionMaps'
 import { getOC } from '../oclib'
 import round5 from '../utils/round5'
-import { Point2D } from './definitions'
+import type { Point2D } from './definitions'
 
 const fromPnt = (pnt: gp_Pnt2d) => `${round5(pnt.X())} ${round5(pnt.Y())}`
 

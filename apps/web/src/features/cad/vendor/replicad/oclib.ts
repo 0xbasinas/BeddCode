@@ -2,7 +2,7 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { OpenCascadeInstance } from 'replicad-opencascadejs'
+import type { OpenCascadeInstance } from 'replicad-opencascadejs'
 
 const OC: { library: OpenCascadeInstance | null } = {
   library: null,

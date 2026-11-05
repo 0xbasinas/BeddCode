@@ -4,7 +4,8 @@
 
 import { Blueprint } from '../blueprints'
 import { DEG2RAD } from '../constants'
-import { angle2d, Curve2D, distance2d, Point2D, samePoint } from '../lib2d'
+import { angle2d, Curve2D, distance2d, samePoint } from '../lib2d'
+import type { Point2D } from '../lib2d'
 import { Finder } from './definitions'
 
 export type Corner = {

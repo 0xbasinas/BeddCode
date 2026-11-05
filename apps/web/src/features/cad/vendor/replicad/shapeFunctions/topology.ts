@@ -2,8 +2,7 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import {
-  OpenCascadeInstance,
+import type {
   TopAbs_ShapeEnum,
   TopoDS_Compound,
   TopoDS_CompSolid,
@@ -15,6 +14,7 @@ import {
   TopoDS_Vertex,
   TopoDS_Wire,
 } from 'replicad-opencascadejs'
+import type { OpenCascadeInstance } from 'replicad-opencascadejs'
 
 import { getOC } from '../oclib.js'
 

@@ -2,18 +2,21 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Point2D, BoundingBox2d } from '../lib2d'
+import { BoundingBox2d } from '../lib2d'
+import type { Point2D } from '../lib2d'
 import Blueprint from './Blueprint'
-import { DrawingInterface } from './lib'
+import type { DrawingInterface } from './lib'
 import { asSVG, viewbox } from './svg'
 
-import { AnyShape, Face } from '../shapes'
+import { Face } from '../shapes'
+import type { AnyShape } from '../shapes'
 
-import { Plane, PlaneName, Point } from '../geom'
+import { Plane } from '../geom'
+import type { PlaneName, Point } from '../geom'
 
-import { ScaleMode } from '../curves'
+import type { ScaleMode } from '../curves'
 import CompoundSketch from '../sketches/CompoundSketch'
-import { SingleFace } from '../finders'
+import type { SingleFace } from '../finders'
 
 export default class CompoundBlueprint implements DrawingInterface {
   blueprints: Blueprint[]

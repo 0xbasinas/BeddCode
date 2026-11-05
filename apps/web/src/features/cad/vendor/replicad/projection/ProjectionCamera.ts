@@ -3,8 +3,10 @@
 // @ts-nocheck
 
 import type { gp_Ax2 } from 'replicad-opencascadejs'
-import { asDir, asPnt, Direction, makeAx2, makeDirVector, Point, Vector } from '../geom'
-import type { BoundingBox } from '../geom'
+import { asDir, asPnt, makeAx2, makeDirVector } from '../geom'
+import { Vector } from '../geom'
+import type { Direction, Point } from '../geom'
+import { BoundingBox } from '../geom'
 import { WrappingObj } from '../register'
 export type CubeFace = 'front' | 'back' | 'top' | 'bottom' | 'left' | 'right'
 export type ProjectionPlane =

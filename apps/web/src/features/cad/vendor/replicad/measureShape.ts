@@ -3,10 +3,12 @@
 // @ts-nocheck
 
 import { getOC } from './oclib'
-import { AnyShape, Face, Shape3D } from './shapes'
+import { Face } from './shapes'
+import type { AnyShape, Shape3D } from './shapes'
 
 import type { BRepExtrema_DistShapeShape, GProp_GProps } from 'replicad-opencascadejs'
-import { GCWithScope, WrappingObj } from './register'
+import { GCWithScope } from './register'
+import { WrappingObj } from './register'
 class PhysicalProperties extends WrappingObj<GProp_GProps> {
   get centerOfMass(): [number, number, number] {
     const r = GCWithScope()

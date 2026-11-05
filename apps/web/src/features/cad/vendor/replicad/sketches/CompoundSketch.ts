@@ -7,17 +7,15 @@ import { extrudeFaceUntil } from './extrudeUntil'
 import { compoundShapes, addHolesInFace, makeSolid, makeFace } from '../shapeHelpers'
 import Sketch from './Sketch'
 
-import { Point, AxisName, Vector } from '../geom.js'
-import {
-  basicFaceExtrusion,
-  complexExtrude,
-  twistExtrude,
-  revolution,
-  ExtrusionProfile,
-  LoftConfig,
-} from '../addThickness.js'
-import { ExtrudeUntilOptions, SketchInterface } from './lib.js'
-import { cast, Face, Shape3D, Shell, Wire } from '../shapes.js'
+import type { AxisName } from '../geom.js'
+import { Vector } from '../geom.js'
+import type { Point } from '../geom.js'
+import { basicFaceExtrusion, complexExtrude, twistExtrude, revolution } from '../addThickness.js'
+import type { ExtrusionProfile, LoftConfig } from '../addThickness.js'
+import type { ExtrudeUntilOptions, SketchInterface } from './lib.js'
+import { cast } from '../shapes.js'
+import { Face, Shell, Wire } from '../shapes.js'
+import type { Shape3D } from '../shapes.js'
 import { getOC } from '../oclib.js'
 
 const guessFaceFromWires = (wires: Wire[]): Face => {

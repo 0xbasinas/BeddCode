@@ -5,8 +5,9 @@
 import Blueprint from './Blueprint'
 import CompoundBlueprint from './CompoundBlueprint'
 import Blueprints from './Blueprints'
-import { organiseBlueprints, DrawingInterface } from './lib'
-import { ScaleMode } from '../curves'
+import { organiseBlueprints } from './lib'
+import type { DrawingInterface } from './lib'
+import type { ScaleMode } from '../curves'
 
 export { Blueprint, CompoundBlueprint, Blueprints, organiseBlueprints }
 

@@ -2,7 +2,8 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Face, type AnyShape } from '../shapes'
+import type { AnyShape } from '../shapes'
+import { Face } from '../shapes'
 import { FaceFinder } from './faceFinder'
 import type { FaceOrEdge, FilterFcn, FinderFunction } from './definitions'
 

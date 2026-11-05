@@ -3,7 +3,8 @@
 // @ts-nocheck
 
 import { Curve2D } from './Curve2D'
-import { isPoint2D, Point2D } from './definitions'
+import { isPoint2D } from './definitions'
+import type { Point2D } from './definitions'
 import { intersectCurves } from './intersections'
 import {
   make2dArcFromCenter,

@@ -9,8 +9,9 @@ import type {
 } from 'replicad-opencascadejs'
 import { uuidv } from '../utils/uuid'
 import { getOC } from '../oclib'
-import { AnyShape } from '../shapes'
-import { GCWithScope, WrappingObj } from '../register'
+import type { AnyShape } from '../shapes'
+import { GCWithScope } from '../register'
+import { WrappingObj } from '../register'
 
 const wrapString = (str: string): TCollection_ExtendedString => {
   const oc = getOC()

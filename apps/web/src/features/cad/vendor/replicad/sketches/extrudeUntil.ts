@@ -3,10 +3,13 @@
 // @ts-nocheck
 
 import type { TopoDS_Shape } from 'replicad-opencascadejs'
-import { Point, Vector } from '../geom'
+import { Vector } from '../geom'
+import type { Point } from '../geom'
 import { getOC } from '../oclib'
 import { localGC } from '../register'
-import { cast, Face, Shape3D, Solid } from '../shapes'
+import { cast } from '../shapes'
+import { Face, Solid } from '../shapes'
+import type { Shape3D } from '../shapes'
 
 /**
  * Splits a finite prism and keeps the solid containing its entire starting cap.

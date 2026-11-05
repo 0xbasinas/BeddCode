@@ -3,7 +3,7 @@
 // @ts-nocheck
 
 import round2 from '../utils/round2'
-import { Point2D } from './definitions'
+import type { Point2D } from './definitions'
 
 export const reprPnt = ([x, y]: Point2D): string => {
   return `(${round2(x)},${round2(y)})`

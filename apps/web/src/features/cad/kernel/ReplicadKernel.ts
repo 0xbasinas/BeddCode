@@ -47,10 +47,14 @@ function asSolid(shape: AnyShape): Shape3D {
  * the original URL.
  */
 export function locateWasm(url: string): string {
+  // Vite's `?url` import can keep `?import&url` on the asset path. Emscripten
+  // must fetch the raw .wasm bytes, so strip that query. Vitest also rewrites
+  // the path to `/@fs/<absolute>`; Node's loader needs the absolute form.
+  const clean = url.replace(/[?#].*$/, '')
   const onNode =
     typeof process !== 'undefined' && !!process.versions?.node && typeof window === 'undefined'
-  if (onNode && url.startsWith('/@fs/')) return url.slice(4)
-  return url
+  if (onNode && clean.startsWith('/@fs/')) return clean.slice(4)
+  return clean
 }
 
 function toMesh(shape: Shape3D): MeshBuffer {

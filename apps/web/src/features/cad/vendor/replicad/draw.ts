@@ -3,47 +3,49 @@
 // @ts-nocheck
 
 import {
-  ApproximationOptions,
   BoundingBox2d,
   deserializeCurve2D,
   make2dCircle,
   make2dEllipse,
   make2dInerpolatedBSplineCurve,
   make2dSegmentCurve,
-  Point2D,
   samePoint,
   stitchCurves,
 } from './lib2d'
+import type { ApproximationOptions } from './lib2d'
+import type { Point2D } from './lib2d'
 import {
   Blueprint,
   cut2D,
   intersect2D,
-  DrawingInterface,
   fuse2D,
   polysidesBlueprint,
   roundedRectangleBlueprint,
-  ScaleMode,
-  Shape2D,
   Blueprints,
   CompoundBlueprint,
 } from './blueprints'
-import { Plane, PlaneName, Point } from './geom'
-import type { AnyShape, Edge, Face } from './shapes'
+import type { DrawingInterface, ScaleMode, Shape2D } from './blueprints'
+import { Plane } from './geom'
+import type { PlaneName, Point } from './geom'
+import { Edge, Face } from './shapes'
+import type { AnyShape } from './shapes'
 import { BaseSketcher2d } from './Sketcher2d'
-import type { SketchInterface, Sketches, Sketch } from './sketches'
+import { Sketches, Sketch } from './sketches'
+import type { SketchInterface } from './sketches'
 import type { GenericSketcher } from './sketcherlib'
 import { lookFromPlane, ProjectionCamera } from './projection/ProjectionCamera'
 import type { ProjectionPlane } from './projection/ProjectionCamera'
 import { makeProjectedEdges } from './projection/makeProjectedEdges'
 
-import offset, { Offset2DConfig } from './blueprints/offset'
+import offset from './blueprints/offset'
+import type { Offset2DConfig } from './blueprints/offset'
 import { CornerFinder } from './finders/cornerFinder'
 import type { FinderFunction } from './finders/definitions'
 import { fillet2D, chamfer2D } from './blueprints/customCorners'
 import { edgeToCurve, edgeToCurveOnPlane } from './curves'
-import { BSplineApproximationConfig } from './shapeHelpers'
+import type { BSplineApproximationConfig } from './shapeHelpers'
 import { approximateForSVG } from './blueprints/approximations'
-import { SingleFace } from './finders'
+import type { SingleFace } from './finders'
 
 /**
  * @categoryDescription Drawing

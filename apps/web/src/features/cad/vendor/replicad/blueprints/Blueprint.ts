@@ -9,33 +9,37 @@ import {
   curvesBoundingBox,
   mirrorTransform2d,
   rotateTransform2d,
-  ScaleMode,
   stretchTransform2d,
   scaleTransform2d,
   translationTransform2d,
 } from '../curves'
+import type { ScaleMode } from '../curves'
 import {
   adaptedCurveToPathElem,
   make2dSegmentCurve,
-  Point2D,
   BoundingBox2d,
   Curve2D,
   samePoint,
   isPoint2D,
   approximateAsSvgCompatibleCurve,
 } from '../lib2d'
+import type { Point2D } from '../lib2d'
 import { assembleWire } from '../shapeHelpers'
-import { AnyShape, cast, Face } from '../shapes'
+import { cast } from '../shapes'
+import { Face } from '../shapes'
+import type { AnyShape } from '../shapes'
 import Sketch from '../sketches/Sketch'
 
 import { getOC } from '../oclib.js'
-import { Plane, PlaneName, Point } from '../geom'
+import { Plane } from '../geom'
+import type { PlaneName, Point } from '../geom'
 import { DEG2RAD } from '../constants'
-import { DrawingInterface } from './lib'
+import type { DrawingInterface } from './lib'
 import round5 from '../utils/round5'
 import { asSVG, viewbox } from './svg'
 import { GCWithScope } from '../register'
-import { getSingleFace, SingleFace } from '../finders'
+import { getSingleFace } from '../finders'
+import type { SingleFace } from '../finders'
 
 /**
  * A Blueprint is an abstract Sketch, a 2D set of curves that can then be

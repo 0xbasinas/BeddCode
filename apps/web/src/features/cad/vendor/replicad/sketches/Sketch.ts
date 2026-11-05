@@ -3,7 +3,9 @@
 // @ts-nocheck
 
 import { extrudeFaceUntil } from './extrudeUntil'
-import { Vector, Plane, Point, AxisName } from '../geom.js'
+import type { AxisName } from '../geom.js'
+import { Vector, Plane } from '../geom.js'
+import type { Point } from '../geom.js'
 import { localGC } from '../register.js'
 import { makeFace, makeNewFaceWithinFace } from '../shapeHelpers.js'
 import {
@@ -13,12 +15,11 @@ import {
   revolution,
   genericSweep,
   loft,
-  ExtrusionProfile,
-  GenericSweepConfig,
-  LoftConfig,
 } from '../addThickness.js'
-import { Face, Shape3D, Wire } from '../shapes.js'
-import { ExtrudeUntilOptions, SketchInterface } from './lib.js'
+import type { ExtrusionProfile, GenericSweepConfig, LoftConfig } from '../addThickness.js'
+import { Face, Wire } from '../shapes.js'
+import type { Shape3D } from '../shapes.js'
+import type { ExtrudeUntilOptions, SketchInterface } from './lib.js'
 
 /**
  * A line drawing to be acted upon. It defines directions to be acted upon by

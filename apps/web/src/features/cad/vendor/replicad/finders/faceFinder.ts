@@ -2,10 +2,13 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Point, Plane, PlaneName } from '../geom'
+import { Plane } from '../geom'
+import type { Point, PlaneName } from '../geom'
 import { makePlane } from '../geomHelpers'
-import { Face, AnyShape, SurfaceType } from '../shapes'
-import { PLANE_TO_DIR, StandardPlane } from './definitions'
+import { Face } from '../shapes'
+import type { AnyShape, SurfaceType } from '../shapes'
+import { PLANE_TO_DIR } from './definitions'
+import type { StandardPlane } from './definitions'
 import { Finder3d } from './generic3dfinder'
 
 /**

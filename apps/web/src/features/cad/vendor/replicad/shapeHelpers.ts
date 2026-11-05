@@ -2,24 +2,16 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import {
-  AnyShape,
-  Edge,
-  Face,
-  Wire,
-  Solid,
-  Vertex,
-  cast,
-  downcast,
-  Shape3D,
-  isShape3D,
-  Shell,
-} from './shapes'
-import { asPnt, Direction, makeAx3, makeAx2, Point, Vector, makeAx1 } from './geom'
+import { Edge, Face, Wire, Solid, Vertex, cast, downcast, isShape3D, Shell } from './shapes'
+import type { AnyShape, Shape3D } from './shapes'
+import { asPnt, makeAx3, makeAx2, makeAx1 } from './geom'
+import { Vector } from './geom'
+import type { Direction, Point } from './geom'
 import { getOC } from './oclib.js'
-import { GCWithScope, localGC, WrappingObj } from './register.js'
+import { GCWithScope, localGC } from './register.js'
+import { WrappingObj } from './register.js'
 import zip from './utils/zip'
-import { GeomAPI_PointsToBSpline, gp_GTrsf, gp_Pnt } from 'replicad-opencascadejs'
+import type { GeomAPI_PointsToBSpline, gp_GTrsf, gp_Pnt } from 'replicad-opencascadejs'
 
 export const makeLine = (v1: Point, v2: Point): Edge => {
   const oc = getOC()

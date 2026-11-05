@@ -6,8 +6,10 @@ import type { TopoDS_Edge, TopoDS_Face, TopoDS_Shape } from 'replicad-opencascad
 
 import { DEG2RAD } from '../constants.js'
 import { getOC } from '../oclib.js'
-import { GCWithScope, type Deletable } from '../register.js'
-import { unwrapShape, type ShapeInput } from './shapeInput.js'
+import { GCWithScope } from '../register.js'
+import type { Deletable } from '../register.js'
+import { unwrapShape } from './shapeInput.js'
+import type { ShapeInput } from './shapeInput.js'
 import { iterTopo } from './topology.js'
 
 export type FilletRadius = number | [number, number]

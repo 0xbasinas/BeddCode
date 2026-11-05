@@ -4,10 +4,13 @@
 
 import type { TopoDS_Face } from 'replicad-opencascadejs'
 
-import { asPnt, type Point, Vector } from '../geom.js'
+import { asPnt } from '../geom.js'
+import type { Point } from '../geom.js'
+import { Vector } from '../geom.js'
 import { getOC } from '../oclib.js'
 import { GCWithScope } from '../register.js'
-import { unwrapShape, type ShapeInput } from './shapeInput.js'
+import { unwrapShape } from './shapeInput.js'
+import type { ShapeInput } from './shapeInput.js'
 
 export interface FaceUVBounds {
   uMin: number

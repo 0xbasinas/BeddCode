@@ -3,7 +3,8 @@
 // @ts-nocheck
 
 import { DEG2RAD } from './constants'
-import { Point2D, polarToCartesian } from './lib2d'
+import { polarToCartesian } from './lib2d'
+import type { Point2D } from './lib2d'
 
 type StartSplineTangent = number | Point2D
 export type SplineTangent = StartSplineTangent | 'symmetric'

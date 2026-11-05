@@ -6,7 +6,7 @@ import { WrappingObj, GCWithScope } from './register.js'
 import { DEG2RAD, RAD2DEG } from './constants.js'
 import { getOC } from './oclib.js'
 
-import {
+import type {
   gp_Ax1,
   gp_Ax2,
   gp_Ax3,
@@ -15,11 +15,11 @@ import {
   gp_Dir,
   gp_Pnt,
   gp_Pln,
-  OpenCascadeInstance,
   gp_Trsf,
   TopoDS_Shape,
   Bnd_Box,
 } from 'replicad-opencascadejs'
+import type { OpenCascadeInstance } from 'replicad-opencascadejs'
 
 const round3 = (v: number) => Math.round(v * 1000) / 1000
 

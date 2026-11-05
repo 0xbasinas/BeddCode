@@ -2,7 +2,7 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Shape3D } from './shapes'
+import type { Shape3D } from './shapes'
 import Sketcher from './Sketcher'
 
 /**

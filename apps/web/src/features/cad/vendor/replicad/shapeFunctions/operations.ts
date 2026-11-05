@@ -10,11 +10,14 @@ import type {
 } from 'replicad-opencascadejs'
 
 import { DEG2RAD } from '../constants.js'
-import { asDir, asPnt, makePln, type Plane, type PlaneName, type SimplePoint } from '../geom.js'
+import { asDir, asPnt, makePln } from '../geom.js'
+import { Plane } from '../geom.js'
+import type { PlaneName, SimplePoint } from '../geom.js'
 import { makePlane } from '../geomHelpers.js'
 import { getOC } from '../oclib.js'
 import { GCWithScope } from '../register.js'
-import { unwrapShape, type ShapeInput } from './shapeInput.js'
+import { unwrapShape } from './shapeInput.js'
+import type { ShapeInput } from './shapeInput.js'
 import { iterTopo } from './topology.js'
 
 export interface BooleanOperationOptions {

@@ -2,16 +2,18 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Point2D, BoundingBox2d } from '../lib2d'
+import { BoundingBox2d } from '../lib2d'
+import type { Point2D } from '../lib2d'
 import { Face } from '../shapes'
 
-import { Plane, PlaneName, Point } from '../geom'
+import { Plane } from '../geom'
+import type { PlaneName, Point } from '../geom'
 
-import { ScaleMode } from '../curves'
+import type { ScaleMode } from '../curves'
 import Blueprint from './Blueprint'
 import Blueprints from './Blueprints'
 import CompoundBlueprint from './CompoundBlueprint'
-import { SketchInterface } from '../sketches/lib'
+import type { SketchInterface } from '../sketches/lib'
 import Sketches from '../sketches/Sketches'
 
 const groupByBoundingBoxOverlap = (blueprints: Blueprint[]): Blueprint[][] => {

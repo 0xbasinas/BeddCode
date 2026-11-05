@@ -3,7 +3,7 @@
 // @ts-nocheck
 
 import Sketch from './Sketch'
-import { SketchInterface } from './lib'
+import type { SketchInterface } from './lib'
 import CompoundSketch from './CompoundSketch'
 import Sketches from './Sketches'
 

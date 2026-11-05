@@ -2,7 +2,7 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Geom2dAdaptor_Curve, GeomAbs_Shape } from 'replicad-opencascadejs'
+import type { Geom2dAdaptor_Curve, GeomAbs_Shape } from 'replicad-opencascadejs'
 import { findCurveType } from '../definitionMaps'
 import { getOC } from '../oclib'
 import { GCWithScope } from '../register'

@@ -2,10 +2,10 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { gp_Ax2d, gp_Dir2d, gp_Pnt2d, gp_Vec2d } from 'replicad-opencascadejs'
+import type { gp_Ax2d, gp_Dir2d, gp_Pnt2d, gp_Vec2d } from 'replicad-opencascadejs'
 import { getOC } from '../oclib'
 import { localGC } from '../register'
-import { Point2D } from './definitions'
+import type { Point2D } from './definitions'
 
 export const pnt = ([x, y]: Point2D): gp_Pnt2d => {
   const oc = getOC()

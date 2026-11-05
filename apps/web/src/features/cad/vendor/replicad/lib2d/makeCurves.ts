@@ -2,11 +2,11 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Geom2dAPI_PointsToBSpline } from 'replicad-opencascadejs'
+import type { Geom2dAPI_PointsToBSpline } from 'replicad-opencascadejs'
 import { getOC } from '../oclib.js'
 import { GCWithScope, localGC } from '../register.js'
 
-import { Point2D } from './definitions.js'
+import type { Point2D } from './definitions.js'
 import { axis2d, pnt, vec } from './ocWrapper.js'
 
 import { Curve2D } from './Curve2D'

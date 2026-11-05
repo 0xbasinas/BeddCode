@@ -8,13 +8,9 @@ import { localGC } from './register.js'
 import { getOC } from './oclib.js'
 import { assembleWire } from './shapeHelpers'
 import { Edge, Face, Wire } from './shapes'
-import {
-  convertSvgEllipseParams,
-  defaultsSplineConfig,
-  SplineConfig,
-  GenericSketcher,
-} from './sketcherlib'
-import { Geom2d_Curve, Geom_Surface } from 'replicad-opencascadejs'
+import { convertSvgEllipseParams, defaultsSplineConfig } from './sketcherlib'
+import type { SplineConfig, GenericSketcher } from './sketcherlib'
+import type { Geom2d_Curve, Geom_Surface } from 'replicad-opencascadejs'
 import { chamferCurves, Curve2D, dogboneFilletCurves, filletCurves } from './lib2d'
 
 import {
@@ -31,8 +27,8 @@ import {
   make2dThreePointArc,
   make2dBezierCurve,
   make2dEllipseArc,
-  Point2D,
 } from './lib2d'
+import type { Point2D } from './lib2d'
 import Blueprint from './blueprints/Blueprint'
 
 type UVBounds = {

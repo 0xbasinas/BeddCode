@@ -2,7 +2,8 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { AxisName, Vector } from '../geom'
+import { Vector } from '../geom'
+import type { AxisName } from '../geom'
 import { Face, Edge } from '../shapes'
 
 export type StandardPlane = 'XY' | 'XZ' | 'YZ'

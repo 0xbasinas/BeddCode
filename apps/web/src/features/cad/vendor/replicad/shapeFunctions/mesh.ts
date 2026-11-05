@@ -6,7 +6,8 @@ import type { TopoDS_Face } from 'replicad-opencascadejs'
 
 import { getOC } from '../oclib.js'
 import { GCWithScope } from '../register.js'
-import { unwrapShape, type ShapeInput } from './shapeInput.js'
+import { unwrapShape } from './shapeInput.js'
+import type { ShapeInput } from './shapeInput.js'
 
 export interface MeshOptions {
   tolerance?: number

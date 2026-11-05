@@ -3,12 +3,16 @@
 // @ts-nocheck
 
 import { getOC } from './oclib'
-import { Solid, cast, downcast, Face, Shape3D, isShape3D, isWire, Wire, Edge } from './shapes'
+import { cast, downcast, isShape3D, isWire } from './shapes'
+import { Solid, Face, Wire, Edge } from './shapes'
+import type { Shape3D } from './shapes'
 import { makeLine, makeHelix, assembleWire, makeVertex } from './shapeHelpers'
 import { localGC } from './register'
-import { Direction, Vector, makeAx1, Point } from './geom'
+import { makeAx1 } from './geom'
+import { Vector } from './geom'
+import type { Direction, Point } from './geom'
 import { DEG2RAD } from './constants'
-import { Law_Function, Law_Linear, Law_S, TopoDS_Shape } from 'replicad-opencascadejs'
+import type { Law_Function, Law_Linear, Law_S, TopoDS_Shape } from 'replicad-opencascadejs'
 
 export const basicFaceExtrusion = (face: Face, extrusionVec: Vector): Solid => {
   const oc = getOC()

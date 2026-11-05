@@ -2,16 +2,19 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Geom2dAdaptor_Curve, Geom2d_Curve } from 'replicad-opencascadejs'
+import type { Geom2dAdaptor_Curve, Geom2d_Curve } from 'replicad-opencascadejs'
 
-import { CurveType, findCurveType } from '../definitionMaps'
+import { findCurveType } from '../definitionMaps'
+import type { CurveType } from '../definitionMaps'
 import precisionRound from '../utils/precisionRound'
 import { getOC } from '../oclib.js'
-import { GCWithScope, localGC, WrappingObj } from '../register.js'
+import { GCWithScope, localGC } from '../register.js'
+import { WrappingObj } from '../register.js'
 import zip from '../utils/zip.js'
 
 import { BoundingBox2d } from './BoundingBox2d.js'
-import { isPoint2D, Point2D } from './definitions.js'
+import { isPoint2D } from './definitions.js'
+import type { Point2D } from './definitions.js'
 import { pnt } from './ocWrapper.js'
 import { reprPnt } from './utils.js'
 import { distance2d, samePoint } from './vectorOperations.js'

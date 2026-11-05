@@ -3,7 +3,7 @@
 // @ts-nocheck
 
 import { getOC } from './oclib'
-import { OpenCascadeInstance } from 'replicad-opencascadejs'
+import type { OpenCascadeInstance } from 'replicad-opencascadejs'
 
 export interface Deletable {
   delete: () => void

@@ -3,11 +3,13 @@
 // @ts-nocheck
 
 import { localGC } from '../register'
-import { ExtrudeUntilOptions } from './lib'
-import { Point, AxisName } from '../geom.js'
+import type { ExtrudeUntilOptions } from './lib'
+import type { AxisName } from '../geom.js'
+import type { Point } from '../geom.js'
 import { compoundShapes } from '../shapeHelpers.js'
-import { ExtrusionProfile } from '../addThickness.js'
-import { AnyShape, Face, Shape3D } from '../shapes.js'
+import type { ExtrusionProfile } from '../addThickness.js'
+import { Face } from '../shapes.js'
+import type { AnyShape, Shape3D } from '../shapes.js'
 
 import CompoundSketch from './CompoundSketch'
 import Sketch from './Sketch'

@@ -7,7 +7,8 @@ import Blueprints from './Blueprints'
 import CompoundBlueprint from './CompoundBlueprint'
 import { organiseBlueprints } from './lib'
 import { fuseBlueprints, cutBlueprints, intersectBlueprints } from './booleanOperations'
-import { intersectCurves, Point2D, removeDuplicatePoints } from '../lib2d'
+import { intersectCurves, removeDuplicatePoints } from '../lib2d'
+import type { Point2D } from '../lib2d'
 
 export type Shape2D = Blueprint | Blueprints | CompoundBlueprint | null
 

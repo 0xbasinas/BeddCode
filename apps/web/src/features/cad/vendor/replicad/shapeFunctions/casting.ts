@@ -4,7 +4,8 @@
 
 import type { TopoDS_Shape } from 'replicad-opencascadejs'
 
-import { downcast, shapeType, topologyKind, type TopologyKind } from './topology.js'
+import { downcast, shapeType, topologyKind } from './topology.js'
+import type { TopologyKind } from './topology.js'
 
 export type ShapeConstructors<T> = {
   [K in TopologyKind]: new (shape: any) => T

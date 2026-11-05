@@ -2,10 +2,13 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Direction, Point, Plane, PlaneName, Vector } from '../geom'
+import { Plane, Vector } from '../geom'
+import type { Direction, Point, PlaneName } from '../geom'
 import { makePlane } from '../geomHelpers'
-import { Face, AnyShape, Edge, CurveType } from '../shapes'
-import { PLANE_TO_DIR, StandardPlane } from './definitions'
+import { Face, Edge } from '../shapes'
+import type { AnyShape, CurveType } from '../shapes'
+import { PLANE_TO_DIR } from './definitions'
+import type { StandardPlane } from './definitions'
 import { Finder3d } from './generic3dfinder'
 
 /**

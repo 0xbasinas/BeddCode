@@ -2,11 +2,14 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { FaceOrEdge, FilterFcn, Finder } from './definitions'
+import { Finder } from './definitions'
+import type { FaceOrEdge, FilterFcn } from './definitions'
 
-import { Direction, makeDirVector, Vector, Point } from '../geom'
+import { makeDirVector } from '../geom'
+import { Vector } from '../geom'
+import type { Direction, Point } from '../geom'
 import { DEG2RAD } from '../constants'
-import { AnyShape } from '../shapes'
+import type { AnyShape } from '../shapes'
 import { makeBox, makeVertex } from '../shapeHelpers'
 import { DistanceQuery } from '../measureShape'
 

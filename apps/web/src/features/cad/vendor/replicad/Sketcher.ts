@@ -2,11 +2,13 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Plane, PlaneName, Point, Vector } from './geom'
+import { Plane, Vector } from './geom'
+import type { PlaneName, Point } from './geom'
 import { makePlane } from './geomHelpers'
 import { localGC } from './register'
 import { DEG2RAD, RAD2DEG } from './constants'
-import { distance2d, polarAngle2d, polarToCartesian, Point2D } from './lib2d'
+import { distance2d, polarAngle2d, polarToCartesian } from './lib2d'
+import type { Point2D } from './lib2d'
 import {
   makeLine,
   makeThreePointArc,
@@ -16,14 +18,11 @@ import {
   assembleWire,
 } from './shapeHelpers.js'
 
-import {
-  convertSvgEllipseParams,
-  SplineConfig,
-  defaultsSplineConfig,
-  GenericSketcher,
-} from './sketcherlib.js'
-import { CurveLike, Edge, Wire } from './shapes.js'
-import { Geom_BezierCurve } from 'replicad-opencascadejs'
+import { convertSvgEllipseParams, defaultsSplineConfig } from './sketcherlib.js'
+import type { SplineConfig, GenericSketcher } from './sketcherlib.js'
+import type { CurveLike } from './shapes.js'
+import { Edge, Wire } from './shapes.js'
+import type { Geom_BezierCurve } from 'replicad-opencascadejs'
 import Sketch from './sketches/Sketch.js'
 
 /**

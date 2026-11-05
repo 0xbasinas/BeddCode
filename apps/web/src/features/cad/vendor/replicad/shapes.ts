@@ -3,7 +3,8 @@
 // @ts-nocheck
 
 import { WrappingObj } from './register.js'
-import { Vector, Point, Direction, Plane, PlaneName, BoundingBox } from './geom.js'
+import { Vector, Plane, BoundingBox } from './geom.js'
+import type { Point, Direction, PlaneName } from './geom.js'
 import type { Shape3DLike } from './shapeInterfaces.js'
 import { HASH_CODE_MAX } from './constants.js'
 import { getOC } from './oclib.js'
@@ -11,27 +12,30 @@ import {
   mesh as extractShapeMesh,
   meshEdges as extractShapeEdgeMesh,
   triangulateFace,
-  type FaceTriangulation,
-  type MeshOptions,
-  type ShapeEdgeMesh,
-  type ShapeMesh,
+} from './shapeFunctions/mesh.js'
+import type {
+  FaceTriangulation,
+  MeshOptions,
+  ShapeEdgeMesh,
+  ShapeMesh,
 } from './shapeFunctions/mesh.js'
 import {
   deserializeTopoShape,
   exportShapeSTEP,
   exportShapeSTL,
   serializeShape,
-  type STLExportOptions,
 } from './shapeFunctions/export.js'
-import { Curve, Surface, type CurveLike, type SurfaceType } from './shapeFunctions/geometry.js'
+import type { STLExportOptions } from './shapeFunctions/export.js'
+import { Curve, Surface } from './shapeFunctions/geometry.js'
+import type { CurveLike, SurfaceType } from './shapeFunctions/geometry.js'
 import {
   faceCenter,
   faceNormalAt,
   faceUVBounds,
   faceUVCoordinates,
   pointOnFace,
-  type FaceUVBounds,
 } from './shapeFunctions/faceGeometry.js'
+import type { FaceUVBounds } from './shapeFunctions/faceGeometry.js'
 import {
   cutShape,
   cutShapeWithPlane,
@@ -40,9 +44,11 @@ import {
   intersectShapes,
   shellShape,
   splitShape,
-  type BooleanOperationOptions,
-  type PlaneSide,
-  type PlaneSplitResult,
+} from './shapeFunctions/operations.js'
+import type {
+  BooleanOperationOptions,
+  PlaneSide,
+  PlaneSplitResult,
 } from './shapeFunctions/operations.js'
 import {
   chamferShape,
@@ -50,13 +56,12 @@ import {
   isFilletRadius,
   mapSelectedEdges,
   selectEdgeRadii,
-  type ChamferEdgeConfig,
-  type FilletRadius,
 } from './shapeFunctions/edgeOperations.js'
+import type { ChamferEdgeConfig, FilletRadius } from './shapeFunctions/edgeOperations.js'
 import { downcast, iterTopo, shapeType } from './shapeFunctions/topology.js'
 import { makeCaster } from './shapeFunctions/casting.js'
 
-import {
+import type {
   TopoDS_Face,
   TopoDS_Shape,
   TopoDS_Edge,
@@ -70,7 +75,8 @@ import {
   BRepAdaptor_Curve,
   BRepAdaptor_CompCurve,
 } from 'replicad-opencascadejs'
-import { EdgeFinder, FaceFinder, type FinderFunction } from './finders/index.js'
+import { EdgeFinder, FaceFinder } from './finders/index.js'
+import type { FinderFunction } from './finders/index.js'
 import { rotate, translate, mirror, scale as scaleShape } from './geomHelpers'
 import type { CurveType } from './definitionMaps'
 

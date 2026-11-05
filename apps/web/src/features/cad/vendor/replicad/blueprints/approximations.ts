@@ -2,10 +2,11 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { approximateAsSvgCompatibleCurve, ApproximationOptions } from '../lib2d'
+import { approximateAsSvgCompatibleCurve } from '../lib2d'
+import type { ApproximationOptions } from '../lib2d'
 import Blueprint from './Blueprint'
 import Blueprints from './Blueprints'
-import { Shape2D } from './boolean2D'
+import type { Shape2D } from './boolean2D'
 import CompoundBlueprint from './CompoundBlueprint'
 
 export function approximateForSVG<T extends Shape2D>(bp: T, options: ApproximationOptions): T {

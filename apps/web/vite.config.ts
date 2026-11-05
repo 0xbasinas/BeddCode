@@ -7,11 +7,12 @@ import { fileURLToPath } from 'node:url'
 // connections, images and frames stay open to the network; what is locked down is code: scripts
 // only from the app itself, no JS eval, no plugins, no re-pointing of the page's base or forms.
 // wasm-unsafe-eval lets the CAD worker compile the unmodified OpenCascade WASM module.
+// unsafe-eval is also required: the shipped OCCT JS glue uses `new Function` during init.
 const policy = (dev: boolean) =>
   [
     "default-src 'self'",
     // Vite's dev server injects an inline script for hot reload; the built app has none.
-    `script-src 'self' 'wasm-unsafe-eval'${dev ? " 'unsafe-inline'" : ''}`,
+    `script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'${dev ? " 'unsafe-inline'" : ''}`,
     // React style attributes and CodeMirror's own style elements.
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: http: https:",

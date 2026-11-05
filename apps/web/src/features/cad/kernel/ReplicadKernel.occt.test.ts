@@ -65,7 +65,9 @@ if (!kernelModule.ok) {
   describe('wasm path', () => {
     it('strips the Vitest /@fs prefix when running on node', () => {
       expect(locateWasm('/@fs/workspace/cad.wasm')).toBe('/workspace/cad.wasm')
+      expect(locateWasm('/@fs/workspace/cad.wasm?import&url')).toBe('/workspace/cad.wasm')
       expect(locateWasm('./assets/cad.wasm')).toBe('./assets/cad.wasm')
+      expect(locateWasm('./assets/cad.wasm?url')).toBe('./assets/cad.wasm')
     })
   })
 

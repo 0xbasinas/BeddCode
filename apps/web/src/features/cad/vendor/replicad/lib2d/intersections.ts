@@ -2,10 +2,10 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Geom2dAPI_InterCurveCurve } from 'replicad-opencascadejs'
+import type { Geom2dAPI_InterCurveCurve } from 'replicad-opencascadejs'
 import { getOC } from '../oclib'
 import { Curve2D } from './Curve2D'
-import { Point2D } from './definitions'
+import type { Point2D } from './definitions'
 import { samePoint } from './vectorOperations'
 
 function* pointsIteration(intersector: Geom2dAPI_InterCurveCurve): Generator<Point2D> {

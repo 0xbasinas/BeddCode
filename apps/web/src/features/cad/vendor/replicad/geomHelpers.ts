@@ -2,17 +2,10 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import {
-  createNamedPlane,
-  Plane,
-  PlaneName,
-  Point,
-  Direction,
-  Transformation,
-  Vector,
-} from './geom'
-import { Point2D } from './lib2d'
-import { TopoDS_Shape } from 'replicad-opencascadejs'
+import { createNamedPlane, Plane, Transformation, Vector } from './geom'
+import type { PlaneName, Point, Direction } from './geom'
+import type { Point2D } from './lib2d'
+import type { TopoDS_Shape } from 'replicad-opencascadejs'
 
 export interface PlaneFace {
   pointOnSurface(u: number, v: number): Vector

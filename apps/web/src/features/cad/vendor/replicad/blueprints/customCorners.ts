@@ -2,11 +2,12 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Corner, CornerFinder } from '../finders/cornerFinder'
+import { CornerFinder } from '../finders/cornerFinder'
+import type { Corner } from '../finders/cornerFinder'
 import { chamferCurves, Curve2D, filletCurves, samePoint, dogboneFilletCurves } from '../lib2d'
 import Blueprint from './Blueprint'
 import Blueprints from './Blueprints'
-import { Shape2D } from './boolean2D'
+import type { Shape2D } from './boolean2D'
 import CompoundBlueprint from './CompoundBlueprint'
 
 type CornerMaker = (c1: Curve2D, c2: Curve2D, radius: number) => Curve2D[]

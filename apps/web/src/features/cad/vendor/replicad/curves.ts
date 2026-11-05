@@ -2,16 +2,19 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { gp_GTrsf2d, Geom_Surface } from 'replicad-opencascadejs'
+import type { gp_GTrsf2d, Geom_Surface } from 'replicad-opencascadejs'
 
-import { GCWithScope, localGC, WrappingObj } from './register'
+import { GCWithScope, localGC } from './register'
+import { WrappingObj } from './register'
 import type { Deletable } from './register'
 import { getOC } from './oclib.js'
 import { findCurveType } from './definitionMaps'
 
 import { Edge, Face } from './shapes'
-import { Plane, makeAx2 } from './geom'
-import { axis2d, pnt, Point2D, vec, BoundingBox2d, Curve2D, make2dSegmentCurve } from './lib2d'
+import { makeAx2 } from './geom'
+import { Plane } from './geom'
+import { axis2d, pnt, vec, BoundingBox2d, Curve2D, make2dSegmentCurve } from './lib2d'
+import type { Point2D } from './lib2d'
 
 export const curvesBoundingBox = (curves: Curve2D[]): BoundingBox2d => {
   const oc = getOC()

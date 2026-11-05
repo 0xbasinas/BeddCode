@@ -49,7 +49,14 @@ export function createCadClient(): GeometryKernel {
     if (response.ok) waiter.resolve(response)
     else waiter.reject(new Error(response.error))
   }
-  worker.onerror = () => failAll(new Error('cad worker failed'))
+  worker.onerror = (event) =>
+    failAll(
+      new Error(
+        event instanceof ErrorEvent && event.message
+          ? `cad worker failed: ${event.message}`
+          : 'cad worker failed',
+      ),
+    )
 
   function send(
     request: RequestBody,

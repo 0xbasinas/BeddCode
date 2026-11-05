@@ -2,7 +2,8 @@
 // Vendored and adapted for BeddCode from https://github.com/sgenoud/replicad
 // @ts-nocheck
 
-import { Finder, FilterFcn, FinderFunction } from './definitions'
+import { Finder } from './definitions'
+import type { FilterFcn, FinderFunction } from './definitions'
 
 export type { FilterFcn, FinderFunction }
 

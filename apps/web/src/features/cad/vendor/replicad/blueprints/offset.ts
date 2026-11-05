@@ -8,7 +8,6 @@ import {
   make2dOffset,
   Curve2D,
   samePoint as defaultSamePoint,
-  Point2D,
   make2dSegmentCurve,
   squareDistance2d,
   make2dArcFromCenter,
@@ -16,7 +15,9 @@ import {
   subtract2d,
   determinant2x2,
 } from '../lib2d'
-import { Blueprint, Blueprints, CompoundBlueprint, fuse2D, Shape2D, cut2D } from '.'
+import type { Point2D } from '../lib2d'
+import { Blueprint, Blueprints, CompoundBlueprint, fuse2D, cut2D } from '.'
+import type { Shape2D } from '.'
 
 const PRECISION = 1e-8
 

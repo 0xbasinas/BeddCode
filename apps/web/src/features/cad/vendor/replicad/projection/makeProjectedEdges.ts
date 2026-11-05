@@ -6,8 +6,9 @@ import { cast } from '../shapes'
 import { getOC } from '../oclib'
 import { GCWithScope } from '../register'
 
-import type { Edge, AnyShape } from '../shapes'
-import type { ProjectionCamera } from './ProjectionCamera'
+import { Edge } from '../shapes'
+import type { AnyShape } from '../shapes'
+import { ProjectionCamera } from './ProjectionCamera'
 import type { TopoDS_Shape } from 'replicad-opencascadejs'
 
 const getEdges = (shape: TopoDS_Shape) => {
