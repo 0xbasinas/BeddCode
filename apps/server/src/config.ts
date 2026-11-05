@@ -14,6 +14,8 @@ export interface ServerConfig {
   relayPassword?: string
   /** Upload anonymous speed measurements to the relay. */
   telemetry?: boolean
+  /** Claude's agent process keeps running through a host restart (see docs/agent-supervisor.md). */
+  agentSupervisor?: boolean
 }
 
 /** Settings kept in `<data dir>/config.json` (see `beddcode config`); flags and variables win. */
@@ -26,6 +28,7 @@ export interface ConfigFile {
   relayUrl?: string
   relayPassword?: string
   telemetry?: boolean
+  agentSupervisor?: boolean
 }
 
 export const configPath = () => path.join(dataHome(), 'config.json')
@@ -67,7 +70,7 @@ export function sanitizeConfig(raw: unknown, warn: (message: string) => void): C
   if (config.host !== undefined && (typeof config.host !== 'string' || !config.host.trim())) {
     drop('host', 'not an address')
   }
-  for (const key of ['allowLan', 'requireToken', 'telemetry']) {
+  for (const key of ['allowLan', 'requireToken', 'telemetry', 'agentSupervisor']) {
     if (config[key] !== undefined && typeof config[key] !== 'boolean')
       drop(key, 'not true or false')
   }
@@ -158,6 +161,11 @@ export function parseServeArgs(
   const telemetry =
     env.BEDDCODE_TELEMETRY !== undefined ? truthy(env.BEDDCODE_TELEMETRY) : file.telemetry
   if (telemetry !== undefined) config.telemetry = telemetry
+  const supervisor =
+    env.BEDDCODE_AGENT_SUPERVISOR !== undefined
+      ? truthy(env.BEDDCODE_AGENT_SUPERVISOR)
+      : file.agentSupervisor
+  if (supervisor !== undefined) config.agentSupervisor = supervisor
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!

@@ -37,15 +37,16 @@ const collect = (session: { events: AsyncIterable<SessionEvent> }) => {
 const text = (events: SessionEvent[]) =>
   events.flatMap((e) => (e.type === 'message.delta' ? [e.text] : [])).join('')
 
+afterAll(async () => {
+  // Ends the daemon (it leaves on its own when idle) and anything it still holds.
+  for (const dir of [path.join(root, 'supervisor'), path.join(root, 'supervisor-2')])
+    for (const a of await new SupervisorClient(dir).list()) if (alive(a.pid)) process.kill(a.pid)
+  await new Promise((r) => setTimeout(r, 300))
+  rmSync(root, { recursive: true, force: true })
+})
+
 describe('agent supervisor', () => {
   const sup = path.join(root, 'supervisor')
-  afterAll(async () => {
-    // Ends the daemon (it leaves on its own when idle) and anything it still holds.
-    for (const a of await new SupervisorClient(sup).list()) if (alive(a.pid)) process.kill(a.pid)
-    await new Promise((r) => setTimeout(r, 300))
-    rmSync(root, { recursive: true, force: true })
-  })
-
   it('keeps the agent running through a host restart and loses none of its output', async () => {
     const state = path.join(root, 'state')
     mkdirSync(state)
@@ -107,4 +108,75 @@ describe('agent supervisor', () => {
     expect(session.reattached).toBe(false)
     await session.close()
   })
+})
+
+describe('agent supervisor, harder cases', () => {
+  const sup = path.join(root, 'supervisor-2')
+  const state = path.join(root, 'state-2')
+  const host = () =>
+    createClaudeAdapter({
+      executablePath: fake,
+      log,
+      supervisor: new SupervisorClient(sup, { daemonEnv: { BEDDCODE_SUPERVISOR_IDLE_MS: '500' } }),
+    })
+
+  it('hands a permission prompt nobody answered to the next host', async () => {
+    mkdirSync(state)
+    Object.assign(process.env, {
+      FAKE_STATE: state,
+      FAKE_ASK: '1',
+      FAKE_PARTS: '2',
+      FAKE_TICK_MS: '50',
+    })
+    const first = await host().startSession('claude', { sessionId: 'ask', cwd: root })
+    const seen1 = collect(first)
+    void first.prompt({ text: 'go', attachments: [] } as never).catch(() => {})
+    await until(() => seen1.some((e) => e.type === 'approval.requested'))
+    await first.detach!()
+
+    const second = await host().startSession('claude', {
+      sessionId: 'ask',
+      cwd: root,
+      reattach: true,
+    })
+    const seen2 = collect(second)
+    await until(() => seen2.some((e) => e.type === 'approval.requested'))
+    const asked = seen2.find((e) => e.type === 'approval.requested')
+    if (asked?.type !== 'approval.requested') throw new Error('no prompt')
+    await second.respondToApproval(asked.requestId, 'allow')
+    await until(() => seen2.some((e) => e.type === 'turn.completed'))
+    expect(text(seen2)).toContain('answer allow;')
+    expect(readFileSync(path.join(state, 'starts'), 'utf8')).toBe('x')
+    await second.close()
+    delete process.env.FAKE_ASK
+  }, 30_000)
+
+  it('keeps the agent when the host dies without detaching', async () => {
+    Object.assign(process.env, { FAKE_PARTS: '6', FAKE_TICK_MS: '150' })
+    const first = await host().startSession('claude', { sessionId: 'crash', cwd: root })
+    const seen1 = collect(first)
+    void first.prompt({ text: 'go', attachments: [] } as never).catch(() => {})
+    await until(() => text(seen1).includes('part 1;'))
+    const pid = Number(readFileSync(path.join(state, 'pid'), 'utf8'))
+    // The host process vanishing: its socket just closes, no goodbye.
+    ;(
+      first as unknown as { supervised: { conn: { socket: { destroy(): void } } } }
+    ).supervised.conn.socket.destroy()
+    await new Promise((r) => setTimeout(r, 300))
+    expect(alive(pid)).toBe(true)
+
+    const list = await new SupervisorClient(sup).list()
+    expect(list.find((a) => a.id === 'crash')).toMatchObject({ alive: true, pid, attached: false })
+
+    const second = await host().startSession('claude', {
+      sessionId: 'crash',
+      cwd: root,
+      reattach: true,
+    })
+    const seen2 = collect(second)
+    await until(() => seen2.some((e) => e.type === 'turn.completed'))
+    const all = text([...seen1, ...seen2])
+    for (let i = 1; i <= 6; i++) expect(all).toContain(`part ${i};`)
+    await second.close()
+  }, 30_000)
 })

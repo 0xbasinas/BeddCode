@@ -3,7 +3,7 @@ import type { EventStore } from '../store/eventStore.ts'
 
 const pendingResume = new Map<
   string,
-  { turnId?: string; prompt: { text: string; attachments: { name: string; path: string }[] } }
+  { turnId?: string; prompt?: { text: string; attachments: { name: string; path: string }[] } }
 >()
 
 function track(active: Map<string, { turnId?: string; at: number }>, { event }: StoredEvent) {
@@ -20,7 +20,11 @@ function track(active: Map<string, { turnId?: string; at: number }>, { event }: 
 
 /** Provider processes are gone after a host restart. Replaying their last status must not
  * leave the client waiting forever. History and provider resume IDs remain intact. */
-export function recoverInterruptedTurns(store: EventStore): string[] {
+export function recoverInterruptedTurns(
+  store: EventStore,
+  /** Sessions whose agent is still running under the supervisor: they are reattached, not cancelled. */
+  held: ReadonlySet<string> = new Set(),
+): string[] {
   pendingResume.clear()
   const active = new Map<string, { turnId?: string; at: number }>()
   const updating = new Map<string, Extract<StoredEvent['event'], { type: 'host.updating' }>>()
@@ -48,6 +52,13 @@ export function recoverInterruptedTurns(store: EventStore): string[] {
       // The marker is the durable resume record. SessionManager handles provider setup.
       pendingResume.set(sessionId, { turnId, prompt: marker.prompt })
       updating.delete(sessionId)
+      continue
+    }
+    if (held.has(sessionId)) {
+      // The host died but the agent did not: its turn carries on and the output it wrote meanwhile
+      // is replayed when the session is reattached (there is no prompt to send again).
+      resume.push(sessionId)
+      pendingResume.set(sessionId, { turnId })
       continue
     }
     store.append({

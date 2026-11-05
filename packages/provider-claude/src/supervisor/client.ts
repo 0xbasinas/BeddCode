@@ -1,11 +1,15 @@
 import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync } from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PassThrough, Writable } from 'node:stream'
 import type { SpawnedProcess } from '@anthropic-ai/claude-agent-sdk'
+import type { Logger } from '@beddcode/shared'
+
+/** The wire protocol the daemon and the host speak; a daemon of another version is not used. */
+export const PROTOCOL_VERSION = 1
 
 /** Feature flag: the supervisor is off unless this is `1`/`true`/`on`. */
 export function supervisorEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -119,7 +123,7 @@ export class SupervisorClient {
 
   constructor(
     readonly dir: string,
-    private readonly options: { daemonEnv?: NodeJS.ProcessEnv } = {},
+    private readonly options: { daemonEnv?: NodeJS.ProcessEnv; log?: Pick<Logger, 'warn'> } = {},
   ) {}
 
   private readInfo(): Info | undefined {
@@ -140,7 +144,10 @@ export class SupervisorClient {
     const hello = conn.next((f) => f.op === 'hello')
     conn.send({ op: 'hello', token: info.token })
     const reply = await hello
-    if (reply.op !== 'hello') throw new Error('the agent supervisor refused the connection')
+    if (reply.op !== 'hello' || reply.version !== PROTOCOL_VERSION) {
+      conn.close()
+      throw new Error('the agent supervisor refused the connection or speaks another version')
+    }
     return conn
   }
 
@@ -161,16 +168,20 @@ export class SupervisorClient {
 
   private async startDaemon(): Promise<Info> {
     mkdirSync(this.dir, { recursive: true })
-    const script = path.join(path.dirname(fileURLToPath(import.meta.url)), 'daemon.mjs')
-    // Detached with no stdio of its own: it must not hold the host's pipes, and must survive it.
-    // It is deliberately not tracked as one of the host's children (the host ends those on exit).
-    const child = spawn(process.execPath, [script, '--dir', this.dir], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true,
-      env: { ...process.env, ...this.options.daemonEnv },
-    })
-    child.unref()
+    const script = daemonScript()
+    // Started through a launcher that exits at once: the daemon then has no live parent, so
+    // `taskkill /T` (or a process-group kill) aimed at the host's tree cannot reach it.
+    const launcher = `require('node:child_process').spawn(process.execPath,[process.argv[1],'--dir',process.argv[2]],{detached:true,stdio:['ignore','inherit','inherit'],windowsHide:true}).unref()`
+    const logFd = openSync(path.join(this.dir, 'daemon.log'), 'a')
+    try {
+      spawn(process.execPath, ['-e', launcher, script, this.dir], {
+        stdio: ['ignore', logFd, logFd],
+        windowsHide: true,
+        env: { ...process.env, ...this.options.daemonEnv },
+      }).unref()
+    } finally {
+      closeSync(logFd)
+    }
     const deadline = Date.now() + 8_000
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 40))
@@ -371,4 +382,16 @@ export class SupervisedProcess extends EventEmitter implements SpawnedProcess {
     this.send({ op: 'kill' })
     return true
   }
+}
+
+/** Next to this file when run from source, next to the bundle in an installed host. */
+function daemonScript(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  for (const candidate of [
+    path.join(here, 'daemon.mjs'),
+    path.join(here, 'supervisor', 'daemon.mjs'),
+  ]) {
+    if (existsSync(candidate)) return candidate
+  }
+  throw new Error('the agent supervisor program (daemon.mjs) is missing')
 }

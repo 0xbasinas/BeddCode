@@ -26,6 +26,10 @@ export const SETTINGS: Record<keyof ConfigFile, { kind: Kind; help: string }> = 
     kind: 'boolean',
     help: 'Upload anonymous speed measurements to your relay (see `beddcode metrics`)',
   },
+  agentSupervisor: {
+    kind: 'boolean',
+    help: "Keep Claude's process running through a host restart (experimental)",
+  },
   relayPassword: { kind: 'string', help: 'The password your relay asks of hosts, if you set one' },
   relayUrl: {
     kind: 'string',

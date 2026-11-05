@@ -6,7 +6,7 @@ import {
   createAcpAdapter,
   createOpenCodeAdapter,
 } from '@beddcode/provider-acp'
-import { createClaudeAdapter, SupervisorClient, supervisorEnabled } from '@beddcode/provider-claude'
+import { createClaudeAdapter, SupervisorClient } from '@beddcode/provider-claude'
 import { createCodexAdapter } from '@beddcode/provider-codex'
 import { createGrokAdapter } from '@beddcode/provider-grok'
 import { createPiAdapter } from '@beddcode/provider-pi'
@@ -75,14 +75,19 @@ export async function runServer(config: ServerConfig): Promise<void> {
   )
   recordChildrenIn(ledger)
 
+  // Opt-in: Claude's process then outlives a host restart (docs/agent-supervisor.md).
+  const supervisor = config.agentSupervisor
+    ? new SupervisorClient(path.join(home, 'supervisor'), { log })
+    : undefined
+  const held = new Set(
+    (await supervisor?.list().catch(() => []))?.flatMap((a) => (a.alive ? [a.id] : [])) ?? [],
+  )
+
   const acpStore = new AcpAgentStore(path.join(home, 'acp-agents.json'))
   const adapters: ProviderAdapter[] = [
     createClaudeAdapter({
       log: createLogger('claude'),
-      // Experimental and off by default: Claude's process then outlives a host restart.
-      supervisor: supervisorEnabled()
-        ? new SupervisorClient(path.join(home, 'supervisor'))
-        : undefined,
+      supervisor,
     }),
     createCodexAdapter({ log: createLogger('codex') }),
     createGrokAdapter({ log: createLogger('grok') }),
@@ -97,7 +102,7 @@ export async function runServer(config: ServerConfig): Promise<void> {
   }
 
   const store = openEventStore(path.join(home, 'beddcode.db'))
-  recoverInterruptedTurns(store)
+  recoverInterruptedTurns(store, held)
   const interruptedSessions = takeInterruptedSessions()
   const attachments = new AttachmentStore(path.join(home, 'attachments'))
   const git = new GitService()

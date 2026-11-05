@@ -15,7 +15,9 @@ const dir = path.resolve(argv[argv.indexOf('--dir') + 1] ?? '.')
 const GRACE_MS = Number(process.env.BEDDCODE_SUPERVISOR_GRACE_MS ?? 15 * 60_000)
 // The daemon itself leaves when it has held no agent and no connection for this long.
 const IDLE_MS = Number(process.env.BEDDCODE_SUPERVISOR_IDLE_MS ?? 60_000)
-const REPLAY_SLICE = 64 * 1024
+const REPLAY_SLICE = 256 * 1024
+// What the log may hold of output the host already took in before it is cut back to what is needed.
+const COMPACT_AT = 4 * 1024 * 1024
 
 fs.mkdirSync(path.join(dir, 'logs'), { recursive: true })
 const infoFile = path.join(dir, 'supervisor.json')
@@ -34,7 +36,8 @@ let idleSince = Date.now()
  * @property {string} id
  * @property {import('node:child_process').ChildProcess} child
  * @property {string} log        file holding everything the agent wrote to stdout
- * @property {number} size       bytes in that file
+ * @property {number} base       offset of the first byte still in that file (the rest was taken in)
+ * @property {number} size       offset just past the last byte written (absolute, like `base`)
  * @property {number} acked      bytes the host has taken in (always the end of a whole line)
  * @property {{ code: number | null, signal: string | null } | null} exited
  * @property {net.Socket | null} conn
@@ -104,6 +107,7 @@ function spawnAgent(id, { command, args = [], cwd, env, meta }) {
     id,
     child,
     log: path.join(dir, 'logs', `${crypto.randomBytes(6).toString('hex')}.out`),
+    base: 0,
     size: 0,
     acked: 0,
     exited: null,
@@ -210,6 +214,23 @@ function handleIn(agent, data, sock) {
   if (forward && !agent.exited) agent.child.stdin.write(forward)
 }
 
+/** Drops the start of the log that the host has taken in, once that is a lot of it. */
+function compact(agent) {
+  if (agent.acked - agent.base < COMPACT_AT) return
+  try {
+    const keep = Buffer.alloc(agent.size - agent.acked)
+    const fd = fs.openSync(agent.log, 'r')
+    try {
+      fs.readSync(fd, keep, 0, keep.length, agent.acked - agent.base)
+    } finally {
+      fs.closeSync(fd)
+    }
+    // Appends from the agent are synchronous on this thread, so nothing lands in between.
+    fs.writeFileSync(agent.log, keep)
+    agent.base = agent.acked
+  } catch {}
+}
+
 function replay(agent, sock) {
   // Requests the agent is still waiting on come first, unless the log replay already holds them.
   for (const ask of agent.asks.values()) {
@@ -218,14 +239,26 @@ function replay(agent, sock) {
   if (agent.size > agent.acked) {
     const fd = fs.openSync(agent.log, 'r')
     try {
-      const buf = Buffer.alloc(agent.size - agent.acked)
-      fs.readSync(fd, buf, 0, buf.length, agent.acked)
-      const text = buf.toString('utf8')
+      // In slices that end at a newline (a byte that never occurs inside a UTF-8 character), so
+      // no character is cut and the host's acknowledgements stay at line ends.
       let off = agent.acked
-      for (let i = 0; i < text.length; i += REPLAY_SLICE) {
-        const slice = text.slice(i, i + REPLAY_SLICE)
-        send(sock, { op: 'out', off, data: slice })
-        off += Buffer.byteLength(slice)
+      const buf = Buffer.alloc(REPLAY_SLICE)
+      let carry = Buffer.alloc(0)
+      while (off + carry.length < agent.size) {
+        const at = off + carry.length
+        const n = fs.readSync(fd, buf, 0, Math.min(buf.length, agent.size - at), at - agent.base)
+        if (n === 0) break
+        const chunk = Buffer.concat([carry, buf.subarray(0, n)])
+        const end = chunk.lastIndexOf(0x0a) + 1
+        const last = at + n >= agent.size
+        const upto = last ? chunk.length : end
+        if (upto === 0) {
+          carry = chunk
+          continue
+        }
+        send(sock, { op: 'out', off, data: chunk.subarray(0, upto).toString('utf8') })
+        off += upto
+        carry = chunk.subarray(upto)
       }
     } finally {
       fs.closeSync(fd)
@@ -323,8 +356,10 @@ const server = net.createServer((sock) => {
         if (mine) handleIn(mine, msg.data, sock)
         return
       case 'ack':
-        if (mine && Number.isFinite(msg.off) && msg.off > mine.acked && msg.off <= mine.size)
+        if (mine && Number.isFinite(msg.off) && msg.off > mine.acked && msg.off <= mine.size) {
           mine.acked = msg.off
+          compact(mine)
+        }
         return
       case 'meta':
         if (mine) mine.meta = msg.meta

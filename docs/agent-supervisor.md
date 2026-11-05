@@ -1,27 +1,28 @@
 # Agent supervisor: agents that survive a host restart
 
-Status: prototype for the Claude Code CLI backend, behind `BEDDCODE_AGENT_SUPERVISOR=1` (off by
-default). Everything else is unchanged.
+Status: implemented for the Claude Code CLI backend, opt-in. Enable it with
+`BEDDCODE_AGENT_SUPERVISOR=1` or `"agentSupervisor": true` in `config.json`. Everything else is
+unchanged, and with it off nothing here runs.
 
 ## Problem
 
 Agent CLIs are children of the host (`apps/server`). When the host restarts (dev reload, upgrade,
-crash) their stdio pipes close, the agents die, and `recovery.ts` can only *resume the conversation
-in a new process* and re-send the last prompt. Work in flight (a long tool call, a half-written
+crash) their stdio pipes close, the agents die, and `recovery.ts` can only _resume the conversation
+in a new process_ and re-send the last prompt. Work in flight (a long tool call, a half-written
 answer) is lost. The supervisor keeps the process itself alive.
 
 ## Which providers can be reattached
 
-What matters is whether a *new* host can talk to the *same* process, so it comes down to the wire
+What matters is whether a _new_ host can talk to the _same_ process, so it comes down to the wire
 protocol, not to the supervisor.
 
-| Provider | Transport | Reattach | Notes |
-| --- | --- | --- | --- |
-| Claude CLI (`provider-claude`) | stream-json over stdio, driven by the Agent SDK | **Yes** (prototyped) | The SDK has a `spawnClaudeCodeProcess` hook, so the supervisor's pipe stands in for the child. The protocol is line-oriented JSON with one stateful part (see "Reattach protocol"). |
-| Codex (`provider-codex`) | JSON-RPC (app-server) over stdio | Feasible, medium | JSON-RPC has `initialize` and request ids held by the *host* side; reattach needs the same init-replay trick plus replay of unanswered server requests (approvals). Thread state is on the server, so `thread/resume` semantics help. |
-| ACP (`provider-acp`) | JSON-RPC (ACP) over stdio | Feasible, medium | Same shape as Codex; `session/load` capability is optional per agent, so unknown agents need a per-agent allow-list. |
-| Grok, OpenCode | JSON-RPC / ACP-like over stdio, or HTTP server (OpenCode) | OpenCode: easy (it is already a server, the host only needs to remember its port); Grok: as ACP | OpenCode's server mode makes the supervisor optional: persist port and password, reconnect. |
-| Pi (`provider-pi`) | RPC over stdio | Feasible, medium | Same pattern. |
+| Provider                       | Transport                                                 | Reattach                                                                                        | Notes                                                                                                                                                                                                                                 |
+| ------------------------------ | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude CLI (`provider-claude`) | stream-json over stdio, driven by the Agent SDK           | **Yes** (prototyped)                                                                            | The SDK has a `spawnClaudeCodeProcess` hook, so the supervisor's pipe stands in for the child. The protocol is line-oriented JSON with one stateful part (see "Reattach protocol").                                                   |
+| Codex (`provider-codex`)       | JSON-RPC (app-server) over stdio                          | Feasible, medium                                                                                | JSON-RPC has `initialize` and request ids held by the _host_ side; reattach needs the same init-replay trick plus replay of unanswered server requests (approvals). Thread state is on the server, so `thread/resume` semantics help. |
+| ACP (`provider-acp`)           | JSON-RPC (ACP) over stdio                                 | Feasible, medium                                                                                | Same shape as Codex; `session/load` capability is optional per agent, so unknown agents need a per-agent allow-list.                                                                                                                  |
+| Grok, OpenCode                 | JSON-RPC / ACP-like over stdio, or HTTP server (OpenCode) | OpenCode: easy (it is already a server, the host only needs to remember its port); Grok: as ACP | OpenCode's server mode makes the supervisor optional: persist port and password, reconnect.                                                                                                                                           |
+| Pi (`provider-pi`)             | RPC over stdio                                            | Feasible, medium                                                                                | Same pattern.                                                                                                                                                                                                                         |
 
 Order of value/effort: Claude (done), Codex, ACP family, OpenCode (no supervisor needed).
 
@@ -66,10 +67,10 @@ Spawning an id that already exists ends the stale agent first (one agent per ses
    `host.updating` marker is still written, so `recovery.ts` is the fallback described below.
 2. **Boot.** `resumeAfterRestart` marks the session for reattach; `adapter.startSession` asks the
    daemon to `attach {id}`. If an agent is alive, the new `ClaudeSession` gets a process object
-   backed by the socket and starts a *new* SDK query on it, with no prompt queued.
+   backed by the socket and starts a _new_ SDK query on it, with no prompt queued.
 3. **Replay.** The daemon sends (a) any request the agent made that nobody answered (permission
    prompts, `control_request`s tracked by `request_id`, dropped once a `control_response` or
-   `control_cancel_request` is seen), then (b) the log from the last *acknowledged* offset, then
+   `control_cancel_request` is seen), then (b) the log from the last _acknowledged_ offset, then
    `exit` if it ended meanwhile. The host acknowledges after each whole line it has handed to the
    SDK, so a restart replays only what the old host never took in (at-least-once, line aligned).
 4. **Handshake.** The new SDK query sends `initialize` again, which the live agent already answered.
@@ -78,6 +79,18 @@ Spawning an id that already exists ends the stale agent first (one agent per ses
    (`meta`), so the new session resumes numbering turns and knows a turn is running.
 6. **Skip the re-prompt.** `session.reattached === true` makes `resumeAfterRestart` skip re-sending
    the last prompt; the turn finishes from the replayed stream.
+
+### Host crash or hard kill (no marker)
+
+The desktop app stops the host with `taskkill /T /F` on Windows, which runs no shutdown code, so
+"planned restart" cannot be relied on. At boot, `runServer` asks the daemon which agents it holds
+(`SupervisorClient.list()`) and passes them to `recoverInterruptedTurns(store, held)`. A session with
+an open turn whose agent is still alive is queued for `resumeAfterRestart` with no prompt instead of
+being marked cancelled; reattaching replays everything the old host missed. If the agent turns out
+to be gone by then, the turn is cancelled with a message (there is no prompt to resend).
+
+The daemon is started through a short-lived launcher so it has no live parent: `taskkill /T` and
+process-group kills aimed at the host's tree do not reach it. On POSIX it is also `setsid`-detached.
 
 ### Fallback (unchanged path)
 
@@ -100,20 +113,28 @@ history and re-send the last prompt. A host that crashes with no marker still go
   the host's ledger on purpose.
 - Pid reuse: the daemon refers to agents by id and its own `ChildProcess`, never by pid alone.
 
-## Known limits of the prototype
+## Operational notes
+
+- The log is bounded: once the host has taken in 4 MB, the front of the file is cut away; offsets
+  stay absolute. Replay streams in 256 KB slices cut at newlines.
+- `daemon.log` in the supervisor folder holds the daemon's own stderr.
+- A daemon with another `PROTOCOL_VERSION` is refused and the host falls back to starting agents
+  itself. After an upgrade the old daemon exits when its agents are gone or past the grace period.
+- Installed hosts ship `server/daemon.mjs` beside `main.mjs` (`apps/desktop/scripts/build-host.mjs`).
+- Closing a session from the UI (stop, delete) still ends its agent; only a host shutdown detaches.
+
+## Known limits
 
 - Output between the last acknowledgement and a host crash can be replayed (line-granular,
   at-least-once). Assistant `message.delta`s of a partial streamed message could repeat; ids on
   messages would allow de-duplication in the mapper.
 - Replay hands the new SDK a stream that starts mid-turn; the mapper tolerates this for
   `assistant`/`user`/`result` messages, mid-stream `stream_event` partials are best effort.
-- The unacknowledged log is read whole into memory on attach (agent output is bounded in practice;
-  add a cap and a "log truncated" marker before enabling by default).
-- A crash with no `host.updating` marker still cancels the turn at boot (`recovery.ts`); to make
-  crash recovery reattach too, `recoverInterruptedTurns` should consult `SupervisorClient.list()`.
-- One daemon per data folder, no version negotiation beyond `hello.version`; the daemon script is
-  resolved next to `client.ts`, which a bundled build must copy.
+- Output the host never takes in (a host that stays away for the whole grace period) is kept in the
+  log without a size cap until the agent is ended.
+- One daemon per data folder.
 - Only the Claude CLI backend is wired; see the table for the others.
+- The dev reloader can stop waiting for running turns once this is on by default; it is unchanged.
 
 ## Test
 

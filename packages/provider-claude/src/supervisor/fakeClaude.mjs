@@ -11,6 +11,8 @@ if (state) {
   fs.writeFileSync(path.join(state, 'pid'), String(process.pid))
   fs.appendFileSync(path.join(state, 'starts'), 'x')
 }
+let answered
+const answer = new Promise((r) => (answered = r))
 const out = (m) => process.stdout.write(JSON.stringify(m) + '\n')
 
 readline.createInterface({ input: process.stdin }).on('line', async (line) => {
@@ -33,8 +35,38 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
             : {},
       },
     })
+  } else if (msg.type === 'control_response') {
+    if (msg.response?.request_id === 'ask-1') answered(msg.response)
   } else if (msg.type === 'user') {
     out({ type: 'system', subtype: 'init', session_id: 'sess-1' })
+    if (process.env.FAKE_ASK) {
+      // A permission prompt: the turn waits for the host's answer, like the real CLI.
+      out({
+        type: 'control_request',
+        request_id: 'ask-1',
+        request: {
+          subtype: 'can_use_tool',
+          tool_name: 'Bash',
+          input: { command: 'ls' },
+          tool_use_id: 'tu1',
+        },
+      })
+      const reply = await answer
+      out({
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: {
+          id: 'ans',
+          role: 'assistant',
+          content: [
+            {
+              type: 'text',
+              text: `answer ${(reply.response?.behavior ?? JSON.stringify(reply).includes('allow')) ? 'allow' : 'deny'};`,
+            },
+          ],
+        },
+      })
+    }
     for (let i = 1; i <= parts; i++) {
       await new Promise((r) => setTimeout(r, tick))
       out({

@@ -146,7 +146,8 @@ interface Activity {
 export interface ResumeSession {
   sessionId: string
   turnId?: string
-  prompt: { text: string; attachments: { name: string; path: string }[] }
+  /** Absent when the agent was still running: nothing is sent again, its turn carries on. */
+  prompt?: { text: string; attachments: { name: string; path: string }[] }
 }
 
 /**
@@ -169,8 +170,6 @@ const PREVIEW_REFRESH_WAIT_MS = 4_000
 export class SessionManager {
   private readonly live = new Map<string, LiveSession>()
   private readonly resuming = new Map<string, Promise<LiveSession>>()
-  /** Sessions whose agent may still be running under a supervisor: take it over, do not start one. */
-  private readonly reattaching = new Set<string>()
   private readonly turns = new Map<string, TurnState>()
   private readonly activity = new Map<string, Activity>()
   private stallTimer: ReturnType<typeof setInterval> | undefined
@@ -1128,7 +1127,7 @@ export class SessionManager {
   /** Saves intent to continue active turns, then closes providers so their histories are flushed. */
   async prepareForRestart(message = 'Host is updating, back in a moment') {
     this.closing = true
-    const resumable: ResumeSession[] = []
+    const resumable: (ResumeSession & { prompt: NonNullable<ResumeSession['prompt']> })[] = []
     const ids = new Map<string, string>()
     for (const { event } of this.deps.store.readAfter(0, Number.MAX_SAFE_INTEGER)) {
       if (event.type === 'session.provider-session')
@@ -1168,16 +1167,26 @@ export class SessionManager {
     this.closing = false
     for (const saved of sessions) {
       try {
-        this.reattaching.add(saved.sessionId)
-        const live = await this.ensureLive(saved.sessionId).finally(() =>
-          this.reattaching.delete(saved.sessionId),
-        )
+        const live = await this.ensureLive(saved.sessionId)
         const turn = this.turnState(saved.sessionId)
         turn.busy = true
-        turn.lastPrompt = saved.prompt
+        if (saved.prompt) turn.lastPrompt = saved.prompt
         // The agent never stopped: its turn carries on and its output is replayed, so the prompt
         // is not sent again. (Without a supervisor the agent is new and gets the prompt again.)
         if (live.session.reattached) continue
+        if (!saved.prompt) {
+          // The agent that was running is gone, and there is nothing to send to a new one.
+          turn.busy = false
+          this.deps.store.append({
+            type: 'turn.completed',
+            sessionId: saved.sessionId,
+            turnId: saved.turnId,
+            at: Date.now(),
+            reason: 'cancelled',
+            message: 'The host restarted and the agent had ended. Send a message to continue.',
+          })
+          continue
+        }
         live.skipTurnStart = true
         this.appendUserMessage(saved.sessionId, saved.prompt.text, saved.prompt.attachments)
         await live.session
@@ -1322,7 +1331,8 @@ export class SessionManager {
       session = await adapter.startSession(instance.id, {
         ...input,
         resumeId,
-        reattach: this.reattaching.has(sessionId),
+        // A supervised agent still running is taken over; providers without one ignore this.
+        reattach: true,
       })
     } catch (err) {
       // The agent lost its copy of the conversation (cleaned up, or cut short by a crash mid-write).
