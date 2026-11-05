@@ -7,7 +7,11 @@ const FACES: { id: ViewName; label: string; points: string; text: string; x: num
     { id: 'right', label: 'Right', points: '32,30 56,18 56,46 32,58', text: 'Right', x: 44, y: 40 },
   ]
 
-/** Clickable standard views. Our own control, not a third-party view cube. */
+/**
+ * Clickable standard views for a Z-up scene.
+ * Top looks down −Z, front looks along −Y, right looks along −X.
+ * Our own control, not a third-party view cube.
+ */
 export function ViewCube({ active, onView }: { active: ViewName; onView(view: ViewName): void }) {
   return (
     <div className="cad-viewcube" role="group" aria-label="Standard views">

@@ -1,9 +1,15 @@
 import type { SketchEntity } from './types.ts'
 
-/** Planes the viewport sketches on. Y is up: XY front, YZ right, ZX top. */
+/**
+ * Planes the viewport sketches on. Z is up.
+ * XY is the floor (top of a plate). YZ is the right wall.
+ * ZX is the front wall, the vertical XZ plane.
+ */
 export type SketchPlaneName = 'XY' | 'YZ' | 'ZX'
 
 export type SketchToolName = 'line' | 'rectangle' | 'circle' | 'arc'
+
+export type StandardView = 'front' | 'top' | 'right' | 'iso'
 
 export interface PlaneFrame {
   u: readonly [number, number, number]
@@ -12,13 +18,61 @@ export interface PlaneFrame {
 }
 
 /**
- * Sketch +x is screen-right and sketch +y is screen-up in the matching standard view.
- * Front looks along -Z, right along -X, top along -Y with up = -Z.
+ * Local axes match replicad's named planes, so the overlay sits on the solid.
+ * XY floor: +x = +X, +y = +Y. Top view (down −Z) shows +x right and +y up.
+ * YZ right wall: +x = +Y, +y = +Z. Right view shows +x right and +y up.
+ * ZX front wall (XZ plane): +x = +Z, +y = +X, normal = +Y.
  */
 const FRAMES: Record<SketchPlaneName, PlaneFrame> = {
   XY: { u: [1, 0, 0], v: [0, 1, 0], normal: [0, 0, 1] },
-  YZ: { u: [0, 0, -1], v: [0, 1, 0], normal: [1, 0, 0] },
-  ZX: { u: [1, 0, 0], v: [0, 0, -1], normal: [0, 1, 0] },
+  YZ: { u: [0, 1, 0], v: [0, 0, 1], normal: [1, 0, 0] },
+  ZX: { u: [0, 0, 1], v: [1, 0, 0], normal: [0, 1, 0] },
+}
+
+/** World up for the camera and for orbit. Every standard view keeps this. */
+export const CAMERA_UP: readonly [number, number, number] = [0, 0, 1]
+
+/** Iso eye position. Looking back at the origin shows the top of a plate on XY. */
+export const DEFAULT_CAMERA_POSITION: readonly [number, number, number] = [90, -70, 70]
+
+const ISO_DIRECTION = unit(1, -1, 0.8)
+
+/** Direction from the orbit target to the camera. Top is +Z, front is +Y, right is +X. */
+export function viewDirection(view: StandardView): readonly [number, number, number] {
+  switch (view) {
+    case 'top':
+      return [0, 0, 1]
+    case 'front':
+      return [0, 1, 0]
+    case 'right':
+      return [1, 0, 0]
+    case 'iso':
+      return ISO_DIRECTION
+  }
+}
+
+/**
+ * Euler XYZ rotation that lays three's XZ GridHelper on the sketch plane.
+ * XY rotates X by π/2 onto the floor. ZX stays on XZ, vertical when Z is up.
+ */
+export function gridRotation(plane: SketchPlaneName): readonly [number, number, number] {
+  if (plane === 'XY') return [Math.PI / 2, 0, 0]
+  if (plane === 'YZ') return [0, 0, Math.PI / 2]
+  return [0, 0, 0]
+}
+
+/**
+ * World-space edge hit radius. It grows with camera distance so orbiting
+ * farther away still leaves an edge selectable.
+ */
+export function edgePickThreshold(distance: number): number {
+  if (!(distance > 0) || !Number.isFinite(distance)) return 0.6
+  return Math.min(6, Math.max(0.45, distance * 0.0045))
+}
+
+function unit(x: number, y: number, z: number): readonly [number, number, number] {
+  const length = Math.hypot(x, y, z)
+  return [x / length, y / length, z / length]
 }
 
 const EPS = 1e-6

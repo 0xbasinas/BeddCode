@@ -36,15 +36,20 @@ import { SketchOverlay, type OverlayLabel } from './SketchOverlay.tsx'
 import type { SketchEntity } from './sketcher/types.ts'
 import {
   advanceSketch,
+  CAMERA_UP,
+  DEFAULT_CAMERA_POSITION,
+  edgePickThreshold,
   entityAnnotation,
   entityPolyline,
   formatLength,
+  gridRotation,
   planeFrame,
   previewAnnotation,
   previewPolyline,
   projectRayToPlane,
   snapPoint,
   toWorld,
+  viewDirection,
   worldDistance,
   type SketchPlaneName,
   type SketchToolName,
@@ -67,7 +72,7 @@ Mesh.prototype.raycast = acceleratedRaycast
  * - loading: `.cad-loading` overlay while the geometry kernel starts
  * - pickMode: `'face'` (default) or `'edge'`. Shift-click still picks an edge.
  * - sketchMode, sketchTool (`line` | `rectangle` | `circle` | `arc`), plane
- *   (`XY` front, `YZ` right, `ZX` top), sketchSnap (millimetres; Shift flips 1 and 5),
+ *   (`XY` floor, `YZ` right, `ZX` front), sketchSnap (millimetres; Shift flips 1 and 5),
  *   entities (sketcher entities, not the document params bag), onSketchChange, onSketchFinish
  * - measure: `{ a, b, label }` draws a distance between two world points
  * Delete and Undo belong to the parent. This view handles Escape (drop the open
@@ -163,7 +168,13 @@ function clearGroup(group: Group) {
 function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
   const scene = new Scene()
   const camera = new PerspectiveCamera(45, 1, 0.1, 5000)
-  camera.position.set(90, 70, 90)
+  // Z-up. Set this before OrbitControls; the control copies it as the orbit axis.
+  camera.up.set(CAMERA_UP[0], CAMERA_UP[1], CAMERA_UP[2])
+  camera.position.set(
+    DEFAULT_CAMERA_POSITION[0],
+    DEFAULT_CAMERA_POSITION[1],
+    DEFAULT_CAMERA_POSITION[2],
+  )
   camera.lookAt(0, 0, 0)
 
   const renderer = new WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true })
@@ -177,9 +188,11 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
 
   scene.add(new AmbientLight(0xffffff, 0.7))
   const sun = new DirectionalLight(0xffffff, 1.15)
-  sun.position.set(40, 80, 30)
+  sun.position.set(48, -56, 90)
   scene.add(sun)
   const ground = new GridHelper(200, 20, 0x3a3a3a, 0x2a2a2a)
+  const floorTurn = gridRotation('XY')
+  ground.rotation.set(floorTurn[0], floorTurn[1], floorTurn[2])
   scene.add(ground)
   scene.add(new AxesHelper(40))
 
@@ -195,7 +208,7 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
   scene.add(measureGroup)
 
   const raycaster = new Raycaster()
-  raycaster.params.Line.threshold = 0.6
+  raycaster.params.Line.threshold = edgePickThreshold(camera.position.length())
   raycaster.firstHitOnly = true
   const pointer = new Vector2()
   const resolution = new Vector2(1, 1)
@@ -313,9 +326,8 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
   }
 
   const orientGrid = (grid: GridHelper, plane: SketchPlaneName) => {
-    grid.rotation.set(0, 0, 0)
-    if (plane === 'XY') grid.rotation.x = Math.PI / 2
-    else if (plane === 'YZ') grid.rotation.z = Math.PI / 2
+    const turn = gridRotation(plane)
+    grid.rotation.set(turn[0], turn[1], turn[2])
   }
 
   const syncGrid = () => {
@@ -472,6 +484,8 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     if (rect.width === 0 || rect.height === 0) return null
     pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+    const distance = camera.position.distanceTo(controls.target)
+    raycaster.params.Line.threshold = edgePickThreshold(distance)
     raycaster.setFromCamera(pointer, camera)
     return raycaster.ray
   }
@@ -721,7 +735,10 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     }
     for (const child of sketchGroup.children) box.expandByObject(child)
     const dir = camera.position.clone().sub(controls.target)
-    if (dir.lengthSq() < 1e-6) dir.set(1, 0.8, 1)
+    if (dir.lengthSq() < 1e-6) {
+      const iso = viewDirection('iso')
+      dir.set(iso[0], iso[1], iso[2])
+    }
     dir.normalize()
     if (box.isEmpty()) {
       controls.target.set(0, 0, 0)
@@ -738,19 +755,15 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       camera.near = Math.max(dist / 100, 0.01)
       camera.far = dist * 100
     }
+    camera.up.set(CAMERA_UP[0], CAMERA_UP[1], CAMERA_UP[2])
     camera.updateProjectionMatrix()
     controls.update()
   }
 
   const setView = (view: ViewName) => {
     const dist = Math.max(camera.position.distanceTo(controls.target), 40)
-    const direction = new Vector3()
-    if (view === 'front') direction.set(0, 0, 1)
-    else if (view === 'top') direction.set(0, 1, 0)
-    else if (view === 'right') direction.set(1, 0, 0)
-    else direction.set(1, 0.8, 1)
-    direction.normalize()
-    camera.up.set(0, view === 'top' ? 0 : 1, view === 'top' ? -1 : 0)
+    const direction = new Vector3(...viewDirection(view))
+    camera.up.set(CAMERA_UP[0], CAMERA_UP[1], CAMERA_UP[2])
     camera.position.copy(controls.target).addScaledVector(direction, dist)
     camera.lookAt(controls.target)
     camera.updateProjectionMatrix()
