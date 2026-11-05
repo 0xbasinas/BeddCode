@@ -62,50 +62,62 @@ export function ClaudeBackendSettings({
     }
   }
   return (
-    <div className="settings-card">
-      <h3>Host Claude backend</h3>
-      <label htmlFor="claude-host-backend">Claude backend</label>{' '}
-      <Select
-        id="claude-host-backend"
-        value={hostBackend ?? ''}
-        disabled={!online || !hostBackend || busy}
-        onChange={(e) => void saveHost(e.target.value as 'sdk' | 'cli')}
-      >
-        {!hostBackend && <option value="">Loading…</option>}
-        <option value="sdk">Claude SDK</option>
-        <option value="cli">Claude CLI</option>
-      </Select>
-      <h3>Project Claude backend</h3>
-      <label htmlFor="claude-project">Project</label>{' '}
-      <Select
-        id="claude-project"
-        value={path}
-        disabled={!online || busy}
-        onChange={(e) => setPath(e.target.value)}
-      >
-        <option value="">Choose a project</option>
-        {projects.map((p) => (
-          <option key={p.path} value={p.path}>
-            {p.name}
-          </option>
-        ))}
-      </Select>{' '}
-      <label htmlFor="claude-project-backend">Claude backend</label>{' '}
-      <Select
-        id="claude-project-backend"
-        value={project?.claudeBackend ?? ''}
-        disabled={!online || !project || busy}
-        onChange={(e) => void save(e.target.value)}
-      >
-        <option value="">Use host default</option>
-        <option value="sdk">Claude SDK</option>
-        <option value="cli">Claude CLI</option>
-      </Select>
-      {error && (
-        <p className="settings-error" role="alert">
-          {error}
-        </p>
-      )}
-    </div>
+    <>
+      <div className="settings-section-head">
+        <h3>Host Claude backend</h3>
+      </div>
+      <div className="settings-card settings-fields">
+        <div className="settings-field">
+          <label htmlFor="claude-host-backend">Claude backend</label>
+          <Select
+            id="claude-host-backend"
+            value={hostBackend ?? ''}
+            disabled={!online || !hostBackend || busy}
+            onChange={(e) => void saveHost(e.target.value as 'sdk' | 'cli')}
+          >
+            {!hostBackend && <option value="">Loading…</option>}
+            <option value="sdk">Claude SDK</option>
+            <option value="cli">Claude CLI</option>
+          </Select>
+        </div>
+      </div>
+      <div className="settings-section-head">
+        <h3>Project Claude backend</h3>
+      </div>
+      <div className="settings-card settings-fields">
+        <div className="settings-field">
+          <label htmlFor="claude-project">Project</label>
+          <Select
+            id="claude-project"
+            value={path}
+            disabled={!online || busy}
+            onChange={(e) => setPath(e.target.value)}
+          >
+            <option value="">Choose a project</option>
+            {projects.map((p) => (
+              <option key={p.path} value={p.path}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+          <label htmlFor="claude-project-backend">Claude backend</label>
+          <Select
+            id="claude-project-backend"
+            value={project?.claudeBackend ?? ''}
+            disabled={!online || !project || busy}
+            onChange={(e) => void save(e.target.value)}
+          >
+            <option value="">Use host default</option>
+            <option value="sdk">Claude SDK</option>
+            <option value="cli">Claude CLI</option>
+          </Select>
+        </div>
+        {error && (
+          <p className="settings-error" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
+    </>
   )
 }

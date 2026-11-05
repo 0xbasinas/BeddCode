@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useRuntime } from '../../stores/host.ts'
 import { defaultHandoffPolicy, useAutoHandoff } from '../../stores/autoHandoff.ts'
+import { Select } from '../../ui/Select.tsx'
 import type { HandoffMode } from '@beddcode/client-runtime'
 
 export function AutoHandoffSettings({ hostKey }: { hostKey: string }) {
@@ -22,18 +23,18 @@ export function AutoHandoffSettings({ hostKey }: { hostKey: string }) {
         </p>
         <label>
           Scope{' '}
-          <select value={project} onChange={(e) => setProject(e.target.value)}>
+          <Select value={project} onChange={(e) => setProject(e.target.value)}>
             <option value="">All projects</option>
             {projects.map((p) => (
               <option key={p.path} value={p.path}>
                 {p.path}
               </option>
             ))}
-          </select>
+          </Select>
         </label>{' '}
         <label>
           Mode{' '}
-          <select
+          <Select
             value={policy.mode}
             onChange={(e) =>
               update(hostKey, project, { ...policy, mode: e.target.value as HandoffMode })
@@ -42,9 +43,9 @@ export function AutoHandoffSettings({ hostKey }: { hostKey: string }) {
             <option value="off">Off</option>
             <option value="ask">Ask with countdown</option>
             <option value="auto">Automatic</option>
-          </select>
+          </Select>
         </label>
-        <p className="settings-notice">Fallback order (first available is used)</p>
+        <p className="settings-field-label">Fallback order (first available is used)</p>
         {policy.fallback.map((id, i) => (
           <div className="handoff-fallback" key={id}>
             {providers.find((p) => p.id === id)?.label ?? id}{' '}
@@ -72,7 +73,7 @@ export function AutoHandoffSettings({ hostKey }: { hostKey: string }) {
             </button>
           </div>
         ))}
-        <select
+        <Select
           aria-label="Add fallback agent"
           value=""
           onChange={(e) =>
@@ -88,7 +89,7 @@ export function AutoHandoffSettings({ hostKey }: { hostKey: string }) {
                 {p.label}
               </option>
             ))}
-        </select>
+        </Select>
         <p>
           <label>
             Maximum hops{' '}
