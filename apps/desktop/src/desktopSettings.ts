@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import type { BrowserProfile } from '@beddcode/contracts'
 import type { StoredBrowserExtension } from './browserExtensions.ts'
+import { validRoute } from './lastRoute.ts'
 import { isHostMode, type HostMode } from './hostMode.ts'
 
 /** Choices about the desktop app itself (the host's own settings live in its data folder). */
@@ -20,6 +21,8 @@ export interface DesktopSettings {
   browserDefaults?: Record<string, string>
   /** Unpacked extensions imported into each app-managed browser profile. */
   browserExtensions?: Record<string, StoredBrowserExtension[]>
+  /** The app page the window was on (`#/…`), reopened after the app restarts. */
+  lastRoute?: string
 }
 
 export function readDesktopSettings(file: string): DesktopSettings {
@@ -34,6 +37,7 @@ export function readDesktopSettings(file: string): DesktopSettings {
       browserProfileDefaults,
       browserDefaults,
       browserExtensions,
+      lastRoute,
     } = parsed as Record<string, unknown>
     return {
       ...(typeof keepRunning === 'boolean' && { keepRunning }),
@@ -43,6 +47,7 @@ export function readDesktopSettings(file: string): DesktopSettings {
       ...(validDefaults(browserProfileDefaults) && { browserProfileDefaults }),
       ...(validBrowserDefaults(browserDefaults) && { browserDefaults }),
       ...(validExtensions(browserExtensions) && { browserExtensions }),
+      ...(validRoute(lastRoute) && { lastRoute: lastRoute as string }),
     }
   } catch {
     return {}

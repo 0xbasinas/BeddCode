@@ -78,6 +78,73 @@ describe('interrupted turn recovery', () => {
     store.close()
   })
 
+  describe('host killed mid-turn without a shutdown marker', () => {
+    const seed = (store: EventStore) => {
+      store.append({
+        type: 'session.created',
+        sessionId: 's',
+        title: 'Demo',
+        cwd: '/w',
+        instanceId: 'fake',
+        at: 1,
+      })
+      store.append({
+        type: 'session.provider-session',
+        sessionId: 's',
+        providerSessionId: 'native-1',
+        at: 2,
+      })
+      store.append({ type: 'turn.started', sessionId: 's', turnId: 't', at: 3 })
+      store.append({
+        type: 'message.delta',
+        sessionId: 's',
+        role: 'user',
+        text: 'edit apps/server',
+        at: 4,
+      })
+    }
+
+    it('resumes on its own and leaves a timeline marker', () => {
+      const store = new EventStore(':memory:')
+      seed(store)
+      expect(recoverInterruptedTurns(store)).toEqual(['s'])
+      const [resumed] = takeInterruptedSessions()
+      expect(resumed).toMatchObject({ sessionId: 's', turnId: 't' })
+      expect(resumed?.prompt.text).toContain('edit apps/server')
+      const events = store.readSession('s').map((r) => r.event)
+      expect(events.map((e) => e.type)).not.toContain('turn.completed')
+      expect(events.at(-1)).toMatchObject({
+        type: 'session.notice',
+        message: expect.stringContaining('resumed automatically'),
+      })
+      store.close()
+    })
+
+    it('stops after three resumes of the same turn and asks the user', () => {
+      const store = new EventStore(':memory:')
+      seed(store)
+      for (let i = 0; i < 3; i++) {
+        expect(recoverInterruptedTurns(store)).toEqual(['s'])
+        takeInterruptedSessions()
+      }
+      expect(recoverInterruptedTurns(store)).toEqual([])
+      const last = store.readSession('s').map((r) => r.event)
+      expect(last.at(-2)).toMatchObject({ type: 'turn.interrupted' })
+      expect(last.at(-1)).toMatchObject({ type: 'turn.completed', reason: 'cancelled' })
+      store.close()
+    })
+
+    it('keeps the old behaviour when auto-resume is off or ask', () => {
+      for (const mode of ['off', 'ask'] as const) {
+        const store = new EventStore(':memory:')
+        seed(store)
+        expect(recoverInterruptedTurns(store, mode)).toEqual([])
+        expect(store.readSession('s').at(-1)?.event).toMatchObject({ type: 'turn.completed' })
+        store.close()
+      }
+    })
+  })
+
   it('keeps an intentionally interrupted turn open for automatic resume', () => {
     const store = new EventStore(':memory:')
     store.append({

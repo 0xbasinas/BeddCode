@@ -240,7 +240,23 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
 
     if (url === '/health' && req.method === 'GET') {
       res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ ok: true, protocol: PROTOCOL_VERSION, host: hostInfo }))
+      const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(
+        req.socket.remoteAddress ?? '',
+      )
+      // Running turns are told to this machine only: the dev reloader waits for them to end.
+      res.end(
+        JSON.stringify({
+          ok: true,
+          protocol: PROTOCOL_VERSION,
+          host: hostInfo,
+          ...(local
+            ? {
+                activeTurns: options.sessions.activeTurnCount(),
+                activeTools: options.sessions.activeToolCount(),
+              }
+            : {}),
+        }),
+      )
       return
     }
 

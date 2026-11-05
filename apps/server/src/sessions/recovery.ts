@@ -18,10 +18,36 @@ function track(active: Map<string, { turnId?: string; at: number }>, { event }: 
   }
 }
 
+export type AutoResume = 'off' | 'ask' | 'auto'
+/** A turn that keeps dying with the host (a crash loop) stops resuming and asks the user. */
+export const MAX_AUTO_RESUMES = 3
+
+export function autoResumeFromEnv(env: NodeJS.ProcessEnv = process.env): AutoResume {
+  const v = env.BEDDCODE_AUTO_RESUME
+  return v === 'off' || v === 'ask' || v === 'auto' ? v : 'auto'
+}
+
+const AUTO_RESUME_KEY = 'host-auto-resume:'
+
+function continuationPrompt(original: string) {
+  return {
+    text: `The host restarted while you were working (most likely after a change to the server or desktop code). Continue where you left off. Check the working tree and verify the current state instead of assuming the last step finished.\n\nOriginal request: ${original.slice(0, 4000)}`,
+    attachments: [] as { name: string; path: string }[],
+  }
+}
+
 /** Provider processes are gone after a host restart. Replaying their last status must not
- * leave the client waiting forever. History and provider resume IDs remain intact. */
-export function recoverInterruptedTurns(store: EventStore): string[] {
+ * leave the client waiting forever. History and provider resume IDs remain intact.
+ * A turn cut off without a graceful-shutdown marker (a file-watch reload, a kill, a crash) is
+ * resumed on its own when `autoResume` is "auto", up to MAX_AUTO_RESUMES times per turn. */
+export function recoverInterruptedTurns(
+  store: EventStore,
+  autoResume: AutoResume = 'auto',
+): string[] {
   pendingResume.clear()
+  const providerIds = new Set<string>()
+  const lastUser = new Map<string, string>()
+  const attempts = new Map<string, number>()
   const active = new Map<string, { turnId?: string; at: number }>()
   const updating = new Map<string, Extract<StoredEvent['event'], { type: 'host.updating' }>>()
   const createdAt = new Map<string, number>()
@@ -35,6 +61,14 @@ export function recoverInterruptedTurns(store: EventStore): string[] {
       track(active, stored)
       if (event.type === 'session.created') createdAt.set(event.sessionId, event.at)
       if (event.type === 'host.updating') updating.set(event.sessionId, event)
+      if (event.type === 'session.provider-session') providerIds.add(event.sessionId)
+      if (event.type === 'message.delta' && event.role === 'user')
+        lastUser.set(event.sessionId, event.text)
+      if (event.type === 'session.notice' && event.key?.startsWith(AUTO_RESUME_KEY)) {
+        const turn = event.key.slice(AUTO_RESUME_KEY.length).split(':')[0] ?? ''
+        const k = `${event.sessionId}:${turn}`
+        attempts.set(k, (attempts.get(k) ?? 0) + 1)
+      }
       if (event.type === 'turn.interrupted') interrupted.add(event.sessionId)
       if (event.type === 'turn.interruption-resolved') interrupted.delete(event.sessionId)
       if (event.type === 'turn.completed' || event.type === 'error')
@@ -53,13 +87,37 @@ export function recoverInterruptedTurns(store: EventStore): string[] {
       updating.delete(sessionId)
       continue
     }
+    const original = lastUser.get(sessionId)
+    const tried = attempts.get(`${sessionId}:${turnId ?? ''}`) ?? 0
+    if (
+      autoResume === 'auto' &&
+      !interrupted.has(sessionId) &&
+      providerIds.has(sessionId) &&
+      original !== undefined &&
+      tried < MAX_AUTO_RESUMES
+    ) {
+      // Timeline marker; it also counts attempts, so the next crash sees how many were made.
+      store.append({
+        type: 'session.notice',
+        sessionId,
+        at: Date.now(),
+        key: `${AUTO_RESUME_KEY}${turnId ?? ''}:${tried + 1}`,
+        message: `Host restarted, resumed automatically${tried ? ` (attempt ${tried + 1} of ${MAX_AUTO_RESUMES})` : ''}.`,
+      })
+      resume.push(sessionId)
+      pendingResume.set(sessionId, { turnId, prompt: continuationPrompt(original) })
+      continue
+    }
+    const gaveUp = autoResume === 'auto' && tried >= MAX_AUTO_RESUMES
     if (!interrupted.has(sessionId)) {
       store.append({
         type: 'turn.interrupted',
         sessionId,
         turnId,
         at: Date.now(),
-        message: 'The host restarted before this turn finished.',
+        message: gaveUp
+          ? `The host restarted ${tried} times during this turn, so it was not resumed again.`
+          : 'The host restarted before this turn finished.',
       })
     }
     store.append({

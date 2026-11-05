@@ -27,6 +27,7 @@ import {
   writeDesktopSettings,
   type DesktopSettings,
 } from './desktopSettings.ts'
+import { routeOf, withRoute } from './lastRoute.ts'
 import { autoUpdater } from 'electron-updater'
 import {
   backgroundHostInstalled,
@@ -341,9 +342,21 @@ function createWindow() {
   win.on('maximize', sendMaximized)
   win.on('unmaximize', sendMaximized)
 
-  if (webUrl) void win.loadURL(webUrl)
+  // The page the window is on is kept, so a restart of this process reopens the same session.
+  let routeTimer: NodeJS.Timeout | undefined
+  win.webContents.on('did-navigate-in-page', (_event, url) => {
+    const route = routeOf(url, new URL(webUrl ?? appOrigin()).origin)
+    if (!route || route === settings.lastRoute) return
+    clearTimeout(routeTimer)
+    routeTimer = setTimeout(() => saveSettings({ ...settings, lastRoute: route }), 500)
+  })
+  win.on('closed', () => clearTimeout(routeTimer))
+
+  if (webUrl) void win.loadURL(withRoute(webUrl, settings.lastRoute))
   else loadFromHost(win)
 }
+
+const appOrigin = () => `http://127.0.0.1:${hostPort(process.env)}`
 
 /** A plain page while the host starts, or when it will not. */
 function splash(title: string, detail?: string): string {
@@ -355,7 +368,7 @@ function splash(title: string, detail?: string): string {
 /** Shows the app once the local host answers; until then a plain page says what is happening. */
 const unwatchHost = new Map<number, () => void>()
 function loadFromHost(win: BrowserWindow) {
-  const appUrl = `http://127.0.0.1:${hostPort(process.env)}/`
+  const appUrl = withRoute(`${appOrigin()}/`, settings.lastRoute)
   const id = win.webContents.id
   unwatchHost.get(id)?.()
   if (!daemon) return void win.loadURL(appUrl)

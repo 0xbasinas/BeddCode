@@ -43,7 +43,11 @@ import { TailscaleService } from './network/tailscale.ts'
 import { reachableRoutes } from './network/reachable.ts'
 import { extendUserPath } from './agents/userPath.ts'
 import { SessionManager, type SessionManagerDeps } from './sessions/sessionManager.ts'
-import { recoverInterruptedTurns, takeInterruptedSessions } from './sessions/recovery.ts'
+import {
+  autoResumeFromEnv,
+  recoverInterruptedTurns,
+  takeInterruptedSessions,
+} from './sessions/recovery.ts'
 import { openEventStore } from './store/eventStore.ts'
 import { startServer } from './transport/server.ts'
 import { FileService } from './files/files.ts'
@@ -104,7 +108,7 @@ export async function runServer(
 
   const store = openEventStore(path.join(home, 'beddcode.db'))
   store.jobs.recover()
-  recoverInterruptedTurns(store)
+  recoverInterruptedTurns(store, autoResumeFromEnv())
   const interruptedSessions = takeInterruptedSessions()
   const attachments = new AttachmentStore(path.join(home, 'attachments'))
   const hostPool = options.warmPool

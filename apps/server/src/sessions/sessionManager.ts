@@ -1566,6 +1566,21 @@ export class SessionManager {
     this.deps.store.purgeSession(sessionId, seq)
   }
 
+  /** How many tool calls are running in busy turns. */
+  activeToolCount(): number {
+    let n = 0
+    for (const [id, activity] of this.activity)
+      if (this.turns.get(id)?.busy) n += activity.tools.size
+    return n
+  }
+
+  /** How many turns are running; the dev reloader waits for zero before restarting the host. */
+  activeTurnCount(): number {
+    let n = 0
+    for (const turn of this.turns.values()) if (turn.busy) n++
+    return n
+  }
+
   /** Deletes the worktree a session was started in. The session's branch and history are kept. */
   busySessionsIn(cwd: string): string[] {
     const normalize = (value: string) =>
