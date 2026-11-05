@@ -215,18 +215,10 @@ function PlacementControl({
     )
   }
   return (
-    <label className="cad-field">
-      <span>{field.label}</span>
-      <input
-        type="number"
-        step="any"
-        value={Number.isFinite(field.value) ? field.value : 0}
-        onChange={(event) => {
-          const next = Number(event.target.value)
-          if (!Number.isFinite(next)) return
-          onPlacement?.(field.key, next)
-        }}
-      />
-    </label>
+    <SpinInput
+      label={field.label}
+      value={field.value}
+      onCommit={(next) => onPlacement?.(field.key, next)}
+    />
   )
 }

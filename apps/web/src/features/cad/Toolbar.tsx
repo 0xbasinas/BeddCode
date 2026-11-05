@@ -22,7 +22,7 @@ import {
   Triangle,
   Upload,
 } from 'lucide-react'
-import { useState } from 'react'
+import { SpinInput } from './SpinInput.tsx'
 import type { SketchToolName } from './sketcher/project.ts'
 
 export type CadTool =
@@ -436,37 +436,17 @@ function NumberOption({
   disabled: boolean
   onOptionsChange?(patch: Partial<ToolOptions>): void
 }) {
-  const [text, setText] = useState<string | null>(null)
   return (
-    <label className="cad-option">
-      <span>{field.label}</span>
-      <input
-        type="number"
-        aria-label={field.label}
-        min={field.min}
-        step={field.step}
-        value={text === null ? String(value) : text}
-        disabled={disabled}
-        onFocus={() => setText(String(value))}
-        onChange={(event) => {
-          const raw = event.target.value
-          setText(raw)
-          if (isPartialNumber(raw)) return
-          emitNumber(field, raw, onOptionsChange)
-        }}
-        onBlur={() => {
-          if (text !== null) emitNumber(field, text, onOptionsChange)
-          setText(null)
-        }}
-      />
-    </label>
+    <SpinInput
+      className="cad-option"
+      label={field.label}
+      value={value}
+      min={field.min}
+      step={field.step}
+      disabled={disabled}
+      onCommit={(next) => emitNumber(field, String(next), onOptionsChange)}
+    />
   )
-}
-
-/** True while the typed text is not a finished number, such as "2.". */
-function isPartialNumber(raw: string): boolean {
-  const text = raw.trim()
-  return text === '' || text === '-' || text === '.' || text === '-.' || text.endsWith('.')
 }
 
 function emitNumber(

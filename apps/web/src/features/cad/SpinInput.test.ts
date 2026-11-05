@@ -14,6 +14,21 @@ describe('spin field commit', () => {
     expect(spinDisplay(entered.edit)).toBe('12')
   })
 
+  it('commits 80 once after typing and does not repeat on blur', () => {
+    const first = editSpin(spinEdit(20), { type: 'type', text: '8' })
+    const second = editSpin(first.edit, { type: 'type', text: '80' })
+    expect([first.commit, second.commit]).toEqual([null, null])
+    const entered = editSpin(second.edit, { type: 'enter' })
+    expect(entered.commit).toBe(80)
+    expect(editSpin(entered.edit, { type: 'blur' }).commit).toBeNull()
+  })
+
+  it('clamps committed tool options to their minimum', () => {
+    const typed = editSpin(spinEdit(8), { type: 'type', text: '-2' })
+    expect(editSpin(typed.edit, { type: 'blur' }, 0.1, 0.1).commit).toBe(0.1)
+    expect(editSpin(spinEdit(0.1), { type: 'step', direction: -1, shift: false }, 0.1, 0.1).commit).toBeNull()
+  })
+
   it('commits the draft on blur', () => {
     const typed = editSpin(spinEdit(10), { type: 'type', text: '8.5' })
     const blurred = editSpin(typed.edit, { type: 'blur' })
