@@ -8,12 +8,16 @@ import {
   BufferGeometry,
   Color,
   DirectionalLight,
+  DoubleSide,
   EdgesGeometry,
   Float32BufferAttribute,
+  Fog,
   GridHelper,
   Group,
+  Line,
   LineBasicMaterial,
   LineSegments,
+  type Material,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
@@ -53,6 +57,7 @@ import { SketchOverlay, type OverlayLabel } from './SketchOverlay.tsx'
 import { applyDimensionToEntity, commitLiveDimension } from './sketcher/dimension.ts'
 import {
   advanceSketch,
+  DEFAULT_POLYGON_SIDES,
   asWorkPlane,
   CAMERA_UP,
   DEFAULT_CAMERA_POSITION,
@@ -73,14 +78,17 @@ import {
   type SketchToolName,
 } from './sketcher/project.ts'
 import {
+  DEFAULT_SNAP_SETTINGS,
   gridStepForShift,
   resolveSnap,
   sketchSnapTolerance,
   snapCaption,
   type SnapKind,
+  type SnapSettings,
 } from './sketcher/snap.ts'
 import type { SketchEntity } from './sketcher/types.ts'
 import { ViewCube, type ViewName } from './ViewCube.tsx'
+import { planeCorners, planePlacements, visiblePlanes, type DatumPlane } from './planes.ts'
 
 export type { MeshBuffers } from './solids.ts'
 export type { ViewName } from './ViewCube.tsx'
@@ -126,19 +134,29 @@ export interface PickHit {
 
 export interface ViewportHandle {
   fit(): void
+  /** Commit the open sketch and report its entities to the host. */
+  finishSketch(): void
+  /** Look straight down the active sketch plane. */
+  lookAtSketch(): void
+  /** Return to the perspective modelling view, framed on the part. */
+  lookAtPart(): void
   clearSelection(): void
   /** PNG data URL of the WebGL canvas. */
   screenshot(): string
   setView(view: ViewName): void
 }
 
-const SOLID = 0x8d8d8d
-const SOLID_SELECTED = 0xbdbdbd
-const EDGE = 0x5c5c5c
+const SOLID = 0x8a9096
+const SOLID_SELECTED = 0xb9c0c7
+// Edges read as crisp outlines rather than vanishing into the face colour.
+const EDGE = 0x2b3036
 const EDGE_HOVER = 0xb0b0b0
 const SKETCH = 0x8a8a8a
 const SKETCH_PREVIEW = 0xb4b4b4
 const MEASURE = 0x9a9a9a
+const PLANE_FACE = 0x4a6580
+const PLANE_FACE_HOVER = 0x7fa8d4
+const PLANE_EDGE = 0x6f8fae
 const HOVER = 0xcfcfcf
 const SELECTED = 0xe0e0e0
 
@@ -153,6 +171,10 @@ interface SceneHooks {
   onPick(hit: PickHit | null): void
   onSelectionChange(hits: PickHit[]): void
   onSketchChange(entities: SketchEntity[]): void
+  /** Points placed for the current sketch tool, so the host can advance its steps. */
+  onSketchPlaced(placed: number): void
+  /** A datum plane was clicked, so the host can start a sketch on it. */
+  onPlanePick(plane: DatumPlane): void
   onSketchFinish(entities: SketchEntity[]): void
   onLabels(labels: OverlayLabel[]): void
   onDraft(draft: DraftAnchor | null): void
@@ -163,10 +185,17 @@ interface SceneSession {
   sketchTool: SketchToolName
   plane: PlaneArg
   snap: number
+  /** Side count for the polygon tool. */
+  polygonSides: number
+  /** Master object-snap switch and per-kind switches. */
+  snapEnabled: boolean
+  snapSettings: SnapSettings
   pickMode: PickKind
   entities: SketchEntity[]
   measure: MeasureVisual | null
   placed: Array<[number, number]>
+  /** True while the active sketch tool keeps chaining, as a polyline does. */
+  chaining: boolean
   cursor: [number, number] | null
   snapKind: SnapKind | null
 }
@@ -175,12 +204,14 @@ interface SceneApi {
   resize(): void
   clearSelection(): void
   setMeshes(meshes: MeshBuffers[], selectedId: string | null): void
-  setInteraction(next: Omit<SceneSession, 'placed' | 'cursor' | 'snapKind'>): void
+  setInteraction(next: Omit<SceneSession, 'placed' | 'chaining' | 'cursor' | 'snapKind'>): void
   cancelSketch(): void
   finishSketch(): void
   applyDraftDimension(text: string): boolean
   applyEntityDimension(id: string, text: string): boolean
   fit(): void
+  lookAtSketch(): void
+  lookAtPart(): void
   screenshot(): string
   setView(view: ViewName): void
   dispose(): void
@@ -227,17 +258,43 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
 
   const controls = new OrbitControls(camera, renderer.domElement)
   controls.target.set(0, 0, 0)
+  // Damping makes orbit and pan coast to a stop instead of snapping.
+  controls.enableDamping = true
+  controls.dampingFactor = 0.09
+  // Zoom toward the pointer, so the thing under the cursor stays under it.
+  controls.zoomToCursor = true
+  // Pan in the screen plane. Without this, panning drifts along the ground and
+  // the model slides away when the camera is looking from the side.
+  controls.screenSpacePanning = true
+  controls.minDistance = 0.5
+  controls.maxDistance = 4000
+  // Keep the camera off the poles, where the orbit axis flips and the view spins.
+  controls.minPolarAngle = 0.001
+  controls.maxPolarAngle = Math.PI - 0.001
   controls.update()
 
-  scene.add(new AmbientLight(0xffffff, 0.7))
-  const sun = new DirectionalLight(0xffffff, 1.15)
-  sun.position.set(48, -56, 90)
-  scene.add(sun)
-  const ground = new GridHelper(200, 20, 0x3a3a3a, 0x2a2a2a)
+  // A three-point rig. One key light alone leaves faces at the same flat value,
+  // so a cube reads as a silhouette. The fill and rim give each face its own value.
+  scene.add(new AmbientLight(0xffffff, 0.33))
+  const key = new DirectionalLight(0xffffff, 1.7)
+  key.position.set(46, -60, 88)
+  scene.add(key)
+  const fill = new DirectionalLight(0xdde6f2, 0.5)
+  fill.position.set(-70, -30, 30)
+  scene.add(fill)
+  const rim = new DirectionalLight(0xffffff, 0.4)
+  rim.position.set(10, 80, -40)
+  scene.add(rim)
+  // Very light fog so distant grid lines fade instead of ending on a hard edge.
+  scene.fog = new Fog(0x16181b, 190, 520)
+  const ground = new GridHelper(400, 80, 0x3a3f45, 0x24282c)
   const floorTurn = gridRotation('XY')
   ground.rotation.set(floorTurn[0], floorTurn[1], floorTurn[2])
+  ;(ground.material as Material).transparent = true
+  ;(ground.material as Material).opacity = 0.55
   scene.add(ground)
-  scene.add(new AxesHelper(40))
+  // The axes mark the origin; a small helper does that without shouting.
+  scene.add(new AxesHelper(12))
 
   const parts = new Group()
   const hoverGroup = new Group()
@@ -245,6 +302,8 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
   const sketchGroup = new Group()
   const previewGroup = new Group()
   const measureGroup = new Group()
+  const planeGroup = new Group()
+  scene.add(planeGroup)
   scene.add(parts)
   scene.add(selectGroup)
   scene.add(hoverGroup)
@@ -270,6 +329,8 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
   let cycleHits: Found[] = []
   let cycleIndex = 0
   let selection: SelectionItem[] = []
+  /** Non-zero while a view change is tweening the camera. */
+  let viewAnim = 0
   let boxing = false
   let boxFrame: HTMLDivElement | null = null
   let boxFrom = { x: 0, y: 0 }
@@ -281,10 +342,14 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     sketchTool: 'line',
     plane: 'XY',
     snap: 1,
+    polygonSides: DEFAULT_POLYGON_SIDES,
+    snapEnabled: true,
+    snapSettings: DEFAULT_SNAP_SETTINGS,
     pickMode: 'face',
     entities: [],
     measure: null,
     placed: [],
+    chaining: false,
     cursor: null,
     snapKind: null,
   }
@@ -367,7 +432,12 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     clearGroup(previewGroup)
     lineMaterials.length = 0
     lineMaterials.push(...kept)
-    const polyline = previewPolyline(session.sketchTool, session.placed, session.cursor)
+    const polyline = previewPolyline(
+      session.sketchTool,
+      session.placed,
+      session.cursor,
+      session.polygonSides,
+    )
     if (polyline) addPolyline(previewGroup, worldPolyline(polyline), SKETCH_PREVIEW)
   }
 
@@ -392,6 +462,85 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     gridZ.crossVectors(gridX, gridY)
     if (gridZ.lengthSq() < 1e-8) return
     grid.quaternion.setFromRotationMatrix(gridBasis.makeBasis(gridX, gridY, gridZ))
+  }
+
+  /** Quad outlines for the datum planes, plus a translucent face to click on. */
+  let planeHover: DatumPlane | null = null
+  /** Plane id per quad mesh, kept beside the group so picking needs no cast. */
+  const planeIds = new Map<Object3D, DatumPlane>()
+
+  const buildPlanes = (visible: readonly DatumPlane[]) => {
+    for (const child of [...planeGroup.children]) {
+      disposeObject(child)
+      planeGroup.remove(child)
+    }
+    planeIds.clear()
+    for (const place of planePlacements()) {
+      if (!visible.includes(place.id)) continue
+      const corners = planeCorners(place)
+      const a = corners[0]
+      const b = corners[1]
+      const c = corners[2]
+      const d = corners[3]
+      if (!a || !b || !c || !d) continue
+
+      const geometry = new BufferGeometry()
+      // Two triangles from the quad's four corners.
+      geometry.setAttribute(
+        'position',
+        new Float32BufferAttribute([...a, ...b, ...c, ...a, ...c, ...d], 3),
+      )
+      geometry.computeVertexNormals()
+      const mesh = new Mesh(
+        geometry,
+        new MeshBasicMaterial({
+          color: PLANE_FACE,
+          transparent: true,
+          opacity: 0.16,
+          side: DoubleSide,
+          depthWrite: false,
+        }),
+      )
+      planeGroup.add(mesh)
+      planeIds.set(mesh, place.id)
+
+      // The outline, so the plane reads as a rectangle rather than a wash.
+      const outlineGeometry = new BufferGeometry()
+      outlineGeometry.setAttribute(
+        'position',
+        new Float32BufferAttribute([...a, ...b, ...c, ...d, ...a], 3),
+      )
+      planeGroup.add(
+        new Line(
+          outlineGeometry,
+          new LineBasicMaterial({ color: PLANE_EDGE, transparent: true, opacity: 0.55 }),
+        ),
+      )
+    }
+  }
+
+  const planeAt = (event: { clientX: number; clientY: number }): DatumPlane | null => {
+    if (planeIds.size === 0) return null
+    const ray = pointerRay(event)
+    if (!ray) return null
+    raycaster.firstHitOnly = false
+    const hits = raycaster.intersectObjects([...planeIds.keys()], false)
+    raycaster.firstHitOnly = true
+    const hit = hits[0]
+    return hit ? (planeIds.get(hit.object) ?? null) : null
+  }
+
+  const setPlaneHover = (next: DatumPlane | null) => {
+    if (planeHover === next) return
+    planeHover = next
+    for (const [object, id] of planeIds) {
+      if (!(object instanceof Mesh)) continue
+      const material = object.material as MeshBasicMaterial
+      const on = id === next
+      material.opacity = on ? 0.34 : 0.16
+      material.color.setHex(on ? PLANE_FACE_HOVER : PLANE_FACE)
+    }
+    renderer.domElement.style.cursor = next ? 'pointer' : session.sketchMode ? 'crosshair' : ''
   }
 
   const syncGrid = () => {
@@ -431,7 +580,12 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       hooks.onDraft(null)
       return
     }
-    const note = previewAnnotation(session.sketchTool, session.placed, session.cursor)
+    const note = previewAnnotation(
+      session.sketchTool,
+      session.placed,
+      session.cursor,
+      session.polygonSides,
+    )
     const at = note?.at ?? session.cursor
     const screen = projectLabel(toWorld(session.plane, at[0], at[1]))
     if (!screen) {
@@ -463,7 +617,12 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
         labels.push({ id: entity.id, text: note.text, ...screen, kind: 'sketch' })
       }
       if (!liveDimension()) {
-        const preview = previewAnnotation(session.sketchTool, session.placed, session.cursor)
+        const preview = previewAnnotation(
+          session.sketchTool,
+          session.placed,
+          session.cursor,
+          session.polygonSides,
+        )
         if (preview) {
           const screen = projectLabel(toWorld(session.plane, preview.at[0], preview.at[1]))
           if (screen) labels.push({ id: 'preview', text: preview.text, ...screen, kind: 'sketch' })
@@ -944,6 +1103,8 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       gridStep: gridStepForShift(session.snap, event.shiftKey),
       anchor,
       entities: session.entities,
+      enabled: session.snapEnabled,
+      settings: session.snapSettings,
     })
   }
 
@@ -1000,6 +1161,9 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       redrawPreview()
       return
     }
+    // A datum plane under the pointer takes the hover, so it is obvious it can be clicked.
+    setPlaneHover(planeAt(event))
+    if (planeHover) return
     hoverAt(event)
   }
 
@@ -1031,16 +1195,37 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       if (!snap) return
       session.cursor = snap.point
       session.snapKind = snap.kind
-      const next = advanceSketch(session.sketchTool, session.placed, snap.point, `e${sketchSeq}`)
+      const next = advanceSketch(
+        session.sketchTool,
+        session.placed,
+        snap.point,
+        `e${sketchSeq}`,
+        session.polygonSides,
+      )
       session.placed = next.placed
-      if (next.entity) {
+      session.chaining = next.chaining === true && session.placed.length > 0
+      // A polygon arrives as several segments; a line or polyline as one.
+      const added = next.entities ?? (next.entity ? [next.entity] : [])
+      // Points placed toward the active shape, not the open draft. A finished
+      // shape reports one past its draft so the counter can complete; a chaining
+      // tool keeps re-anchoring and never runs past its repeat step.
+      const committed = added.length > 0 ? session.placed.length + 1 : session.placed.length
+      hooks.onSketchPlaced(session.chaining ? Math.max(committed, 1) : committed)
+      if (added.length > 0) {
         sketchSeq += 1
-        session.entities = [...session.entities, next.entity]
+        session.entities = [...session.entities, ...added]
         hooks.onSketchChange(session.entities)
         redrawCommitted()
       }
       redrawPreview()
       publishLabels()
+      return
+    }
+    // Clicking a datum plane starts a sketch on it.
+    const plane = planeAt(event)
+    if (plane) {
+      setPlaneHover(null)
+      hooks.onPlanePick(plane)
       return
     }
     hooks.onPick(pick(event))
@@ -1130,9 +1315,10 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
         geometry,
         new MeshStandardMaterial({
           color: selected ? SOLID_SELECTED : SOLID,
-          roughness: 0.62,
-          metalness: 0.06,
-          emissive: selected ? 0x2a2a2a : 0x000000,
+          roughness: 0.52,
+          metalness: 0.04,
+          flatShading: false,
+          emissive: selected ? 0x24282c : 0x000000,
         }),
       )
       solid.userData = { featureId: mesh.id, faceGroups: mesh.faceGroups ?? null }
@@ -1147,7 +1333,10 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       } else {
         edgeGeometry = new EdgesGeometry(geometry)
       }
-      const edges = new LineSegments(edgeGeometry, new LineBasicMaterial({ color: EDGE }))
+      const edges = new LineSegments(
+        edgeGeometry,
+        new LineBasicMaterial({ color: selected ? EDGE_HOVER : EDGE }),
+      )
       edges.userData = { featureId: mesh.id, edgeGroups }
       parts.add(edges)
     }
@@ -1156,15 +1345,22 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     if (selection.length !== before) hooks.onSelectionChange(selectionHits())
   }
 
-  const setInteraction = (next: Omit<SceneSession, 'placed' | 'cursor' | 'snapKind'>) => {
+  const setInteraction = (
+    next: Omit<SceneSession, 'placed' | 'chaining' | 'cursor' | 'snapKind'>,
+  ) => {
     const resetDraft =
       next.sketchTool !== session.sketchTool ||
       planeKey(next.plane) !== planeKey(session.plane) ||
       next.sketchMode !== session.sketchMode
+    const wasSketching = session.sketchMode
+    const previousPlane = session.plane
     session.sketchMode = next.sketchMode
     session.sketchTool = next.sketchTool
     session.plane = next.plane
     session.snap = next.snap
+    session.polygonSides = next.polygonSides
+    session.snapEnabled = next.snapEnabled
+    session.snapSettings = next.snapSettings
     if (next.pickMode !== session.pickMode) {
       session.pickMode = next.pickMode
       cycleHits = []
@@ -1174,10 +1370,25 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     }
     session.entities = next.entities
     session.measure = next.measure
+    // Sketching looks straight down the plane with the orbit locked; modelling
+    // goes back to a perspective you can turn around.
+    if (next.sketchMode !== wasSketching) {
+      if (next.sketchMode) {
+        framePlane(next.plane)
+        controls.enableRotate = false
+      } else {
+        controls.enableRotate = true
+        frameModel()
+      }
+    } else if (next.sketchMode && planeKey(next.plane) !== planeKey(previousPlane)) {
+      // A new sketch plane needs a new view onto it.
+      framePlane(next.plane)
+    }
     if (resetDraft) {
       session.placed = []
       session.cursor = null
       session.snapKind = null
+      hooks.onSketchPlaced(0)
     }
     renderer.domElement.style.cursor = session.sketchMode ? 'crosshair' : ''
     if (session.sketchMode) {
@@ -1188,6 +1399,9 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       hoverAt(lastPointer)
     }
     syncGrid()
+    // The planes are a starting point, not permanent scenery: they go away once
+    // there is geometry to look at.
+    buildPlanes(visiblePlanes(parts.children.length > 0, session.sketchMode))
     redrawCommitted()
     redrawPreview()
     redrawMeasure()
@@ -1269,7 +1483,7 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
       const maxDim = Math.max(size.x, size.y, size.z, 1)
       const vertical = (camera.fov * Math.PI) / 180
       const horizontal = 2 * Math.atan(Math.tan(vertical / 2) * Math.max(camera.aspect, 0.05))
-      const dist = (maxDim / 2 / Math.tan(Math.min(vertical, horizontal) / 2)) * 1.8
+      const dist = (maxDim / 2 / Math.tan(Math.min(vertical, horizontal) / 2)) * 1.4
       controls.target.copy(center)
       camera.position.copy(center).addScaledVector(dir, dist)
       camera.near = Math.max(dist / 100, 0.01)
@@ -1280,14 +1494,127 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     controls.update()
   }
 
-  const setView = (view: ViewName) => {
-    const dist = Math.max(camera.position.distanceTo(controls.target), 40)
-    const direction = new Vector3(...viewDirection(view))
+  /** Default field of view for modelling. Narrowing it flattens the projection. */
+  const MODEL_FOV = 45
+  /**
+   * Field of view used while sketching.
+   *
+   * A true orthographic swap means a second camera object, and this camera is
+   * referenced throughout the scene. Narrowing the field of view instead gives
+   * a near-parallel projection: at 8 degrees across a 1.6 aspect the edge
+   * distortion is under a percent, which is indistinguishable from orthographic
+   * on a sketch. The distance grows to keep the same area in frame.
+   */
+  const SKETCH_FOV = 8
+
+  /** Scale the view so a body at `extent` still fills the frame at this fov. */
+  const distanceForExtent = (extent: number, fov: number) => {
+    const vertical = (fov * Math.PI) / 180
+    const horizontal = 2 * Math.atan(Math.tan(vertical / 2) * Math.max(camera.aspect, 0.05))
+    return (extent / 2 / Math.tan(Math.min(vertical, horizontal) / 2)) * 1.2
+  }
+
+  const setFov = (fov: number) => {
+    if (Math.abs(camera.fov - fov) < 1e-6) return
+    camera.fov = fov
+    camera.updateProjectionMatrix()
+  }
+
+  /**
+   * Look straight down a workplane.
+   *
+   * Sketching from a perspective isometric is close to unusable: screen
+   * positions land on the tilted plane at a steep angle, so a rectangle drawn
+   * as 400 by 250 arrives as a sliver. Looking down the normal removes the skew
+   * and the narrowed field of view keeps a 2D drawing square at the edges.
+   */
+  const framePlane = (plane: PlaneArg) => {
+    const frame = asWorkPlane(plane)
+    const normal = new Vector3(frame.normal[0], frame.normal[1], frame.normal[2])
+    if (normal.lengthSq() < 1e-9) return
+    normal.normalize()
+    const up = new Vector3(frame.u[0], frame.u[1], frame.u[2]).normalize()
+    const origin = new Vector3(frame.origin[0], frame.origin[1], frame.origin[2])
+
+    // Frame what is already drawn, so a reopened sketch lands where it left off.
+    const box = new Box3()
+    for (const child of sketchGroup.children) box.expandByObject(child)
+    const size = box.isEmpty() ? 100 : Math.max(box.getSize(new Vector3()).length(), 20)
+    const center = box.isEmpty() ? origin : box.getCenter(new Vector3())
+
+    setFov(SKETCH_FOV)
+    camera.up.copy(up)
+    controls.target.copy(center)
+    camera.position.copy(center).addScaledVector(normal, distanceForExtent(size * 1.6, SKETCH_FOV))
+    camera.lookAt(center)
+    camera.updateProjectionMatrix()
+    controls.update()
+  }
+
+  /**
+   * Back to perspective at a modelling field of view.
+   *
+   * Widening the field of view alone leaves the camera where the sketch left it,
+   * which is very far away for the narrow sketch fov, so the part arrives as a
+   * speck. Pull the distance back by the same ratio to hold the framing.
+   */
+  const frameModel = () => {
+    const was = camera.fov
+    if (Math.abs(was - MODEL_FOV) > 1e-6) {
+      const ratio = Math.tan((was * Math.PI) / 360) / Math.tan((MODEL_FOV * Math.PI) / 360)
+      const offset = camera.position.clone().sub(controls.target)
+      const moved = offset.multiplyScalar(ratio)
+      camera.position.copy(controls.target).add(moved)
+    }
+    setFov(MODEL_FOV)
     camera.up.set(CAMERA_UP[0], CAMERA_UP[1], CAMERA_UP[2])
-    camera.position.copy(controls.target).addScaledVector(direction, dist)
+    // Leaving a sketch also leaves the axis it was drawn on. Keeping the camera
+    // dead-on to that axis makes a fresh extrusion read as flat faces, so swing
+    // to the isometric direction the same way a standard view does.
+    const iso = new Vector3(...viewDirection('iso'))
+    const dist = camera.position.distanceTo(controls.target)
+    camera.position.copy(controls.target).addScaledVector(iso, dist)
     camera.lookAt(controls.target)
     camera.updateProjectionMatrix()
     controls.update()
+  }
+
+  /**
+   * Fly the camera to a standard view.
+   *
+   * The move is interpolated rather than snapped so the user keeps their place
+   * in the scene: a jump between opposite views is disorienting when you cannot
+   * see how you got there.
+   */
+  const setView = (view: ViewName) => {
+    const dist = Math.max(camera.position.distanceTo(controls.target), 40)
+    const direction = new Vector3(...viewDirection(view))
+    // A sketch keeps its plane's up axis, so asking for a standard view does not
+    // tip the drawing sideways. In model space up is always world Z.
+    if (session.sketchMode) {
+      const frame = asWorkPlane(session.plane)
+      camera.up.set(frame.u[0], frame.u[1], frame.u[2])
+    } else {
+      camera.up.set(CAMERA_UP[0], CAMERA_UP[1], CAMERA_UP[2])
+    }
+    const from = camera.position.clone()
+    const to = controls.target.clone().addScaledVector(direction, dist)
+    const target = controls.target.clone()
+    const started = performance.now()
+    const duration = 320
+    if (viewAnim) cancelAnimationFrame(viewAnim)
+    const step = () => {
+      const t = Math.min(1, (performance.now() - started) / duration)
+      // Ease out cubic: quick to start, settling at the end.
+      const eased = 1 - (1 - t) ** 3
+      camera.position.lerpVectors(from, to, eased)
+      camera.lookAt(target)
+      camera.updateProjectionMatrix()
+      controls.update()
+      if (t < 1) viewAnim = requestAnimationFrame(step)
+      else viewAnim = 0
+    }
+    viewAnim = requestAnimationFrame(step)
   }
 
   const screenshot = () => {
@@ -1298,7 +1625,9 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
   let frame = 0
   const loop = () => {
     frame = requestAnimationFrame(loop)
-    controls.update()
+    // During a view animation the tween owns the camera. Letting damping update
+    // as well would tug the camera back toward where the tween last left it.
+    if (viewAnim === 0) controls.update()
     renderer.render(scene, camera)
     publishLabels()
   }
@@ -1315,10 +1644,18 @@ function mountScene(host: HTMLElement, hooks: SceneHooks): SceneApi {
     applyDraftDimension,
     applyEntityDimension,
     fit,
+    lookAtSketch: () => {
+      framePlane(session.plane)
+    },
+    lookAtPart: () => {
+      frameModel()
+      fit()
+    },
     screenshot,
     setView,
     dispose() {
       cancelAnimationFrame(frame)
+      if (viewAnim) cancelAnimationFrame(viewAnim)
       renderer.domElement.removeEventListener('pointerdown', onPointerDown)
       renderer.domElement.removeEventListener('pointermove', onPointerMove)
       renderer.domElement.removeEventListener('pointerup', onPointerUp)
@@ -1372,8 +1709,17 @@ export const Viewport = forwardRef<
     sketchTool?: SketchToolName
     plane?: PlaneArg
     sketchSnap?: number
+    /** Side count for the polygon sketch tool. */
+    polygonSides?: number
+    /** Master object-snap switch from the status bar popover. */
+    snapEnabled?: boolean
+    /** Per-kind snap switches from the status bar popover. */
+    snapSettings?: SnapSettings
     entities?: SketchEntity[]
     onSketchChange?: (entities: SketchEntity[]) => void
+    onSketchPlaced?: (placed: number) => void
+    /** A datum plane was clicked. */
+    onPlanePick?: (plane: DatumPlane) => void
     onSketchFinish?: (entities: SketchEntity[]) => void
     measure?: MeasureVisual | null
   }
@@ -1391,8 +1737,13 @@ export const Viewport = forwardRef<
     sketchTool = 'line',
     plane = 'XY',
     sketchSnap = 1,
+    polygonSides = DEFAULT_POLYGON_SIDES,
+    snapEnabled = true,
+    snapSettings = DEFAULT_SNAP_SETTINGS,
     entities = NO_ENTITIES,
     onSketchChange,
+    onSketchPlaced,
+    onPlanePick,
     onSketchFinish,
     measure = null,
   },
@@ -1404,6 +1755,8 @@ export const Viewport = forwardRef<
     onPick: () => {},
     onSelectionChange: () => {},
     onSketchChange: () => {},
+    onSketchPlaced: () => {},
+    onPlanePick: () => {},
     onSketchFinish: () => {},
     onLabels: () => {},
     onDraft: () => {},
@@ -1422,6 +1775,8 @@ export const Viewport = forwardRef<
   hooksRef.current.onPick = (hit) => onPick?.(hit)
   hooksRef.current.onSelectionChange = (hits) => onSelectionChange?.(hits)
   hooksRef.current.onSketchChange = (next) => onSketchChange?.(next)
+  hooksRef.current.onSketchPlaced = (count) => onSketchPlaced?.(count)
+  hooksRef.current.onPlanePick = (plane) => onPlanePick?.(plane)
   hooksRef.current.onSketchFinish = (next) => onSketchFinish?.(next)
   hooksRef.current.onLabels = (next) => {
     const key = next
@@ -1456,6 +1811,8 @@ export const Viewport = forwardRef<
       onPick: (hit) => hooksRef.current.onPick(hit),
       onSelectionChange: (hits) => hooksRef.current.onSelectionChange(hits),
       onSketchChange: (next) => hooksRef.current.onSketchChange(next),
+      onSketchPlaced: (count) => hooksRef.current.onSketchPlaced(count),
+      onPlanePick: (plane) => hooksRef.current.onPlanePick(plane),
       onSketchFinish: (next) => hooksRef.current.onSketchFinish(next),
       onLabels: (next) => hooksRef.current.onLabels(next),
       onDraft: (next) => hooksRef.current.onDraft(next),
@@ -1486,11 +1843,25 @@ export const Viewport = forwardRef<
       sketchTool,
       plane,
       snap: sketchSnap,
+      polygonSides,
+      snapEnabled,
+      snapSettings,
       pickMode,
       entities,
       measure,
     })
-  }, [sketchMode, sketchTool, plane, sketchSnap, pickMode, entities, measure])
+  }, [
+    sketchMode,
+    sketchTool,
+    plane,
+    sketchSnap,
+    polygonSides,
+    snapEnabled,
+    snapSettings,
+    pickMode,
+    entities,
+    measure,
+  ])
 
   const applyView = (next: ViewName) => {
     apiRef.current?.setView(next)
@@ -1501,6 +1872,9 @@ export const Viewport = forwardRef<
     ref,
     () => ({
       fit: () => apiRef.current?.fit(),
+      finishSketch: () => apiRef.current?.finishSketch(),
+      lookAtSketch: () => apiRef.current?.lookAtSketch(),
+      lookAtPart: () => apiRef.current?.lookAtPart(),
       clearSelection: () => apiRef.current?.clearSelection(),
       screenshot: () => apiRef.current?.screenshot() ?? '',
       setView: applyView,
@@ -1629,6 +2003,20 @@ export const Viewport = forwardRef<
       <div className="cad-viewport-chrome">
         <ViewCube active={view} onView={applyView} />
         <div className="cad-viewport-actions">
+          <button
+            type="button"
+            title="Look straight at the sketch plane"
+            onClick={() => apiRef.current?.lookAtSketch()}
+          >
+            Sketch view
+          </button>
+          <button
+            type="button"
+            title="Return to the 3D view, framed on the part"
+            onClick={() => apiRef.current?.lookAtPart()}
+          >
+            3D view
+          </button>
           <button type="button" onClick={() => apiRef.current?.fit()}>
             Fit
           </button>

@@ -1,8 +1,30 @@
 import type { SketchEntity } from './types.ts'
 import { snapPoint } from './project.ts'
 
-/** What won the snap. Endpoint beats midpoint, then axis, then the grid. */
-export type SnapKind = 'endpoint' | 'midpoint' | 'axis' | 'grid'
+/** What won the snap. Endpoint beats midpoint, then center, then axis, then the grid. */
+export type SnapKind = 'endpoint' | 'midpoint' | 'center' | 'axis' | 'grid'
+
+/** Snap kinds the user can switch off. `grid` is the fallback and always runs. */
+export type SnapToggle = 'endpoint' | 'midpoint' | 'center' | 'axis'
+
+export const SNAP_TOGGLES: readonly SnapToggle[] = ['endpoint', 'midpoint', 'center', 'axis']
+
+export const SNAP_LABELS: Record<SnapToggle, string> = {
+  endpoint: 'Endpoint',
+  midpoint: 'Midpoint',
+  center: 'Center',
+  axis: 'Axis lock',
+}
+
+/** Every kind on. The default, and what a reset restores. */
+export type SnapSettings = Record<SnapToggle, boolean>
+
+export const DEFAULT_SNAP_SETTINGS: SnapSettings = {
+  endpoint: true,
+  midpoint: true,
+  center: true,
+  axis: true,
+}
 
 export interface SnapQuery {
   cursor: readonly [number, number]
@@ -12,6 +34,10 @@ export interface SnapQuery {
   /** Last accepted point. Horizontal and vertical locks run through it. */
   anchor?: readonly [number, number] | null
   entities?: readonly SketchEntity[]
+  /** Master switch. False leaves only the grid. */
+  enabled?: boolean
+  /** Per-kind switches. Omitted means every kind is on. */
+  settings?: Partial<SnapSettings>
 }
 
 export interface SnapChoice {
@@ -41,26 +67,44 @@ export function gridStepForShift(base: number, shiftKey: boolean): number {
 export function snapCaption(kind: SnapKind): string {
   if (kind === 'endpoint') return 'end'
   if (kind === 'midpoint') return 'mid'
+  if (kind === 'center') return 'cen'
   if (kind === 'axis') return 'axis'
   return 'grid'
 }
 
 /**
- * First match wins: endpoint, midpoint, horizontal or vertical from the
+ * First match wins: endpoint, midpoint, center, horizontal or vertical from the
  * anchor, then the grid. The anchor itself counts as an endpoint.
  */
 export function resolveSnap(query: SnapQuery): SnapChoice {
   const tolerance = query.tolerance > 0 ? query.tolerance : 0
-  const endpoints = featurePoints(query.entities ?? [], 'endpoint')
-  if (query.anchor) endpoints.push([query.anchor[0], query.anchor[1]])
-  const end = nearest(endpoints, query.cursor, tolerance)
-  if (end) return { point: end, kind: 'endpoint' }
-  const mid = nearest(featurePoints(query.entities ?? [], 'midpoint'), query.cursor, tolerance)
-  if (mid) return { point: mid, kind: 'midpoint' }
-  const axis = axisLock(query.anchor, query.cursor, tolerance)
-  if (axis) return { point: axis, kind: 'axis' }
-  const step = query.gridStep > 0 && Number.isFinite(query.gridStep) ? query.gridStep : 1
-  return { point: snapPoint(query.cursor, step), kind: 'grid' }
+  const on = query.settings ?? DEFAULT_SNAP_SETTINGS
+  const gridFallback = (): SnapChoice => {
+    const step = query.gridStep > 0 && Number.isFinite(query.gridStep) ? query.gridStep : 1
+    return { point: snapPoint(query.cursor, step), kind: 'grid' }
+  }
+  // The master switch keeps the grid but drops every object snap.
+  if (query.enabled === false) return gridFallback()
+
+  if (on.endpoint !== false) {
+    const endpoints = featurePoints(query.entities ?? [], 'endpoint')
+    if (query.anchor) endpoints.push([query.anchor[0], query.anchor[1]])
+    const end = nearest(endpoints, query.cursor, tolerance)
+    if (end) return { point: end, kind: 'endpoint' }
+  }
+  if (on.midpoint !== false) {
+    const mid = nearest(featurePoints(query.entities ?? [], 'midpoint'), query.cursor, tolerance)
+    if (mid) return { point: mid, kind: 'midpoint' }
+  }
+  if (on.center !== false) {
+    const center = nearest(featurePoints(query.entities ?? [], 'center'), query.cursor, tolerance)
+    if (center) return { point: center, kind: 'center' }
+  }
+  if (on.axis !== false) {
+    const axis = axisLock(query.anchor, query.cursor, tolerance)
+    if (axis) return { point: axis, kind: 'axis' }
+  }
+  return gridFallback()
 }
 
 function nearest(
@@ -96,14 +140,25 @@ function axisLock(
 
 function featurePoints(
   entities: readonly SketchEntity[],
-  slot: 'endpoint' | 'midpoint',
+  slot: 'endpoint' | 'midpoint' | 'center',
 ): Array<[number, number]> {
   const points: Array<[number, number]> = []
   for (const entity of entities) {
     if (slot === 'endpoint') pushEndpoints(points, entity)
-    else pushMidpoints(points, entity)
+    else if (slot === 'midpoint') pushMidpoints(points, entity)
+    else pushCenters(points, entity)
   }
   return points
+}
+
+function pushCenters(points: Array<[number, number]>, entity: SketchEntity) {
+  if (entity.kind === 'circle' || entity.kind === 'arc') {
+    points.push([entity.cx, entity.cy])
+    return
+  }
+  if (entity.kind === 'rect') {
+    points.push([entity.x + entity.width / 2, entity.y + entity.height / 2])
+  }
 }
 
 function pushEndpoints(points: Array<[number, number]>, entity: SketchEntity) {

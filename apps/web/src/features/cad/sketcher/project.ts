@@ -7,7 +7,10 @@ import type { SketchEntity } from './types.ts'
  */
 export type SketchPlaneName = 'XY' | 'YZ' | 'ZX'
 
-export type SketchToolName = 'line' | 'rectangle' | 'circle' | 'arc'
+export type SketchToolName = 'line' | 'polyline' | 'rectangle' | 'polygon' | 'circle' | 'arc'
+
+/** Default side count for the polygon tool. */
+export const DEFAULT_POLYGON_SIDES = 6
 
 export type StandardView = 'front' | 'top' | 'right' | 'iso'
 
@@ -338,15 +341,71 @@ export function entityAnnotation(entity: SketchEntity): SketchAnnotation | null 
 }
 
 /**
- * Click-to-add. A line chains from its end. Rectangle, circle, and arc finish
- * and clear the placed points. A too-small click leaves the draft alone.
+ * Corners of a regular polygon, first corner pointing at the cursor.
+ * The polygon is drawn as a closed loop of line segments so it chains into the
+ * existing profile builder without a new entity kind.
+ */
+export function polygonCorners(
+  cx: number,
+  cy: number,
+  radius: number,
+  sides: number,
+  rotation: number,
+): Array<[number, number]> {
+  const count = Math.max(3, Math.round(sides))
+  const corners: Array<[number, number]> = []
+  for (let index = 0; index < count; index += 1) {
+    const angle = rotation + (index / count) * Math.PI * 2
+    corners.push([cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius])
+  }
+  return corners
+}
+
+/** Close a corner loop into line entities, one per side. */
+export function polygonSegments(
+  corners: readonly (readonly [number, number])[],
+  idPrefix: string,
+): SketchEntity[] {
+  if (corners.length < 3) return []
+  const segments: SketchEntity[] = []
+  for (let index = 0; index < corners.length; index += 1) {
+    const start = corners[index]
+    const end = corners[(index + 1) % corners.length]
+    if (!start || !end) continue
+    if (!pointsDiffer(start, end)) continue
+    segments.push({
+      id: index === 0 ? idPrefix : `${idPrefix}-${index + 1}`,
+      kind: 'line',
+      x1: start[0],
+      y1: start[1],
+      x2: end[0],
+      y2: end[1],
+    })
+  }
+  return segments
+}
+
+/**
+ * Click-to-add. A line chains from its end, and a polyline keeps chaining until
+ * the caller ends the run. Rectangle, circle, polygon, and arc finish and clear
+ * the placed points. A too-small click leaves the draft alone.
+ *
+ * `sides` only matters for the polygon tool.
  */
 export function advanceSketch(
   tool: SketchToolName,
   placed: readonly (readonly [number, number])[],
   cursor: readonly [number, number],
   id: string,
-): { placed: Array<[number, number]>; entity: SketchEntity | null } {
+  sides: number = DEFAULT_POLYGON_SIDES,
+): {
+  placed: Array<[number, number]>
+  entity: SketchEntity | null
+  /** Present only for tools that make more than one entity from one gesture. */
+  entities?: SketchEntity[]
+  /** Line and polyline leave the chain open; the caller decides when to end it. */
+  chaining?: boolean
+} {
   const point: [number, number] = [cursor[0], cursor[1]]
   if (tool === 'line') {
     const start = placed[0]
@@ -356,6 +415,27 @@ export function advanceSketch(
       placed: [point],
       entity: { id, kind: 'line', x1: start[0], y1: start[1], x2: point[0], y2: point[1] },
     }
+  }
+  if (tool === 'polyline') {
+    const start = placed[0]
+    if (!start) return { placed: [point], entity: null, chaining: true }
+    if (!pointsDiffer(start, point)) return { placed: [[start[0], start[1]]], entity: null, chaining: true }
+    // The new point becomes the anchor for the next segment, so the run continues.
+    return {
+      placed: [point],
+      entity: { id, kind: 'line', x1: start[0], y1: start[1], x2: point[0], y2: point[1] },
+      chaining: true,
+    }
+  }
+  if (tool === 'polygon') {
+    const center = placed[0]
+    if (!center) return { placed: [point], entity: null }
+    const radius = Math.hypot(point[0] - center[0], point[1] - center[1])
+    if (radius <= EPS) return { placed: [[center[0], center[1]]], entity: null }
+    const rotation = Math.atan2(point[1] - center[1], point[0] - center[0])
+    const corners = polygonCorners(center[0], center[1], radius, sides, rotation)
+    // The polygon arrives as a closed run of segments, one entity per side.
+    return { placed: [], entity: null, entities: polygonSegments(corners, id) }
   }
   if (tool === 'rectangle') {
     const origin = placed[0]
@@ -426,15 +506,27 @@ export function previewPolyline(
   tool: SketchToolName,
   placed: readonly (readonly [number, number])[],
   cursor: readonly [number, number] | null,
+  sides: number = DEFAULT_POLYGON_SIDES,
 ): Array<[number, number]> | null {
   if (!cursor || placed.length === 0) return null
-  if (tool === 'line') {
+  if (tool === 'line' || tool === 'polyline') {
     const start = placed[0]
     if (!start || !pointsDiffer(start, cursor)) return null
     return [
       [start[0], start[1]],
       [cursor[0], cursor[1]],
     ]
+  }
+  if (tool === 'polygon') {
+    const center = placed[0]
+    if (!center) return null
+    const radius = Math.hypot(cursor[0] - center[0], cursor[1] - center[1])
+    if (!(radius > EPS)) return null
+    const rotation = Math.atan2(cursor[1] - center[1], cursor[0] - center[0])
+    const corners = polygonCorners(center[0], center[1], radius, sides, rotation)
+    const first = corners[0]
+    if (!first) return null
+    return [...corners, first]
   }
   if (tool === 'rectangle') {
     const origin = placed[0]
@@ -473,15 +565,25 @@ export function previewAnnotation(
   tool: SketchToolName,
   placed: readonly (readonly [number, number])[],
   cursor: readonly [number, number] | null,
+  sides: number = DEFAULT_POLYGON_SIDES,
 ): SketchAnnotation | null {
-  const poly = previewPolyline(tool, placed, cursor)
+  const poly = previewPolyline(tool, placed, cursor, sides)
   if (!poly || !cursor) return null
-  if (tool === 'line') {
+  if (tool === 'line' || tool === 'polyline') {
     const start = placed[0]
     if (!start) return null
     return {
       text: formatLength(Math.hypot(cursor[0] - start[0], cursor[1] - start[1])),
       at: [(start[0] + cursor[0]) / 2, (start[1] + cursor[1]) / 2],
+    }
+  }
+  if (tool === 'polygon') {
+    const center = placed[0]
+    if (!center) return null
+    const radius = Math.hypot(cursor[0] - center[0], cursor[1] - center[1])
+    return {
+      text: `${Math.max(3, Math.round(sides))}-gon R ${formatLength(radius)}`,
+      at: [center[0] + radius, center[1]],
     }
   }
   if (tool === 'rectangle') {

@@ -1,5 +1,18 @@
 # CAD third-party code
 
+## Chili3D
+
+Interaction patterns adapted from [xiangechen/chili3d](https://github.com/xiangechen/chili3d), which is AGPL-3.0. BeddCode does not copy, vendor, or link Chili3D source. No Chili3D file, class, or stylesheet is reproduced here.
+
+What was studied and rewritten as original React and TypeScript:
+
+- The floating numeric box over the viewport (`packages/ui/src/viewport/flyout`). Ours is `flyout/NumericFlyout.tsx` plus `flyout/inputState.ts`. The behaviour kept is that a drag can push a value in while typing always wins. The state machine that decides this is ours and is covered by `flyout/inputState.test.ts`.
+- Step-by-step command prompts (`packages/core/src/command/multistepCommand.ts`). Ours is `steps/steps.ts` and `steps/toolSteps.ts`, a plain reducer with no Chili3D types.
+- The per-kind snap switches in the status bar (`packages/ui/src/statusbar/snapConfig.ts`). Ours is `SnapMenu.tsx`, and it drives the snap resolver in `sketcher/snap.ts` which predates this work.
+- The ribbon with pulldown buttons (`packages/ui/src/ribbon`). Ours is the `RIBBON_SLOTS` model and `ToolPulldownButton` in `Toolbar.tsx`.
+
+If this ever needs more than patterns, read Chili3D's license first: AGPL-3.0 would apply to anything copied from it.
+
 ## replicad
 
 Vendored from [sgenoud/replicad](https://github.com/sgenoud/replicad) (`packages/replicad/src`) under the MIT license.

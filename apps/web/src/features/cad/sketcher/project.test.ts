@@ -6,9 +6,12 @@ import {
   edgePickThreshold,
   entityAnnotation,
   formatLength,
+  polygonCorners,
+  polygonSegments,
+  previewAnnotation,
+  previewPolyline,
   gridRotation,
   planeFrame,
-  previewPolyline,
   projectRayToPlane,
   snapPoint,
   snapToGrid,
@@ -156,5 +159,92 @@ describe('sketch projection', () => {
     const arc = advanceSketch('arc', start.placed, [0, 2], 'e1')
     expect(arc.entity).toMatchObject({ kind: 'arc', cx: 0, cy: 0, radius: 2 })
     expect(arc.placed).toEqual([])
+  })
+})
+
+describe('polyline', () => {
+  it('starts a chain with the first point', () => {
+    const next = advanceSketch('polyline', [], [1, 2], 'e1')
+    expect(next.placed).toEqual([[1, 2]])
+    expect(next.entity).toBeNull()
+    expect(next.chaining).toBe(true)
+  })
+
+  it('adds a segment and re-anchors on the new point', () => {
+    const first = advanceSketch('polyline', [[0, 0]], [5, 0], 'e1')
+    expect(first.entity).toMatchObject({ kind: 'line', x1: 0, y1: 0, x2: 5, y2: 0 })
+    expect(first.placed).toEqual([[5, 0]])
+    expect(first.chaining).toBe(true)
+
+    const second = advanceSketch('polyline', first.placed, [5, 5], 'e2')
+    expect(second.entity).toMatchObject({ kind: 'line', x1: 5, y1: 0, x2: 5, y2: 5 })
+    expect(second.placed).toEqual([[5, 5]])
+  })
+
+  it('ignores a click that does not move', () => {
+    const next = advanceSketch('polyline', [[3, 3]], [3, 3], 'e1')
+    expect(next.entity).toBeNull()
+    expect(next.placed).toEqual([[3, 3]])
+  })
+})
+
+describe('polygon', () => {
+  it('makes one line per side and clears the draft', () => {
+    const next = advanceSketch('polygon', [[0, 0]], [10, 0], 'p', 6)
+    expect(next.placed).toEqual([])
+    expect(next.entities).toHaveLength(6)
+    expect(next.entity).toBeNull()
+    for (const entity of next.entities ?? []) expect(entity.kind).toBe('line')
+  })
+
+  it('closes the loop back onto the first corner', () => {
+    const corners = polygonCorners(0, 0, 10, 4, 0)
+    expect(corners).toHaveLength(4)
+    const segments = polygonSegments(corners, 'p')
+    expect(segments).toHaveLength(4)
+    const last = segments[segments.length - 1]
+    const first = segments[0]
+    if (last?.kind !== 'line' || first?.kind !== 'line') throw new Error('expected lines')
+    expect([last.x2, last.y2]).toEqual([first.x1, first.y1])
+  })
+
+  it('puts the first corner where the cursor points', () => {
+    // A radius click straight along +x should place corner zero on the +x axis.
+    const next = advanceSketch('polygon', [[0, 0]], [10, 0], 'p', 5)
+    const first = next.entities?.[0]
+    if (first?.kind !== 'line') throw new Error('expected a line')
+    expect(first.x1).toBeCloseTo(10, 6)
+    expect(first.y1).toBeCloseTo(0, 6)
+  })
+
+  it('needs at least three sides', () => {
+    expect(polygonCorners(0, 0, 5, 2, 0)).toHaveLength(3)
+    expect(polygonSegments(polygonCorners(0, 0, 5, 1, 0), 'p')).toHaveLength(3)
+  })
+
+  it('does not make a polygon from a zero radius', () => {
+    const next = advanceSketch('polygon', [[4, 4]], [4, 4], 'p', 6)
+    expect(next.entity).toBeNull()
+    expect(next.entities).toBeUndefined()
+  })
+
+  it('previews a closed loop', () => {
+    const poly = previewPolyline('polygon', [[0, 0]], [10, 0], 6)
+    expect(poly).toHaveLength(7)
+    expect(poly?.[0]).toEqual(poly?.[6])
+  })
+})
+
+describe('new tool previews', () => {
+  it('previews a polyline segment like a line', () => {
+    expect(previewPolyline('polyline', [[0, 0]], [3, 4])).toEqual([
+      [0, 0],
+      [3, 4],
+    ])
+  })
+
+  it('labels a polygon preview with its side count', () => {
+    const note = previewAnnotation('polygon', [[0, 0]], [10, 0], 6)
+    expect(note?.text).toBe('6-gon R 10')
   })
 })

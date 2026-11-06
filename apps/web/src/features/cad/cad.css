@@ -183,6 +183,73 @@
   flex: 1;
   min-height: 0;
   min-width: 0;
+  /* anchors the numeric flyout over the viewport */
+  position: relative;
+}
+
+/* Numeric box over the viewport, in the spirit of Chili3D's flyout. */
+.cad-flyout {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: calc(3px * var(--ui-scale));
+  min-width: calc(160px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: var(--corner-md);
+  background: var(--bg-panel);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  font-size: var(--fs-caption);
+}
+
+.cad-flyout-label {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+}
+
+.cad-flyout-caption {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.cad-flyout-input {
+  flex: 1;
+  min-width: 0;
+  padding: calc(2px * var(--ui-scale)) calc(5px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: var(--corner-sm);
+  background: var(--bg-code);
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.cad-flyout-input:focus {
+  border-color: var(--border-strong, var(--border));
+  outline: none;
+}
+
+.cad-flyout-input[aria-invalid='true'] {
+  border-color: var(--danger-border);
+}
+
+.cad-flyout-units {
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.cad-flyout-tip {
+  margin: 0;
+  color: var(--danger-text, var(--danger-border));
+  font-size: var(--fs-micro);
+}
+
+.cad-flyout-hint {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--fs-micro);
 }
 
 .cad-tree,
@@ -766,4 +833,243 @@ button.cad-sketch-label {
   border-color: rgba(200, 200, 200, 0.35);
   background: rgba(255, 255, 255, 0.08);
   opacity: 1;
+}
+
+/* Snap switches in the status bar. */
+.cad-snap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.cad-snap-summary {
+  padding: 1px calc(6px * var(--ui-scale));
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cad-snap-summary:hover,
+.cad-snap-summary[aria-expanded='true'] {
+  border-color: rgba(200, 200, 200, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.cad-snap-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2px * var(--ui-scale));
+  min-width: calc(150px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: var(--corner-md);
+  background: var(--bg-panel);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  font-size: var(--fs-caption);
+}
+
+.cad-snap-row {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale));
+  border-radius: var(--corner-sm);
+  cursor: pointer;
+}
+
+.cad-snap-row:hover {
+  background: var(--bg-hover);
+}
+
+.cad-snap-row input:disabled + span {
+  opacity: var(--disabled-opacity);
+}
+
+.cad-snap-master span {
+  color: var(--text);
+}
+
+.cad-snap-sep {
+  height: 1px;
+  margin: calc(3px * var(--ui-scale)) 0;
+  background: var(--border-subtle);
+}
+
+.cad-snap-reset {
+  padding: calc(3px * var(--ui-scale)) calc(4px * var(--ui-scale));
+  border-radius: var(--corner-sm);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cad-snap-reset:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* Ribbon pulldown: a face button plus a caret that opens the rest of the slot. */
+.cad-pulldown {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+}
+
+.cad-pulldown-face {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.cad-pulldown-caret {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 calc(2px * var(--ui-scale));
+  border-radius: 0 var(--corner-sm) var(--corner-sm) 0;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.cad-pulldown-caret:hover,
+.cad-pulldown-caret[aria-expanded='true'] {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.cad-pulldown-menu {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: calc(132px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: var(--corner-md);
+  background: var(--bg-panel);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.cad-pulldown-item {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  border-radius: var(--corner-sm);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-caption);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.cad-pulldown-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.cad-pulldown-item[aria-checked='true'] {
+  color: var(--text);
+  background: var(--bg-active);
+}
+
+/* Pinned measurement cards. They stack down the viewport corner. */
+.cad-annotations {
+  position: absolute;
+  right: calc(10px * var(--ui-scale));
+  bottom: calc(10px * var(--ui-scale));
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: calc(6px * var(--ui-scale));
+  max-width: calc(230px * var(--ui-scale));
+  pointer-events: none;
+}
+
+.cad-annotation {
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 1px solid var(--border);
+  border-radius: var(--corner-md);
+  background: color-mix(in srgb, var(--bg-panel) 92%, transparent);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  pointer-events: auto;
+}
+
+.cad-annotation-head {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  margin-bottom: calc(2px * var(--ui-scale));
+}
+
+.cad-annotation-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--fs-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cad-annotation-close {
+  display: inline-flex;
+  padding: calc(1px * var(--ui-scale));
+  border-radius: var(--corner-sm);
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.cad-annotation-close:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.cad-annotation-line {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+/* Preview confirm and cancel, sitting with the other status bar actions. */
+.cad-preview-actions {
+  display: inline-flex;
+  gap: calc(4px * var(--ui-scale));
+  flex-shrink: 0;
+}
+
+.cad-preview-actions button {
+  padding: 1px calc(8px * var(--ui-scale));
+  border: 1px solid rgba(200, 200, 200, 0.35);
+  border-radius: 3px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cad-preview-actions button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cad-preview-confirm {
+  border-color: rgba(120, 190, 140, 0.6) !important;
+  color: rgb(150, 210, 165) !important;
 }

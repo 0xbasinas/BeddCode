@@ -1,8 +1,10 @@
 import type { LucideIcon } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ArrowUpFromLine,
   Blend,
   Box,
+  ChevronDown,
   Circle,
   CircleDot,
   Combine,
@@ -13,6 +15,7 @@ import {
   MousePointer2,
   Pencil,
   PenLine,
+  Pentagon,
   RotateCw,
   Ruler,
   Scissors,
@@ -21,6 +24,7 @@ import {
   Square,
   Triangle,
   Upload,
+  Waypoints,
 } from 'lucide-react'
 import { SpinInput } from './SpinInput.tsx'
 import type { SketchToolName } from './sketcher/project.ts'
@@ -61,6 +65,8 @@ export interface ToolOptions {
   holeDiameter: number
   holeThroughAll: boolean
   sketchSnap: number
+  /** Sides for the polygon sketch tool. */
+  polygonSides: number
   sketchPlane: SketchPlaneName
   extrudeDistance: number
 }
@@ -71,6 +77,7 @@ export const DEFAULT_TOOL_OPTIONS: ToolOptions = {
   holeDiameter: 8,
   holeThroughAll: true,
   sketchSnap: 1,
+  polygonSides: 6,
   sketchPlane: 'XY',
   extrudeDistance: 10,
 }
@@ -79,7 +86,19 @@ const PLANES: readonly SketchPlaneName[] = ['XY', 'YZ', 'ZX']
 
 export const SKETCH_TOOLS: { id: SketchTool; label: string; title: string; Icon: LucideIcon }[] = [
   { id: 'line', label: 'Line', title: 'Sketch line', Icon: PenLine },
+  {
+    id: 'polyline',
+    label: 'Chain',
+    title: 'Sketch polyline, click to chain points, Enter to end',
+    Icon: Waypoints,
+  },
   { id: 'rectangle', label: 'Rect', title: 'Sketch rectangle', Icon: Square },
+  {
+    id: 'polygon',
+    label: 'Poly',
+    title: 'Regular polygon, click center then a corner',
+    Icon: Pentagon,
+  },
   { id: 'circle', label: 'Circle', title: 'Sketch circle', Icon: Circle },
   { id: 'arc', label: 'Arc', title: 'Sketch arc', Icon: DraftingCompass },
 ]
@@ -118,8 +137,71 @@ export const TOOL_GROUPS: { id: string; label: string; tools: CadTool[] }[] = [
 
 const TOOL_BY_ID = new Map(CAD_TOOLS.map((tool) => [tool.id, tool]))
 
+/**
+ * A toolbar slot that holds several tools behind one button.
+ *
+ * The last tool the user picked stays on the face of the button and a caret
+ * opens the rest, which is how a ribbon keeps 16 tools from becoming a wall of
+ * labels. Groups with a single tool render as a plain button.
+ */
+export interface ToolPulldown {
+  id: string
+  /** Shown on the face when nothing has been picked yet. */
+  label: string
+  tools: readonly CadTool[]
+}
+
+/** Slots per ribbon group. Order inside a slot is the dropdown order. */
+export const RIBBON_SLOTS: Record<string, readonly (CadTool | ToolPulldown)[]> = {
+  select: ['select'],
+  sketch: ['sketch'],
+  solids: [
+    { id: 'primitive', label: 'Box', tools: ['box', 'cylinder', 'sphere'] },
+  ],
+  modify: [
+    { id: 'sweep', label: 'Extrude', tools: ['extrude', 'revolve'] },
+    { id: 'round', label: 'Fillet', tools: ['fillet', 'chamfer', 'hole'] },
+    { id: 'boolean', label: 'Union', tools: ['union', 'cut', 'intersect'] },
+  ],
+  measure: ['measure'],
+  exchange: ['import', 'export'],
+}
+
+/** The pulldown that owns a tool, or null when the tool sits on its own. */
+export function pulldownFor(tool: CadTool): ToolPulldown | null {
+  for (const slots of Object.values(RIBBON_SLOTS)) {
+    for (const slot of slots) {
+      if (typeof slot !== 'string' && slot.tools.includes(tool)) return slot
+    }
+  }
+  return null
+}
+
+/** Every tool a slot can produce, whether it is a plain tool or a pulldown. */
+export function slotTools(slot: CadTool | ToolPulldown): readonly CadTool[] {
+  return typeof slot === 'string' ? [slot] : slot.tools
+}
+
+/** The tool shown on a pulldown's face: the last one used from that slot. */
+export function pulldownFace(
+  slot: ToolPulldown,
+  active: CadTool,
+  lastUsed: Readonly<Record<string, CadTool>>,
+): CadTool {
+  if (slot.tools.includes(active)) return active
+  const remembered = lastUsed[slot.id]
+  if (remembered && slot.tools.includes(remembered)) return remembered
+  // A pulldown always lists at least one tool, so this is never undefined.
+  return slot.tools[0] ?? 'select'
+}
+
 type NumberKey =
-  'filletRadius' | 'chamferDistance' | 'holeDiameter' | 'sketchSnap' | 'extrudeDistance'
+  | 'filletRadius'
+  | 'chamferDistance'
+  | 'holeDiameter'
+  | 'sketchSnap'
+  | 'polygonSides'
+  | 'extrudeDistance'
 
 type OptionField =
   | { kind: 'number'; key: NumberKey; label: string; min: number; step: number }
@@ -127,7 +209,10 @@ type OptionField =
   | { kind: 'plane'; key: 'sketchPlane'; label: string }
 
 /** Fields the context strip shows for the active tool. Empty when the tool has no defaults. */
-export function optionFields(tool: CadTool): OptionField[] {
+export function optionFields(
+  tool: CadTool,
+  sketchTool?: SketchTool | null,
+): OptionField[] {
   if (tool === 'fillet') {
     return [{ kind: 'number', key: 'filletRadius', label: 'Radius', min: 0, step: 0.1 }]
   }
@@ -141,10 +226,15 @@ export function optionFields(tool: CadTool): OptionField[] {
     ]
   }
   if (tool === 'sketch') {
-    return [
+    const fields: OptionField[] = [
       { kind: 'number', key: 'sketchSnap', label: 'Snap', min: 0.1, step: 0.5 },
-      { kind: 'plane', key: 'sketchPlane', label: 'Plane' },
     ]
+    // The side count only means something while drawing a polygon.
+    if (sketchTool === 'polygon') {
+      fields.unshift({ kind: 'number', key: 'polygonSides', label: 'Sides', min: 3, step: 1 })
+    }
+    fields.push({ kind: 'plane', key: 'sketchPlane', label: 'Plane' })
+    return fields
   }
   if (tool === 'extrude') {
     return [{ kind: 'number', key: 'extrudeDistance', label: 'Distance', min: 0, step: 0.5 }]
@@ -242,6 +332,7 @@ export function Toolbar({
   options,
   onOptionsChange,
   onExport,
+  lastUsed = {},
 }: {
   active: CadTool
   onCommand(tool: CadTool): void
@@ -254,6 +345,8 @@ export function Toolbar({
   options?: ToolOptions
   onOptionsChange?(patch: Partial<ToolOptions>): void
   onExport?(format: ExportFormat): void
+  /** Last tool used from each pulldown, so its face keeps the user's habit. */
+  lastUsed?: Readonly<Record<string, CadTool>>
 }) {
   const current = options ?? DEFAULT_TOOL_OPTIONS
   return (
@@ -268,9 +361,19 @@ export function Toolbar({
               aria-label={group.label}
             >
               <div className="cad-tool-group-buttons">
-                {group.tools.map((id) => (
-                  <ToolButton key={id} id={id} active={active} onCommand={onCommand} />
-                ))}
+                {(RIBBON_SLOTS[group.id] ?? group.tools).map((slot) =>
+                  typeof slot === 'string' ? (
+                    <ToolButton key={slot} id={slot} active={active} onCommand={onCommand} />
+                  ) : (
+                    <ToolPulldownButton
+                      key={slot.id}
+                      slot={slot}
+                      active={active}
+                      lastUsed={lastUsed}
+                      onCommand={onCommand}
+                    />
+                  ),
+                )}
                 {group.id === 'sketch' && onSketchTool
                   ? SKETCH_TOOLS.map(({ id, label, title, Icon }) => (
                       <button
@@ -317,6 +420,95 @@ export function Toolbar({
   )
 }
 
+function ToolPulldownButton({
+  slot,
+  active,
+  lastUsed,
+  onCommand,
+}: {
+  slot: ToolPulldown
+  active: CadTool
+  lastUsed: Readonly<Record<string, CadTool>>
+  onCommand(tool: CadTool): void
+}) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const face = TOOL_BY_ID.get(pulldownFace(slot, active, lastUsed))
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (event: MouseEvent) => {
+      const root = rootRef.current
+      if (root && event.target instanceof Node && !root.contains(event.target)) setOpen(false)
+    }
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  if (!face) return null
+  const FaceIcon = face.Icon
+  const isActive = slot.tools.includes(active)
+
+  return (
+    <div className="cad-pulldown" ref={rootRef}>
+      <button
+        type="button"
+        className="cad-tool cad-pulldown-face"
+        aria-pressed={isActive}
+        aria-label={face.title}
+        title={face.title}
+        onClick={() => onCommand(face.id)}
+      >
+        <FaceIcon size={14} />
+        {face.label}
+      </button>
+      <button
+        type="button"
+        className="cad-pulldown-caret"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`More ${slot.id} tools`}
+        title={`More ${slot.id} tools`}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <ChevronDown size={11} />
+      </button>
+      {open ? (
+        <div className="cad-pulldown-menu" role="menu" aria-label={`${slot.id} tools`}>
+          {slot.tools.map((id) => {
+            const tool = TOOL_BY_ID.get(id)
+            if (!tool) return null
+            const Icon = tool.Icon
+            return (
+              <button
+                key={id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={active === id}
+                className="cad-pulldown-item"
+                onClick={() => {
+                  setOpen(false)
+                  onCommand(id)
+                }}
+              >
+                <Icon size={13} />
+                {tool.label}
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function ToolButton({
   id,
   active,
@@ -357,7 +549,7 @@ function OptionsStrip({
   onOptionsChange?(patch: Partial<ToolOptions>): void
   onExport?(format: ExportFormat): void
 }) {
-  const fields = optionFields(active)
+  const fields = optionFields(active, sketchTool)
   const disabled = !onOptionsChange
   return (
     <div className="cad-options" role="group" aria-label="Tool options" data-tool={active}>
@@ -461,5 +653,9 @@ function emitNumber(
   else if (field.key === 'chamferDistance') onOptionsChange({ chamferDistance: parsed })
   else if (field.key === 'holeDiameter') onOptionsChange({ holeDiameter: parsed })
   else if (field.key === 'sketchSnap') onOptionsChange({ sketchSnap: parsed })
+  else if (field.key === 'polygonSides') {
+    // A polygon needs at least three sides; keep it whole.
+    onOptionsChange({ polygonSides: Math.max(3, Math.round(parsed)) })
+  }
   else onOptionsChange({ extrudeDistance: parsed })
 }

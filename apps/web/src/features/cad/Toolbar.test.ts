@@ -7,6 +7,11 @@ import {
   draftWriteMode,
   optionFields,
   parseOptionNumber,
+  pulldownFace,
+  pulldownFor,
+  type ToolPulldown,
+  RIBBON_SLOTS,
+  slotTools,
   toolStatusHint,
 } from './Toolbar.tsx'
 
@@ -119,5 +124,46 @@ describe('tool options', () => {
     expect(parseOptionNumber('-2', 0)).toBe(0)
     expect(parseOptionNumber('0.05', 0.1)).toBe(0.1)
     expect(parseOptionNumber('12.5', 0)).toBe(12.5)
+  })
+})
+
+/** Pull a pulldown out of a ribbon group, so a missing one fails loudly. */
+function slotAt(group: string, index: number): ToolPulldown {
+  const slot = RIBBON_SLOTS[group]?.[index]
+  if (!slot || typeof slot === 'string') throw new Error(`no pulldown at ${group}[${index}]`)
+  return slot
+}
+
+describe('ribbon pulldowns', () => {
+  it('collapses solids and modify into slots', () => {
+    const slots = Object.values(RIBBON_SLOTS).flat()
+    const pulldowns = slots.filter((slot) => typeof slot !== 'string')
+    expect(pulldowns.map((slot) => slot.id)).toEqual(['primitive', 'sweep', 'round', 'boolean'])
+  })
+
+  it('covers every tool exactly once across the ribbon', () => {
+    const ids = Object.values(RIBBON_SLOTS)
+      .flat()
+      .flatMap((slot) => slotTools(slot))
+    expect(new Set(ids).size).toBe(ids.length)
+    expect([...ids].sort()).toEqual(CAD_TOOLS.map((tool) => tool.id).sort())
+  })
+
+  it('shows the active tool on the pulldown face', () => {
+    expect(pulldownFace(slotAt('solids', 0), 'cylinder', {})).toBe('cylinder')
+  })
+
+  it('remembers the last tool used from a slot', () => {
+    expect(pulldownFace(slotAt('modify', 1), 'select', { round: 'hole' })).toBe('hole')
+  })
+
+  it('falls back to the first tool when nothing is remembered', () => {
+    expect(pulldownFace(slotAt('modify', 0), 'select', {})).toBe('extrude')
+  })
+
+  it('finds the pulldown that owns a tool', () => {
+    expect(pulldownFor('chamfer')?.id).toBe('round')
+    expect(pulldownFor('cut')?.id).toBe('boolean')
+    expect(pulldownFor('select')).toBeNull()
   })
 })

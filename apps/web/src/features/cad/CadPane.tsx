@@ -34,9 +34,11 @@ import {
   DEFAULT_TOOL_OPTIONS,
   draftParamPatch,
   draftWriteMode,
+  pulldownFor,
   toolStatusHint,
   type CadTool,
   type SketchTool,
+  type SketchPlaneName,
   type ToolOptions,
 } from './Toolbar.tsx'
 import { Viewport, type PickHit, type ViewportHandle } from './Viewport.tsx'
@@ -72,6 +74,20 @@ import {
 import { UndoStack } from './model/undo.ts'
 import type { SketchEntity as DrawnEntity } from './sketcher/types.ts'
 import { useCadRebuild } from './useCadRebuild.ts'
+import { NumericFlyout, type FlyoutAnchor } from './flyout/NumericFlyout.tsx'
+import { quickFieldAsInput, quickFieldFor } from './flyout/quickField.ts'
+import {
+  acceptInput,
+  startSteps,
+  stepForPlaced,
+  stepProgress,
+  type StepInput,
+  type StepState,
+} from './steps/steps.ts'
+import { stepsFor } from './steps/toolSteps.ts'
+import { DEFAULT_SNAP_CONFIG, SnapMenu, type SnapConfig } from './SnapMenu.tsx'
+import { addAnnotation, pruneAnnotations, removeAnnotation, type Annotation } from './annotations.ts'
+import { AnnotationCards } from './AnnotationCards.tsx'
 import './cad.css'
 
 function placementFromHit(
@@ -122,6 +138,7 @@ export function CadPane() {
   const stack = useRef(new UndoStack(emptyDocument()))
   const viewport = useRef<ViewportHandle>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const paneRef = useRef<HTMLDivElement>(null)
   const fitArmed = useRef(false)
   const [doc, setDoc] = useState<CadDocument>(() => stack.current.current())
   const [stepFiles, setStepFiles] = useState<Record<string, Uint8Array>>({})
@@ -139,8 +156,29 @@ export function CadPane() {
   const [activeSketchId, setActiveSketchId] = useState<string | null>(null)
   const [activePlane, setActivePlane] = useState<CadSketch['plane']>('XY')
   const [sketchTool, setSketchTool] = useState<SketchTool>('rectangle')
-  const [measureLabel, setMeasureLabel] = useState<string | null>(null)
+  /** Measurements pinned in the viewport. They outlive a single pick. */
+  const [annotations, setAnnotations] = useState<readonly Annotation[]>([])
   const [holeDepth, setHoleDepth] = useState(10)
+  /** Open numeric box. `null` keeps it shut; the anchor places it in the viewport. */
+  const [flyoutAnchor, setFlyoutAnchor] = useState<FlyoutAnchor | null>(null)
+  /** Set while a drag feeds the box so it reads as a live value. */
+  const [flyoutValue, setFlyoutValue] = useState<number | null>(null)
+  /** Digit that opened the box, kept as the first character typed. */
+  const [flyoutSeed, setFlyoutSeed] = useState('')
+  /** Position in the active tool's pick sequence. */
+  const [steps, setSteps] = useState<StepState>(() => startSteps([]))
+  /** Object-snap switches, shown in the status bar while sketching. */
+  const [snapConfig, setSnapConfig] = useState<SnapConfig>(DEFAULT_SNAP_CONFIG)
+  /** Which tool each pulldown last ran, so its face stays where the user left it. */
+  const [lastUsed, setLastUsed] = useState<Record<string, CadTool>>({})
+  /**
+   * A feature shown but not committed.
+   *
+   * Extrude and revolve are the operations where a blind commit hurts most: you
+   * cannot tell how deep it went until you are looking at a wrong solid. The
+   * preview document is rebuilt and drawn, and only becomes real on confirm.
+   */
+  const [previewFeature, setPreviewFeature] = useState<CadFeature | null>(null)
   const optionsRef = useRef(options)
   const draftRef = useRef<string | null>(null)
   const draftTimer = useRef<number | null>(null)
@@ -148,7 +186,13 @@ export function CadPane() {
   optionsRef.current = options
   activeSketchRef.current = activeSketchId
 
-  const { meshes, errors, loading, failure, getClient } = useCadRebuild(doc, stepFiles)
+  // The preview is drawn by rebuilding a document that includes it, while the
+  // undo stack still holds the committed one.
+  const builtDoc = useMemo(
+    () => (previewFeature ? appendFeature(doc, previewFeature) : doc),
+    [doc, previewFeature],
+  )
+  const { meshes, errors, loading, failure, getClient } = useCadRebuild(builtDoc, stepFiles)
   const docRef = useRef(doc)
   const meshesRef = useRef(meshes)
   const selectedRef = useRef(selectedId)
@@ -260,6 +304,9 @@ export function CadPane() {
     const saved = stack.current.current()
     docRef.current = saved
     setDoc(saved)
+    // A deleted feature takes its measurement with it.
+    const live = new Set(saved.features.map((feature) => feature.id))
+    setAnnotations((list) => pruneAnnotations(list, live))
   }
 
   const clearDraftTimer = () => {
@@ -294,6 +341,13 @@ export function CadPane() {
     const next = { ...optionsRef.current, ...patch }
     optionsRef.current = next
     setOptions(next)
+    // A live preview follows the distance rather than needing a re-arm.
+    const distance = patch.extrudeDistance
+    if (previewFeature && distance !== undefined) {
+      setPreviewFeature((feature) =>
+        feature ? { ...feature, params: { ...feature.params, distance } } : feature,
+      )
+    }
     if (patch.sketchPlane) {
       setActivePlane(patch.sketchPlane)
       const sketchId = activeSketchRef.current
@@ -354,6 +408,26 @@ export function CadPane() {
     return activePlane
   }, [activeSketch?.origin, activeSketch?.normal, activePlane])
 
+  /** Turn the preview into a real feature: one undo step. */
+  const confirmPreview = () => {
+    const feature = previewFeature
+    if (!feature) return
+    setPreviewFeature(null)
+    addSolid(feature, 'select')
+    setTool('select')
+    setSteps(startSteps([]))
+    setMessage(`Added ${feature.name}`)
+  }
+
+  /** Drop the preview. The document was never touched. */
+  const cancelPreview = () => {
+    if (!previewFeature) return
+    setPreviewFeature(null)
+    setTool('select')
+    setSteps(startSteps([]))
+    setMessage('Extrusion cancelled')
+  }
+
   const addSolid = (feature: CadFeature, nextTool: CadTool) => {
     commit(appendFeature(docRef.current, feature))
     draftRef.current = feature.id
@@ -367,6 +441,23 @@ export function CadPane() {
     const plane = selected?.params.plane
     if (plane === 'XY' || plane === 'YZ' || plane === 'ZX') return plane
     return null
+  }
+
+  /** Start or reopen a sketch on a named datum plane. */
+  const beginDatumSketch = (plane: SketchPlaneName) => {
+    const opened = openFaceSketch(doc, { plane })
+    if (opened.created) commit(opened.doc)
+    choose(opened.feature.id)
+    setActiveSketchId(opened.feature.id)
+    setActivePlane(plane)
+    setSteps(startSteps(stepsFor('sketch', sketchTool)))
+    setSketchTool(sketchTool)
+    setTool('sketch')
+    setMessage(
+      opened.created
+        ? `Sketch ${opened.feature.name} on ${plane}`
+        : `Editing ${opened.feature.name} on ${plane}`,
+    )
   }
 
   const beginFaceSketch = (placement: FaceSketchPlacement) => {
@@ -402,6 +493,17 @@ export function CadPane() {
   const onCommand = (next: CadTool) => {
     clearDraftTimer()
     draftRef.current = null
+    // Remember which slot ran, so a pulldown keeps showing that tool.
+    const owner = pulldownFor(next)
+    if (owner) setLastUsed((map) => (map[owner.id] === next ? map : { ...map, [owner.id]: next }))
+    // Switching tools retires the box: its value belonged to the old tool.
+    // Written out rather than calling `closeFlyout` so this stays safe even if it
+    // runs before that binding is initialised.
+    setFlyoutAnchor(null)
+    setFlyoutValue(null)
+    setFlyoutSeed('')
+    // A new tool starts its pick sequence from the top.
+    setSteps(startSteps(stepsFor(next, next === 'sketch' ? sketchTool : null)))
     if (next === 'box') {
       addSolid(makeBoxFeature(docRef.current), 'box')
       return
@@ -431,14 +533,7 @@ export function CadPane() {
         }
       }
       if (tool !== 'sketch' && meshes.length === 0) {
-        const plane = planeFromSelection() ?? optionsRef.current.sketchPlane
-        const opened = openFaceSketch(doc, { plane })
-        if (opened.created) commit(opened.doc)
-        choose(opened.feature.id)
-        setActiveSketchId(opened.feature.id)
-        setActivePlane(plane)
-        setTool('sketch')
-        setMessage(`Sketch ${opened.feature.name} on ${plane}`)
+        beginDatumSketch(planeFromSelection() ?? optionsRef.current.sketchPlane)
         return
       }
       setActiveSketchId(null)
@@ -458,8 +553,13 @@ export function CadPane() {
           ? makeExtrudeFeature(docRef.current, sketch.id)
           : makeRevolveFeature(docRef.current, sketch.id)
       const patch = next === 'extrude' ? draftParamPatch('extrude', optionsRef.current) : null
-      const feature = patch ? { ...made, params: { ...made.params, ...patch } } : made
-      addSolid(feature, next)
+      // Show it before committing it. Enter confirms, Escape throws it away.
+      setPreviewFeature(patch ? { ...made, params: { ...made.params, ...patch } } : made)
+      setMessage(
+        next === 'extrude'
+          ? 'Previewing the extrusion. Set the distance, then Enter to keep it or Esc to cancel.'
+          : 'Previewing the revolve. Enter to keep it or Esc to cancel.',
+      )
       return
     }
     if (next === 'fillet' || next === 'chamfer') {
@@ -524,9 +624,21 @@ export function CadPane() {
       const result = await getClient().measure(id)
       const min = result.bbox.min.map((value) => trim(value)).join(', ')
       const max = result.bbox.max.map((value) => trim(value)).join(', ')
-      const label = `Volume ${trim(result.volume)} · Area ${trim(result.area)} · BBox [${min}] – [${max}]`
-      setMeasureLabel(label)
-      setMessage(label)
+      const name = docRef.current.features.find((feature) => feature.id === id)?.name ?? 'Solid'
+      // Kept in a list rather than a single slot so several features can be read at once.
+      setAnnotations((list) =>
+        addAnnotation(list, {
+          id: `measure-${id}`,
+          featureId: id,
+          title: name,
+          lines: [
+            `Volume ${trim(result.volume)}`,
+            `Area ${trim(result.area)}`,
+            `BBox ${min} → ${max}`,
+          ],
+        }),
+      )
+      setMessage(`Measured ${name}`)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Measure failed')
     }
@@ -671,6 +783,20 @@ export function CadPane() {
 
   const onPick = (hit: PickHit | null) => {
     setPick(hit)
+    if (hit) {
+      const kind: StepInput =
+        hit.kind === 'edge' ? 'edge' : hit.kind === 'vertex' ? 'point' : 'face'
+      setSteps((state) => {
+        const result = acceptInput(state, kind)
+        if (result.state === state) return state
+        // Only speak up when the step advanced. Tools that set their own message
+        // for a pick keep it, so the wording stays specific.
+        if (result.filled && state.index + 1 < state.steps.length) {
+          setMessage(result.filled.prompt)
+        }
+        return result.state
+      })
+    }
     if (tool === 'sketch') {
       if (hit?.kind === 'face') {
         const placement = placementFromHit(hit, meshes)
@@ -707,10 +833,58 @@ export function CadPane() {
     setMessage(`${hit.kind} ${edgeToken(hit) ?? hit.index} · ${name}`)
   }
 
+  /**
+   * Open the numeric box for the active tool.
+   * `seed` keeps the digit that opened it so the first keystroke is not lost.
+   */
+  const openFlyout = (seed?: string) => {
+    const field = quickFieldFor(tool, optionsRef.current)
+    if (!field) return
+    setFlyoutValue(null)
+    // Sit over the viewport, not the feature tree, which occupies the left edge.
+    setFlyoutAnchor({ x: viewportInset(paneRef.current), y: 18 })
+    setFlyoutSeed(seed ?? '')
+  }
+
+  const closeFlyout = () => {
+    setFlyoutAnchor(null)
+    setFlyoutValue(null)
+    setFlyoutSeed('')
+  }
+
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const target = event.target
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return
     const mod = event.metaKey || event.ctrlKey
+    // A pending preview owns Enter and Escape.
+    if (previewFeature) {
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        confirmPreview()
+        return
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        cancelPreview()
+        return
+      }
+    }
+    // A bare digit opens the numeric box over the viewport, the way Chili3D does.
+    // Fillet and chamfer included: their radius is the number most worth typing.
+    if (!mod && !event.altKey && /^[0-9]$/.test(event.key)) {
+      if (quickFieldFor(tool, optionsRef.current)) {
+        event.preventDefault()
+        openFlyout(event.key)
+        return
+      }
+    }
+    if (!mod && forcedEdge && (event.key === 'f' || event.key === 'F')) {
+      if (quickFieldFor(tool, optionsRef.current)) {
+        event.preventDefault()
+        openFlyout()
+        return
+      }
+    }
     if (!mod && forcedEdge && event.key === 'Enter') {
       event.preventDefault()
       applyEdges()
@@ -720,7 +894,14 @@ export function CadPane() {
       event.preventDefault()
       viewport.current?.clearSelection()
       setTool('select')
+      setSteps(startSteps([]))
       setMessage('Edge operation cancelled')
+      return
+    }
+    // Backspace steps back one pick without restarting the tool.
+    if (!mod && event.key === 'Backspace' && steps.index > 0) {
+      event.preventDefault()
+      setSteps((state) => ({ ...state, index: state.index - 1, rejection: null }))
       return
     }
     if (!mod) return
@@ -749,13 +930,22 @@ export function CadPane() {
     tool === 'chamfer' ? options.chamferDistance : options.filletRadius,
   )
 
-  const hint = toolStatusHint(tool, tool === 'sketch' ? sketchTool : null)
+  const hint = previewFeature
+    ? 'Set the distance, then Enter to keep it or Esc to cancel'
+    : toolStatusHint(tool, tool === 'sketch' ? sketchTool : null)
+  const sketching = tool === 'sketch' && activeSketchId !== null
+  const progress = stepProgress(steps)
+  const stepLine = progress.counter
+    ? `${progress.prompt} (${progress.counter})`
+    : progress.prompt
   const detail = loading ? 'Loading geometry…' : (failure ?? message)
-  const showDetail = detail.length > 0 && detail !== hint
+  const showDetail = detail.length > 0 && detail !== hint && detail !== stepLine
+  const quickFlyout = flyoutAnchor ? quickFieldFor(tool, options) : null
 
   return (
     <div
       className="cad-pane"
+      ref={paneRef}
       tabIndex={0}
       data-active-sketch={activeSketchId ?? undefined}
       data-sketch-plane={activePlane}
@@ -772,10 +962,12 @@ export function CadPane() {
             draftRef.current = null
           }
           setSketchTool(next)
+          setSteps(startSteps(stepsFor('sketch', next)))
           setTool('sketch')
           setMessage(activeSketchId ? `Sketch ${next}` : 'Pick a face to sketch on')
         }}
         options={options}
+        lastUsed={lastUsed}
         onOptionsChange={onOptionsChange}
         onExport={(format) => {
           if (format === 'json') exportJson()
@@ -812,25 +1004,64 @@ export function CadPane() {
           sketchTool={sketchTool}
           plane={drawingPlane}
           sketchSnap={options.sketchSnap}
+          polygonSides={options.polygonSides}
+          snapEnabled={snapConfig.enabled}
+          snapSettings={snapConfig.settings}
           entities={activeSketchEntities}
           onSketchChange={(entities) => {
             const id = activeSketchId ?? activeSketch?.id
             if (!id) return
             commit(setSketchEntities(doc, id, entities))
           }}
+          onPlanePick={(plane) => {
+            // A clicked datum plane goes straight into a sketch on that plane.
+            beginDatumSketch(plane)
+          }}
+          onSketchPlaced={(count) => {
+            // Sketch picks never reach `onPick`, so the step counter follows the
+            // sketch draft directly.
+            setSteps((state) => stepForPlaced(state, count))
+          }}
           onSketchFinish={(entities) => {
             const id = activeSketchId ?? activeSketch?.id
             if (!id) return
             commit(setSketchEntities(doc, id, entities))
-            setMessage(`Sketch finished · ${entities.length} entities`)
+            // Finishing leaves the sketch: the camera goes back to 3D and the
+            // next sensible step is extruding what was just drawn.
+            setActiveSketchId(null)
+            setTool('select')
+            setSteps(startSteps([]))
+            setMessage(
+              `Sketch finished with ${entities.length} ${
+                entities.length === 1 ? 'entity' : 'entities'
+              }. Pick it and extrude.`,
+            )
           }}
-          measure={measureLabel ? { label: measureLabel } : null}
+          measure={null}
           pickMode={activeFilter}
           onSelectionChange={(hits) => {
             setPickedEdges(hits.filter((hit) => hit.kind === 'edge'))
             if (hits.length > 1) setMessage(`${hits.length} ${activeFilter}s selected`)
           }}
         />
+        <AnnotationCards
+          items={annotations}
+          onDismiss={(id) => setAnnotations((list) => removeAnnotation(list, id))}
+        />
+        {quickFlyout
+          ? (() => {
+              return (
+                <NumericFlyout
+                  key={`${quickFlyout.key}-${flyoutSeed}`}
+                  anchor={flyoutAnchor}
+                  seed={flyoutSeed || undefined}
+                  value={flyoutValue}
+                  unitLabel="mm"
+                  field={quickFieldAsInput(quickFlyout, onOptionsChange, closeFlyout)}
+                />
+              )
+            })()
+          : null}
         <PropertiesPanel
           feature={selected}
           error={selected ? errors[selected.id] : undefined}
@@ -919,9 +1150,44 @@ export function CadPane() {
             Apply {tool} ({pickedEdges.length})
           </button>
         ) : null}
-        <span className="cad-status-hint" title={hint}>
-          {hint}
+        {previewFeature ? (
+          <span className="cad-preview-actions" role="group" aria-label="Preview">
+            <button type="button" className="cad-preview-confirm" onClick={confirmPreview}>
+              Keep
+            </button>
+            <button type="button" onClick={cancelPreview}>
+              Cancel
+            </button>
+          </span>
+        ) : null}
+        {sketching ? (
+          <span className="cad-preview-actions" role="group" aria-label="Sketch">
+            <button
+              type="button"
+              className="cad-preview-confirm"
+              title="Finish the sketch (Enter)"
+              onClick={() => viewport.current?.finishSketch()}
+            >
+              Finish sketch
+            </button>
+            <button
+              type="button"
+              title="Leave the sketch"
+              onClick={() => {
+                setActiveSketchId(null)
+                setTool('select')
+                setSteps(startSteps([]))
+                setMessage('Sketch closed')
+              }}
+            >
+              Close
+            </button>
+          </span>
+        ) : null}
+        <span className="cad-status-hint" title={progress.tip ?? hint}>
+          {steps.steps.length > 0 ? stepLine : hint}
         </span>
+        <SnapMenu config={snapConfig} onChange={setSnapConfig} />
         <span>{doc.units}</span>
         <span>
           {doc.features.length} {doc.features.length === 1 ? 'feature' : 'features'}
@@ -942,6 +1208,22 @@ export function CadPane() {
 }
 
 const HOLE_STATUS = 'Click a face to place hole'
+
+/** Left edge of the viewport inside `.cad-body`, clear of the feature tree. */
+const VIEWPORT_LEFT_INSET = 208
+
+/**
+ * Place the box over the viewport rather than the feature tree.
+ * Measured from the live element so a resized pane still lines up.
+ */
+function viewportInset(pane: HTMLElement | null): number {
+  const viewport = pane?.querySelector('.cad-viewport')
+  const body = pane?.querySelector('.cad-body')
+  if (!(viewport instanceof HTMLElement) || !(body instanceof HTMLElement)) {
+    return VIEWPORT_LEFT_INSET
+  }
+  return Math.max(0, viewport.getBoundingClientRect().left - body.getBoundingClientRect().left) + 12
+}
 const EDGE_STATUS = 'Shift-click edges then set radius'
 
 function holePlacement(
