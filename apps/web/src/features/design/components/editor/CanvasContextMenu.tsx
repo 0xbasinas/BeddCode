@@ -455,7 +455,7 @@ export function CanvasContextMenu({ children, canvasX, canvasY }: CanvasContextM
               <ContextMenuShortcut>⌘D</ContextMenuShortcut>
             </ContextMenuItem>
             <ContextMenuItem
-              className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)] text-[#F44336]"
+              className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)] text-[color:var(--dc-danger)]"
               onClick={() => handleAction('delete')}
             >
               Delete

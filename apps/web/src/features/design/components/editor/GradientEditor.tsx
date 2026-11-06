@@ -165,7 +165,7 @@ export function GradientEditor({ angle, stops, onChange }: GradientEditorProps) 
           />
           <button
             onClick={() => handleRemoveStop(activeStop)}
-            className="text-[10px] text-[#F44336] hover:text-[#FF6B6B] ml-auto"
+            className="text-[10px] text-[color:var(--dc-danger)] hover:text-[color-mix(in_oklab,var(--dc-danger)_80%,white)] ml-auto"
             title="Remove stop"
           >
             ✕

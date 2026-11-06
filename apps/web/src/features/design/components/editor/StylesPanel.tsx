@@ -111,7 +111,7 @@ function StyleRow({ style }: { style: ProjectStyle }) {
       )}
       {attachedToSelection && (
         <button
-          className="w-4 h-4 shrink-0 hidden group-hover:flex items-center justify-center text-[color:var(--dc-muted)] hover:text-[#FFA116]"
+          className="w-4 h-4 shrink-0 hidden group-hover:flex items-center justify-center text-[color:var(--dc-muted)] hover:text-[color:var(--dc-warning)]"
           title="Detach from selection"
           onClick={(e) => {
             e.stopPropagation()
@@ -132,7 +132,7 @@ function StyleRow({ style }: { style: ProjectStyle }) {
         </button>
       )}
       <button
-        className="w-4 h-4 shrink-0 hidden group-hover:flex items-center justify-center text-[color:var(--dc-muted)] hover:text-[#F24822]"
+        className="w-4 h-4 shrink-0 hidden group-hover:flex items-center justify-center text-[color:var(--dc-muted)] hover:text-[color:var(--dc-danger)]"
         title="Delete style (references detach, values stay)"
         onClick={(e) => {
           e.stopPropagation()

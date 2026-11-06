@@ -70,6 +70,14 @@
   --dc-on-accent: #161616;
   --dc-danger: var(--danger);
   --dc-success: var(--success);
+  /* Info blue (canvas selection, live states). */
+  --dc-info: #7fbbff;
+  --dc-warning: #ffb800;
+  /* Component purple (component sets and variant pivots). */
+  --dc-component: #a259ff;
+  /* Canvas chrome: selection handles and grid fallback lines. */
+  --dc-editor-handle: #7f7f7f;
+  --dc-editor-grid: #383838;
 }
 
 /* Menus open in a portal, outside .design-root, so they get the same names. */

@@ -120,7 +120,7 @@ export function ExportPanel({ element }: ExportPanelProps) {
               className="flex items-center justify-center w-5 h-5 rounded hover:bg-[color:var(--dc-hover)]"
               title="Remove export setting"
             >
-              <Trash2 className="w-3 h-3 text-[#F24822]" />
+              <Trash2 className="w-3 h-3 text-[color:var(--dc-danger)]" />
             </button>
           </div>
 

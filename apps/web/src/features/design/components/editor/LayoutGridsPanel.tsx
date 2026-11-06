@@ -96,7 +96,7 @@ function GridRow({ frameId, grid }: { frameId: string; grid: LayoutGrid }) {
         )}
         {/* remove */}
         <button
-          className="w-4 h-4 flex items-center justify-center rounded text-[color:var(--dc-muted)] hover:text-[#F24822]"
+          className="w-4 h-4 flex items-center justify-center rounded text-[color:var(--dc-muted)] hover:text-[color:var(--dc-danger)]"
           onClick={() => removeLayoutGrid(frameId, grid.id)}
           title="Remove grid"
         >

@@ -445,7 +445,7 @@ function CanvasElementImpl({
             width={element.width}
             height={element.height}
             fill="none"
-            stroke="#7F7F7F"
+            stroke="var(--dc-editor-handle)"
             strokeWidth={1 / safeZoom}
             strokeDasharray={`${4 / safeZoom} ${3 / safeZoom}`}
           />
@@ -503,7 +503,7 @@ function CanvasElementImpl({
       o.active && !isText
         ? hasOwnStroke
           ? el.stroke
-          : '#7F7F7F'
+          : 'var(--dc-editor-handle)'
         : el.stroke === 'transparent'
           ? 'none'
           : el.stroke
@@ -603,7 +603,7 @@ function CanvasElementImpl({
               fontSize={14}
               fontWeight={600}
               fontFamily="Inter, system-ui, sans-serif"
-              fill="#888888"
+              fill="var(--dc-editor-handle)"
               style={{ pointerEvents: 'none', userSelect: 'none' }}
               data-section-label={el.id}
             >
@@ -630,7 +630,7 @@ function CanvasElementImpl({
             />
           )
         }
-        const gridStroke = el.stroke === 'transparent' ? '#383838' : el.stroke
+        const gridStroke = el.stroke === 'transparent' ? 'var(--dc-editor-grid)' : el.stroke
         const lines: React.ReactNode[] = []
         const texts: React.ReactNode[] = []
         let y = 0
@@ -1317,7 +1317,7 @@ function CanvasElementImpl({
                 y1={0}
                 x2={element.width}
                 y2={element.height}
-                stroke="#7F7F7F"
+                stroke="var(--dc-editor-handle)"
                 strokeWidth={1 / safeZoom}
               />
               <line
@@ -1325,7 +1325,7 @@ function CanvasElementImpl({
                 y1={0}
                 x2={0}
                 y2={element.height}
-                stroke="#7F7F7F"
+                stroke="var(--dc-editor-handle)"
                 strokeWidth={1 / safeZoom}
               />
             </g>
@@ -1341,7 +1341,7 @@ function CanvasElementImpl({
           width={element.width}
           height={element.height}
           fill="none"
-          stroke="#7F7F7F"
+          stroke="var(--dc-editor-handle)"
           strokeWidth={1 / safeZoom}
           pointerEvents="none"
         />
@@ -1483,7 +1483,7 @@ function CanvasElementImpl({
                       width={child.width}
                       height={child.height}
                       fill="none"
-                      stroke="#7F7F7F"
+                      stroke="var(--dc-editor-handle)"
                       strokeWidth={1 / safeZoom}
                       strokeDasharray={`${4 / safeZoom} ${3 / safeZoom}`}
                     />
@@ -1577,7 +1577,7 @@ function CanvasElementImpl({
               x={element.width / 2}
               y={element.height + 14 / safeZoom}
               fontSize={Math.max(9, 10 / safeZoom)}
-              fill="#888"
+              fill="var(--dc-editor-handle)"
               fontFamily="Inter, system-ui, sans-serif"
               textAnchor="middle"
               style={{ pointerEvents: 'none' }}
@@ -3158,7 +3158,7 @@ export function Canvas() {
       <g opacity={0.3}>
         <defs>
           <pattern id="dotGrid" width={gridSize} height={gridSize} patternUnits="userSpaceOnUse">
-            <circle cx={gridSize / 2} cy={gridSize / 2} r={0.6 / safeZoom} fill="#888" />
+            <circle cx={gridSize / 2} cy={gridSize / 2} r={0.6 / safeZoom} fill="var(--dc-editor-handle)" />
           </pattern>
           <pattern
             id="dotGridLarge"
@@ -3167,7 +3167,7 @@ export function Canvas() {
             patternUnits="userSpaceOnUse"
           >
             <rect width={gridSize * 8} height={gridSize * 8} fill="url(#dotGrid)" />
-            <circle cx={gridSize * 4} cy={gridSize * 4} r={1 / safeZoom} fill="#888" />
+            <circle cx={gridSize * 4} cy={gridSize * 4} r={1 / safeZoom} fill="var(--dc-editor-handle)" />
           </pattern>
         </defs>
         <rect
@@ -3491,7 +3491,7 @@ export function Canvas() {
                             onClick={() => {
                               st.deleteComment(c.id)
                             }}
-                            className="flex-1 h-6 rounded text-[10px] bg-[color:var(--dc-input)] text-[#F44336] hover:bg-[color:var(--dc-hover)]"
+                            className="flex-1 h-6 rounded text-[10px] bg-[color:var(--dc-input)] text-[color:var(--dc-danger)] hover:bg-[color:var(--dc-hover)]"
                           >
                             Delete
                           </button>
@@ -3702,7 +3702,7 @@ function FlowStartBadges({
             ) : (
               <>
                 <span
-                  className="h-5 px-1.5 flex items-center text-[10px] rounded border border-[color:var(--dc-accent)] bg-[color:var(--dc-accent)]/20 text-[#7FBBFF] cursor-default"
+                  className="h-5 px-1.5 flex items-center text-[10px] rounded border border-[color:var(--dc-accent)] bg-[color:var(--dc-accent)]/20 text-[color:var(--dc-info)] cursor-default"
                   style={{ fontFamily: 'var(--fig-font-family-mono)' }}
                 >
                   ▶ {f.name}
@@ -3712,7 +3712,7 @@ function FlowStartBadges({
                     e.stopPropagation()
                     useEditorStore.getState().removeFlowStartingPoint(f.frameId)
                   }}
-                  className="h-5 w-5 flex items-center justify-center text-[10px] rounded border border-[color:var(--dc-border)] bg-[color:var(--dc-input)] text-[#F44336] hover:border-[#F44336]"
+                  className="h-5 w-5 flex items-center justify-center text-[10px] rounded border border-[color:var(--dc-border)] bg-[color:var(--dc-input)] text-[color:var(--dc-danger)] hover:border-[color:var(--dc-danger)]"
                   title="Remove starting point"
                 >
                   ✕

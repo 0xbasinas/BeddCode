@@ -103,7 +103,7 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
                 {shadow.visible ? (
                   <Eye className="w-3 h-3 text-[color:var(--dc-muted)]" />
                 ) : (
-                  <EyeOff className="w-3 h-3 text-[#F44336]" />
+                  <EyeOff className="w-3 h-3 text-[color:var(--dc-danger)]" />
                 )}
               </button>
               <button
@@ -113,7 +113,7 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
                 }}
                 className="flex items-center justify-center w-5 h-5 rounded hover:bg-[color:var(--dc-hover)]"
               >
-                <Trash2 className="w-3 h-3 text-[#F44336]" />
+                <Trash2 className="w-3 h-3 text-[color:var(--dc-danger)]" />
               </button>
             </div>
           </div>
@@ -198,7 +198,7 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
                 {blur.visible ? (
                   <Eye className="w-3 h-3 text-[color:var(--dc-muted)]" />
                 ) : (
-                  <EyeOff className="w-3 h-3 text-[#F44336]" />
+                  <EyeOff className="w-3 h-3 text-[color:var(--dc-danger)]" />
                 )}
               </button>
               <button
@@ -208,7 +208,7 @@ export function EffectsPanel({ element }: EffectsPanelProps) {
                 }}
                 className="flex items-center justify-center w-5 h-5 rounded hover:bg-[color:var(--dc-hover)]"
               >
-                <Trash2 className="w-3 h-3 text-[#F44336]" />
+                <Trash2 className="w-3 h-3 text-[color:var(--dc-danger)]" />
               </button>
             </div>
           </div>

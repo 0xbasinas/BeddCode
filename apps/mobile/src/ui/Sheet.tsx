@@ -119,7 +119,7 @@ const styles = StyleSheet.create({
     padding: 8,
     gap: 4,
     // The shadow is what lifts it off the screen now that nothing is dimmed.
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOpacity: 0.5,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 10 },

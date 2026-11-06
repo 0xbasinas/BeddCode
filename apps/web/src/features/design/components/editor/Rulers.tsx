@@ -152,14 +152,14 @@ export function Rulers({ containerWidth, containerHeight, zoom, panX, panY }: Ru
                     y1={RULER_SIZE - 10}
                     x2={tick.pos}
                     y2={RULER_SIZE}
-                    stroke="#888"
+                    stroke="var(--dc-editor-handle)"
                     strokeWidth={1}
                   />
                   <text
                     x={tick.pos + 2}
                     y={9}
                     fontSize={9}
-                    fill="#888"
+                    fill="var(--dc-editor-handle)"
                     fontFamily="Inter, system-ui"
                   >
                     {tick.label}
@@ -171,7 +171,7 @@ export function Rulers({ containerWidth, containerHeight, zoom, panX, panY }: Ru
                   y1={RULER_SIZE - 5}
                   x2={tick.pos}
                   y2={RULER_SIZE}
-                  stroke="#666"
+                  stroke="var(--dc-faint)"
                   strokeWidth={0.5}
                 />
               )}
@@ -196,14 +196,14 @@ export function Rulers({ containerWidth, containerHeight, zoom, panX, panY }: Ru
                     y1={tick.pos}
                     x2={RULER_SIZE}
                     y2={tick.pos}
-                    stroke="#888"
+                    stroke="var(--dc-editor-handle)"
                     strokeWidth={1}
                   />
                   <text
                     x={2}
                     y={tick.pos + 3}
                     fontSize={9}
-                    fill="#888"
+                    fill="var(--dc-editor-handle)"
                     fontFamily="Inter, system-ui"
                     transform={`rotate(-90, 8, ${tick.pos})`}
                   >
@@ -216,7 +216,7 @@ export function Rulers({ containerWidth, containerHeight, zoom, panX, panY }: Ru
                   y1={tick.pos}
                   x2={RULER_SIZE}
                   y2={tick.pos}
-                  stroke="#666"
+                  stroke="var(--dc-faint)"
                   strokeWidth={0.5}
                 />
               )}

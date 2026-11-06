@@ -459,9 +459,9 @@ const LayerItem = React.memo(function LayerItem({
 
       {/* Component / instance icon */}
       {element.isComponent ? (
-        <ComponentIcon className="w-3 h-3 mr-0.5 text-[#A259FF] shrink-0" />
+        <ComponentIcon className="w-3 h-3 mr-0.5 text-[color:var(--dc-component)] shrink-0" />
       ) : element.componentId ? (
-        <div className="w-3 h-3 mr-0.5 shrink-0 border border-[#A259FF] rounded-[2px]" />
+        <div className="w-3 h-3 mr-0.5 shrink-0 border border-[color:var(--dc-component)] rounded-[2px]" />
       ) : null}
 
       {/* Shape thumbnail */}
@@ -522,7 +522,7 @@ const LayerItem = React.memo(function LayerItem({
         }`}
       >
         {element.locked ? (
-          <Lock className="w-2.5 h-2.5 text-[#F44336]" />
+          <Lock className="w-2.5 h-2.5 text-[color:var(--dc-danger)]" />
         ) : (
           <Unlock className="w-2.5 h-2.5 text-[color:var(--dc-faint)]" />
         )}
@@ -538,7 +538,7 @@ const LayerItem = React.memo(function LayerItem({
         {element.visible ? (
           <Eye className="w-2.5 h-2.5 text-[color:var(--dc-faint)]" />
         ) : (
-          <EyeOff className="w-2.5 h-2.5 text-[#F44336]" />
+          <EyeOff className="w-2.5 h-2.5 text-[color:var(--dc-danger)]" />
         )}
       </button>
     </div>
@@ -614,7 +614,7 @@ const LayerItem = React.memo(function LayerItem({
           )}
           <ContextMenuSeparator className="bg-[color:var(--dc-hover)]" />
           <ContextMenuItem
-            className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)] text-[11px] h-6 text-[#F44336]"
+            className="hover:bg-[color:var(--dc-hover)] focus:bg-[color:var(--dc-hover)] text-[11px] h-6 text-[color:var(--dc-danger)]"
             onClick={() => onContextMenuAction('delete', element.id)}
           >
             Delete <ContextMenuShortcut>⌫</ContextMenuShortcut>
@@ -845,14 +845,14 @@ export function LayerPanel() {
         className="flex-1 overflow-y-auto"
         style={{
           scrollbarWidth: 'thin',
-          scrollbarColor: '#444 transparent',
+          scrollbarColor: 'var(--dc-active) transparent',
         }}
       >
         <style>{`
           .layer-scroll::-webkit-scrollbar { width: 4px; }
           .layer-scroll::-webkit-scrollbar-track { background: transparent; }
-          .layer-scroll::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
-          .layer-scroll::-webkit-scrollbar-thumb:hover { background: #555; }
+          .layer-scroll::-webkit-scrollbar-thumb { background: var(--dc-active); border-radius: 2px; }
+          .layer-scroll::-webkit-scrollbar-thumb:hover { background: var(--dc-hover); }
           .layer-scroll::-webkit-scrollbar-corner { background: transparent; }
         `}</style>
         <div ref={scrollRef} className="layer-scroll h-full overflow-y-auto">

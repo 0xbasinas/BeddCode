@@ -353,7 +353,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: '#1c3322',
+    backgroundColor: colors.successStrong,
     alignItems: 'center',
     justifyContent: 'center',
   },

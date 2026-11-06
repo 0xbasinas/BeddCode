@@ -243,7 +243,7 @@ export default function AddHostScreen() {
               <View
                 style={[
                   styles.badgeCircle,
-                  { backgroundColor: connected ? '#1c3322' : colors.raised },
+                  { backgroundColor: connected ? colors.successStrong : colors.raised },
                 ]}
               >
                 <Icon icon={Check} size={26} color={connected ? colors.success : colors.muted} />
@@ -381,7 +381,7 @@ const styles = StyleSheet.create({
   command: {
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: '#121212',
+    backgroundColor: colors.screenBg,
     borderRadius: radius.panel,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
   },
   error: {
     borderWidth: 1,
-    borderColor: '#4a2523',
+    borderColor: colors.dangerBorder,
     backgroundColor: colors.dangerSoft,
     borderRadius: radius.control,
     padding: 10,

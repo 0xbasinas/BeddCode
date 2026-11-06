@@ -602,7 +602,7 @@ const styles = StyleSheet.create({
   earlier: { alignItems: 'center', paddingVertical: 8 },
   errorBox: {
     borderWidth: 1,
-    borderColor: '#4a2523',
+    borderColor: colors.dangerBorder,
     backgroundColor: colors.dangerSoft,
     borderRadius: radius.control,
     padding: 10,

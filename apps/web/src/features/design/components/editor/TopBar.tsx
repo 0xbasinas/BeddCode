@@ -1073,13 +1073,13 @@ export function TopBar() {
           >
             {syncStatus === 'live' ? (
               <>
-                <span className="w-1.5 h-1.5 rounded-full bg-[#2ED573] animate-pulse" />
-                <span className="text-[#2ED573]">Live</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-[color:var(--dc-success)] animate-pulse" />
+                <span className="text-[color:var(--dc-success)]">Live</span>
               </>
             ) : syncStatus === 'connecting' ? (
               <>
-                <span className="w-1.5 h-1.5 rounded-full bg-[#FFB800] animate-pulse" />
-                <span className="text-[#FFB800]">Sync…</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-[color:var(--dc-warning)] animate-pulse" />
+                <span className="text-[color:var(--dc-warning)]">Sync…</span>
               </>
             ) : (
               <>

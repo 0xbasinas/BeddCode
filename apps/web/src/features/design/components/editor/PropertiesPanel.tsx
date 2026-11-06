@@ -418,10 +418,10 @@ export function PropertiesPanel() {
         <div className="text-center">
           <div className="w-12 h-12 rounded-xl bg-[color:var(--dc-raised)] flex items-center justify-center mx-auto mb-3">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <rect x="2" y="2" width="7" height="7" rx="1" stroke="#666" strokeWidth="1.5" />
-              <rect x="11" y="2" width="7" height="7" rx="1" stroke="#666" strokeWidth="1.5" />
-              <rect x="2" y="11" width="7" height="7" rx="1" stroke="#666" strokeWidth="1.5" />
-              <rect x="11" y="11" width="7" height="7" rx="1" stroke="#666" strokeWidth="1.5" />
+              <rect x="2" y="2" width="7" height="7" rx="1" stroke="var(--dc-faint)" strokeWidth="1.5" />
+              <rect x="11" y="2" width="7" height="7" rx="1" stroke="var(--dc-faint)" strokeWidth="1.5" />
+              <rect x="2" y="11" width="7" height="7" rx="1" stroke="var(--dc-faint)" strokeWidth="1.5" />
+              <rect x="11" y="11" width="7" height="7" rx="1" stroke="var(--dc-faint)" strokeWidth="1.5" />
             </svg>
           </div>
           <p className="text-[11px] text-[color:var(--dc-muted)]">Select an element to edit</p>
@@ -608,11 +608,11 @@ export function PropertiesPanel() {
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-1.5">
               {element.isComponent && (
-                <div className="w-3 h-3 rounded bg-[#A259FF]" title="Component" />
+                <div className="w-3 h-3 rounded bg-[color:var(--dc-component)]" title="Component" />
               )}
               {element.componentId && (
                 <div
-                  className="w-3 h-3 rounded border border-[#A259FF] bg-transparent"
+                  className="w-3 h-3 rounded border border-[color:var(--dc-component)] bg-transparent"
                   title="Instance"
                 />
               )}
@@ -625,7 +625,7 @@ export function PropertiesPanel() {
                     pushHistory()
                     addComponent(element.id)
                   }}
-                  className="flex items-center justify-center h-5 px-1.5 rounded text-[9px] bg-[#A259FF]/20 text-[#A259FF] hover:bg-[#A259FF]/30 transition-colors"
+                  className="flex items-center justify-center h-5 px-1.5 rounded text-[9px] bg-[color:var(--dc-component)]/20 text-[color:var(--dc-component)] hover:bg-[color:var(--dc-component)]/30 transition-colors"
                   title="Create Component (Ctrl+Alt+K)"
                 >
                   ◆ Component
@@ -637,7 +637,7 @@ export function PropertiesPanel() {
                     pushHistory()
                     detachInstance(element.id)
                   }}
-                  className="flex items-center justify-center h-5 px-1.5 rounded text-[9px] bg-[#A259FF]/20 text-[#A259FF] hover:bg-[#A259FF]/30 transition-colors"
+                  className="flex items-center justify-center h-5 px-1.5 rounded text-[9px] bg-[color:var(--dc-component)]/20 text-[color:var(--dc-component)] hover:bg-[color:var(--dc-component)]/30 transition-colors"
                   title="Detach Instance"
                 >
                   ◇ Detach
@@ -707,7 +707,7 @@ export function PropertiesPanel() {
                       pushHistory()
                       resizeSelectionToFit()
                     }}
-                    className="flex items-center justify-center h-6 px-1.5 rounded text-[9px] text-[#BBB] hover:bg-[color:var(--dc-hover)] hover:text-[color:var(--dc-text2)] transition-colors shrink-0"
+                    className="flex items-center justify-center h-6 px-1.5 rounded text-[9px] text-[color:var(--dc-muted)] hover:bg-[color:var(--dc-hover)] hover:text-[color:var(--dc-text2)] transition-colors shrink-0"
                     title="Resize to fit"
                   >
                     Fit
@@ -1504,7 +1504,7 @@ export function PropertiesPanel() {
                           pushHistory()
                           updateElement(element.id, { onPathId: undefined })
                         }}
-                        className="h-5 px-1.5 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:text-[#FFF] hover:border-[#F44336]"
+                        className="h-5 px-1.5 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:text-[color:var(--dc-on-accent)] hover:border-[color:var(--dc-danger)]"
                       >
                         ✕
                       </button>
@@ -1525,7 +1525,7 @@ export function PropertiesPanel() {
                         links.push({ start: 0, end: Math.max(1, content.length), url: 'https://' })
                         updateElement(element.id, { links })
                       }}
-                      className="h-5 px-2 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:text-[#FFF] hover:border-[color:var(--dc-accent)]"
+                      className="h-5 px-2 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:text-[color:var(--dc-on-accent)] hover:border-[color:var(--dc-accent)]"
                     >
                       + Link
                     </button>
@@ -1573,7 +1573,7 @@ export function PropertiesPanel() {
                             const links = (element.links || []).filter((_, i) => i !== li)
                             updateElement(element.id, { links })
                           }}
-                          className="text-[#F44336] text-[10px] px-1"
+                          className="text-[color:var(--dc-danger)] text-[10px] px-1"
                         >
                           ✕
                         </button>
@@ -1601,7 +1601,7 @@ export function PropertiesPanel() {
                       : { scrollBehavior: 'FIXED_WHEN_CHILD_OF_SCROLLING_FRAME' },
                   )
                 }}
-                className={`h-5 px-2 text-[10px] rounded-sm border ${element.scrollBehavior === 'FIXED_WHEN_CHILD_OF_SCROLLING_FRAME' ? 'bg-[color:var(--dc-accent)]/20 border-[color:var(--dc-accent)] text-[#7FBBFF]' : 'bg-[color:var(--dc-input)] border-[color:var(--dc-border)] text-[color:var(--dc-muted)] hover:border-[color:var(--dc-accent)]'}`}
+                className={`h-5 px-2 text-[10px] rounded-sm border ${element.scrollBehavior === 'FIXED_WHEN_CHILD_OF_SCROLLING_FRAME' ? 'bg-[color:var(--dc-accent)]/20 border-[color:var(--dc-accent)] text-[color:var(--dc-info)]' : 'bg-[color:var(--dc-input)] border-[color:var(--dc-border)] text-[color:var(--dc-muted)] hover:border-[color:var(--dc-accent)]'}`}
                 title="Fixed when parent frame scrolls (stays pinned during playback)"
               >
                 {element.scrollBehavior === 'FIXED_WHEN_CHILD_OF_SCROLLING_FRAME'
@@ -1738,7 +1738,7 @@ export function PropertiesPanel() {
                     onClick={() =>
                       updateElement(element.id, { arc: { start: 0, sweep: 360, innerRatio: 0 } })
                     }
-                    className="h-5 px-2 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:text-[#FFF] hover:border-[color:var(--dc-accent)]"
+                    className="h-5 px-2 text-[10px] border border-[color:var(--dc-border)] rounded-sm bg-[color:var(--dc-input)] text-[color:var(--dc-muted)] hover:text-[color:var(--dc-on-accent)] hover:border-[color:var(--dc-accent)]"
                   >
                     Full ellipse
                   </button>
@@ -2677,7 +2677,7 @@ function FillLayerItem({
           }}
           className="ml-auto"
         >
-          <Trash2 className="w-3 h-3 text-[#F44336]" />
+          <Trash2 className="w-3 h-3 text-[color:var(--dc-danger)]" />
         </button>
       </div>
       {showGradient && fill.type !== 'solid' && fill.gradientStops && (
@@ -2864,7 +2864,7 @@ function StrokeLayerItem({
           }}
           className="ml-auto"
         >
-          <Trash2 className="w-3 h-3 text-[#F44336]" />
+          <Trash2 className="w-3 h-3 text-[color:var(--dc-danger)]" />
         </button>
       </div>
     </div>

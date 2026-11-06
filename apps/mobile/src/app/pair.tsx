@@ -107,7 +107,7 @@ export default function PairScreen() {
         ) : paired ? (
           <View style={{ alignItems: 'center', gap: 14, paddingTop: 24 }}>
             <View
-              style={[styles.badge, { backgroundColor: connected ? '#1c3322' : colors.raised }]}
+              style={[styles.badge, { backgroundColor: connected ? colors.successStrong : colors.raised }]}
             >
               <Icon icon={Check} size={26} color={connected ? colors.success : colors.muted} />
             </View>

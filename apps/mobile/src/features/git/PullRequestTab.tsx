@@ -207,7 +207,7 @@ function BranchPullRequest({
   const p = pr.data
   const passed = p.checks.filter((c) => c.state === 'success').length
   const stateColor =
-    p.state === 'OPEN' ? colors.success : p.state === 'MERGED' ? '#bb9af7' : colors.danger
+    p.state === 'OPEN' ? colors.success : p.state === 'MERGED' ? colors.purple : colors.danger
 
   return (
     <View style={{ flex: 1 }}>
@@ -216,7 +216,7 @@ function BranchPullRequest({
           <View
             style={[
               styles.badge,
-              { backgroundColor: p.state === 'OPEN' ? '#1c3322' : colors.raised },
+              { backgroundColor: p.state === 'OPEN' ? colors.successStrong : colors.raised },
             ]}
           >
             <Text size={11} color={stateColor}>
@@ -313,7 +313,7 @@ function BranchPullRequest({
 const PR_COLOR = {
   open: colors.success,
   draft: colors.muted,
-  merged: '#bb9af7',
+  merged: colors.purple,
   closed: colors.danger,
 }
 

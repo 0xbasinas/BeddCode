@@ -574,7 +574,7 @@ export function LeftSidebar() {
                   deletePage(contextMenu.pageId)
                   closeContextMenu()
                 }}
-                className="w-full px-3 py-1 text-left text-[11px] text-[#F00] hover:bg-[color:var(--dc-hover)] flex items-center gap-2"
+                className="w-full px-3 py-1 text-left text-[11px] text-[color:var(--dc-danger)] hover:bg-[color:var(--dc-hover)] flex items-center gap-2"
               >
                 <Trash2 className="w-3 h-3" /> Delete
               </button>

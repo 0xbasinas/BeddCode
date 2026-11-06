@@ -251,7 +251,7 @@ export function BrowserPane({ sessionId, onSent }: { sessionId: string; onSent()
           ) : null}
         </View>
         <Pressable
-          style={[styles.pick, picking && { backgroundColor: '#1e3a6a' }]}
+          style={[styles.pick, picking && { backgroundColor: colors.infoActive }]}
           disabled={!current}
           onPress={togglePicking}
         >
@@ -396,13 +396,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 5,
     borderWidth: 1,
-    borderColor: '#2f4f8a',
-    backgroundColor: '#16223a',
+    borderColor: colors.infoBorder,
+    backgroundColor: colors.infoPanel,
     borderRadius: radius.control,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
-  hint: { backgroundColor: '#12203a', paddingHorizontal: 16, paddingVertical: 6 },
+  hint: { backgroundColor: colors.infoHint, paddingHorizontal: 16, paddingVertical: 6 },
   page: {
     flex: 1,
     margin: 8,

@@ -250,7 +250,7 @@ export function ComponentPanel() {
       <div className="flex gap-1">
         <button
           onClick={handleAddVariantProp}
-          className="flex-1 h-5 rounded bg-[#A259FF] text-white text-[10px] font-medium hover:bg-[#8B3FE0] transition-colors"
+          className="flex-1 h-5 rounded bg-[color:var(--dc-component)] text-white text-[10px] font-medium hover:bg-[color-mix(in_oklab,var(--dc-component)_80%,black)] transition-colors"
         >
           Add
         </button>
@@ -318,7 +318,7 @@ export function ComponentPanel() {
                     <button
                       key={opt}
                       onClick={() => selectedId && handlePropValueChange(selectedId, name, opt)}
-                      className={`px-1.5 h-5 text-[9px] rounded ${currentVal === opt ? 'bg-[#A259FF] text-white' : 'bg-[color:var(--dc-raised)] text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)]'} transition-colors`}
+                      className={`px-1.5 h-5 text-[9px] rounded ${currentVal === opt ? 'bg-[color:var(--dc-component)] text-white' : 'bg-[color:var(--dc-raised)] text-[color:var(--dc-muted)] hover:text-[color:var(--dc-text2)]'} transition-colors`}
                     >
                       {opt}
                     </button>
@@ -389,7 +389,7 @@ export function ComponentPanel() {
       {selectedElementIds.length >= 2 && !selectedElement?.isComponentSet && (
         <button
           onClick={handleCreateComponentSet}
-          className="flex items-center gap-1.5 w-full h-7 px-2 rounded bg-[#A259FF] text-white text-[11px] font-medium hover:bg-[#8B3FE0] transition-colors"
+          className="flex items-center gap-1.5 w-full h-7 px-2 rounded bg-[color:var(--dc-component)] text-white text-[11px] font-medium hover:bg-[color-mix(in_oklab,var(--dc-component)_80%,black)] transition-colors"
         >
           <LayoutGrid className="w-3.5 h-3.5" />
           Create Component Set
@@ -434,7 +434,7 @@ export function ComponentPanel() {
       {selectedElement?.isComponentSet && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <h4 className="text-[10px] font-semibold text-[#A259FF] uppercase tracking-wider">
+            <h4 className="text-[10px] font-semibold text-[color:var(--dc-component)] uppercase tracking-wider">
               Variant Properties
             </h4>
             <button
@@ -477,7 +477,7 @@ export function ComponentPanel() {
       {selectedElement?.isComponentSet && selectedElement.children && (
         <div>
           <div className="flex items-center justify-between mb-1">
-            <h4 className="text-[10px] font-semibold text-[#A259FF] uppercase tracking-wider">
+            <h4 className="text-[10px] font-semibold text-[color:var(--dc-component)] uppercase tracking-wider">
               Variants ({selectedElement.children.length})
             </h4>
             {/* PHASE 23 (F15) — add variant (source: add-variant, figma_app ×16):
@@ -488,7 +488,7 @@ export function ComponentPanel() {
                 pushHistory()
                 addVariantToSet(selectedElement.id)
               }}
-              className="flex items-center gap-1 h-5 px-1.5 rounded text-[9px] text-[#A259FF] hover:bg-[#A259FF]/15 transition-colors"
+              className="flex items-center gap-1 h-5 px-1.5 rounded text-[9px] text-[color:var(--dc-component)] hover:bg-[color-mix(in_oklab,var(--dc-component)_15%,transparent)] transition-colors"
               title="Add variant"
             >
               <Plus className="w-3 h-3" /> Add variant
@@ -498,10 +498,10 @@ export function ComponentPanel() {
             {selectedElement.children.map((variant: any) => (
               <div
                 key={variant.id}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded cursor-pointer ${selectedElement.defaultVariant === variant.id ? 'bg-[#A259FF]/10' : 'hover:bg-[color:var(--dc-card)]'}`}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded cursor-pointer ${selectedElement.defaultVariant === variant.id ? 'bg-[color-mix(in_oklab,var(--dc-component)_10%,transparent)]' : 'hover:bg-[color:var(--dc-card)]'}`}
                 onClick={() => handleCreateInstance(variant.id)}
               >
-                <Component className="w-3 h-3 text-[#A259FF]" />
+                <Component className="w-3 h-3 text-[color:var(--dc-component)]" />
                 <span className="text-[10px] text-[color:var(--dc-text2)] flex-1 truncate">
                   {variant.name}
                 </span>
@@ -512,7 +512,7 @@ export function ComponentPanel() {
                     </span>
                   ))}
                 {selectedElement.defaultVariant === variant.id && (
-                  <span className="text-[8px] text-[#A259FF]">Default</span>
+                  <span className="text-[8px] text-[color:var(--dc-component)]">Default</span>
                 )}
               </div>
             ))}
@@ -582,7 +582,7 @@ export function ComponentPanel() {
                   onClick={() => handleCreateInstance(comp.id)}
                 >
                   <Component
-                    className={`w-3.5 h-3.5 ${comp.isComponentSet ? 'text-[#A259FF]' : 'text-[#A259FF]'}`}
+                    className={`w-3.5 h-3.5 ${comp.isComponentSet ? 'text-[color:var(--dc-component)]' : 'text-[color:var(--dc-component)]'}`}
                   />
                   <span className="text-[11px] text-[color:var(--dc-text2)] flex-1 truncate">
                     {comp.name}
@@ -598,7 +598,7 @@ export function ComponentPanel() {
                         className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-[color:var(--dc-card)] cursor-pointer"
                         onClick={() => handleCreateInstance(variant.id)}
                       >
-                        <Component className="w-3 h-3 text-[#A259FF] opacity-60" />
+                        <Component className="w-3 h-3 text-[color:var(--dc-component)] opacity-60" />
                         <span className="text-[10px] text-[color:var(--dc-muted)] flex-1 truncate">
                           {variant.name}
                         </span>
@@ -640,11 +640,11 @@ export function ComponentPanel() {
                 key={inst.id}
                 className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer ${selectedId === inst.id ? 'bg-[color:var(--dc-accent)]/15' : 'hover:bg-[color:var(--dc-card)]'}`}
               >
-                <Component className="w-3.5 h-3.5 text-[#A259FF] opacity-50" />
+                <Component className="w-3.5 h-3.5 text-[color:var(--dc-component)] opacity-50" />
                 <span className="text-[11px] text-[color:var(--dc-text2)] flex-1 truncate">
                   {inst.name}
                 </span>
-                <Link2 className="w-3 h-3 text-[#A259FF]" />
+                <Link2 className="w-3 h-3 text-[color:var(--dc-component)]" />
               </div>
             ))}
           </div>

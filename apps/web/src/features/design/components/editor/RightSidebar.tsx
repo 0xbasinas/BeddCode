@@ -544,7 +544,7 @@ function InspectPanel({ element }: { element: any }) {
                     {item.color.toUpperCase()}
                   </span>
                   {copiedId === `color-${i}` ? (
-                    <Check className="w-3 h-3 text-[#4CAF50] shrink-0" />
+                    <Check className="w-3 h-3 text-[color:var(--dc-success)] shrink-0" />
                   ) : (
                     <Copy className="w-3 h-3 text-[color:var(--dc-border-strong)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                   )}
@@ -698,7 +698,7 @@ function InspectPanel({ element }: { element: any }) {
               >
                 {copiedId === `code-${codeTab}` ? (
                   <>
-                    <Check className="w-2.5 h-2.5 text-[#4CAF50]" />
+                    <Check className="w-2.5 h-2.5 text-[color:var(--dc-success)]" />
                     Copied
                   </>
                 ) : (
@@ -756,7 +756,7 @@ function TypographyRow({
         {value}
       </span>
       {copied ? (
-        <Check className="w-3 h-3 text-[#4CAF50] shrink-0" />
+        <Check className="w-3 h-3 text-[color:var(--dc-success)] shrink-0" />
       ) : (
         <Copy className="w-3 h-3 text-[color:var(--dc-border-strong)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
       )}
