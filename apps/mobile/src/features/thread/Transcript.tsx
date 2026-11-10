@@ -38,6 +38,8 @@ import { ActivityIndicator, Animated, FlatList, Pressable, StyleSheet, View } fr
 
 import { colors, radius } from '@/theme/tokens'
 import { AttachmentImage, isImageName } from '@/features/composer/AttachmentImage'
+import { debugThisPrompt } from '@/features/composer/contextMentions'
+import { useComposerPrefill } from '@/host/composerPrefill'
 import { hostRequest, undoTurn, useHostStore } from '@/host/store'
 import { Message } from './Message'
 import { Diffstat } from '@/ui/Diffstat'
@@ -580,6 +582,21 @@ const Row = memo(
               <Text size={13} color={colors.danger} selectable>
                 {item.message}
               </Text>
+              {onQuote || sessionId ? (
+                <Pressable
+                  onPress={() =>
+                    useComposerPrefill
+                      .getState()
+                      .set(sessionId, debugThisPrompt('error', item.message))
+                  }
+                  accessibilityRole="button"
+                  style={{ paddingTop: 6 }}
+                >
+                  <Text size={12} color={colors.textSecondary}>
+                    Debug this
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
           )
         default:

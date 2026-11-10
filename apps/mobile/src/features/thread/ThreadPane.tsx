@@ -22,6 +22,7 @@ import {
   hostRequest,
   prompt,
   recordMetric,
+  forkSession,
   renameSession,
   setMode,
   setSessionDone,
@@ -40,6 +41,7 @@ import { attachBase64, EMPTY_ATTACHMENTS, useAttachments } from '@/host/attachme
 import type { Pane } from '@/features/panes/PaneBar'
 import * as ImagePicker from 'expo-image-picker'
 import { Camera, Image as ImageIcon, FolderSimple, TerminalWindow } from 'phosphor-react-native'
+import { ContextMeter } from './ContextMeter'
 import { PlanCard } from './PlanCard'
 import { exportSession } from './exportSession'
 import { appendReplyQuote } from './quote'
@@ -164,6 +166,17 @@ export function ThreadPane({
       },
     },
     {
+      id: 'fork',
+      label: 'Fork this thread…',
+      hint: 'Open a copy from this point',
+      onSelect: () =>
+        void forkSession(session.id)
+          .then((id) => router.push({ pathname: '/session/[id]', params: { id } }))
+          .catch((err: unknown) =>
+            Alert.alert('Could not fork', err instanceof Error ? err.message : String(err)),
+          ),
+    },
+    {
       id: 'export',
       label: 'Export transcript…',
       onSelect: () => {
@@ -218,6 +231,11 @@ export function ThreadPane({
         }
       />
       <StreamIndicator state={streamState} />
+      {session.items.some((i) => i.kind === 'notice' && i.hostUpdating) ? (
+        <Muted size={11} style={{ paddingHorizontal: 16, paddingTop: 2 }}>
+          The host is restoring this session…
+        </Muted>
+      ) : null}
       <View style={{ flex: 1 }}>
         <Transcript
           onFirstLayout={() => {
@@ -302,6 +320,14 @@ export function ThreadPane({
               label={queueOnly ? 'Queue after this turn' : 'Steer if supported, otherwise queue'}
             />
           )}
+          {session.context && session.context.size > 0 ? (
+            <ContextMeter
+              used={session.context.used}
+              size={session.context.size}
+              sessionId={session.id}
+              hasCompact={Boolean(session.commands?.some((c) => c.name === 'compact'))}
+            />
+          ) : null}
           <Composer
             placeholder={
               endedByDecline(session)
@@ -358,7 +384,6 @@ export function ThreadPane({
                   }
                 : undefined
             }
-            context={contextPct !== undefined ? `Context ${contextPct}%` : undefined}
           />
         </View>
       </View>
@@ -576,7 +601,7 @@ function StreamIndicator({
   if (!visible) return null
   return (
     <Animated.View style={{ opacity, paddingHorizontal: 16, paddingTop: 4 }}>
-      <Muted size={11}>{state === 'live' ? 'Caught up' : 'Reconnecting…'}</Muted>
+      <Muted size={11}>{state === 'live' ? 'Caught up' : state === 'catching-up' ? 'Resuming this session…' : 'Reconnecting…'}</Muted>
     </Animated.View>
   )
 }

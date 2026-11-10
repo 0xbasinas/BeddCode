@@ -36,6 +36,7 @@ export function ApprovalCard({
 }) {
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<string>()
+  const [full, setFull] = useState(false)
   const submitting = useRef(false)
   const answered = item.options.find((o) => o.id === item.resolvedOptionId)
   const resolved = Boolean(item.resolvedOptionId) || Boolean(item.cancelled)
@@ -114,10 +115,17 @@ export function ApprovalCard({
         >
           {item.plan}
         </Markdown>
-      ) : preview ? (
-        <Text size={13} mono selectable>
-          {preview}
-        </Text>
+      ) : item.detail ? (
+        <>
+          <Text size={13} mono selectable numberOfLines={full ? undefined : 6}>
+            {full ? item.detail.trim() : preview}
+          </Text>
+          {item.detail.trim().includes('\n') || (preview && item.detail.trim().length > (preview.length ?? 0)) ? (
+            <Pressable onPress={() => setFull((v) => !v)}>
+              <Faint size={11.5}>{full ? 'Show less' : 'Show full detail'}</Faint>
+            </Pressable>
+          ) : null}
+        </>
       ) : null}
       {cwd && !item.plan ? (
         <Text size={11.5} mono color={colors.faint} numberOfLines={1}>
@@ -142,9 +150,9 @@ export function ApprovalCard({
             key={o.id}
             disabled={busy !== undefined}
             onPress={() => void answer(o.id)}
-            style={styles.action}
+            style={[styles.action, o.kind === 'deny' && styles.deny]}
           >
-            <Text size={14} color={o.kind === 'deny' ? colors.text : colors.muted}>
+            <Text size={14} color={o.kind === 'deny' ? colors.danger : colors.muted}>
               {busy === o.id ? '…' : o.label}
             </Text>
           </Pressable>
@@ -178,5 +186,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.raised,
   },
   allow: { backgroundColor: colors.accentSoft },
+  deny: { backgroundColor: colors.dangerSoft },
   done: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2 },
 })
