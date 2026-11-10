@@ -25,13 +25,22 @@ describe('parseCommand', () => {
     expect(parseCommand('@beddcode review', slug)?.verb).toBe('review')
     expect(parseCommand('@beddcode fix CI', slug)?.verb).toBe('fix-ci')
     expect(parseCommand('@beddcode explain', slug)?.verb).toBe('explain')
-    expect(parseCommand('@beddcode rebase on main', slug)).toMatchObject({ verb: 'rebase', extra: 'on main' })
+    expect(parseCommand('@beddcode rebase on main', slug)).toMatchObject({
+      verb: 'rebase',
+      extra: 'on main',
+    })
     expect(parseCommand('@beddcode stop', slug)?.verb).toBe('stop')
   })
   it('reads agent, model and effort, and keeps the rest as instructions', () => {
     expect(
       parseCommand('@beddcode codex model=gpt-5 effort=high fix this, mind the tests', slug),
-    ).toEqual({ verb: 'fix', agent: 'codex', model: 'gpt-5', effort: 'high', extra: 'mind the tests' })
+    ).toEqual({
+      verb: 'fix',
+      agent: 'codex',
+      model: 'gpt-5',
+      effort: 'high',
+      extra: 'mind the tests',
+    })
     expect(parseCommand('@beddcode agent=claude fix', slug)).toMatchObject({ agent: 'claude' })
   })
   it('ignores talk that is not a command', () => {
@@ -42,14 +51,18 @@ describe('parseCommand', () => {
     expect(parseCommand('@beddcodex fix this', slug)).toBeUndefined()
   })
   it('understands plain words, with agent, model and effort picked out', () => {
-    expect(parseCommand('@beddcode go ahead and tackle this with claude on sonnet 5.5 on low', slug)).toMatchObject({
+    expect(
+      parseCommand('@beddcode go ahead and tackle this with claude on sonnet 5.5 on low', slug),
+    ).toMatchObject({
       verb: 'ask',
       agent: 'claude',
       model: 'sonnet',
       effort: 'low',
       extra: expect.stringContaining('tackle this'),
     })
-    expect(parseCommand('@beddcode could you review this using codex, high effort?', slug)).toMatchObject({ verb: 'ask', agent: 'codex', effort: 'high' })
+    expect(
+      parseCommand('@beddcode could you review this using codex, high effort?', slug),
+    ).toMatchObject({ verb: 'ask', agent: 'codex', effort: 'high' })
     expect(parseCommand('@beddcode the CI is failing, please sort it', slug)?.verb).toBe('ask')
     expect(parseCommand('@beddcode what do you think?', slug)?.verb).toBe('ask')
   })
@@ -104,19 +117,43 @@ describe('triage', () => {
   })
   it('accepts the owner commenting a command on an issue', () => {
     const r = triage('issue_comment', issueComment(), rules)
-    expect(r).toMatchObject({ ok: true, request: { repo: 'o/r', number: 3, isPullRequest: false, commentId: 11 } })
+    expect(r).toMatchObject({
+      ok: true,
+      request: { repo: 'o/r', number: 3, isPullRequest: false, commentId: 11 },
+    })
   })
   it('ignores an outsider, edits, bots and other events', () => {
     const stranger = { login: 'mallory', type: 'User' }
-    expect(triage('issue_comment', issueComment({ sender: stranger, comment: { id: 1, body: '@beddcode fix this', user: stranger } }), rules).ok).toBe(false)
+    expect(
+      triage(
+        'issue_comment',
+        issueComment({
+          sender: stranger,
+          comment: { id: 1, body: '@beddcode fix this', user: stranger },
+        }),
+        rules,
+      ).ok,
+    ).toBe(false)
     expect(triage('issue_comment', issueComment({ action: 'edited' }), rules).ok).toBe(false)
-    expect(triage('issue_comment', issueComment({ sender: { login: 'beddcode[bot]', type: 'Bot' } }), rules).ok).toBe(false)
+    expect(
+      triage(
+        'issue_comment',
+        issueComment({ sender: { login: 'beddcode[bot]', type: 'Bot' } }),
+        rules,
+      ).ok,
+    ).toBe(false)
     expect(triage('push', issueComment(), rules).ok).toBe(false)
     expect(triage('issue_comment', issueComment({ installation: undefined }), rules).ok).toBe(false)
   })
   it('ignores a comment by an outsider even if the sender field claims to be the owner', () => {
     const stranger = { login: 'mallory', type: 'User' }
-    expect(triage('issue_comment', issueComment({ comment: { id: 1, body: '@beddcode fix this', user: stranger } }), rules).ok).toBe(false)
+    expect(
+      triage(
+        'issue_comment',
+        issueComment({ comment: { id: 1, body: '@beddcode fix this', user: stranger } }),
+        rules,
+      ).ok,
+    ).toBe(false)
   })
   it('ignores review comments on fork pull requests', () => {
     const pr = (head: string) => ({
@@ -124,7 +161,11 @@ describe('triage', () => {
       installation: { id: 7 },
       repository: { full_name: 'o/r' },
       sender: owner,
-      pull_request: { number: 5, head: { ref: 'x', sha: 'abc', repo: { full_name: head } }, base: { ref: 'main', repo: { full_name: 'o/r' } } },
+      pull_request: {
+        number: 5,
+        head: { ref: 'x', sha: 'abc', repo: { full_name: head } },
+        base: { ref: 'main', repo: { full_name: 'o/r' } },
+      },
       comment: { id: 2, body: '@beddcode review', user: owner },
     })
     expect(triage('pull_request_review_comment', pr('o/r'), rules).ok).toBe(true)
@@ -142,16 +183,32 @@ describe('label triggers', () => {
     sender,
     label: { name },
     issue: { number: 3, html_url: 'u' },
-    pull_request: { number: 5, html_url: 'u', head: { ref: 'f', sha: 'a', repo: { full_name: 'o/r' } }, base: { ref: 'main', repo: { full_name: 'o/r' } } },
+    pull_request: {
+      number: 5,
+      html_url: 'u',
+      head: { ref: 'f', sha: 'a', repo: { full_name: 'o/r' } },
+      base: { ref: 'main', repo: { full_name: 'o/r' } },
+    },
   })
   it('fixes a labeled issue and reviews a labeled pull request', () => {
-    expect(triage('issues', labeled('issues', 'beddcode'), rules)).toMatchObject({ ok: true, request: { number: 3, commentKind: 'thread', command: { verb: 'fix' } } })
-    expect(triage('pull_request', labeled('pull_request', 'beddcode'), rules)).toMatchObject({ ok: true, request: { number: 5, isPullRequest: true, command: { verb: 'review' } } })
-    expect(triage('issues', labeled('issues', 'beddcode:explain'), rules)).toMatchObject({ ok: true, request: { command: { verb: 'explain' } } })
+    expect(triage('issues', labeled('issues', 'beddcode'), rules)).toMatchObject({
+      ok: true,
+      request: { number: 3, commentKind: 'thread', command: { verb: 'fix' } },
+    })
+    expect(triage('pull_request', labeled('pull_request', 'beddcode'), rules)).toMatchObject({
+      ok: true,
+      request: { number: 5, isPullRequest: true, command: { verb: 'review' } },
+    })
+    expect(triage('issues', labeled('issues', 'beddcode:explain'), rules)).toMatchObject({
+      ok: true,
+      request: { command: { verb: 'explain' } },
+    })
   })
   it('ignores other labels and labels applied by anyone else', () => {
     expect(triage('issues', labeled('issues', 'bug'), rules).ok).toBe(false)
-    expect(triage('issues', labeled('issues', 'beddcode', { login: 'mallory', type: 'User' }), rules).ok).toBe(false)
+    expect(
+      triage('issues', labeled('issues', 'beddcode', { login: 'mallory', type: 'User' }), rules).ok,
+    ).toBe(false)
   })
 })
 
@@ -166,13 +223,25 @@ describe('commands in a new issue', () => {
     issue: { number: 104, html_url: 'u', body, user },
   })
   it('starts a job from the issue text, as plain words for the agent', () => {
-    expect(triage('issues', opened('@beddcode please make the composer less tall slightly, use sonnet 5.5 on medium'), rules)).toMatchObject({
+    expect(
+      triage(
+        'issues',
+        opened('@beddcode please make the composer less tall slightly, use sonnet 5.5 on medium'),
+        rules,
+      ),
+    ).toMatchObject({
       ok: true,
-      request: { number: 104, commentKind: 'thread', command: { verb: 'ask', model: 'sonnet', effort: 'medium' } },
+      request: {
+        number: 104,
+        commentKind: 'thread',
+        command: { verb: 'ask', model: 'sonnet', effort: 'medium' },
+      },
     })
   })
   it('ignores strangers and issues that do not mention the app', () => {
-    expect(triage('issues', opened('@beddcode fix this', { login: 'mallory', type: 'User' }), rules).ok).toBe(false)
+    expect(
+      triage('issues', opened('@beddcode fix this', { login: 'mallory', type: 'User' }), rules).ok,
+    ).toBe(false)
     expect(triage('issues', opened('the composer is too tall'), rules).ok).toBe(false)
   })
 })
@@ -185,7 +254,10 @@ describe('appJwt', () => {
     expect(Buffer.from(pemToPkcs8(pkcs1)).equals(pkcs8)).toBe(true)
     const jwt = await appJwt('123', pkcs1)
     const [head, claims] = jwt.split('.')
-    expect(JSON.parse(atob(head!.replace(/-/g, '+').replace(/_/g, '/')))).toEqual({ alg: 'RS256', typ: 'JWT' })
+    expect(JSON.parse(atob(head!.replace(/-/g, '+').replace(/_/g, '/')))).toEqual({
+      alg: 'RS256',
+      typ: 'JWT',
+    })
     expect(JSON.parse(atob(claims!.replace(/-/g, '+').replace(/_/g, '/'))).iss).toBe('123')
   })
 })

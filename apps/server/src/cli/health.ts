@@ -3,6 +3,12 @@ export interface HostHealth {
   version: string
   platform: string
   protocol: number
+  /** Only for this machine: how much the data folder weighs, and which worktrees are stale. */
+  housekeeping?: {
+    dbBytes: number
+    attachmentsBytes: number
+    staleWorktrees: string[]
+  }
 }
 
 /** What a host on this machine's port says about itself, or null when nothing answers. */
@@ -19,6 +25,7 @@ export async function fetchHealth(
       ok?: boolean
       protocol?: number
       host?: { name?: string; version?: string; platform?: string }
+      housekeeping?: HostHealth['housekeeping']
     }
     if (!body.ok) return null
     return {
@@ -26,6 +33,7 @@ export async function fetchHealth(
       version: body.host?.version ?? 'unknown',
       platform: body.host?.platform ?? 'unknown',
       protocol: body.protocol ?? 0,
+      ...(body.housekeeping ? { housekeeping: body.housekeeping } : {}),
     }
   } catch {
     return null

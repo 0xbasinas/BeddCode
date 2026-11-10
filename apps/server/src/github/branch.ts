@@ -81,12 +81,16 @@ export async function chooseBase(
   if (paths.length > 0) {
     const missing = async (ref: string) => {
       const gone: string[] = []
-      for (const path of paths) if ((await git(cwd, ['cat-file', '-e', `origin/${ref}:${path}`])).code !== 0) gone.push(path)
+      for (const path of paths)
+        if ((await git(cwd, ['cat-file', '-e', `origin/${ref}:${path}`])).code !== 0)
+          gone.push(path)
       return gone
     }
     const lacking = await missing(base)
     if (lacking.length > 0 && lacking.length < paths.length + 1) {
-      const candidates = branches.filter((b) => b !== base && !b.startsWith('beddcode/')).slice(0, RECENT)
+      const candidates = branches
+        .filter((b) => b !== base && !b.startsWith('beddcode/'))
+        .slice(0, RECENT)
       let best: { ref: string; gone: number } | undefined
       for (const ref of candidates) {
         const gone = (await missing(ref)).length

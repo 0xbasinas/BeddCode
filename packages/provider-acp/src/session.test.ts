@@ -146,6 +146,55 @@ async function beginPrompt(session: AcpSession, agent: ReturnType<typeof fakeAge
 }
 
 describe('AcpSession: setup', () => {
+  it('enables steering only when advertised and injects into the current turn', async () => {
+    const agent = fakeAgent()
+    agent.auto.initialize = () => ({
+      protocolVersion: 1,
+      agentCapabilities: {},
+      _meta: { steering: { supported: true } },
+    })
+    agent.auto['_session/steering'] = () => ({ outcome: 'injected' })
+    const session = start(agent)
+    const { turn, promptId } = await beginPrompt(session, agent)
+    expect(session.steer).toBeDefined()
+    expect(await nextEvent(session, (e) => e.type === 'session.capabilities')).toMatchObject({
+      raw: { _meta: { steering: { supported: true } } },
+    })
+    await session.steer!({ text: 'change direction' })
+    expect(agent.sent('_session/steering')[0]?.params).toMatchObject({
+      sessionId: 'acp-1',
+      prompt: [{ type: 'text', text: 'change direction' }],
+      _meta: { steering: { idleBehavior: 'promptRequired' } },
+    })
+    agent.reply(promptId, { stopReason: 'end_turn' })
+    await turn
+    await expect(session.steer!({ text: 'late' })).rejects.toThrow('No running turn')
+    await session.close()
+  })
+
+  it('leaves steering unavailable when the agent does not advertise it', async () => {
+    const agent = fakeAgent()
+    const session = start(agent)
+    await nextEvent(session, (e) => e.type === 'session.provider-session')
+    expect(session.steer).toBeUndefined()
+    await session.close()
+  })
+
+  it('reports promptRequired so the host can deliver the follow-up', async () => {
+    const agent = fakeAgent()
+    agent.auto.initialize = () => ({
+      protocolVersion: 1,
+      agentCapabilities: {},
+      _meta: { steering: { supported: true } },
+    })
+    agent.auto['_session/steering'] = () => ({ outcome: 'promptRequired' })
+    const session = start(agent)
+    const { turn, promptId } = await beginPrompt(session, agent)
+    await expect(session.steer!({ text: 'later' })).rejects.toThrow('promptRequired')
+    agent.reply(promptId, { stopReason: 'end_turn' })
+    await turn
+    await session.close()
+  })
   it('speaks JSON-RPC 2.0, declares fs and terminal support, and opens a session', async () => {
     const agent = fakeAgent()
     const session = start(agent)
@@ -476,7 +525,7 @@ describe('AcpSession: client methods', () => {
     const dir = tmp()
     const file = path.join(dir, 'sub', 'a.txt')
     const agent = fakeAgent()
-    const session = start(agent)
+    const session = start(agent, { cwd: dir })
 
     const written = await agent.ask('fs/write_text_file', {
       sessionId: 'acp-1',
@@ -494,6 +543,46 @@ describe('AcpSession: client methods', () => {
       limit: 2,
     })
     expect(part.result).toEqual({ content: 'l2\nl3' })
+    await session.close()
+  })
+
+  it('asks before writing outside the session folder, and lets the agent read there', async () => {
+    const root = tmp()
+    const cwd = path.join(root, 'project')
+    const outside = path.join(root, 'outside.txt')
+    writeFileSync(outside, 'shared')
+    const agent = fakeAgent()
+    const session = start(agent, { cwd })
+    const answer = async (optionId: string) => {
+      const asked = nextEvent(session, (e) => e.type === 'approval.requested')
+      const reply = agent.ask('fs/write_text_file', {
+        sessionId: 'acp-1',
+        path: path.join(cwd, '..', 'outside.txt'),
+        content: 'new',
+      })
+      const request = await asked
+      if (request.type !== 'approval.requested') throw new Error('unreachable')
+      expect(request.title).toContain('outside the project')
+      await session.respondToApproval(request.requestId, optionId)
+      return (await reply) as { error?: { code: number } }
+    }
+    // Denied: nothing is written.
+    expect((await answer('write-deny')).error?.code).toBe(-32602)
+    expect(readFileSync(outside, 'utf8')).toBe('shared')
+    // Allowed once: written, and the next write asks again.
+    expect((await answer('write-once')).error).toBeUndefined()
+    expect(readFileSync(outside, 'utf8')).toBe('new')
+    // Allowed for the folder: written, and later writes there go through without asking.
+    expect((await answer('write-folder')).error).toBeUndefined()
+    const later = await agent.ask('fs/write_text_file', {
+      sessionId: 'acp-1',
+      path: path.join(root, 'other.txt'),
+      content: 'again',
+    })
+    expect(later.result).toEqual({})
+    expect(readFileSync(path.join(root, 'other.txt'), 'utf8')).toBe('again')
+    const read = await agent.ask('fs/read_text_file', { sessionId: 'acp-1', path: outside })
+    expect(read.result).toEqual({ content: 'new' })
     await session.close()
   })
 
@@ -1500,6 +1589,45 @@ describe('AcpSession: agent hooks', () => {
     await new Promise((r) => setTimeout(r, 30))
     const asked = events.find((e) => e.type === 'approval.requested')
     expect(asked).toMatchObject({ options: [{ id: 'once' }, { id: 'no' }] })
+    await session.close()
+  })
+})
+
+describe('AcpSession: transient prompt errors', () => {
+  it('sends the prompt again after an internal error when nothing has happened yet', async () => {
+    const agent = fakeAgent()
+    let calls = 0
+    agent.auto['session/prompt'] = () =>
+      ++calls === 1
+        ? { rpcError: { code: -32603, message: 'Internal error' } }
+        : { stopReason: 'end_turn' }
+    const session = start(agent)
+    await session.prompt({ text: 'go' })
+    expect(agent.sent('session/prompt')).toHaveLength(2)
+    const events = await drain(session)
+    expect(events.some((e) => e.type === 'error')).toBe(false)
+    expect(events.at(-1)).toMatchObject({ type: 'turn.completed', reason: 'done' })
+  })
+
+  it('does not repeat a turn that already did something', async () => {
+    const agent = fakeAgent()
+    agent.auto['session/prompt'] = () => {
+      agent.update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hi' } })
+      return { rpcError: { code: -32603, message: 'Internal error' } }
+    }
+    const session = start(agent)
+    await session.prompt({ text: 'go' })
+    expect(agent.sent('session/prompt')).toHaveLength(1)
+    const events = await drain(session)
+    expect(events.at(-1)).toMatchObject({ type: 'turn.completed', reason: 'error' })
+  })
+
+  it('does not retry errors that will not change', async () => {
+    const agent = fakeAgent()
+    agent.auto['session/prompt'] = () => ({ rpcError: { code: -32602, message: 'Invalid params' } })
+    const session = start(agent)
+    await session.prompt({ text: 'go' })
+    expect(agent.sent('session/prompt')).toHaveLength(1)
     await session.close()
   })
 })

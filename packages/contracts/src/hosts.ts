@@ -127,3 +127,84 @@ export const HostSettings = z.object({
   claudeBackend: z.enum(['sdk', 'cli']).default('sdk'),
 })
 export type HostSettings = z.infer<typeof HostSettings>
+
+/** Session states a host reports in its stats, as the digests read them. */
+export const SessionStatusStat = z.enum([
+  'starting',
+  'running',
+  'needs-you',
+  'idle',
+  'error',
+  'cancelled',
+])
+export type SessionStatusStat = z.infer<typeof SessionStatusStat>
+
+/**
+ * What the host counts about itself (`host.stats`, and `GET /metrics` in Prometheus format): how
+ * many sessions and turns, what is waiting on the user, how much the data folder weighs, and how
+ * long the host has been up. Counters only ever rise; gauges are read when asked.
+ */
+export const HostStats = z.object({
+  host: HostInfo,
+  /** Seconds since the host process started. */
+  uptimeSeconds: z.number().int().nonnegative(),
+  /** The last sequence number in the host's event log. */
+  seq: z.number().int().nonnegative(),
+  /** Counters since the host started, e.g. `turns_completed` with a `reason` label. */
+  counters: z.record(z.string(), z.number().int().nonnegative()),
+  sessions: z.object({
+    total: z.number().int().nonnegative(),
+    byStatus: z.record(SessionStatusStat, z.number().int().nonnegative()),
+    activeTurns: z.number().int().nonnegative(),
+    activeTools: z.number().int().nonnegative(),
+    /** Approvals and questions waiting for an answer right now. */
+    openRequests: z.number().int().nonnegative(),
+    /** Messages queued behind the running turn. */
+    queuedPrompts: z.number().int().nonnegative(),
+    pinned: z.number().int().nonnegative(),
+  }),
+  storage: z.object({
+    /** Size of the event-log database file. */
+    dbBytes: z.number().int().nonnegative(),
+    /** Size of all stored attachments. */
+    attachmentsBytes: z.number().int().nonnegative(),
+    /** Worktree folders under projects' `.wt/` whose session no longer exists. */
+    staleWorktrees: z.array(z.string()),
+  }),
+  clients: z.object({
+    websockets: z.number().int().nonnegative(),
+  }),
+})
+export type HostStats = z.infer<typeof HostStats>
+
+/** One session considered by `host.gc`. */
+export const GcSessionReport = z.object({
+  id: z.string(),
+  title: z.string(),
+  /** Epoch ms of the session's last activity. */
+  lastActiveAt: z.number().int(),
+  status: SessionStatusStat,
+  worktree: z.string().optional(),
+  pinned: z.boolean(),
+  /** Whether it was (or, on a dry run, would be) deleted. */
+  removed: z.boolean(),
+  /** Why it was kept or could not be fully removed. */
+  note: z.string().optional(),
+})
+export type GcSessionReport = z.infer<typeof GcSessionReport>
+
+/** What `host.gc` did (or, with `dryRun`, would do): remove old sessions, worktrees and attachments. */
+export const GcReport = z.object({
+  dryRun: z.boolean(),
+  /** Epoch ms before which a session's last activity makes it a candidate. */
+  cutoff: z.number().int(),
+  sessions: z.array(GcSessionReport),
+  sessionsRemoved: z.number().int().nonnegative(),
+  worktreesRemoved: z.number().int().nonnegative(),
+  attachmentsRemoved: z.number().int().nonnegative(),
+  attachmentBytesFreed: z.number().int().nonnegative(),
+  dbBytesBefore: z.number().int().nonnegative(),
+  dbBytesAfter: z.number().int().nonnegative(),
+  vacuumed: z.boolean(),
+})
+export type GcReport = z.infer<typeof GcReport>

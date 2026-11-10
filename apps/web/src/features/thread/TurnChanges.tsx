@@ -31,6 +31,7 @@ export function TurnChangesCard({
   cwd,
   canUndo,
   offerPr,
+  branch,
   onOpenFile,
 }: {
   item: Changes
@@ -42,6 +43,8 @@ export function TurnChangesCard({
   canUndo: boolean
   /** In a worktree: offer to commit these and open a pull request from its branch. */
   offerPr?: boolean
+  /** The session's branch, so the pull request shown is not the folder's newest one. */
+  branch?: string
   onOpenFile?(path: string): void
 }) {
   const [open, setOpen] = useState(false)
@@ -53,14 +56,14 @@ export function TurnChangesCard({
   const count = item.files.length
   const coverage = item.coverage ?? { state: item.truncated ? 'truncated' : 'full' }
   const unavailable = coverage.state === 'skipped' || coverage.state === 'expired'
-  const pr = useSessionPr(hostKey, cwd)
+  const pr = useSessionPr(hostKey, cwd, branch ? { branch } : undefined)
   const openPr = pr && pr.state === 'OPEN' ? pr : null
   const mergedPr = pr && pr.state === 'MERGED' ? pr : null
   // A turn just finished: ask GitHub now, so the pull request is already known (and the host has
   // it cached for the Git pane) by the time it is wanted.
   useEffect(() => {
-    if (offerPr) void refreshSessionPr(hostKey, cwd)
-  }, [offerPr, hostKey, cwd, item.id])
+    if (offerPr) void refreshSessionPr(hostKey, cwd, branch ? { branch } : undefined)
+  }, [offerPr, hostKey, cwd, branch, item.id])
 
   const undo = async () => {
     setUndoing(true)

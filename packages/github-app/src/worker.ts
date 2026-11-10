@@ -42,7 +42,13 @@ export default {
 async function webhook(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const text = await request.text()
   if (text.length > MAX_BODY) return new Response('Too large', { status: 413 })
-  if (!(await verifyWebhook(env.GITHUB_WEBHOOK_SECRET, text, request.headers.get('x-hub-signature-256'))))
+  if (
+    !(await verifyWebhook(
+      env.GITHUB_WEBHOOK_SECRET,
+      text,
+      request.headers.get('x-hub-signature-256'),
+    ))
+  )
     return new Response('Unauthorized', { status: 401 })
   let payload: Parameters<typeof triage>[1]
   try {
@@ -56,9 +62,7 @@ async function webhook(request: Request, env: Env, ctx: ExecutionContext): Promi
   })
   // Ignored deliveries get the same quiet 202, so outsiders learn nothing about the rules.
   if (!result.ok) return new Response('ignored', { status: 202 })
-  ctx.waitUntil(
-    accept(env, result.request).catch((err) => failed(env, result.request, err)),
-  )
+  ctx.waitUntil(accept(env, result.request).catch((err) => failed(env, result.request, err)))
   return new Response('accepted', { status: 202 })
 }
 
@@ -69,7 +73,12 @@ async function failed(env: Env, ask: AskRequest, err: unknown): Promise<void> {
   try {
     const github = new Github(env)
     const token = await github.token(ask.installationId)
-    await github.comment(token, ask.repo, ask.number, `@${ask.sender} I could not queue that: ${message}`)
+    await github.comment(
+      token,
+      ask.repo,
+      ask.number,
+      `@${ask.sender} I could not queue that: ${message}`,
+    )
   } catch (inner) {
     console.error('could not report the failure', String(inner))
   }
@@ -81,11 +90,21 @@ async function accept(env: Env, ask: AskRequest): Promise<void> {
   const token = await github.token(ask.installationId)
   const queue = queueOf(env)
   const react = (content: string) =>
-    github.react(token, ask.repo, { kind: ask.commentKind, id: ask.commentId, number: ask.number }, content).catch(() => undefined)
-  const say = (body: string) => github.comment(token, ask.repo, ask.number, body).catch(() => undefined)
+    github
+      .react(
+        token,
+        ask.repo,
+        { kind: ask.commentKind, id: ask.commentId, number: ask.number },
+        content,
+      )
+      .catch(() => undefined)
+  const say = (body: string) =>
+    github.comment(token, ask.repo, ask.number, body).catch(() => undefined)
 
   if (!(await queue.admit(ask.sender, num(env.MAX_JOBS_PER_HOUR, 10))))
-    return void (await say(`@${ask.sender} that is more than ${num(env.MAX_JOBS_PER_HOUR, 10)} requests this hour. Try again later.`))
+    return void (await say(
+      `@${ask.sender} that is more than ${num(env.MAX_JOBS_PER_HOUR, 10)} requests this hour. Try again later.`,
+    ))
 
   let head: Job['head']
   let base: Job['base']
@@ -109,11 +128,15 @@ async function accept(env: Env, ask: AskRequest): Promise<void> {
     ...comments.slice(-15).map((c) => `--- ${c.user.login} wrote:\n${c.body}`),
   ]
   if ((ask.command.verb === 'fix-ci' || ask.command.verb === 'ask') && head)
-    parts.push(`## Failing checks on ${head.sha.slice(0, 7)}\n${await github.failedChecks(token, ask.repo, head.sha)}`)
+    parts.push(
+      `## Failing checks on ${head.sha.slice(0, 7)}\n${await github.failedChecks(token, ask.repo, head.sha)}`,
+    )
 
   // "on PR 102" or "pull request #102": that pull request's branch is a candidate to start from.
   let baseHint: Job['baseHint']
-  const mention = /\b(?:pr|pull request|pull)\s*#?(\d{1,6})\b/i.exec(`${ask.command.extra}\n${issue.body ?? ''}`)?.[1]
+  const mention = /\b(?:pr|pull request|pull)\s*#?(\d{1,6})\b/i.exec(
+    `${ask.command.extra}\n${issue.body ?? ''}`,
+  )?.[1]
   if (mention && Number(mention) !== ask.number && !ask.isPullRequest)
     baseHint = await github
       .pull(token, ask.repo, Number(mention))
@@ -164,10 +187,16 @@ async function host(request: Request, url: URL, env: Env): Promise<Response> {
   const stale = num(env.HOST_STALE_SECONDS, 90)
   if (url.pathname === '/host/poll' && request.method === 'POST') {
     const hello = (await request.json().catch(() => null)) as HostHello | null
-    if (!hello || typeof hello.id !== 'string' || !Array.isArray(hello.repos)) return new Response('Bad request', { status: 400 })
+    if (!hello || typeof hello.id !== 'string' || !Array.isArray(hello.repos))
+      return new Response('Bad request', { status: 400 })
     const wait = Math.min(25_000, num(url.searchParams.get('wait') ?? '', 0) * 1000)
     const { jobs, expired } = await queue.poll(
-      { id: hello.id.slice(0, 64), label: String(hello.label).slice(0, 64), repos: hello.repos.map(String).slice(0, 200), priority: Number(hello.priority) || 0 },
+      {
+        id: hello.id.slice(0, 64),
+        label: String(hello.label).slice(0, 64),
+        repos: hello.repos.map(String).slice(0, 200),
+        priority: Number(hello.priority) || 0,
+      },
       stale,
       wait,
     )
@@ -176,7 +205,14 @@ async function host(request: Request, url: URL, env: Env): Promise<Response> {
       for (const job of expired)
         await github
           .token(job.installationId)
-          .then((t) => github.comment(t, job.repo, job.number, `@${job.sender} no host picked this up in time. Comment again when one is online.`))
+          .then((t) =>
+            github.comment(
+              t,
+              job.repo,
+              job.number,
+              `@${job.sender} no host picked this up in time. Comment again when one is online.`,
+            ),
+          )
           .catch(() => undefined)
     }
     return json({ jobs })
@@ -208,9 +244,25 @@ async function host(request: Request, url: URL, env: Env): Promise<Response> {
     return json({ url: pr.html_url, number: pr.number })
   }
   const report = body as unknown as JobReport
-  const reaction = { started: 'eyes', done: 'rocket', failed: 'confused', refused: 'confused', stopped: '-1', working: '' }[report.status]
-  if (reaction) await github.react(token, job.repo, { kind: job.commentKind, id: job.commentId, number: job.number }, reaction).catch(() => undefined)
-  if (report.message) await github.comment(token, job.repo, job.number, String(report.message).slice(0, 60_000))
+  const reaction = {
+    started: 'eyes',
+    done: 'rocket',
+    failed: 'confused',
+    refused: 'confused',
+    stopped: '-1',
+    working: '',
+  }[report.status]
+  if (reaction)
+    await github
+      .react(
+        token,
+        job.repo,
+        { kind: job.commentKind, id: job.commentId, number: job.number },
+        reaction,
+      )
+      .catch(() => undefined)
+  if (report.message)
+    await github.comment(token, job.repo, job.number, String(report.message).slice(0, 60_000))
   if (['done', 'failed', 'stopped', 'refused'].includes(report.status)) await queue.finish(job.id)
   return json({ ok: true })
 }

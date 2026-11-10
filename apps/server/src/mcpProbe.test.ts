@@ -56,6 +56,7 @@ describe('probeMcp', () => {
       name: 'Fake',
       version: '1',
       toolCount: 1,
+      tools: ['one'],
     })
   })
   it('supports legacy SSE transport', async () => {
@@ -83,6 +84,7 @@ describe('probeMcp', () => {
       name: 'Fake',
       version: '1',
       toolCount: 1,
+      tools: ['one'],
     })
   })
   it.each([401, 404])('classifies HTTP %s', async (status) => {

@@ -12,6 +12,7 @@ import type { Logger } from '@beddcode/shared'
 import type { SessionOrigin } from '../sessions/sessionManager.ts'
 import { isTimeZone, nextRun, parseCron } from './cron.ts'
 import { digest } from './digest.ts'
+import { filesDigest, globToRegExp, scanGlob, type WatchedFile } from './watchGlob.ts'
 
 /** Runs kept per schedule, newest first. */
 const RUNS_KEPT = 20
@@ -41,7 +42,14 @@ export interface ScheduleServiceOptions {
   onRunEnded?: (run: ScheduleRun, schedule: Schedule) => void
   now?: () => number
   tickMs?: number
+  /** Lists the files a watch trigger matches; injectable for tests. Defaults to scanning the disk. */
+  scan?: (cwd: string, glob: string) => Promise<WatchedFile[]>
 }
+
+/** How long after a watch fire the same schedule waits before it can fire again. */
+const DEFAULT_WATCH_DEBOUNCE_MS = 5 * 60_000
+/** How many changed files a watch fire names in its prompt. */
+const WATCH_PROMPT_FILES = 20
 
 /**
  * Prompts the host sends on a timer, whether or not any app is open. A run starts a fresh session
@@ -146,6 +154,10 @@ export class ScheduleService {
       if (input.trigger.timezone && !isTimeZone(input.trigger.timezone))
         throw new Error(`"${input.trigger.timezone}" is not a time zone`)
     }
+    if (input.trigger.kind === 'watch') {
+      // Fails loudly on a glob that can never compile; also rejects an empty one.
+      globToRegExp(input.trigger.glob)
+    }
     if (
       input.target.kind === 'session' &&
       !digest(this.options.host.readSession(input.target.sessionId))
@@ -232,6 +244,50 @@ export class ScheduleService {
         this.options.log.warn(`schedule ${s.name}`, err),
       )
     }
+    // Watch triggers fire on file changes, not on the clock.
+    for (const s of this.schedules.filter((x) => !x.paused && x.trigger.kind === 'watch')) {
+      await this.tickWatch(s).catch((err) => this.options.log.warn(`schedule ${s.name}`, err))
+    }
+  }
+
+  /** The folder a watch trigger watches: the target's own, or its session's. */
+  private watchCwd(s: Schedule): string | undefined {
+    if (s.target.kind === 'new') return s.target.cwd
+    const d = digest(this.options.host.readSession(s.target.sessionId))
+    return d?.cwd
+  }
+
+  /**
+   * Fires a watch schedule when its glob starts matching something new. The first scan only sets
+   * the baseline, so starting the host does not fire every watch schedule at once.
+   */
+  private async tickWatch(s: Schedule) {
+    if (s.trigger.kind !== 'watch') return
+    const cwd = this.watchCwd(s)
+    if (!cwd) return
+    const scan = this.options.scan ?? scanGlob
+    const files = await scan(cwd, s.trigger.glob)
+    const digestNow = filesDigest(files)
+    const now = this.now()
+    const last = s.lastWatch
+    if (!last) {
+      s.lastWatch = { digest: digestNow, at: now, files: files.map((f) => f.path).slice(0, 100) }
+      this.save()
+      return
+    }
+    if (last.digest === digestNow) return
+    const debounce = (s.trigger.debounceMinutes ?? 5) * 60_000 || DEFAULT_WATCH_DEBOUNCE_MS
+    if (now - last.at < debounce) return
+    const before = new Map((last.files ?? []).map((p) => [p, true]))
+    const changed = files.filter((f) => !before.has(f.path))
+    const names = (changed.length > 0 ? changed : files)
+      .map((f) => f.path)
+      .slice(0, WATCH_PROMPT_FILES)
+    const extra =
+      names.length > 0 ? `\n\nChanged files:\n${names.map((n) => `- ${n}`).join('\n')}` : ''
+    s.lastWatch = { digest: digestNow, at: now, files: files.map((f) => f.path).slice(0, 100) }
+    this.save()
+    await this.fire(s, false, false, extra)
   }
 
   /** Tells the alerts a run ended, unless it failed and is about to be tried again. */
@@ -266,7 +322,12 @@ export class ScheduleService {
     this.save()
   }
 
-  private async fire(schedule: Schedule, manual: boolean, retry = false): Promise<ScheduleRun> {
+  private async fire(
+    schedule: Schedule,
+    manual: boolean,
+    retry = false,
+    extraPrompt = '',
+  ): Promise<ScheduleRun> {
     const now = this.now()
     const base = {
       id: randomUUID(),
@@ -314,10 +375,8 @@ export class ScheduleService {
       }
       const run: ScheduleRun = { ...base, status: 'running', sessionId }
       this.record(run)
-      await this.options.host.prompt(
-        sessionId,
-        schedule.openPr ? schedule.prompt + PR_INSTRUCTION : schedule.prompt,
-      )
+      const prompt = schedule.prompt + extraPrompt
+      await this.options.host.prompt(sessionId, schedule.openPr ? prompt + PR_INSTRUCTION : prompt)
       return run
     } catch (err) {
       const run: ScheduleRun = {

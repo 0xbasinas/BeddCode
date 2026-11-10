@@ -111,10 +111,9 @@ function spawnAgent(id, spec) {
   const { command, args = [], cwd, env, meta } = spec
   const old = agents.get(id)
   if (old) {
-    // One agent per session: whatever was there is stale.
-    killTree(old)
+    if (!old.exited) throw new Error(`Agent ${id} is already running; attach to it instead`)
     old.conn?.end()
-    agents.delete(id)
+    dropAgent(old)
   }
   const child = spawn(command, args, {
     cwd,
@@ -406,6 +405,10 @@ const server = net.createServer((sock) => {
   }
 
   function handle(msg) {
+    // A superseded connection may still have buffered frames while its socket closes.
+    // Only its current owner may write to or manage the agent.
+    if (['in', 'ack', 'meta', 'close-stdin', 'kill', 'release'].includes(msg.op) &&
+        (!mine || mine.conn !== sock || agents.get(mine.id) !== mine)) return
     switch (msg.op) {
       case 'list':
         return send(sock, { op: 'agents', agents: [...agents.values()].map(describe) })

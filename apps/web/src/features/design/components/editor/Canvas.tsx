@@ -3158,7 +3158,12 @@ export function Canvas() {
       <g opacity={0.3}>
         <defs>
           <pattern id="dotGrid" width={gridSize} height={gridSize} patternUnits="userSpaceOnUse">
-            <circle cx={gridSize / 2} cy={gridSize / 2} r={0.6 / safeZoom} fill="var(--dc-editor-handle)" />
+            <circle
+              cx={gridSize / 2}
+              cy={gridSize / 2}
+              r={0.6 / safeZoom}
+              fill="var(--dc-editor-handle)"
+            />
           </pattern>
           <pattern
             id="dotGridLarge"
@@ -3167,7 +3172,12 @@ export function Canvas() {
             patternUnits="userSpaceOnUse"
           >
             <rect width={gridSize * 8} height={gridSize * 8} fill="url(#dotGrid)" />
-            <circle cx={gridSize * 4} cy={gridSize * 4} r={1 / safeZoom} fill="var(--dc-editor-handle)" />
+            <circle
+              cx={gridSize * 4}
+              cy={gridSize * 4}
+              r={1 / safeZoom}
+              fill="var(--dc-editor-handle)"
+            />
           </pattern>
         </defs>
         <rect

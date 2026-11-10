@@ -200,6 +200,41 @@ function fakePty() {
 }
 
 describe('TerminalManager (output handling)', () => {
+  it('isolates failing listeners and subscriber backlogs through output and exit', async () => {
+    const f = fakePty()
+    const m = track(new TerminalManager({ pty: f.factory }))
+    m.onChange(() => {
+      throw new Error('listener')
+    })
+    const term = m.create({ cwd: '.' })
+    const collector = new Collector()
+    m.attach(term.id, {
+      send() {
+        throw new Error('send')
+      },
+      backlog() {
+        throw new Error('backlog')
+      },
+    })
+    m.attach(term.id, collector)
+    f.emit('hello')
+    await until(() => collector.text() === 'hello')
+    expect(() => f.exit(0)).not.toThrow()
+    expect(collector.exit()).toMatchObject({ code: 0 })
+  })
+
+  it('limits ptys across shells and agent channels and reuses scripts at the limit', () => {
+    const f = fakePty()
+    const m = track(new TerminalManager({ pty: f.factory, maxPtys: 1, maxTerminals: 2 }))
+    const term = m.create({ cwd: '.', scriptId: 'run' })
+    const agent = m.agentTerminal({ cwd: '.', sessionId: 's', label: 'Agent', mode: 'pty' })
+    expect(m.create({ cwd: '.', scriptId: 'run' }).id).toBe(term.id)
+    expect(() => m.spawnInAgentTerminal(agent, 'node', [], { cwd: '.', env: {} })).toThrow(
+      'too many ptys',
+    )
+    f.exit(0)
+    expect(() => m.spawnInAgentTerminal(agent, 'node', [], { cwd: '.', env: {} })).not.toThrow()
+  })
   it('batches rapid output into one frame', async () => {
     const f = fakePty()
     const m = track(new TerminalManager({ pty: f.factory }))

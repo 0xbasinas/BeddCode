@@ -26,10 +26,19 @@ import {
   WarmPoolSettings,
   McpGatewaySettings,
   TailnetStatus,
+  GcReport,
+  HostStats,
 } from './hosts.ts'
 import { ConfigOption, SlashCommand, StoredEvent } from './events.ts'
 import { PermissionModeOption, ProviderInstance } from './providers.ts'
-import { FileContent, FileEntry, FileMedia, FolderListing, TerminalInfo } from './workspace.ts'
+import {
+  FileContent,
+  FileEntry,
+  FileMedia,
+  FolderListing,
+  PreviewEntry,
+  TerminalInfo,
+} from './workspace.ts'
 import { Design, DesignProject, DesignSummary } from './design.ts'
 import { UsageLimits, UsageSummary } from './usage.ts'
 import {
@@ -79,12 +88,29 @@ export const RegistryEntry = z.object({
 })
 export type RegistryEntry = z.infer<typeof RegistryEntry>
 
+/** An ACP agent BeddCode knows how to start, and whether this machine has it. */
+export const KnownAgent = z.object({
+  id: z.string(),
+  name: z.string(),
+  command: z.string(),
+  args: z.array(z.string()),
+  /** The command (and anything it needs) is on this machine's PATH. */
+  installed: z.boolean(),
+  /** What is missing from PATH when it is not installed. */
+  missing: z.array(z.string()),
+  /** Already added as one of this host's agents. */
+  added: z.boolean(),
+})
+export type KnownAgent = z.infer<typeof KnownAgent>
+
 /** What an agent offers for a session that has not started yet. */
 export const AgentPreview = z.object({
   modes: z.array(PermissionModeOption),
   currentModeId: z.string().optional(),
   config: z.array(ConfigOption),
   commands: z.array(SlashCommand),
+  observedAt: z.number().optional(),
+  snapshot: z.boolean().optional(),
 })
 export type AgentPreview = z.infer<typeof AgentPreview>
 
@@ -99,6 +125,21 @@ export const HistoryEntry = z.object({
 })
 export type HistoryEntry = z.infer<typeof HistoryEntry>
 
+/**
+ * What a project allows one MCP server to do, kept by BeddCode per folder (ToolHive-style
+ * policy, but local): a server can be switched off, and tool lists can allow or deny calls.
+ * `mcp.test` enforces it for BeddCode's own probing; agents are told the policy in their context.
+ */
+export const McpServerPolicy = z.object({
+  /** False: the server is off for this project. */
+  enabled: z.boolean().optional(),
+  /** When set, only these tools may be called through the server. */
+  toolsAllow: z.array(z.string().trim().min(1).max(120)).max(200).optional(),
+  /** These tools are always blocked, whatever toolsAllow says. */
+  toolsDeny: z.array(z.string().trim().min(1).max(120)).max(200).optional(),
+})
+export type McpServerPolicy = z.infer<typeof McpServerPolicy>
+
 export const McpServer = z.object({
   name: z.string(),
   transport: z.enum(['stdio', 'http', 'sse', 'unknown']),
@@ -109,6 +150,8 @@ export const McpServer = z.object({
   scope: z.string().optional(),
   toolCount: z.number().int().optional(),
   error: z.string().optional(),
+  /** The project's policy for this server, when one is set. */
+  policy: McpServerPolicy.optional(),
 })
 export type McpServer = z.infer<typeof McpServer>
 
@@ -214,6 +257,8 @@ export const RpcMethods = {
     params: z.object({ id: z.string() }),
     result: z.object({ removed: z.boolean() }),
   },
+  /** Well-known ACP agents (from acpx's launch table) and which of them this host has installed. */
+  'agents.known': { params: z.object({}), result: z.array(KnownAgent) },
   'agents.registry': {
     params: z.object({ query: z.string().optional() }),
     result: z.array(RegistryEntry),
@@ -266,7 +311,16 @@ export const RpcMethods = {
   },
   'git.info': { params: z.object({ cwd: z.string() }), result: GitInfo },
   'git.status': { params: z.object({ cwd: z.string() }), result: GitStatus },
-  'git.diff': { params: z.object({ cwd: z.string(), path: z.string() }), result: GitDiff },
+  /** One file's diff; `offset`/`maxLines` page through a long patch (default first 600 lines). */
+  'git.diff': {
+    params: z.object({
+      cwd: z.string(),
+      path: z.string(),
+      offset: z.number().int().min(0).optional(),
+      maxLines: z.number().int().min(1).max(20000).optional(),
+    }),
+    result: GitDiff,
+  },
   'git.log': { params: z.object({ cwd: z.string() }), result: GitLog },
   'git.branches': { params: z.object({ cwd: z.string() }), result: z.array(GitBranch) },
   /** Generate editable Git text with an installed agent; this never commits or pushes. */
@@ -441,6 +495,27 @@ export const RpcMethods = {
     result: RelaySettings,
   },
   /**
+   * What the host counts about itself: sessions by status, open requests, storage size, uptime.
+   * Any paired device may read it; the same numbers are served at `GET /metrics`.
+   */
+  'host.stats': { params: z.object({}), result: HostStats },
+  /**
+   * Housekeeping: deletes sessions whose last activity is older than `days` (never busy, waiting,
+   * or pinned ones), optionally their worktrees, unreferenced old attachments, and vacuums the
+   * event log. `dryRun` only reports what would happen. Loopback and paired devices may run it.
+   */
+  'host.gc': {
+    params: z.object({
+      days: z.number().int().min(1).max(3650).optional(),
+      dryRun: z.boolean().optional(),
+      /** Also remove the worktrees of removed sessions (only when they are clean). */
+      worktrees: z.boolean().optional(),
+      /** Reclaim database space after the deletions (default on). */
+      vacuum: z.boolean().optional(),
+    }),
+    result: GcReport,
+  },
+  /**
    * Speed measurements from a client. The host passes them to the relay when the user turned that
    * on; `accepted: false` tells the client to stop sending.
    */
@@ -479,6 +554,11 @@ export const RpcMethods = {
     params: z.object({ cwd: z.string().optional() }),
     result: z.array(TerminalInfo),
   },
+  /**
+   * Preview URLs detected in terminal output (dev servers printing their port), across all
+   * terminals, so any client can offer "Open preview".
+   */
+  'previews.list': { params: z.object({}), result: z.array(PreviewEntry) },
   /** Ends the shell (if running) and forgets the terminal. */
   'terminals.close': { params: z.object({ id: z.string() }), result: z.object({}) },
   /** Names the tab; an empty name goes back to the default. Every connected client sees it. */
@@ -708,8 +788,29 @@ export const RpcMethods = {
    * them only when a session starts). The first answer may take a few seconds; later ones are cached.
    */
   'agents.preview': {
-    params: z.object({ instanceId: z.string(), cwd: z.string().optional() }),
+    params: z.object({
+      instanceId: z.string(),
+      cwd: z.string().optional(),
+      refresh: z.boolean().optional(),
+    }),
     result: AgentPreview,
+  },
+  'agents.inspect': {
+    params: z.object({ id: z.string(), cwd: z.string().optional() }),
+    result: z.object({
+      command: z.string(),
+      args: z.array(z.string()),
+      executable: z.string(),
+      cwd: z.string(),
+      checkedAt: z.number(),
+      protocolVersion: z.number(),
+      name: z.string().optional(),
+      version: z.string().optional(),
+      authMethods: z.number(),
+      features: z.record(z.string(), z.boolean()),
+      raw: z.unknown().optional(),
+      clientProfile: z.literal('restricted-diagnostic').optional(),
+    }),
   },
   /** Conversations of an agent that were started outside BeddCode (or earlier), newest first. */
   'history.list': {
@@ -740,6 +841,9 @@ export const RpcMethods = {
       url: z.string(),
       transport: z.enum(['http', 'sse']),
       headers: z.record(z.string(), z.string()).optional(),
+      /** The server's name in a folder, to enforce that folder's MCP policy on the probe. */
+      name: z.string().optional(),
+      cwd: z.string().optional(),
     }),
     result: z.discriminatedUnion('ok', [
       z.object({
@@ -747,9 +851,27 @@ export const RpcMethods = {
         name: z.string(),
         version: z.string(),
         toolCount: z.number(),
+        /** The tools the server offers, when it listed them. */
+        tools: z.array(z.string()).optional(),
+        /** Tools the project's policy blocks on this server. */
+        blockedTools: z.array(z.string()).optional(),
       }),
       z.object({ ok: z.literal(false), error: z.string() }),
     ]),
+  },
+  /** The MCP server policies this project has set: name → policy. */
+  'mcp.policy.list': {
+    params: z.object({ cwd: z.string().optional() }),
+    result: z.array(z.object({ name: z.string(), policy: McpServerPolicy })),
+  },
+  /** Sets or clears (null) one server's policy for the project containing `cwd`. */
+  'mcp.policy.set': {
+    params: z.object({
+      cwd: z.string().optional(),
+      name: z.string().trim().min(1).max(120),
+      policy: McpServerPolicy.nullable(),
+    }),
+    result: z.object({ name: z.string(), policy: McpServerPolicy.nullable() }),
   },
   'mcp.overview': {
     params: z.object({ cwd: z.string().optional() }),

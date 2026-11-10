@@ -5,12 +5,20 @@ import {
   createRoute,
   createRouter,
 } from '@tanstack/react-router'
-import { BoardPage } from './features/board/BoardPage.tsx'
+const BoardPage = lazy(() =>
+  import('./features/board/BoardPage.tsx').then((m) => ({ default: m.BoardPage })),
+)
 import { AppShell } from './features/shell/AppShell.tsx'
 import { NewSession } from './features/newsession/NewSession.tsx'
-import { ThreadView } from './features/thread/ThreadView.tsx'
-import { LinearPage } from './features/linear/LinearPage.tsx'
-import { SchedulesPage } from './features/schedules/SchedulesPage.tsx'
+const ThreadView = lazy(() =>
+  import('./features/thread/ThreadView.tsx').then((m) => ({ default: m.ThreadView })),
+)
+const LinearPage = lazy(() =>
+  import('./features/linear/LinearPage.tsx').then((m) => ({ default: m.LinearPage })),
+)
+const SchedulesPage = lazy(() =>
+  import('./features/schedules/SchedulesPage.tsx').then((m) => ({ default: m.SchedulesPage })),
+)
 import {
   SettingsPage,
   parseSettingsSection,
@@ -54,7 +62,11 @@ const sessionRoute = createRoute({
   path: '/session/$sessionId',
   component: function SessionPage() {
     const { sessionId } = sessionRoute.useParams()
-    return <ThreadView key={sessionId} sessionId={sessionId} />
+    return (
+      <Suspense fallback={null}>
+        <ThreadView key={sessionId} sessionId={sessionId} />
+      </Suspense>
+    )
   },
 })
 
@@ -73,7 +85,11 @@ const settingsRoute = createRoute({
 const schedulesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/schedules',
-  component: SchedulesPage,
+  component: () => (
+    <Suspense fallback={null}>
+      <SchedulesPage />
+    </Suspense>
+  ),
 })
 
 const designRoute = createRoute({
@@ -89,13 +105,21 @@ const designRoute = createRoute({
 const linearRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/linear',
-  component: LinearPage,
+  component: () => (
+    <Suspense fallback={null}>
+      <LinearPage />
+    </Suspense>
+  ),
 })
 
 const boardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/board',
-  component: BoardPage,
+  component: () => (
+    <Suspense fallback={null}>
+      <BoardPage />
+    </Suspense>
+  ),
 })
 
 // Hash history so the Electron build works when loaded from file://.

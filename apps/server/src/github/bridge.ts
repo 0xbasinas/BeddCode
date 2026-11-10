@@ -60,7 +60,11 @@ const runGit: GitRunner = (cwd, args, env) =>
     execFile(
       'git',
       args,
-      { cwd, env: { ...process.env, ...env, GIT_TERMINAL_PROMPT: '0' }, maxBuffer: 8 * 1024 * 1024 },
+      {
+        cwd,
+        env: { ...process.env, ...env, GIT_TERMINAL_PROMPT: '0' },
+        maxBuffer: 8 * 1024 * 1024,
+      },
       (error, stdout, stderr) =>
         resolve({
           code: error ? (typeof error.code === 'number' ? error.code : 1) : 0,
@@ -78,7 +82,8 @@ export interface GithubOptions {
   sleep?: (ms: number) => Promise<void>
 }
 
-const clip = (text: string, max = MAX_REPLY) => (text.length > max ? `${text.slice(0, max - 1)}…` : text)
+const clip = (text: string, max = MAX_REPLY) =>
+  text.length > max ? `${text.slice(0, max - 1)}…` : text
 
 const DECISIONS = ['fix-ci', 'fix', 'review', 'explain', 'rebase', 'answer', 'clarify'] as const
 type Decision = (typeof DECISIONS)[number]
@@ -108,7 +113,12 @@ For any other decision, add one sentence on what you will do.`,
  * What the planner is told: it coordinates, other agents write the code. Everything lands on the one
  * branch this session works on, so the host can push it and open one pull request.
  */
-export function plannerBrief(job: Job, branch: string, run: Pick<Resolved, 'model' | 'effort' | 'instance'>, maxWorkers: number): string {
+export function plannerBrief(
+  job: Job,
+  branch: string,
+  run: Pick<Resolved, 'model' | 'effort' | 'instance'>,
+  maxWorkers: number,
+): string {
   const asked = [
     run.instance ? `agent ${run.instance.label}` : '',
     run.model ? `model ${run.model}` : '',
@@ -129,8 +139,13 @@ export function plannerBrief(job: Job, branch: string, run: Pick<Resolved, 'mode
 
 /** The agent's `DECISION:` line, if it gave a usable one. */
 export function parseDecision(reply: string): { decision: Decision; rest: string } | undefined {
-  const match = /^\s*DECISION:\s*(fix-ci|fix|review|explain|rebase|answer|clarify)\b[^\n]*\n?([\s\S]*)$/im.exec(reply)
-  return match ? { decision: match[1]!.toLowerCase() as Decision, rest: (match[2] ?? '').trim() } : undefined
+  const match =
+    /^\s*DECISION:\s*(fix-ci|fix|review|explain|rebase|answer|clarify)\b[^\n]*\n?([\s\S]*)$/im.exec(
+      reply,
+    )
+  return match
+    ? { decision: match[1]!.toLowerCase() as Decision, rest: (match[2] ?? '').trim() }
+    : undefined
 }
 
 /** Words to the agent for each command. The issue and comments are quoted as data, not orders. */
@@ -146,7 +161,11 @@ export function promptFor(job: Job, branch: string, base: string): string {
   const readOnly = verb === 'review' || verb === 'explain' || verb === 'ask'
   return [
     task,
-    ...(readOnly ? [] : ['When you finish, reply with a short summary of what you changed and anything left undone.']),
+    ...(readOnly
+      ? []
+      : [
+          'When you finish, reply with a short summary of what you changed and anything left undone.',
+        ]),
     ...rules,
     extra ? `Extra instructions from ${job.sender}: ${extra}` : '',
     '<github-text>',
@@ -202,24 +221,29 @@ export class GithubBridge {
         continue
       }
       try {
-        const response = await this.fetchImpl(`${config.workerUrl}/host/poll?wait=${WAIT_SECONDS}`, {
-          method: 'POST',
-          headers: this.headers(config),
-          body: JSON.stringify({
-            id: this.options.host.hostId,
-            label: config.label ?? this.options.host.hostLabel,
-            repos: Object.keys(config.repos),
-            priority: config.priority,
-          }),
-          signal,
-        })
+        const response = await this.fetchImpl(
+          `${config.workerUrl}/host/poll?wait=${WAIT_SECONDS}`,
+          {
+            method: 'POST',
+            headers: this.headers(config),
+            body: JSON.stringify({
+              id: this.options.host.hostId,
+              label: config.label ?? this.options.host.hostLabel,
+              repos: Object.keys(config.repos),
+              priority: config.priority,
+            }),
+            signal,
+          },
+        )
         if (!response.ok) throw new Error(`the Worker answered ${response.status}`)
         failures = 0
         const { jobs } = (await response.json()) as { jobs: Job[] }
         for (const job of jobs) this.enqueue(job, config)
       } catch (err) {
         if (signal.aborted) return
-        this.options.log.warn(`GitHub poll failed: ${err instanceof Error ? err.message : String(err)}`)
+        this.options.log.warn(
+          `GitHub poll failed: ${err instanceof Error ? err.message : String(err)}`,
+        )
         await this.sleep(RETRY_MS[Math.min(failures++, RETRY_MS.length - 1)]!)
       }
     }
@@ -258,11 +282,16 @@ export class GithubBridge {
       const response = await this.fetchImpl(`${config.workerUrl}/host/jobs/${job.id}/report`, {
         method: 'POST',
         headers: this.headers(config),
-        body: JSON.stringify({ ...report, message: report.message ? clip(redact(report.message, config)) : undefined }),
+        body: JSON.stringify({
+          ...report,
+          message: report.message ? clip(redact(report.message, config)) : undefined,
+        }),
       })
       if (!response.ok) this.options.log.warn(`GitHub report refused (${response.status})`)
     } catch (err) {
-      this.options.log.warn(`GitHub report failed: ${err instanceof Error ? err.message : String(err)}`)
+      this.options.log.warn(
+        `GitHub report failed: ${err instanceof Error ? err.message : String(err)}`,
+      )
     }
   }
 
@@ -281,7 +310,9 @@ export class GithubBridge {
     }
     await this.report(config, job, {
       status: 'stopped',
-      message: sessionId ? 'Stop requested. Work already committed stays in the worktree on the host.' : 'Nothing is running here to stop.',
+      message: sessionId
+        ? 'Stop requested. Work already committed stays in the worktree on the host.'
+        : 'Nothing is running here to stop.',
     })
   }
 
@@ -315,14 +346,18 @@ export class GithubBridge {
     const onPullRequest = job.isPullRequest && job.head
     const key = thread(job)
     if (this.active.has(key))
-      return this.report(config, job, { status: 'refused', message: 'I am already working on this thread. Say `@beddcode stop` first.' })
+      return this.report(config, job, {
+        status: 'refused',
+        message: 'I am already working on this thread. Say `@beddcode stop` first.',
+      })
 
     await this.report(config, job, { status: 'started' })
     let sessionId: string | undefined
     try {
       // Fresh refs so the worktree starts from what GitHub has, not what was fetched last week.
       const fetched = await this.git(repo.path, ['fetch', 'origin', '--prune'])
-      if (fetched.code !== 0) throw new Error(`could not fetch from origin: ${fetched.out.slice(0, 300)}`)
+      if (fetched.code !== 0)
+        throw new Error(`could not fetch from origin: ${fetched.out.slice(0, 300)}`)
       // Which branch the work starts from: the PR's own, one the comment names, or where the files are.
       const chosen = await chooseBase(this.git, repo.path, job, {
         text: `${job.command.extra}\n${job.context}`,
@@ -333,7 +368,9 @@ export class GithubBridge {
       const base = `origin/${start}`
       const code = verb === 'fix' || verb === 'fix-ci' || verb === 'rebase'
       // A planner starts other agents; it needs the agent tools from the first message.
-      const planning = config.planner.mode !== 'off' && (verb === 'ask' || (config.planner.mode === 'always' && code))
+      const planning =
+        config.planner.mode !== 'off' &&
+        (verb === 'ask' || (config.planner.mode === 'always' && code))
       const created = await host.create({
         agentTools: planning || undefined,
         instanceId: agent.id,
@@ -366,10 +403,18 @@ export class GithubBridge {
         })
         return true
       }
-      const direct = planning && code ? `${plannerBrief(job, branch, run, config.planner.maxWorkers)}
+      const direct =
+        planning && code
+          ? `${plannerBrief(job, branch, run, config.planner.maxWorkers)}
 
-` : ''
-      if (await ended(await this.runTurn(sessionId, direct + promptFor(job, branch, base), budget, waiting))) return
+`
+          : ''
+      if (
+        await ended(
+          await this.runTurn(sessionId, direct + promptFor(job, branch, base), budget, waiting),
+        )
+      )
+        return
 
       if (verb === 'ask') {
         // The agent read the comment; what it chose decides what happens next, in the same session.
@@ -381,14 +426,19 @@ export class GithubBridge {
             message: `${choice ? choice.rest || reply : reply}${via}`,
           }))
         if (choice.decision === 'rebase' && !onPullRequest)
-          return void (await this.report(config, job, { status: 'done', message: `A rebase needs a pull request; this is an issue. Say \`@beddcode fix this\` to fix it and open one.${via}` }))
+          return void (await this.report(config, job, {
+            status: 'done',
+            message: `A rebase needs a pull request; this is an issue. Say \`@beddcode fix this\` to fix it and open one.${via}`,
+          }))
         verb = choice.decision
         const follow = [
           planning && (verb === 'fix' || verb === 'fix-ci' || verb === 'rebase')
             ? plannerBrief(job, branch, run, config.planner.maxWorkers)
             : '',
           taskText(job, verb, base),
-          verb === 'review' || verb === 'explain' ? '' : 'When you finish, reply with a short summary of what you changed and anything left undone.',
+          verb === 'review' || verb === 'explain'
+            ? ''
+            : 'When you finish, reply with a short summary of what you changed and anything left undone.',
           `Commit your work here and do not push; the host does that.`,
         ]
           .filter(Boolean)
@@ -398,16 +448,21 @@ export class GithubBridge {
       const readOnly = verb === 'review' || verb === 'explain'
       const summary = summarize(host.readSession(sessionId))
       const team = this.team(sessionId, config.planner.mode !== 'off')
-      if (team) via = `
+      if (team)
+        via = `
 
 ${team}${via}`
-      if (readOnly) return void (await this.report(config, job, { status: 'done', message: summary + via }))
+      if (readOnly)
+        return void (await this.report(config, job, { status: 'done', message: summary + via }))
 
       const cwd = host.sessionCwd(sessionId) ?? repo.path
       const ahead = await this.git(cwd, ['rev-list', '--count', `${base}..HEAD`])
       const commits = Number(ahead.out) || 0
       if (commits === 0)
-        return void (await this.report(config, job, { status: 'done', message: `${summary}\n\nNo changes were committed.${via}` }))
+        return void (await this.report(config, job, {
+          status: 'done',
+          message: `${summary}\n\nNo changes were committed.${via}`,
+        }))
       const dirty = (await this.git(cwd, ['status', '--porcelain'])).out
       const note = dirty ? '\n\nSome files were left uncommitted in the worktree on the host.' : ''
 
@@ -415,7 +470,10 @@ ${team}${via}`
       const gate = forced ? policy.forcePush : policy.push
       const target = onPullRequest ? job.head!.ref : branch
       if (gate === 'never')
-        return void (await this.report(config, job, { status: 'done', message: `${summary}\n\nPushing is turned off for this host, so the ${commits} commit(s) are on \`${branch}\` in its worktree.${note}${via}` }))
+        return void (await this.report(config, job, {
+          status: 'done',
+          message: `${summary}\n\nPushing is turned off for this host, so the ${commits} commit(s) are on \`${branch}\` in its worktree.${note}${via}`,
+        }))
       if (
         gate === 'ask' &&
         !(await host.askUser(sessionId, {
@@ -423,28 +481,47 @@ ${team}${via}`
           detail: `From a GitHub request by ${job.sender} on #${job.number} (${verb}).`,
         }))
       )
-        return void (await this.report(config, job, { status: 'stopped', message: `${summary}\n\nThe push was not approved, so nothing left the host. The work is on \`${branch}\` in its worktree.${note}${via}` }))
+        return void (await this.report(config, job, {
+          status: 'stopped',
+          message: `${summary}\n\nThe push was not approved, so nothing left the host. The work is on \`${branch}\` in its worktree.${note}${via}`,
+        }))
 
       await this.push(config, job, cwd, target, forced)
       if (onPullRequest)
-        return void (await this.report(config, job, { status: 'done', message: `${summary}\n\nPushed ${commits} commit(s) to \`${target}\`.${note}${via}` }))
+        return void (await this.report(config, job, {
+          status: 'done',
+          message: `${summary}\n\nPushed ${commits} commit(s) to \`${target}\`.${note}${via}`,
+        }))
 
       let link = ''
-      if (policy.pullRequest === 'never') link = `\n\nPushed to \`${target}\`; no pull request was opened.`
+      if (policy.pullRequest === 'never')
+        link = `\n\nPushed to \`${target}\`; no pull request was opened.`
       else if (
         policy.pullRequest === 'ask' &&
-        !(await host.askUser(sessionId, { title: `Open a pull request for ${job.repo}:${target}?` }))
+        !(await host.askUser(sessionId, {
+          title: `Open a pull request for ${job.repo}:${target}?`,
+        }))
       )
         link = `\n\nPushed to \`${target}\`; the pull request was not approved.`
       else {
-        const pr = await this.openPull(config, job, target, start, `Fix #${job.number} (BeddCode)`, `${summary}\n\nCloses #${job.number}${via}`)
+        const pr = await this.openPull(
+          config,
+          job,
+          target,
+          start,
+          `Fix #${job.number} (BeddCode)`,
+          `${summary}\n\nCloses #${job.number}${via}`,
+        )
         link = `\n\nOpened ${pr}`
       }
       await this.report(config, job, { status: 'done', message: `${summary}${link}${note}${via}` })
     } catch (err) {
       const message = redact(err instanceof Error ? err.message : String(err), config)
       this.options.log.error(`GitHub job ${job.id} failed: ${message}`)
-      await this.report(config, job, { status: 'failed', message: `I could not finish: ${message}` })
+      await this.report(config, job, {
+        status: 'failed',
+        message: `I could not finish: ${message}`,
+      })
     } finally {
       this.active.delete(key)
     }
@@ -524,13 +601,23 @@ ${team}${via}`
       GIT_CONFIG_VALUE_0: header,
     }
     const url = `https://github.com/${job.repo}.git`
-    const lease = force && job.head ? [`--force-with-lease=refs/heads/${target}:${job.head.sha}`] : []
+    const lease =
+      force && job.head ? [`--force-with-lease=refs/heads/${target}:${job.head.sha}`] : []
     const pushed = await this.git(cwd, ['push', ...lease, url, `HEAD:refs/heads/${target}`], env)
     if (pushed.code !== 0)
-      throw new Error(`git push failed: ${redact(pushed.out, config, [token, header]).slice(0, 500)}`)
+      throw new Error(
+        `git push failed: ${redact(pushed.out, config, [token, header]).slice(0, 500)}`,
+      )
   }
 
-  private async openPull(config: GithubConfig, job: Job, head: string, base: string, title: string, body: string) {
+  private async openPull(
+    config: GithubConfig,
+    job: Job,
+    head: string,
+    base: string,
+    title: string,
+    body: string,
+  ) {
     const response = await this.fetchImpl(`${config.workerUrl}/host/jobs/${job.id}/pr`, {
       method: 'POST',
       headers: this.headers(config),
@@ -553,6 +640,7 @@ function summarize(events: StoredEvent[]): string {
 /** Removes the host's own secrets (and any extra ones) from text that is about to leave. */
 export function redact(text: string, config: GithubConfig, extra: string[] = []) {
   let out = text
-  for (const secret of [config.hostToken, ...extra]) if (secret.length >= 8) out = out.split(secret).join('[redacted]')
+  for (const secret of [config.hostToken, ...extra])
+    if (secret.length >= 8) out = out.split(secret).join('[redacted]')
   return out.replace(/\b(ghs|ghp|gho|ghu|ghr|github_pat)_[A-Za-z0-9_]{16,}/g, '[redacted]')
 }

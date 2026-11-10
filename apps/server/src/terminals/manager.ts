@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import * as nodePty from '@lydell/node-pty'
-import type { TerminalInfo } from '@beddcode/contracts'
-import { resolveExecutable } from '@beddcode/shared'
+import type { PreviewEntry, TerminalInfo } from '@beddcode/contracts'
+import { resolveExecutable, type Logger } from '@beddcode/shared'
+import { detectPreviewUrls, mergePreviews } from './previews.ts'
 
 export interface PtyProcess {
   readonly pid: number
@@ -64,6 +65,12 @@ const POLL_MS = 50
 const MAX_NAME = 40
 /** Ended terminals kept for their output; past this the oldest ones are forgotten. */
 const MAX_EXITED = 10
+/** Live shells at once; past this a new one is refused (the RPC reports the error to the client). */
+const MAX_TERMINALS = 32
+/** Commands running at once inside one agent terminal; past this the next one is refused. */
+const MAX_AGENT_CHILDREN = 8
+
+const noLog: Pick<Logger, 'error' | 'warn'> = { error: () => {}, warn: () => {} }
 
 /** The shell a user would expect: PowerShell 7, then Windows PowerShell, else cmd; $SHELL elsewhere. */
 export function defaultShell(
@@ -103,6 +110,8 @@ interface Terminal {
   paused: boolean
   poll: ReturnType<typeof setInterval> | null
   exitedAt?: number
+  /** End of the output seen so far, so a URL split across two writes is still detected. */
+  tail: string
 }
 
 export interface AgentTerminalParams {
@@ -181,8 +190,16 @@ export class TerminalManager {
       shell?: () => ShellSpec
       env?: NodeJS.ProcessEnv
       maxExited?: number
+      maxTerminals?: number
+      maxAgentChildren?: number
+      maxPtys?: number
+      log?: Pick<Logger, 'error' | 'warn'>
     } = {},
   ) {}
+
+  private get log(): Pick<Logger, 'error' | 'warn'> {
+    return this.options.log ?? noLog
+  }
 
   create(params: {
     cwd: string
@@ -205,6 +222,8 @@ export class TerminalManager {
           return snapshot(t)
       }
     }
+    this.makeRoom()
+    this.checkPtyLimit()
     let shell = params.shell ?? (this.options.shell ?? cachedDefaultShell)()
     const cols = params.cols ?? 80
     const rows = params.rows ?? 24
@@ -247,14 +266,40 @@ export class TerminalManager {
       timer: null,
       subscribers: new Set(),
       paused: false,
+      tail: '',
       poll: null,
     }
     this.terminals.set(id, term)
     this.changed(term)
 
-    pty.onData((data) => this.onData(term, data))
-    pty.onExit(({ exitCode }) => this.onExit(term, exitCode))
+    // A throw inside a pty callback would surface as an uncaught exception and could stop the
+    // host; here it costs this terminal's stream only.
+    pty.onData((data) => {
+      try {
+        this.onData(term, data)
+      } catch (err) {
+        this.log.error(
+          `terminal ${id} output failed: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    })
+    pty.onExit(({ exitCode }) => {
+      try {
+        this.onExit(term, exitCode)
+      } catch (err) {
+        this.log.error(
+          `terminal ${id} exit failed: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    })
     return { ...term.info }
+  }
+
+  /** Refuses new terminals at the live limit; ended output has its own retention limit. */
+  private makeRoom() {
+    const max = this.options.maxTerminals ?? MAX_TERMINALS
+    const live = [...this.terminals.values()].filter((t) => t.info.exited === undefined).length
+    if (live >= max) throw new Error('too many terminals open (' + max + ')')
   }
 
   /** Called when a terminal appears, changes (an agent's command starts or ends) or goes away. */
@@ -267,7 +312,29 @@ export class TerminalManager {
 
   private changed(term: Terminal, gone = false) {
     const change = { cwd: term.info.cwd, id: term.info.id, terminal: gone ? null : snapshot(term) }
-    for (const l of this.changeListeners) l(change)
+    // One listener throwing (a connection mid-close, say) must not break the others or the host.
+    for (const l of this.changeListeners) {
+      try {
+        l(change)
+      } catch (err) {
+        this.log.error(
+          `terminal change listener failed: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    }
+  }
+
+  /** Sends a frame to every subscriber of a terminal; one that throws is skipped, not fatal. */
+  private emit(term: Terminal, frame: TerminalFrame) {
+    for (const s of term.subscribers) {
+      try {
+        s.send(frame)
+      } catch (err) {
+        this.log.error(
+          `terminal ${term.info.id} subscriber failed: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    }
   }
 
   /**
@@ -279,6 +346,7 @@ export class TerminalManager {
       if (t.info.agent?.sessionId === params.sessionId && t.info.exited === undefined)
         return t.info.id
     }
+    this.makeRoom()
     const channel = new AgentChannel(100, 24)
     const id = randomUUID()
     const title = params.sessionTitle ? `${params.label} · ${params.sessionTitle}` : params.label
@@ -306,6 +374,7 @@ export class TerminalManager {
       timer: null,
       subscribers: new Set(),
       paused: false,
+      tail: '',
       poll: null,
     }
     this.terminals.set(id, term)
@@ -317,7 +386,15 @@ export class TerminalManager {
   feed(id: string, data: string): boolean {
     const term = this.terminals.get(id)
     if (!term?.info.agent || term.info.exited !== undefined) return false
-    if (data) this.onData(term, data)
+    if (data) {
+      try {
+        this.onData(term, data)
+      } catch (err) {
+        this.log.error(
+          `agent terminal ${id} output failed: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    }
     return true
   }
 
@@ -349,6 +426,10 @@ export class TerminalManager {
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
     } as Record<string, string>
+    const maxChildren = this.options.maxAgentChildren ?? MAX_AGENT_CHILDREN
+    if (channel.children.size >= maxChildren)
+      throw new Error(`too many commands running in this terminal (${maxChildren})`)
+    this.checkPtyLimit()
     const child = (this.options.pty ?? defaultPty)(file, args, {
       cwd: options.cwd,
       env,
@@ -358,8 +439,14 @@ export class TerminalManager {
     channel.children.add(child)
     channel.focus ??= child
     child.onExit(() => {
-      channel.children.delete(child)
-      if (channel.focus === child) channel.focus = null
+      try {
+        channel.children.delete(child)
+        if (channel.focus === child) channel.focus = null
+      } catch (err) {
+        this.log.error(
+          `agent command exit failed: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
     })
     if (term.paused) child.pause()
     return child
@@ -419,9 +506,9 @@ export class TerminalManager {
     const covered = afterSeq !== undefined && afterSeq >= start && afterSeq <= term.seq
     if (covered) {
       const data = term.buffer.slice(afterSeq - start)
-      if (data) subscriber.send({ t: 'term.out', id, data, seq: term.seq })
+      if (data) this.emitTo(term, subscriber, { t: 'term.out', id, data, seq: term.seq })
     } else {
-      subscriber.send({
+      this.emitTo(term, subscriber, {
         t: 'term.out',
         id,
         data: term.buffer,
@@ -433,10 +520,21 @@ export class TerminalManager {
       })
     }
     if (term.info.exited !== undefined) {
-      subscriber.send({ t: 'term.exit', id, code: term.info.exited })
+      this.emitTo(term, subscriber, { t: 'term.exit', id, code: term.info.exited })
     }
     term.subscribers.add(subscriber)
     return () => term.subscribers.delete(subscriber)
+  }
+
+  /** Sends one frame to one subscriber without letting a throw escape. */
+  private emitTo(term: Terminal, subscriber: TerminalSubscriber, frame: TerminalFrame) {
+    try {
+      subscriber.send(frame)
+    } catch (err) {
+      this.log.error(
+        `terminal ${term.info.id} subscriber failed: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
   }
 
   write(id: string, data: string) {
@@ -465,7 +563,7 @@ export class TerminalManager {
         // already gone
       }
     }
-    for (const s of term.subscribers) s.send({ t: 'term.exit', id, code: term.info.exited ?? null })
+    this.emit(term, { t: 'term.exit', id, code: term.info.exited ?? null })
     term.subscribers.clear()
     this.changed(term, true)
     return true
@@ -484,6 +582,7 @@ export class TerminalManager {
 
   private onData(term: Terminal, data: string) {
     term.seq += data.length
+    this.scanPreviews(term, data)
     term.buffer += data
     if (term.buffer.length > BUFFER_CHARS) {
       let start = term.buffer.length - BUFFER_CHARS
@@ -495,7 +594,46 @@ export class TerminalManager {
     }
     term.pending += data
     if (term.pending.length >= FLUSH_CHARS) this.flush(term)
-    else term.timer ??= setTimeout(() => this.flush(term), FLUSH_MS)
+    else term.timer ??= setTimeout(() => this.guard(() => this.flush(term)), FLUSH_MS)
+  }
+
+  /**
+   * Looks for preview URLs in new output (cheap check first: only scan when it mentions a local
+   * address or a scheme), and tells clients when a terminal gains one.
+   */
+  private scanPreviews(term: Terminal, data: string) {
+    if (!/https?:|localhost|127\.0\.0\.1|0\.0\.0\.0|::1/i.test(data)) {
+      term.tail = (term.tail + data).slice(-512)
+      return
+    }
+    const found = detectPreviewUrls(data, term.tail)
+    term.tail = (term.tail + data).slice(-512)
+    if (found.length === 0) return
+    const merged = mergePreviews(term.info.previews, found)
+    const same =
+      merged.length === (term.info.previews?.length ?? 0) &&
+      merged.every((u, i) => u === term.info.previews?.[i])
+    if (same) return
+    term.info.previews = merged
+    this.changed(term)
+  }
+
+  /** Every preview URL currently detected, across all terminals, newest first within each. */
+  previews(): PreviewEntry[] {
+    const out: PreviewEntry[] = []
+    for (const term of this.terminals.values()) {
+      for (const url of term.info.previews ?? [])
+        out.push({
+          url,
+          terminalId: term.info.id,
+          ...((term.info.title ?? term.info.name)
+            ? { title: term.info.title ?? term.info.name }
+            : {}),
+          cwd: term.info.cwd,
+          ...(term.info.agent?.sessionId ? { sessionId: term.info.agent.sessionId } : {}),
+        })
+    }
+    return out
   }
 
   /** Sends the batch to subscribers, then applies backpressure. */
@@ -505,24 +643,54 @@ export class TerminalManager {
     const data = term.pending
     term.pending = ''
     if (!data) return
-    for (const s of term.subscribers)
-      s.send({ t: 'term.out', id: term.info.id, data, seq: term.seq })
+    this.emit(term, { t: 'term.out', id: term.info.id, data, seq: term.seq })
     this.applyBackpressure(term)
+  }
+
+  private checkPtyLimit() {
+    const count = [...this.terminals.values()].reduce(
+      (n, t) =>
+        n +
+        (t.pty instanceof AgentChannel ? t.pty.children.size : Number(t.info.exited === undefined)),
+      0,
+    )
+    const max = this.options.maxPtys ?? MAX_TERMINALS
+    if (count >= max) throw new Error('too many ptys running (' + max + ')')
+  }
+
+  private guard(fn: () => void) {
+    try {
+      fn()
+    } catch (err) {
+      this.log.error('terminal callback failed: ' + String(err))
+    }
+  }
+
+  private backlog(term: Terminal) {
+    let worst = 0
+    for (const subscriber of term.subscribers) {
+      try {
+        worst = Math.max(worst, subscriber.backlog())
+      } catch {
+        term.subscribers.delete(subscriber)
+      }
+    }
+    return worst
   }
 
   private applyBackpressure(term: Terminal) {
     if (term.paused || term.info.exited !== undefined) return
-    const worst = Math.max(0, ...[...term.subscribers].map((s) => s.backlog()))
+    const worst = this.backlog(term)
     if (worst <= HIGH_WATER) return
     term.paused = true
-    term.pty.pause()
+    this.guard(() => term.pty.pause())
     term.poll = setInterval(() => {
-      const behind = Math.max(0, ...[...term.subscribers].map((s) => s.backlog()))
+      const behind = this.backlog(term)
       if (behind >= LOW_WATER && term.subscribers.size > 0) return
       term.paused = false
       if (term.poll) clearInterval(term.poll)
       term.poll = null
-      term.pty.resume()
+      this.guard(() => term.pty.resume())
     }, POLL_MS)
   }
 
@@ -531,7 +699,7 @@ export class TerminalManager {
     this.clearTimers(term)
     term.info.exited = code
     term.exitedAt = Date.now()
-    for (const s of term.subscribers) s.send({ t: 'term.exit', id: term.info.id, code })
+    this.emit(term, { t: 'term.exit', id: term.info.id, code })
     this.changed(term)
     this.forgetOldExited()
   }

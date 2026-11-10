@@ -43,7 +43,8 @@ const load = (): Record<string, Entry> => {
 /** The last known pull request per host and folder, kept between runs so rows show at once. */
 export const useSessionPrs = create<SessionPrState>(() => ({ entries: load() }))
 
-const keyOf = (hostKey: string, cwd: string) => `${hostKey}\n${cwd}`
+const keyOf = (hostKey: string, cwd: string, branch?: string) =>
+  branch ? `${hostKey}\n${cwd}\n${branch}` : `${hostKey}\n${cwd}`
 
 /** What a session knows about where its pull request lives when its folder is gone. */
 export interface PrSource {
@@ -77,9 +78,9 @@ function summarize(pr: PullRequest): SessionPrInfo {
 
 const inflight = new Map<string, Promise<void>>()
 
-/** Asks for one folder's pull request; rows of the same folder share one request. */
+/** Asks for one branch's pull request; rows of the same branch share one request. */
 function refresh(hostKey: string, cwd: string, source?: PrSource): Promise<void> {
-  const key = keyOf(hostKey, cwd)
+  const key = keyOf(hostKey, cwd, source?.branch)
   const running = inflight.get(key)
   if (running) return running
   const request = hostRequest(hostKey, 'git.pr.get', { cwd, ...source })
@@ -113,16 +114,18 @@ function refresh(hostKey: string, cwd: string, source?: PrSource): Promise<void>
 export const refreshSessionPr = refresh
 
 /**
- * The pull request of a folder's current branch for a session row. Shows the last known answer
+ * The pull request of a session's branch for a session row. Shows the last known answer
  * straight away, then refreshes it when it is stale and every few minutes while the row is shown.
+ * Entries live per branch, so sessions of one folder that ran on different branches each show
+ * their own pull request instead of the folder's newest one.
  */
 export function useSessionPr(
   hostKey: string,
   cwd: string,
   source?: PrSource,
 ): SessionPrInfo | null {
-  const key = keyOf(hostKey, cwd)
   const { branch, repo } = source ?? {}
+  const key = keyOf(hostKey, cwd, branch)
   const entry = useSessionPrs((s) => s.entries[key])
   useEffect(() => {
     const due = () => {

@@ -1,7 +1,7 @@
 import type { Schedule, ScheduleInput, ScheduleRun, ScheduleTrigger } from '@beddcode/contracts'
 
 /** How the editor lets someone say when a schedule fires. */
-export type Repeat = 'every' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'cron'
+export type Repeat = 'every' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'cron' | 'watch'
 export type Notify = NonNullable<ScheduleInput['notify']>
 
 /** The schedule editor's fields, as typed. */
@@ -22,6 +22,10 @@ export interface ScheduleForm {
   monthDay: string
   /** Custom cron. */
   expr: string
+  /** On file change: the glob matched under the target's folder. */
+  glob: string
+  /** On file change: minutes to wait before it can fire again. */
+  debounceMinutes: string
   /** An IANA zone for the clock-based repeats; empty is the host's own. */
   timezone: string
   targetKind: 'new' | 'session'
@@ -53,6 +57,8 @@ export function emptyScheduleForm(instanceId = ''): ScheduleForm {
     days: [...WEEKDAYS],
     monthDay: '1',
     expr: '0 9 * * 1-5',
+    glob: 'src/**/*.ts',
+    debounceMinutes: '5',
     timezone: '',
     targetKind: 'new',
     instanceId,
@@ -110,7 +116,13 @@ export function scheduleToForm(s: Schedule): ScheduleForm {
   const trigger: Partial<ScheduleForm> =
     s.trigger.kind === 'every'
       ? { repeat: 'every', minutes: String(s.trigger.minutes) }
-      : (friendlyCron(s.trigger.expr) ?? { repeat: 'cron', expr: s.trigger.expr })
+      : s.trigger.kind === 'watch'
+        ? {
+            repeat: 'watch',
+            glob: s.trigger.glob,
+            debounceMinutes: String(s.trigger.debounceMinutes ?? 5),
+          }
+        : (friendlyCron(s.trigger.expr) ?? { repeat: 'cron', expr: s.trigger.expr })
   return {
     ...base,
     ...trigger,
@@ -174,6 +186,15 @@ export function formTrigger(form: ScheduleForm): ScheduleTrigger | { error: stri
     if (!Number.isInteger(minutes) || minutes < 1 || minutes > 10_080)
       return { error: 'Pick a whole number of minutes, from 1 to 10080 (a week)' }
     return { kind: 'every', minutes }
+  }
+  if (form.repeat === 'watch') {
+    const glob = form.glob.trim()
+    if (!glob) return { error: 'Give a glob to watch, like "src" + "/**" + "/*.ts"' }
+    if (glob.length > 500) return { error: 'The glob is too long' }
+    const debounce = Number(form.debounceMinutes)
+    if (!Number.isInteger(debounce) || debounce < 1 || debounce > 1440)
+      return { error: 'The debounce is a whole number of minutes, from 1 to 1440' }
+    return { kind: 'watch', glob, debounceMinutes: debounce }
   }
   const expr = cronFor(form)
   if (typeof expr !== 'string') return expr
@@ -248,6 +269,10 @@ export function describeTrigger(trigger: ScheduleTrigger): string {
     if (friendly?.repeat === 'monthly')
       return `Monthly on day ${friendly.monthDay} at ${friendly.time}`
     return `Cron ${trigger.expr}`
+  }
+  if (trigger.kind === 'watch') {
+    const debounce = trigger.debounceMinutes ?? 5
+    return `When files matching ${trigger.glob} change (at most every ${debounce} min)`
   }
   const m = trigger.minutes
   if (m === 1) return 'Every minute'

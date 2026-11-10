@@ -404,6 +404,8 @@ export const SessionEvent = z.discriminatedUnion('type', [
   Base.extend({ type: z.literal('session.config'), options: z.array(ConfigOption) }),
   /** Commands and skills available right now; each event replaces the previous list. */
   Base.extend({ type: z.literal('session.commands'), commands: z.array(SlashCommand) }),
+  Base.extend({ type: z.literal('session.steering'), supported: z.boolean() }),
+  Base.extend({ type: z.literal('session.capabilities'), raw: z.unknown() }),
   Base.extend({
     type: z.literal('turn.completed'),
     reason: z.enum(['done', 'cancelled', 'error']),

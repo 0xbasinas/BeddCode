@@ -29,9 +29,15 @@ export function autoResumeFromEnv(env: NodeJS.ProcessEnv = process.env): AutoRes
 
 const AUTO_RESUME_KEY = 'host-auto-resume:'
 
+const CONTINUATION_PREFIX = 'The host restarted while you were working'
+
+function clearAttempts(attempts: Map<string, number>, sessionId: string) {
+  for (const k of [...attempts.keys()]) if (k.startsWith(`${sessionId}:`)) attempts.delete(k)
+}
+
 function continuationPrompt(original: string) {
   return {
-    text: `The host restarted while you were working (most likely after a change to the server or desktop code). Continue where you left off. Check the working tree and verify the current state instead of assuming the last step finished.\n\nOriginal request: ${original.slice(0, 4000)}`,
+    text: `${CONTINUATION_PREFIX} (most likely after a change to the server or desktop code). Continue where you left off. Check the working tree and verify the current state instead of assuming the last step finished.\n\nOriginal request: ${original.slice(0, 4000)}`,
     attachments: [] as { name: string; path: string }[],
   }
 }
@@ -64,8 +70,19 @@ export function recoverInterruptedTurns(
       if (event.type === 'session.created') createdAt.set(event.sessionId, event.at)
       if (event.type === 'host.updating') updating.set(event.sessionId, event)
       if (event.type === 'session.provider-session') providerIds.add(event.sessionId)
-      if (event.type === 'message.delta' && event.role === 'user')
+      // Turn ids like "turn-1" repeat across turns, so attempts only count the run of restarts
+      // since the user last spoke or a turn last finished. Our own continuation prompts are not
+      // the user speaking: they are what the loop guard counts.
+      if (
+        event.type === 'message.delta' &&
+        event.role === 'user' &&
+        !event.text.startsWith(CONTINUATION_PREFIX)
+      ) {
         lastUser.set(event.sessionId, event.text)
+        clearAttempts(attempts, event.sessionId)
+      }
+      if (event.type === 'turn.completed' && event.reason !== 'cancelled')
+        clearAttempts(attempts, event.sessionId)
       if (event.type === 'session.notice' && event.key?.startsWith(AUTO_RESUME_KEY)) {
         const turn = event.key.slice(AUTO_RESUME_KEY.length).split(':')[0] ?? ''
         const k = `${event.sessionId}:${turn}`

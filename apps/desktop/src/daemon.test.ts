@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Daemon, backoff, type DaemonState, type HostProcess, type LaunchSpec } from './daemon.ts'
 
 const launch: LaunchSpec = { command: 'node', args: ['host.js'] }
@@ -81,6 +81,69 @@ describe('backoff', () => {
 })
 
 describe('Daemon', () => {
+  it('does not launch a host after stopping during a stalled initial probe', async () => {
+    const spawnHost = vi.fn()
+    const daemon = new Daemon({
+      launch,
+      healthTimeoutMs: 5,
+      probe: () => new Promise<boolean>(() => {}),
+      spawnHost,
+    })
+    daemon.start()
+    await daemon.stop()
+    expect(spawnHost).not.toHaveBeenCalled()
+    expect(daemon.current.status).toBe('stopped')
+  })
+  it.each(['false', 'hang', 'reject'])(
+    'restarts an owned host whose health probe returns %s',
+    async (failure) => {
+      let unhealthy = false
+      let starts = 0
+      const killed = vi.fn()
+      const forced = vi.fn()
+      const daemon = new Daemon({
+        launch,
+        healthPollMs: 1,
+        healthTimeoutMs: 5,
+        healthMisses: 2,
+        stopGraceMs: 1,
+        probe: async () => {
+          if (!starts) return false
+          if (!unhealthy) return true
+          if (failure === 'hang') return new Promise<boolean>(() => {})
+          if (failure === 'reject') throw new Error('network')
+          return false
+        },
+        spawnHost: () => {
+          starts++
+          unhealthy = false
+          let end!: (code: number | null) => void
+          return {
+            exited: new Promise<number | null>((resolve) => {
+              end = resolve
+            }),
+            kill: () => {
+              killed()
+            },
+            forceKill: () => {
+              forced()
+              end(null)
+            },
+          }
+        },
+      })
+      daemon.start()
+      try {
+        await vi.waitFor(() => expect(daemon.current.status).toBe('running'))
+        unhealthy = true
+        await vi.waitFor(() => expect(starts).toBe(2), { timeout: 3_000 })
+        expect(killed).toHaveBeenCalled()
+        expect(forced).toHaveBeenCalled()
+      } finally {
+        await daemon.stop()
+      }
+    },
+  )
   it('uses a host that is already running and leaves it alone', async () => {
     const { daemon, world, until } = setup()
     world.up = true

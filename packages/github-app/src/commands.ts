@@ -25,8 +25,12 @@ const clean = (word: string | undefined) => (word ?? '').toLowerCase().replace(/
  */
 export function parseCommand(body: string, slug: string): Command | undefined {
   // GitHub supports both backtick and tilde fences, including unclosed fences.
-  const text = body.replace(/^ {0,3}(`{3,}|~{3,})[^\n]*(?:\n|$)[\s\S]*?(?:^ {0,3}\1[ \t]*$|(?![\s\S]))/gm, ' ').replace(/^\s*>.*$/gm, ' ')
-  const match = new RegExp(`(^|[^\\w/@-])@${escape(slug)}\\b(?:\\[bot\\])?([\\s\\S]*)`, 'i').exec(text)
+  const text = body
+    .replace(/^ {0,3}(`{3,}|~{3,})[^\n]*(?:\n|$)[\s\S]*?(?:^ {0,3}\1[ \t]*$|(?![\s\S]))/gm, ' ')
+    .replace(/^\s*>.*$/gm, ' ')
+  const match = new RegExp(`(^|[^\\w/@-])@${escape(slug)}\\b(?:\\[bot\\])?([\\s\\S]*)`, 'i').exec(
+    text,
+  )
   if (!match) return undefined
   const words = (match[2] ?? '').trim().split(/\s+/).filter(Boolean)
   let agent: string | undefined

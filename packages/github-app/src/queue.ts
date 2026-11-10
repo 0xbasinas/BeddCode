@@ -106,8 +106,13 @@ export class JobQueue extends DurableObject {
       await this.ctx.storage.delete(`active:${entry.job.repo}#${entry.job.number}`.toLowerCase())
   }
 
-  async online(staleSeconds: number, now = Date.now()): Promise<{ label: string; repos: string[] }[]> {
+  async online(
+    staleSeconds: number,
+    now = Date.now(),
+  ): Promise<{ label: string; repos: string[] }[]> {
     const hosts = [...(await this.ctx.storage.list<Seen>({ prefix: 'host:' })).values()]
-    return hosts.filter((h) => now - h.seen < staleSeconds * 1000).map((h) => ({ label: h.label, repos: h.repos }))
+    return hosts
+      .filter((h) => now - h.seen < staleSeconds * 1000)
+      .map((h) => ({ label: h.label, repos: h.repos }))
   }
 }

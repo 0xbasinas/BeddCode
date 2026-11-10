@@ -59,7 +59,11 @@ export interface GithubConfig {
   planner: PlannerSettings
 }
 
-export const DEFAULT_APPROVAL: ApprovalPolicy = { push: 'ask', pullRequest: 'auto', forcePush: 'ask' }
+export const DEFAULT_APPROVAL: ApprovalPolicy = {
+  push: 'ask',
+  pullRequest: 'auto',
+  forcePush: 'ask',
+}
 
 const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
 const approval = (v: unknown, fallback: Approval): Approval =>
@@ -100,7 +104,11 @@ export function readGithubConfig(file: string): GithubConfig | undefined {
   }
   const workerUrl = str(raw.workerUrl)?.replace(/\/+$/, '')
   const hostToken = str(raw.hostToken)
-  if (!workerUrl || !hostToken || !/^https:\/\//.test(workerUrl) && !/^http:\/\/(127\.0\.0\.1|localhost)/.test(workerUrl))
+  if (
+    !workerUrl ||
+    !hostToken ||
+    (!/^https:\/\//.test(workerUrl) && !/^http:\/\/(127\.0\.0\.1|localhost)/.test(workerUrl))
+  )
     return undefined
   const approvals = policy(raw.approval, DEFAULT_APPROVAL)
   const repos: GithubConfig['repos'] = {}
@@ -139,7 +147,12 @@ export function settingsFor(
   verb: string,
   asked: RunSettings,
 ): RunSettings {
-  const layers = [config.defaults, config.repos[repo.toLowerCase()] ?? {}, config.commands[verb] ?? {}, asked]
+  const layers = [
+    config.defaults,
+    config.repos[repo.toLowerCase()] ?? {},
+    config.commands[verb] ?? {},
+    asked,
+  ]
   const out: RunSettings = {}
   for (const layer of layers)
     for (const key of ['agent', 'model', 'effort', 'permissionMode'] as const)

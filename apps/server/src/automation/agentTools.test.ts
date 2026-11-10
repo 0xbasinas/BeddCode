@@ -1007,3 +1007,67 @@ describe('isInsideFolder', () => {
     expect(isInsideFolder('D:\\projects', 'D:\\projects2', path.win32)).toBe(false)
   })
 })
+
+describe('run_subagent', () => {
+  it('starts a child and returns its reported answer in one call', async () => {
+    const { host, append } = fakeHost()
+    const t = tools(host)
+    const pending = call(t, 'parent', 'run_subagent', {
+      agent: 'codex',
+      prompt: 'find the bug in auth.ts',
+      title: 'Bug hunt',
+      timeout_seconds: 5,
+    })
+    // While it waits, the child finishes its turn and reports a result.
+    await new Promise((r) => setTimeout(r, 20))
+    append({
+      type: 'message.delta',
+      sessionId: 'child-1',
+      role: 'assistant',
+      text: 'The bug is the missing await.',
+      at: 1,
+    })
+    append({
+      type: 'session.result',
+      sessionId: 'child-1',
+      at: 2,
+      status: 'done',
+      summary: 'Found it',
+    })
+    append({ type: 'turn.completed', sessionId: 'child-1', at: 3, reason: 'done' })
+    const res = (await pending) as Record<string, unknown>
+    expect(res.session_id).toBe('child-1')
+    expect(res.done).toBe(true)
+    expect(res.reply).toContain('missing await')
+    expect(res.result).toEqual({ status: 'done', summary: 'Found it' })
+  })
+
+  it('reports a timeout as not done, and the child stays listed for wait_for', async () => {
+    vi.useFakeTimers()
+    const { host } = fakeHost()
+    const t = tools(host)
+    const pending = call(t, 'parent', 'run_subagent', {
+      agent: 'codex',
+      prompt: 'slow task',
+      timeout_seconds: 1,
+    })
+    await vi.advanceTimersByTimeAsync(2000)
+    const res = (await pending) as Record<string, unknown>
+    expect(res.done).toBe(false)
+    expect(res.session_id).toBe('child-1')
+    vi.useRealTimers()
+  })
+
+  it('never gives the child a mode wider than the parent’s', async () => {
+    const { host, created } = fakeHost()
+    const t = tools(host)
+    const pending = call(t, 'parent', 'run_subagent', {
+      agent: 'codex',
+      prompt: 'x',
+      mode: 'full',
+      timeout_seconds: 1,
+    })
+    await expect(pending).rejects.toThrow(/allows more than/)
+    expect(created).toHaveLength(0)
+  })
+})

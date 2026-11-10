@@ -33,14 +33,19 @@ export function serverLaunch(context: LaunchContext): LaunchSpec {
   if (entry) {
     return {
       command: context.execPath,
-      args: [entry, '--port', port],
+      args: ['--max-old-space-size=2048', entry, '--port', port],
       env: { ELECTRON_RUN_AS_NODE: '1' },
     }
   }
   if (context.packaged) {
     return {
       command: context.execPath,
-      args: [path.join(context.resourcesPath, 'server', 'main.mjs'), '--port', port],
+      args: [
+        '--max-old-space-size=2048',
+        path.join(context.resourcesPath, 'server', 'main.mjs'),
+        '--port',
+        port,
+      ],
       // The host serves the built web app that ships beside it.
       env: {
         ELECTRON_RUN_AS_NODE: '1',
@@ -50,7 +55,7 @@ export function serverLaunch(context: LaunchContext): LaunchSpec {
   }
   return {
     command: 'node',
-    args: ['--import', 'tsx', 'src/main.ts', '--port', port],
+    args: ['--max-old-space-size=2048', '--import', 'tsx', 'src/main.ts', '--port', port],
     cwd: context.serverDir,
   }
 }

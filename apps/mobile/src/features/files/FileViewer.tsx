@@ -242,7 +242,12 @@ export function FileViewer({
                 style={[styles.line, on && { backgroundColor: colors.infoSoft }]}
                 onPress={() => pick(n)}
               >
-                <Text size={11} mono color={on ? colors.info : colors.textMuted} style={styles.gutter}>
+                <Text
+                  size={11}
+                  mono
+                  color={on ? colors.info : colors.textMuted}
+                  style={styles.gutter}
+                >
                   {n}
                 </Text>
                 <Text size={11.5} mono>

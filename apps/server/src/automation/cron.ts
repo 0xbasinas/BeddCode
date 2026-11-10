@@ -189,6 +189,8 @@ export function nextRun(
     // Missed runs are not made up: the next one is a whole period from now.
     return after + period - ((after - from) % period)
   }
+  // A watch trigger has no time of its own; it fires when files change (see schedules.ts).
+  if (trigger.kind === 'watch') return undefined
   const cron = parseCron(trigger.expr)
   return trigger.timezone ? nextCronInZone(cron, after, trigger.timezone) : nextCron(cron, after)
 }
@@ -199,6 +201,8 @@ export function previewTrigger(
   now: number,
   count = 3,
 ): { times: number[]; error?: string } {
+  if (trigger.kind === 'watch')
+    return { times: [], error: 'A watch schedule fires when its files change, not on a clock' }
   try {
     const times: number[] = []
     let at = now

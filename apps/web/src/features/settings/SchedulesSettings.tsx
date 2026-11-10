@@ -526,6 +526,7 @@ const REPEATS: [ScheduleForm['repeat'], string][] = [
   ['weekly', 'Weekly'],
   ['monthly', 'Monthly'],
   ['cron', 'Custom cron'],
+  ['watch', 'On file change'],
 ]
 
 /** The zones the editor offers: the browser's own and every one the runtime knows. */
@@ -738,7 +739,28 @@ function ScheduleEditor({
                 />
               </label>
             )}
-            {form.repeat !== 'every' && (
+            {form.repeat === 'watch' && (
+              <>
+                <label className="sch-field">
+                  <span>Glob to watch (under the folder)</span>
+                  <input
+                    className="mono"
+                    value={form.glob}
+                    placeholder={'src/**/*.ts'}
+                    onChange={(e) => set({ glob: e.target.value })}
+                  />
+                </label>
+                <label className="sch-field">
+                  <span>Minutes before it can fire again</span>
+                  <input
+                    inputMode="numeric"
+                    value={form.debounceMinutes}
+                    onChange={(e) => set({ debounceMinutes: e.target.value })}
+                  />
+                </label>
+              </>
+            )}
+            {form.repeat !== 'every' && form.repeat !== 'watch' && (
               <div className="sch-two">
                 {form.repeat === 'hourly' ? (
                   <label className="sch-field">
@@ -943,7 +965,7 @@ function ScheduleEditor({
                 {preview.times.map((t, i) => {
                   const { day, time } = dayAndTime(
                     t,
-                    'error' in trigger || trigger.kind === 'every' ? undefined : trigger.timezone,
+                    'error' in trigger || trigger.kind !== 'cron' ? undefined : trigger.timezone,
                   )
                   return (
                     <li key={t} className={i === 0 ? 'first' : ''}>

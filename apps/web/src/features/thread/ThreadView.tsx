@@ -178,8 +178,14 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
   )
   const busy = session?.status === 'running' || session?.status === 'needs-you'
   const changes = useMemo(
-    () => ({ hostKey, sessionId, idle: !busy, worktree: Boolean(session?.worktree) }),
-    [hostKey, sessionId, busy, session?.worktree],
+    () => ({
+      hostKey,
+      sessionId,
+      idle: !busy,
+      worktree: Boolean(session?.worktree),
+      branch: session?.branch,
+    }),
+    [hostKey, sessionId, busy, session?.worktree, session?.branch],
   )
   const cwd = session?.cwd
   const linkScope = useMemo(() => ({ hostKey, cwd: cwd ?? '' }), [hostKey, cwd])
@@ -279,7 +285,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
 
   const provider = providers.find((p) => p.id === session.instanceId)
   const modes = session.modes ?? provider?.capabilities.permissionModes ?? []
-  const canSteer = provider?.capabilities.steer === true
+  const canSteer = session.steeringSupported ?? provider?.capabilities.steer === true
   // Forking needs the agent's own conversation id, which exists once the first turn has begun.
   const canFork = provider?.capabilities.fork === true && session.completedTurns > 0
 
@@ -619,7 +625,7 @@ export function ThreadView({ sessionId }: { sessionId: string }) {
             : busy
               ? canSteer
                 ? 'Steer the agent, or queue a message…'
-                : 'Queue a message for when this turn ends…'
+                : 'Live steering is not advertised. Queue a follow-up…'
               : endedByDecline(session)
                 ? `You declined. Tell ${provider?.label ?? 'the agent'} what to do instead…`
                 : `Reply to ${provider?.label ?? 'the agent'}…`

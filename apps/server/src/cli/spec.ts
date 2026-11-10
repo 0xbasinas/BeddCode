@@ -45,6 +45,24 @@ export const SPECS: CommandSpec[] = [
     flags: [HOST, PORT],
   },
   { name: 'undo', desc: 'Put back what the latest turn changed', flags: ['--yes', HOST, PORT] },
+  { name: 'rename', desc: 'Give a session a new title', flags: [HOST, PORT] },
+  { name: 'notes', desc: "Show or set a session's note", flags: [HOST, PORT] },
+  { name: 'rm', desc: 'Delete a session and its history', flags: ['--yes', HOST, PORT] },
+  {
+    name: 'stats',
+    desc: 'What a host has been doing (sessions, turns, storage)',
+    flags: ['--json', HOST, PORT],
+  },
+  {
+    name: 'gc',
+    desc: 'Remove sessions quiet for days, stale worktrees, old attachments; vacuum the log',
+    flags: ['--days', '--dry-run', '--worktrees', '--no-vacuum', '--yes', '--json', HOST, PORT],
+  },
+  {
+    name: 'previews',
+    desc: 'Local preview URLs seen in terminal output (dev servers)',
+    flags: ['--json', HOST, PORT],
+  },
   {
     name: 'schedule',
     desc: 'Prompts the host runs on a timer',
@@ -59,6 +77,8 @@ export const SPECS: CommandSpec[] = [
       '--worktree',
       '--no-project',
       '--count',
+      '--watch',
+      '--debounce',
       '--json',
       HOST,
       PORT,

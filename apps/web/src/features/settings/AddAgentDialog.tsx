@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ArrowLeft, ChevronRight, Plus, Search, Trash2, X } from 'lucide-react'
-import type { AcpAgentSummary, RegistryEntry } from '@beddcode/contracts'
+import type { AcpAgentSummary, KnownAgent, RegistryEntry } from '@beddcode/contracts'
 import { hostRequest } from '../../stores/host.ts'
 import { customAgentInput, type EnvironmentVariable } from './customAgent.ts'
 
@@ -23,6 +23,8 @@ export function AddAgentDialog({
   const dialog = useRef<HTMLDialogElement>(null)
   const [mode, setMode] = useState<'registry' | 'custom'>(editing ? 'custom' : 'registry')
   const [entries, setEntries] = useState<RegistryEntry[]>([])
+  /** Well-known ACP agents already installed on this host but not yet added. */
+  const [found, setFound] = useState<KnownAgent[]>([])
   const [loading, setLoading] = useState(true)
   const [registryError, setRegistryError] = useState<string>()
   const [retry, setRetry] = useState(0)
@@ -57,6 +59,30 @@ export function AddAgentDialog({
       if (previous instanceof HTMLElement) previous.focus()
     }
   }, [])
+
+  useEffect(() => {
+    if (editing) return
+    let cancelled = false
+    hostRequest(hostKey, 'agents.known', {}).then(
+      (list) => {
+        if (!cancelled) setFound(list.filter((a) => a.installed && !a.added))
+      },
+      () => {},
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [hostKey, editing])
+
+  /** Opens the custom form filled in with a detected agent's launch command. */
+  const useFound = (agent: KnownAgent) => {
+    setName(agent.name)
+    setCommand(agent.command)
+    setArgs(agent.args.join('\n'))
+    setVariables([])
+    setError(undefined)
+    setMode('custom')
+  }
 
   useEffect(() => {
     if (mode !== 'registry') return
@@ -172,6 +198,25 @@ export function AddAgentDialog({
         <div className="agent-dialog-body">
           {mode === 'registry' ? (
             <>
+              {found.length > 0 && (
+                <div className="settings-notice" role="group" aria-label="Found on this machine">
+                  <p>Found on this machine:</p>
+                  <div className="settings-actions">
+                    {found.map((agent) => (
+                      <Button
+                        key={agent.id}
+                        variant="app"
+                        type="button"
+                        className="settings-button"
+                        disabled={busy}
+                        onClick={() => useFound(agent)}
+                      >
+                        {agent.name}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <label className="settings-search">
                 <Search size={16} />
                 <input

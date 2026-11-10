@@ -271,6 +271,68 @@ export async function undoCmd(args: string[], ctx: Ctx): Promise<number> {
   }
 }
 
+/** `beddcode rename <session> <new title...>` */
+export async function renameCmd(args: string[], ctx: Ctx): Promise<number> {
+  const s = await session(args, ctx)
+  try {
+    const title = s.rest.join(' ').trim()
+    if (!title) throw new Error('Give the new title: beddcode rename <session> "new title"')
+    await s.conn.request('sessions.rename', { sessionId: s.row.view.id, title })
+    ctx.io.err(`Renamed ${shortId(s.row.view.id)} to "${title}".\n`)
+    return 0
+  } finally {
+    closeAll(s.conns)
+  }
+}
+
+/** `beddcode notes <session> [text...]`: show the session's note, or set it (no text clears). */
+export async function notesCmd(args: string[], ctx: Ctx): Promise<number> {
+  const s = await session(args, ctx)
+  try {
+    const id = s.row.view.id
+    const text = s.rest.join(' ')
+    if (s.rest.length === 0) {
+      const notes = await s.conn.request('sessions.notes.get', { sessionId: id })
+      ctx.io.out(`${notes.text ? `${notes.text}\n` : '(no note)\n'}`)
+      return 0
+    }
+    const current = await s.conn.request('sessions.notes.get', { sessionId: id })
+    const saved = await s.conn.request('sessions.notes.set', {
+      sessionId: id,
+      text,
+      expectedVersion: current.version,
+    })
+    ctx.io.err(`Note saved (v${saved.version}).\n`)
+    return 0
+  } finally {
+    closeAll(s.conns)
+  }
+}
+
+/** `beddcode rm <session> [--yes]`: delete a session and its history (keeps its worktree). */
+export async function rmCmd(args: string[], ctx: Ctx): Promise<number> {
+  const s = await session(args, ctx, { bool: ['yes'] })
+  try {
+    const id = s.row.view.id
+    const title = s.row.view.title || '(untitled)'
+    if (s.flags.yes !== true) {
+      if (!ctx.io.interactive) throw new Error('Add --yes to delete without being asked.')
+      const answer = (
+        await ctx.io.ask(`Delete ${shortId(id)} "${title}" and its history? [y/N] `)
+      ).toLowerCase()
+      if (answer !== 'y' && answer !== 'yes') {
+        ctx.io.err('Kept.\n')
+        return 1
+      }
+    }
+    await s.conn.request('sessions.delete', { sessionId: id })
+    ctx.io.err(`Deleted ${shortId(id)} "${title}".\n`)
+    return 0
+  } finally {
+    closeAll(s.conns)
+  }
+}
+
 /**
  * `beddcode attach <session>`: a live view. Answers approvals and questions as they come, and
  * anything typed meanwhile is sent to the agent (`/stop` interrupts, `/quit` leaves).

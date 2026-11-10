@@ -6,7 +6,8 @@ import { chooseBase, mentionedPaths, namedBranch } from './branch.ts'
 function repo(files: Record<string, string[]>) {
   const branches = Object.keys(files)
   return async (_cwd: string, args: string[]) => {
-    if (args[0] === 'for-each-ref') return { code: 0, out: branches.map((b) => `origin/${b}`).join('\n') }
+    if (args[0] === 'for-each-ref')
+      return { code: 0, out: branches.map((b) => `origin/${b}`).join('\n') }
     if (args[0] === 'cat-file') {
       const [ref, path] = args[2]!.replace(/^origin\//, '').split(':') as [string, string]
       return { code: files[ref]?.includes(path) ? 0 : 1, out: '' }
@@ -26,8 +27,12 @@ const job = (over: Partial<Job> = {}): Job =>
     ...over,
   }) as Job
 
-const choose = (git: ReturnType<typeof repo>, text: string, over: Partial<Job> = {}, configured?: string) =>
-  chooseBase(git, '/r', job(over), { text, configured })
+const choose = (
+  git: ReturnType<typeof repo>,
+  text: string,
+  over: Partial<Job> = {},
+  configured?: string,
+) => chooseBase(git, '/r', job(over), { text, configured })
 
 describe('chooseBase', () => {
   const git = repo({
@@ -46,33 +51,43 @@ describe('chooseBase', () => {
     expect((await choose(git, 'make the page load faster')).ref).toBe('main')
   })
   it('uses a branch the comment names, but only a real one', async () => {
-    expect((await choose(git, 'please work on branch feature/x and fix the typo')).ref).toBe('feature/x')
+    expect((await choose(git, 'please work on branch feature/x and fix the typo')).ref).toBe(
+      'feature/x',
+    )
     expect((await choose(git, 'start from nightly-desktop')).ref).toBe('nightly-desktop')
     expect((await choose(git, 'base=feature/x')).ref).toBe('feature/x')
     expect((await choose(git, 'start from scratch, use sonnet on low')).ref).toBe('main')
   })
   it('keeps a pull request on its own branch', async () => {
-    const r = await choose(git, 'work on branch main', { isPullRequest: true, head: { ref: 'feature/x', sha: 'a' } })
+    const r = await choose(git, 'work on branch main', {
+      isPullRequest: true,
+      head: { ref: 'feature/x', sha: 'a' },
+    })
     expect(r).toMatchObject({ ref: 'feature/x', reason: 'the pull request branch' })
   })
   it('uses the branch of a pull request it points at, then the repo setting', async () => {
-    expect((await choose(git, 'fix it', { baseHint: { ref: 'nightly-desktop', number: 102 } })).reason).toContain('#102')
+    expect(
+      (await choose(git, 'fix it', { baseHint: { ref: 'nightly-desktop', number: 102 } })).reason,
+    ).toContain('#102')
     expect((await choose(git, 'fix it', {}, 'feature/x')).ref).toBe('feature/x')
     // A hint or setting that is not a branch on the remote is ignored.
-    expect((await choose(git, 'fix it', { baseHint: { ref: 'gone', number: 1 } }, 'nope')).ref).toBe('main')
+    expect(
+      (await choose(git, 'fix it', { baseHint: { ref: 'gone', number: 1 } }, 'nope')).ref,
+    ).toBe('main')
   })
   it('does not pick one of its own branches or a branch with fewer of the files', async () => {
-    const g = repo({ 'beddcode/issue-1-ab': ['a/b.ts'], 'other': ['x/y.ts'], main: [] })
+    const g = repo({ 'beddcode/issue-1-ab': ['a/b.ts'], other: ['x/y.ts'], main: [] })
     expect((await choose(g, 'edit a/b.ts')).ref).toBe('main')
   })
 })
 
 describe('helpers', () => {
   it('picks file paths out of text', () => {
-    expect(mentionedPaths('see packages/github-app/src/policy.ts and `apps/web/App.tsx`, not a/b or 1.5')).toEqual([
-      'packages/github-app/src/policy.ts',
-      'apps/web/App.tsx',
-    ])
+    expect(
+      mentionedPaths(
+        'see packages/github-app/src/policy.ts and `apps/web/App.tsx`, not a/b or 1.5',
+      ),
+    ).toEqual(['packages/github-app/src/policy.ts', 'apps/web/App.tsx'])
   })
   it('matches branch names written as branches', () => {
     const branches = ['main', 'feature/x', 'feature/x-2']

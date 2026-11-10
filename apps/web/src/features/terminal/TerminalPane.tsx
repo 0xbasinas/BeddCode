@@ -2,10 +2,12 @@ import { paneProject } from '../shell/paneProject.ts'
 import { Button } from '@/components/ui/button'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { applyTerminalChange, placeTerminal, shouldFollow, tabLabel } from './terminalTabs.ts'
-import { Eye, Keyboard, Paperclip, Plus, SquareTerminal, Trash2, X } from 'lucide-react'
+import { Eye, Globe, Keyboard, Paperclip, Plus, SquareTerminal, Trash2, X } from 'lucide-react'
 import type { PaneWorkspace } from '../../stores/composerWorkspace.ts'
 import type { ProjectScript, TerminalInfo } from '@beddcode/contracts'
 import { hostRequest, onHostFrame, useRuntime } from '../../stores/host.ts'
+import { useBrowser } from '../browser/browserStore.ts'
+import { useUiStore } from '../../stores/ui.ts'
 import { AgentIcon, agentKind } from '../../ui/AgentMark.tsx'
 import { useHostKey } from '../../stores/HostScope.tsx'
 import { TerminalView } from './TerminalView.tsx'
@@ -20,6 +22,65 @@ export function TerminalPane({ workspace }: { workspace: PaneWorkspace }) {
   const hostKey = useHostKey()
   return (
     <TerminalPaneContent key={JSON.stringify([hostKey, workspace.cwd])} workspace={workspace} />
+  )
+}
+
+/** Opens a detected preview URL in the browser pane. */
+function openPreview(url: string) {
+  useUiStore.getState().openPane('browser')
+  useBrowser.getState().open(url)
+}
+
+/** The preview URLs a dev server printed in a terminal's output, as a small menu on its tab. */
+function PreviewMenu({ previews }: { previews: string[] }) {
+  const [openMenu, setOpenMenu] = useState(false)
+  return (
+    <span className="term-preview" style={{ position: 'relative' }}>
+      <button
+        aria-label={`Open preview (${previews.length})`}
+        title={previews.join('\n')}
+        onClick={(e) => {
+          e.stopPropagation()
+          if (previews.length === 1) openPreview(previews[0]!)
+          else setOpenMenu((v) => !v)
+        }}
+      >
+        <Globe size={13} />
+      </button>
+      {openMenu && (
+        <span
+          className="term-preview-menu"
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: '100%',
+            zIndex: 30,
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--panel)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            padding: 4,
+            minWidth: 180,
+          }}
+        >
+          {previews.map((url) => (
+            <button
+              key={url}
+              className="mono"
+              style={{ textAlign: 'left', padding: '4px 8px', borderRadius: 4 }}
+              onClick={(e) => {
+                e.stopPropagation()
+                setOpenMenu(false)
+                openPreview(url)
+              }}
+            >
+              {url}
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
   )
 }
 
@@ -369,6 +430,7 @@ function TerminalPaneContent({ workspace }: { workspace: PaneWorkspace }) {
                     {t.exited !== undefined && <span className="muted"> (exited)</span>}
                   </button>
                 )}
+                {t.previews && t.previews.length > 0 && <PreviewMenu previews={t.previews} />}
                 <button aria-label={`Close ${tabLabel(t)}`} onClick={() => void close(t.id)}>
                   <X size={14} />
                 </button>

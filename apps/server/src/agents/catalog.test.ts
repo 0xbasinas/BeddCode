@@ -1,15 +1,18 @@
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { AcpAgentStore, AcpRegistry, currentPlatform } from '@beddcode/provider-acp'
 import { AgentCatalog } from './catalog.ts'
+import { removeDir } from '../testing/removeDir.ts'
 
 const dirs: string[] = []
-afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })))
+afterEach(async () => {
+  for (const dir of dirs.splice(0)) await removeDir(dir)
+})
 const tmp = () => {
   const d = mkdtempSync(path.join(os.tmpdir(), 'beddcode-catalog-'))
   dirs.push(d)
@@ -87,6 +90,41 @@ function setup() {
 }
 
 describe('AgentCatalog downloads', () => {
+  it('inspects an installed ACP executable without creating a session', async () => {
+    const { dir, store, catalog } = setup()
+    const script = path.join(dir, 'agent.cjs')
+    writeFileSync(
+      script,
+      `
+      const readline = require('node:readline');
+      readline.createInterface({ input: process.stdin }).on('line', (line) => {
+        const request = JSON.parse(line);
+        if (request.method !== 'initialize') process.exit(2);
+        process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {
+          protocolVersion: 1, agentInfo: { name: 'Test ACP', version: '1.2' },
+          agentCapabilities: { loadSession: true, promptCapabilities: { image: true } },
+          _meta: { steering: { supported: true } }
+        } }) + '\\n');
+      });
+    `,
+    )
+    store.put({ id: 'local', label: 'Local', command: process.execPath, args: [script], env: {} })
+    const result = await catalog.inspect('local', dir)
+    expect(result).toMatchObject({
+      executable: process.execPath,
+      cwd: dir,
+      name: 'Test ACP',
+      version: '1.2',
+      protocolVersion: 1,
+      features: { steering: true, load: true, images: true, audio: false },
+    })
+  })
+
+  it('does not run a package runner during a capability check', async () => {
+    const { store, catalog } = setup()
+    store.put({ id: 'runner', label: 'Runner', command: 'npx', args: ['some-package'], env: {} })
+    await expect(catalog.inspect('runner')).rejects.toThrow(/package runner|Executable not found/)
+  })
   it('tells the app which entries download a program, and which cannot run here', async () => {
     const { catalog } = setup()
     const entries = Object.fromEntries(
@@ -171,5 +209,15 @@ describe('AgentCatalog edits', () => {
     await expect(
       catalog.update({ id: 'nope', label: 'x', command: 'x', args: [], env: {} }),
     ).rejects.toThrow('Unknown agent')
+  })
+})
+
+describe('AgentCatalog.known', () => {
+  it('reports detected agents and marks added ones', () => {
+    const catalog = new AgentCatalog({ list: () => [{ command: 'gemini' }] } as never, {} as never)
+    const known = catalog.known((c) => (c === 'gemini' || c === 'goose' ? `/bin/${c}` : null))
+    expect(known.find((a) => a.id === 'gemini')).toMatchObject({ installed: true, added: true })
+    expect(known.find((a) => a.id === 'goose')).toMatchObject({ installed: true, added: false })
+    expect(known.find((a) => a.id === 'qwen')).toMatchObject({ installed: false })
   })
 })

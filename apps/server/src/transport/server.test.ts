@@ -23,6 +23,7 @@ import { GitService } from '../workspace/git.ts'
 import { GithubService } from '../workspace/github.ts'
 import { ProjectStore } from '../workspace/projects.ts'
 import { EventStore } from '../store/eventStore.ts'
+import { HostMetrics } from '../telemetry/hostMetrics.ts'
 import { startServer, type RunningServer } from './server.ts'
 import { createAutomation } from '../automation/index.ts'
 import { startRelay } from '@beddcode/relay'
@@ -62,7 +63,13 @@ async function boot(
   store = new EventStore(':memory:'),
   guard?: GuardOptions,
   hostId = 'host-1',
-  extra: { idleTimeoutMs?: number; fakeDelayMs?: number; supervised?: boolean } = {},
+  extra: {
+    idleTimeoutMs?: number
+    fakeDelayMs?: number
+    supervised?: boolean
+    metrics?: boolean
+    healthExtras?: () => Record<string, unknown>
+  } = {},
 ) {
   cleanup.push(() => store.close())
   const log = createLogger('test', 'error')
@@ -135,8 +142,30 @@ async function boot(
   })
   tools = automation.agentTools
   tokens.onRevoke((id) => automation.alerts.forgetDevice(id))
+  const { metrics: wantMetrics, ...restExtra } = extra
+  const metrics = wantMetrics
+    ? new HostMetrics({
+        store,
+        host: {
+          hostId,
+          name: 'test-host',
+          platform: 'linux',
+          version: '0.0.0-test',
+          logId: store.logId,
+        },
+        attachmentsRoot: attachments.root,
+        projects: () =>
+          workspace.projects
+            .list()
+            .then((ps) => ps.map((p) => p.path))
+            .catch(() => []),
+        activeTurns: () => sessions.activeTurnCount(),
+        activeTools: () => sessions.activeToolCount(),
+      })
+    : undefined
+  metrics?.start()
   const server: RunningServer = await startServer({
-    ...extra,
+    ...restExtra,
     guard,
     tokens,
     pairing,
@@ -153,6 +182,7 @@ async function boot(
     watchers,
     automation: { ...automation, computer: automation.computerPane },
     agentTools: automation.agentTools,
+    ...(metrics ? { metrics, ops: { metrics } } : {}),
     log,
   })
   port = server.port
@@ -163,6 +193,7 @@ async function boot(
     () => server.close(),
     () => terminals.shutdown(),
     () => watchers.closeAll(),
+    () => metrics?.stop(),
   )
   return { server, store, tokens, pairing, attachments, automation, sessions, pushes, dir }
 }
@@ -215,6 +246,40 @@ class Client {
 }
 
 describe('server', () => {
+  it.each([
+    ['ws', 64],
+    ['tunnel', 16],
+  ] as const)(
+    'rejects oversized %s frames without stopping the host',
+    async (endpoint, megabytes) => {
+      const { server } = await boot()
+      const ws = new WebSocket(`ws://127.0.0.1:${server.port}/${endpoint}`)
+      cleanup.push(() => ws.terminate())
+      await new Promise<void>((resolve, reject) => {
+        ws.once('open', resolve)
+        ws.once('error', reject)
+      })
+      const closed = new Promise((resolve) => ws.once('close', resolve))
+      // Advertise an oversized masked binary frame without allocating its payload.
+      const header = Buffer.alloc(14)
+      header[0] = 0x82
+      header[1] = 0xff
+      header.writeBigUInt64BE(BigInt(megabytes * 1024 * 1024 + 1), 2)
+      ;(ws as unknown as { _socket: import('node:net').Socket })._socket.write(header)
+      await closed
+      const response = await fetch(`http://127.0.0.1:${server.port}/health`)
+      expect(response.ok).toBe(true)
+      const client = await Client.connect(server.port)
+      expect((await client.rpc('providers.list', {})).ok).toBe(true)
+    },
+  )
+
+  it('exposes host resilience measurements through health', async () => {
+    const extras = { crashCount: 2, eventLoopLag: { meanMs: 21, maxMs: 70, p99Ms: 30 } }
+    const { server } = await boot(undefined, undefined, 'host-1', { healthExtras: () => extras })
+    const response = await fetch(`http://127.0.0.1:${server.port}/health`)
+    expect(await response.json()).toMatchObject(extras)
+  })
   it('serves /health', async () => {
     const { server } = await boot()
     const res = await fetch(`http://127.0.0.1:${server.port}/health`)
@@ -227,6 +292,48 @@ describe('server', () => {
     const { server } = await boot(undefined, undefined, 'host-1', { supervised: true })
     const res = await fetch(`http://127.0.0.1:${server.port}/health`)
     expect(((await res.json()) as { supervised: boolean }).supervised).toBe(true)
+  })
+
+  it('serves /metrics in Prometheus format to this machine without a token', async () => {
+    const { server } = await boot(undefined, undefined, 'host-1', { metrics: true })
+    const res = await fetch(`http://127.0.0.1:${server.port}/metrics`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('text/plain')
+    const text = await res.text()
+    expect(text).toContain('# TYPE beddcode_uptime_seconds gauge')
+    expect(text).toContain('beddcode_sessions_total 0')
+    expect(text).toContain('beddcode_ws_clients')
+  })
+
+  it('asks a tailnet peer for a paired token on /metrics, and answers with one', async () => {
+    const { server, tokens } = await boot(undefined, undefined, 'host-1', { metrics: true })
+    const relayed = { 'x-forwarded-for': '100.64.1.2' }
+    const refused = await fetch(`http://127.0.0.1:${server.port}/metrics`, { headers: relayed })
+    expect(refused.status).toBe(401)
+    const { token } = tokens.issue('Laptop')
+    const ok = await fetch(`http://127.0.0.1:${server.port}/metrics`, {
+      headers: { ...relayed, authorization: `Bearer ${token}` },
+    })
+    expect(ok.status).toBe(200)
+    expect(await ok.text()).toContain('beddcode_uptime_seconds')
+  })
+
+  it('carries the housekeeping hint on /health for this machine, and answers host.stats over RPC', async () => {
+    const { server } = await boot(undefined, undefined, 'host-1', { metrics: true })
+    const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as {
+      housekeeping?: { dbBytes: number; staleWorktrees: string[] }
+    }
+    expect(health.housekeeping).toBeDefined()
+    expect(health.housekeeping!.staleWorktrees).toEqual([])
+
+    const c = await Client.connect(server.port)
+    const res = await c.rpc('host.stats', {})
+    expect(res.ok).toBe(true)
+    if (res.ok) {
+      const stats = res.result as { host: { hostId: string }; sessions: { total: number } }
+      expect(stats.host.hostId).toBe('host-1')
+      expect(stats.sessions.total).toBe(0)
+    }
   })
 
   it('answers hello with welcome', async () => {

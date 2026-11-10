@@ -134,6 +134,34 @@ describe('interrupted turn recovery', () => {
       store.close()
     })
 
+    it('counts resumes per run of restarts: a new user message gives the next turn a fresh budget', () => {
+      const store = new EventStore(':memory:')
+      seed(store)
+      for (let i = 0; i < 3; i++) {
+        expect(recoverInterruptedTurns(store)).toEqual(['s'])
+        takeInterruptedSessions()
+      }
+      expect(recoverInterruptedTurns(store)).toEqual([]) // gave up on this turn
+      // The user continues; the next turn reuses the same turn id and is cut off again.
+      store.append({
+        type: 'message.delta',
+        sessionId: 's',
+        role: 'user',
+        text: 'continue',
+        at: 90,
+      })
+      store.append({
+        type: 'turn.interruption-resolved',
+        sessionId: 's',
+        turnId: 't',
+        at: 90,
+        action: 'dismissed',
+      })
+      store.append({ type: 'turn.started', sessionId: 's', turnId: 't', at: 91 })
+      expect(recoverInterruptedTurns(store)).toEqual(['s'])
+      store.close()
+    })
+
     it('keeps the old behaviour when auto-resume is off or ask', () => {
       for (const mode of ['off', 'ask'] as const) {
         const store = new EventStore(':memory:')

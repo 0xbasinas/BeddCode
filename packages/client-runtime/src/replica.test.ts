@@ -21,6 +21,21 @@ const created = {
   instanceId: 'fake',
 }
 
+it('keeps live ACP capability and command updates in the session report', () => {
+  const state = fold([
+    created,
+    { type: 'session.capabilities', raw: { steering: { supported: true } } },
+    { type: 'session.steering', supported: true },
+    { type: 'session.commands', commands: [{ name: 'old' }] },
+    { type: 'session.commands', commands: [{ name: 'new' }] },
+  ])
+  expect(state.sessions.s1).toMatchObject({
+    advertisedCapabilities: { steering: { supported: true } },
+    steeringSupported: true,
+    commands: [{ name: 'new' }],
+  })
+})
+
 it('replays agent messages as distinct timeline items', () => {
   const state = fold([
     created,

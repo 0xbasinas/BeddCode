@@ -35,9 +35,26 @@ export const TerminalInfo = z.object({
   readOnly: z.boolean().optional(),
   /** Exit code once the shell has ended (null when killed by a signal); absent while running. */
   exited: z.number().int().nullable().optional(),
+  /**
+   * Local preview URLs a dev server printed in this terminal's output (e.g. `http://localhost:3000`),
+   * newest first, so the app can offer to open them.
+   */
+  previews: z.array(z.string().max(2048)).max(20).optional(),
   createdAt: z.number().int(),
 })
 export type TerminalInfo = z.infer<typeof TerminalInfo>
+
+/** One detected preview URL, with the terminal (and session, for agent terminals) it came from. */
+export const PreviewEntry = z.object({
+  url: z.string().max(2048),
+  terminalId: z.string(),
+  /** The tab's title or shell name. */
+  title: z.string().optional(),
+  cwd: z.string(),
+  /** The session whose agent terminal this is, when it is one. */
+  sessionId: z.string().optional(),
+})
+export type PreviewEntry = z.infer<typeof PreviewEntry>
 
 export const FileEntry = z.object({
   name: z.string(),

@@ -34,13 +34,16 @@ export class Github {
     const { GITHUB_APP_ID: id, GITHUB_APP_PRIVATE_KEY: key } = this.env
     if (!id || !key) throw new Error('GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are not set')
     const jwt = await appJwt(id, key)
-    const response = await this.doFetch(`${API}/app/installations/${installationId}/access_tokens`, {
-      method: 'POST',
-      headers: { ...headers(jwt), 'content-type': 'application/json' },
-      body: JSON.stringify(
-        scope ? { repositories: [scope.repo.split('/')[1]], permissions: scope.permissions } : {},
-      ),
-    })
+    const response = await this.doFetch(
+      `${API}/app/installations/${installationId}/access_tokens`,
+      {
+        method: 'POST',
+        headers: { ...headers(jwt), 'content-type': 'application/json' },
+        body: JSON.stringify(
+          scope ? { repositories: [scope.repo.split('/')[1]], permissions: scope.permissions } : {},
+        ),
+      },
+    )
     if (!response.ok) throw new Error(`GitHub refused a token (${response.status})`)
     return ((await response.json()) as { token: string }).token
   }
@@ -57,9 +60,14 @@ export class Github {
   }
 
   comment(token: string, repo: string, number: number, body: string) {
-    return this.call<{ html_url: string }>(token, 'POST', `/repos/${repo}/issues/${number}/comments`, {
-      body,
-    })
+    return this.call<{ html_url: string }>(
+      token,
+      'POST',
+      `/repos/${repo}/issues/${number}/comments`,
+      {
+        body,
+      },
+    )
   }
 
   react(
@@ -78,11 +86,12 @@ export class Github {
   }
 
   issue(token: string, repo: string, number: number) {
-    return this.call<{ title: string; body: string | null; state: string; user: { login: string } }>(
-      token,
-      'GET',
-      `/repos/${repo}/issues/${number}`,
-    )
+    return this.call<{
+      title: string
+      body: string | null
+      state: string
+      user: { login: string }
+    }>(token, 'GET', `/repos/${repo}/issues/${number}`)
   }
 
   comments(token: string, repo: string, number: number) {
@@ -111,13 +120,23 @@ export class Github {
     repo: string,
     pr: { title: string; body: string; head: string; base: string; draft?: boolean },
   ) {
-    return this.call<{ html_url: string; number: number }>(token, 'POST', `/repos/${repo}/pulls`, pr)
+    return this.call<{ html_url: string; number: number }>(
+      token,
+      'POST',
+      `/repos/${repo}/pulls`,
+      pr,
+    )
   }
 
   /** The tail of the logs of failed jobs in the latest failed check runs for a commit. */
   async failedChecks(token: string, repo: string, sha: string, maxChars = 12_000): Promise<string> {
     const runs = await this.call<{
-      check_runs: { id: number; name: string; conclusion: string | null; output: { title?: string; summary?: string; text?: string } }[]
+      check_runs: {
+        id: number
+        name: string
+        conclusion: string | null
+        output: { title?: string; summary?: string; text?: string }
+      }[]
     }>(token, 'GET', `/repos/${repo}/commits/${sha}/check-runs?per_page=50`)
     const failed = runs.check_runs.filter((r) =>
       ['failure', 'timed_out', 'cancelled', 'action_required'].includes(r.conclusion ?? ''),
@@ -134,7 +153,9 @@ export class Github {
       } catch {
         // Not an Actions job, or the log expired; fall back to the check's own output.
       }
-      const fallback = [run.output.title, run.output.summary, run.output.text].filter(Boolean).join('\n')
+      const fallback = [run.output.title, run.output.summary, run.output.text]
+        .filter(Boolean)
+        .join('\n')
       parts.push(`### ${run.name} (${run.conclusion})\n${(log || fallback).slice(-maxChars / 2)}`)
     }
     return parts.length ? parts.join('\n\n').slice(-maxChars) : 'No failed checks were found.'

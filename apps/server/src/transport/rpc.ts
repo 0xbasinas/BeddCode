@@ -1,11 +1,13 @@
 import type { EventStore } from '../store/eventStore.ts'
 import { probeMcp } from '../mcpProbe.ts'
+import { blockedTools, isDisabled, withPolicies } from '../mcp/policies.ts'
 import { readConfigFile, writeConfigFile } from '../config.ts'
 import { existsSync, statSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   RpcMethods,
+  type GcReport,
   type MetricPlatform,
   type MetricRecord,
   type RelaySettings,
@@ -16,6 +18,7 @@ import {
   type RpcParams,
   type RpcResult,
 } from '@beddcode/contracts'
+import type { HostMetrics } from '../telemetry/hostMetrics.ts'
 import { createPairing, type PairingManager } from '../auth/pairing.ts'
 import type { PeerClass } from '../auth/guard.ts'
 import type { TokenStore } from '../auth/tokens.ts'
@@ -136,6 +139,19 @@ export interface RelayControl {
   set(url: string | null, password?: string | null, telemetry?: boolean): Promise<RelaySettings>
 }
 
+/** Host-level operations: self-monitoring stats, and housekeeping (garbage collection). */
+export interface OpsServices {
+  /** Counts what the host does; absent when the host runs without self-monitoring. */
+  metrics?: HostMetrics
+  /** Removes old sessions, worktrees and attachments; absent when not wired up. */
+  gc?: (options: {
+    days?: number
+    dryRun?: boolean
+    worktrees?: boolean
+    vacuum?: boolean
+  }) => Promise<GcReport>
+}
+
 /** What the router knows about the caller. */
 export interface RpcContext {
   peer: PeerClass
@@ -172,6 +188,7 @@ export function createRpcRouter(
   access: AccessServices,
   automation: AutomationServices,
   store: EventStore,
+  ops: OpsServices = {},
 ) {
   const { git, github, projects, terminals, files } = workspace
   const { schedules, alerts, designs } = automation
@@ -229,6 +246,19 @@ export function createRpcRouter(
     'telemetry.report': async (p) => ({
       accepted: access.telemetry?.report(p.platform, p.records) ?? false,
     }),
+    'host.stats': async () => {
+      if (!ops.metrics) throw new Error('This host does not report stats')
+      return ops.metrics.snapshot()
+    },
+    'host.gc': async (p) => {
+      if (!ops.gc) throw new Error('This host cannot run housekeeping')
+      return ops.gc({
+        days: p.days,
+        dryRun: p.dryRun,
+        worktrees: p.worktrees,
+        vacuum: p.vacuum,
+      })
+    },
     'devices.list': async () => access.tokens.list(),
     'attachments.read': (p) => attachments.read(p),
     'files.saveCopy': async (p) => {
@@ -258,6 +288,7 @@ export function createRpcRouter(
     'usage.summary': (p) => sessions.usageSummary(p.days),
     'usage.limits': () => sessions.usageLimits(),
     'agents.remove': (p) => agents.remove(p.id),
+    'agents.known': async () => agents.known(),
     'agents.registry': (p) => agents.searchRegistry(p.query),
     'projects.list': () => projects.list(),
     'projects.add': (p) => projects.add(p.path),
@@ -269,7 +300,7 @@ export function createRpcRouter(
     'folders.browse': (p) => browseFolders(p.path, { showHidden: p.showHidden }),
     'git.info': (p) => git.info(p.cwd),
     'git.status': (p) => git.status(p.cwd),
-    'git.diff': (p) => git.diff(p.cwd, p.path),
+    'git.diff': (p) => git.diff(p.cwd, p.path, { offset: p.offset, maxLines: p.maxLines }),
     'git.log': (p) => git.log(p.cwd),
     'git.branches': (p) => git.branches(p.cwd),
     'git.generate': (p) => sessions.generateGitText(p),
@@ -344,6 +375,7 @@ export function createRpcRouter(
       return terminals.create(p)
     },
     'terminals.list': async (p) => terminals.list(p.cwd),
+    'previews.list': async () => terminals.previews(),
     'terminals.rename': async (p) => terminals.rename(p.id, p.name),
     'terminals.takeOver': async (p) => terminals.takeOver(p.id),
     'terminals.close': async (p) => {
@@ -450,10 +482,42 @@ export function createRpcRouter(
     'sessions.import': (p) => sessions.importSession(p),
     'history.list': (p) => sessions.listHistory(p.instanceId, p.cwd),
     'commands.list': (p) => sessions.listCommands(p.instanceId, p.cwd),
-    'agents.preview': (p) => sessions.previewAgent(p.instanceId, p.cwd),
-    'mcp.list': async (p) => (await sessions.mcp(p.instanceId)).list(p.cwd),
-    'mcp.test': (p) => probeMcp(p),
-    'mcp.overview': (p) => sessions.mcpOverview(p.cwd),
+    'agents.preview': (p) => sessions.previewAgent(p.instanceId, p.cwd, p.refresh),
+    'agents.inspect': (p) => agents.inspect(p.id, p.cwd),
+    'mcp.list': async (p) =>
+      withPolicies(
+        await (await sessions.mcp(p.instanceId)).list(p.cwd),
+        projects.mcpPoliciesFor(p.cwd),
+      ),
+    'mcp.test': async (p) => {
+      // A server's policy for this project applies to BeddCode's own probing of it.
+      const policy = p.name ? projects.mcpPoliciesFor(p.cwd)[p.name] : undefined
+      if (isDisabled(policy))
+        return { ok: false as const, error: 'This server is off for this project (MCP policy)' }
+      const probed = await probeMcp(p)
+      if (probed.ok && policy)
+        return { ...probed, blockedTools: blockedTools(policy, probed.tools) }
+      return probed
+    },
+    'mcp.policy.list': async (p) =>
+      Object.entries(projects.mcpPoliciesFor(p.cwd)).map(([name, policy]) => ({ name, policy })),
+    'mcp.policy.set': async (p) => projects.setMcpPolicy(p.cwd, p.name, p.policy),
+    'mcp.overview': async (p) => {
+      const overview = await sessions.mcpOverview(p.cwd)
+      const policies = projects.mcpPoliciesFor(p.cwd)
+      return {
+        ...overview,
+        servers: overview.servers.map((row) => ({
+          ...row,
+          agents: row.agents.map((a) => ({
+            ...a,
+            server: a.server.policy
+              ? a.server
+              : { ...a.server, ...(policies[row.name] ? { policy: policies[row.name] } : {}) },
+          })),
+        })),
+      }
+    },
     'mcp.copy': (p) => sessions.copyMcpServer(p.instanceId, p.name, p.cwd),
     'mcp.add': async (p) => {
       await (await sessions.mcp(p.instanceId)).add(p.server, p.cwd)

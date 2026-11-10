@@ -534,7 +534,7 @@ function PrDetailView({
       setBump((b) => b + 1)
       onChanged()
       // The session's row in the sidebar shows this pull request's state.
-      void refreshSessionPr(hostKey, cwd)
+      void refreshSessionPr(hostKey, cwd, branch ? { branch } : undefined)
       return true
     } catch (err) {
       setError(errorText(err))

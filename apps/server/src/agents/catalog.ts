@@ -1,4 +1,5 @@
-import type { AcpAgentSummary, RegistryEntry, RpcParams } from '@beddcode/contracts'
+import { createLogger, resolveExecutable, spawnTransport } from '@beddcode/shared'
+import type { KnownAgent, AcpAgentSummary, RegistryEntry, RpcParams } from '@beddcode/contracts'
 import {
   RESERVED_IDS,
   installBinary,
@@ -7,9 +8,12 @@ import {
   removeInstall,
   type AcpAgentConfig,
   type AcpAgentStore,
+  detectKnownAgents,
   type AcpRegistry,
   type InstallOptions,
   type RegistryAgent,
+  withAcpAgent,
+  safeAdvertised,
 } from '@beddcode/provider-acp'
 
 const slug = (text: string) =>
@@ -49,6 +53,54 @@ export class AgentCatalog {
     return this.store.list().map(summary)
   }
 
+  async inspect(id: string, cwd = process.cwd()) {
+    const config = this.store.get(id)
+    if (!config) throw new Error(`Unknown agent: ${id}`)
+    const executable = resolveExecutable(config.command, { ...process.env, ...config.env })
+    if (!executable) throw new Error(`Executable not found: ${config.command}`)
+    if (
+      /^(npx|npm|pnpm|yarn|bunx)(\.cmd|\.exe)?$/i.test(config.command.split(/[\\/]/).at(-1) ?? '')
+    )
+      throw new Error(
+        'This agent uses a package runner. Configure its installed ACP executable to inspect it directly.',
+      )
+    const log = createLogger('acp-inspect')
+    const transport = spawnTransport(
+      executable,
+      config.args,
+      {
+        cwd,
+        env: { ...process.env, ...config.env, NO_BROWSER: 'true' },
+      },
+      log,
+    )
+    return withAcpAgent(transport, log, config.label, async (_rpc, caps, init) => ({
+      command: config.command,
+      args: config.args,
+      executable,
+      cwd,
+      checkedAt: Date.now(),
+      protocolVersion: init.protocolVersion!,
+      name: init.agentInfo?.title ?? init.agentInfo?.name,
+      version: init.agentInfo?.version,
+      authMethods: init.authMethods?.length ?? 0,
+      clientProfile: 'restricted-diagnostic' as const,
+      raw: safeAdvertised({ agentCapabilities: init.agentCapabilities, _meta: init._meta }),
+      features: {
+        steering: init._meta?.steering?.supported === true,
+        load: caps.loadSession === true,
+        resume: !!caps.sessionCapabilities?.resume,
+        list: !!caps.sessionCapabilities?.list,
+        close: !!caps.sessionCapabilities?.close,
+        images: caps.promptCapabilities?.image === true,
+        audio: caps.promptCapabilities?.audio === true,
+        embeddedContext: caps.promptCapabilities?.embeddedContext === true,
+        mcpHttp: caps.mcpCapabilities?.http === true,
+        mcpSse: caps.mcpCapabilities?.sse === true,
+      },
+    }))
+  }
+
   async add(params: RpcParams<'agents.add'>): Promise<AcpAgentSummary> {
     const config =
       'registryId' in params
@@ -83,6 +135,20 @@ export class AgentCatalog {
       this.onChange()
     }
     return { removed }
+  }
+
+  /** The well-known ACP agents, with whether each is installed here and already added. */
+  known(resolve: (command: string) => string | null = resolveExecutable): KnownAgent[] {
+    const added = new Set(this.store.list().map((a) => a.command.toLowerCase()))
+    return detectKnownAgents(resolve).map((a) => ({
+      id: a.id,
+      name: a.name,
+      command: a.command,
+      args: a.args,
+      installed: a.installed,
+      missing: a.missing,
+      added: added.has(a.command.toLowerCase()),
+    }))
   }
 
   async searchRegistry(query: string | undefined): Promise<RegistryEntry[]> {

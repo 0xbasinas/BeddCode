@@ -28,8 +28,19 @@ interface Payload {
   installation?: { id?: number }
   repository?: { full_name?: string; archived?: boolean }
   sender?: Actor
-  issue?: { number: number; html_url?: string; pull_request?: unknown; body?: string | null; user?: Actor }
-  pull_request?: PullInfo & { number: number; html_url?: string; body?: string | null; user?: Actor }
+  issue?: {
+    number: number
+    html_url?: string
+    pull_request?: unknown
+    body?: string | null
+    user?: Actor
+  }
+  pull_request?: PullInfo & {
+    number: number
+    html_url?: string
+    body?: string | null
+    user?: Actor
+  }
   comment?: { id: number; body?: string; user?: Actor; html_url?: string }
   review?: { id: number; body?: string | null; user?: Actor; html_url?: string }
   label?: { name?: string }
@@ -46,11 +57,16 @@ export interface Rules {
  * Labels that start a job, named after the app: `beddcode` (fix an issue, review a pull request) or
  * `beddcode:fix`, `beddcode:review`, `beddcode:fix-ci`, `beddcode:explain`, `beddcode:rebase`.
  */
-export function labelCommand(name: string | undefined, slug: string, isPullRequest: boolean): Command | undefined {
+export function labelCommand(
+  name: string | undefined,
+  slug: string,
+  isPullRequest: boolean,
+): Command | undefined {
   const label = (name ?? '').trim().toLowerCase()
-  if (label === slug.toLowerCase())
-    return { verb: isPullRequest ? 'review' : 'fix', extra: '' }
-  const verb = new RegExp(`^${slug.toLowerCase()}[:/ -](fix|review|fix-ci|explain|rebase)$`).exec(label)?.[1]
+  if (label === slug.toLowerCase()) return { verb: isPullRequest ? 'review' : 'fix', extra: '' }
+  const verb = new RegExp(`^${slug.toLowerCase()}[:/ -](fix|review|fix-ci|explain|rebase)$`).exec(
+    label,
+  )?.[1]
   return verb ? { verb: verb as Command['verb'], extra: '' } : undefined
 }
 
@@ -116,7 +132,10 @@ export function triage(event: string, payload: Payload, rules: Rules): Triage {
       },
     }
   }
-  if (payload.action !== 'created' && !(event === 'pull_request_review' && payload.action === 'submitted'))
+  if (
+    payload.action !== 'created' &&
+    !(event === 'pull_request_review' && payload.action === 'submitted')
+  )
     return no(`action ${payload.action ?? 'none'}`)
 
   let body: string | undefined

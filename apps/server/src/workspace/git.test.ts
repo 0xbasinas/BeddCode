@@ -137,6 +137,21 @@ describe('GitService.status and diff', () => {
     expect(await git.diff(dir, 'img.bin')).toMatchObject({ truncated: true, patch: '' })
   })
 
+  it('pages a long diff with offset and maxLines', async () => {
+    const dir = repo()
+    writeFileSync(
+      path.join(dir, 'long.txt'),
+      Array.from({ length: 50 }, (_, i) => `row ${i}`).join('\n'),
+    )
+    const first = await git.diff(dir, 'long.txt', { maxLines: 20 })
+    expect(first).toMatchObject({ truncated: true, totalLines: 50, nextOffset: 20, added: 50 })
+    expect(first.patch.split('\n')).toHaveLength(20)
+    const last = await git.diff(dir, 'long.txt', { offset: 40, maxLines: 20 })
+    expect(last.truncated).toBe(false)
+    expect(last.nextOffset).toBeUndefined()
+    expect(last.patch.split('\n')).toHaveLength(10)
+  })
+
   it('reports truncated untracked text and preserves rename diffs', async () => {
     const dir = repo()
     writeFileSync(

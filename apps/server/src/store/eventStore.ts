@@ -1,4 +1,4 @@
-import { mkdirSync, renameSync } from 'node:fs'
+import { mkdirSync, renameSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { SessionEvent, projectSessionSegments, type StoredEvent } from '@beddcode/contracts'
@@ -528,6 +528,26 @@ export class EventStore {
 
   lastSeq(): number {
     return (this.lastSeqStmt.get() as { seq: number }).seq
+  }
+
+  /** Size of the database file in bytes (0 for `:memory:` or a missing file). */
+  fileBytes(): number {
+    if (this.file === ':memory:') return 0
+    try {
+      return statSync(this.file).size
+    } catch {
+      return 0
+    }
+  }
+
+  /**
+   * Reclaims space the log left behind after deletions (WAL included), and reports the database
+   * file's size before and after. Run it when the host is quiet, not mid-turn.
+   */
+  vacuum(): { before: number; after: number } {
+    const before = this.fileBytes()
+    if (this.file !== ':memory:') this.db.exec('VACUUM')
+    return { before, after: this.fileBytes() }
   }
 
   /** Live events committed after this call. Returns an unsubscribe function. */

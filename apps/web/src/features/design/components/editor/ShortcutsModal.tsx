@@ -178,7 +178,9 @@ export function ShortcutsModal() {
               <div className="space-y-0.5">
                 {g.rows.map((r) => (
                   <div key={r.label} className="flex items-center justify-between gap-3">
-                    <span className="text-[11px] text-[color:var(--dc-muted)] truncate">{r.label}</span>
+                    <span className="text-[11px] text-[color:var(--dc-muted)] truncate">
+                      {r.label}
+                    </span>
                     <span className="text-[10px] text-[color:var(--dc-muted)] shrink-0 font-mono border border-[color:var(--dc-border)] rounded px-1 py-px bg-[color:var(--dc-input)]">
                       {r.keys}
                     </span>

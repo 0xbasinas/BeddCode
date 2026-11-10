@@ -1,8 +1,9 @@
 import { z } from 'zod'
 
 /**
- * When a schedule fires: every N minutes, or a five-field cron expression in the host's time (or in
- * `timezone`, an IANA name such as "Europe/Athens").
+ * When a schedule fires: every N minutes, a five-field cron expression in the host's time (or in
+ * `timezone`, an IANA name such as "Europe/Athens"), or whenever matching files change under the
+ * target's folder.
  */
 export const ScheduleTrigger = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('every'), minutes: z.number().int().min(1).max(10_080) }),
@@ -10,6 +11,13 @@ export const ScheduleTrigger = z.discriminatedUnion('kind', [
     kind: z.literal('cron'),
     expr: z.string().trim().min(9).max(120),
     timezone: z.string().trim().min(1).max(60).optional(),
+  }),
+  z.object({
+    kind: z.literal('watch'),
+    /** Glob matched against paths relative to the target's folder, e.g. "src" + "/**" + "/*.ts". */
+    glob: z.string().trim().min(1).max(500),
+    /** Minutes to wait after a fire before the same files can fire it again. */
+    debounceMinutes: z.number().int().min(1).max(1440).optional(),
   }),
 ])
 export type ScheduleTrigger = z.infer<typeof ScheduleTrigger>
@@ -53,10 +61,20 @@ export const Schedule = ScheduleInput.extend({
   paused: z.boolean(),
   createdAt: z.number().int(),
   lastRunAt: z.number().int().optional(),
-  /** When it fires next; absent while paused or when the cron expression never matches. */
+  /** When it fires next; absent while paused, for watch triggers, or when cron never matches. */
   nextRunAt: z.number().int().optional(),
   /** When a failed run is tried again. */
   retryAt: z.number().int().optional(),
+  /** The last file state a watch trigger saw, so only new changes fire it. */
+  lastWatch: z
+    .object({
+      /** Digest of the matching files' paths, sizes and mtimes. */
+      digest: z.string(),
+      at: z.number().int(),
+      /** The matching files then (capped), so a fire can name what changed. */
+      files: z.array(z.string().max(500)).max(100).optional(),
+    })
+    .optional(),
 })
 export type Schedule = z.infer<typeof Schedule>
 

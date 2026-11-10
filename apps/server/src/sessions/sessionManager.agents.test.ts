@@ -502,6 +502,44 @@ describe('refreshing an old agent preview', () => {
     commands: [],
   })
 
+  it('separates previews by project and executable identity', async () => {
+    let identity = 'first'
+    let probes = 0
+    const previews = new PreviewCache()
+    const adapter = {
+      ...createFakeAdapter(),
+      previewCacheKey: () => identity,
+      preview: async (_id: string, cwd?: string) => {
+        probes++
+        return offer(`${identity}:${cwd}`)
+      },
+    }
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'beddcode-preview-scope-'))
+    dirs.push(dir)
+    const manager = new SessionManager({
+      store: new EventStore(':memory:'),
+      attachments: new AttachmentStore(path.join(dir, 'attachments')),
+      git: new GitService(),
+      adapters: [adapter],
+      log: createLogger('test', 'error'),
+      defaultCwd: dir,
+      previews,
+    })
+    const one = path.join(dir, 'one')
+    const two = path.join(dir, 'two')
+    expect((await manager.previewAgent('fake', one)).config[0]?.value).toBe(`first:${one}`)
+    await manager.previewAgent('fake', one)
+    expect(probes).toBe(1)
+    expect((await manager.previewAgent('fake', two)).config[0]?.value).toBe(`first:${two}`)
+    identity = 'second'
+    expect((await manager.previewAgent('fake', one)).config[0]?.value).toBe(`second:${one}`)
+    expect(probes).toBe(3)
+    manager.forgetPreview('fake')
+    await manager.previewAgent('fake', one)
+    expect(probes).toBe(4)
+    await manager.close()
+  })
+
   it('probes again once the remembered answer is old, and uses the fresh one', async () => {
     let now = 0
     const previews = new PreviewCache(undefined, () => now)
@@ -530,6 +568,12 @@ describe('refreshing an old agent preview', () => {
     now = 60_000
     expect((await manager.previewAgent('fake')).config[0]?.value).toBe('grok-4.6')
     expect(probes).toBe(0)
+
+    // An explicit refresh bypasses even a fresh cache entry.
+    expect((await manager.previewAgent('fake', undefined, true)).config[0]?.value).toBe('grok-4.7')
+    expect(probes).toBe(1)
+    previews.set('fake', offer('grok-4.6'))
+    probes = 0
 
     // Hours later the agent has updated itself; the new default shows.
     now = 3 * 60 * 60_000

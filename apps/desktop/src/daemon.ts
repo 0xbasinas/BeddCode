@@ -72,6 +72,9 @@ export interface DaemonOptions {
   stopGraceMs?: number
   /** How long to wait between tries once it has failed. */
   failedRetryMs?: number
+  healthPollMs?: number
+  healthTimeoutMs?: number
+  healthMisses?: number
 }
 
 const POLL_MS = 250
@@ -210,16 +213,35 @@ export class Daemon {
     for (const listener of this.listeners) listener(this.state)
   }
 
+  private async probe(): Promise<boolean> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        Promise.resolve()
+          .then(() => this.options.probe())
+          .catch(() => false),
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(false), this.options.healthTimeoutMs ?? 2_000)
+          timer.unref?.()
+        }),
+      ])
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
+  }
+
   private async supervise() {
     let failures = 0
     while (this.wanted) {
-      if (await this.options.probe()) {
+      const healthy = await this.probe()
+      if (!this.wanted) return
+      if (healthy) {
         // Someone else runs a host here: use it, and take over if it goes away.
         this.set({ status: 'attached' })
         let misses = 0
         while (this.wanted && misses < ATTACHED_MISSES) {
           await this.sleep(ATTACHED_POLL_MS)
-          misses = (await this.options.probe()) ? 0 : misses + 1
+          misses = (await this.probe()) ? 0 : misses + 1
         }
         continue
       }
@@ -257,7 +279,8 @@ export class Daemon {
       for (;;) {
         const early = await Promise.race([exited, this.sleep(POLL_MS).then(() => null)])
         if (early) break
-        if (await this.options.probe()) {
+        if (!this.wanted) break
+        if (await this.probe()) {
           ready = true
           break
         }
@@ -267,6 +290,21 @@ export class Daemon {
         }
       }
       if (ready) this.set({ status: 'running' })
+
+      let misses = 0
+      while (ready && this.wanted) {
+        const ended = await Promise.race([
+          exited,
+          this.sleep(this.options.healthPollMs ?? 5_000).then(() => null),
+        ])
+        if (ended || !this.wanted) break
+        misses = (await this.probe()) ? 0 : misses + 1
+        if (misses >= (this.options.healthMisses ?? 3)) {
+          this.tail.push('Host health check timed out or failed; restarting')
+          this.terminate(child)
+          break
+        }
+      }
 
       const { code } = await exited
       this.child = null

@@ -44,6 +44,7 @@ function scriptedAdapter() {
   const state = {
     onPrompt: (_emit: (e: Draft) => void): void | Promise<void> => {},
     onInterrupt: (_emit: (e: Draft) => void) => {},
+    onSteer: async (_emit: (e: Draft) => void) => {},
     failResume: undefined as string | undefined,
     /** The session reports it took over an agent that was still running (a supervised one). */
     reattached: false,
@@ -79,6 +80,7 @@ function scriptedAdapter() {
         },
         steer: async (input) => {
           steered.push(input.text)
+          await state.onSteer(emit)
         },
         interrupt: async () => {
           interrupted.push(Date.now())
@@ -466,6 +468,25 @@ describe('SessionManager robustness', () => {
     expect(events(sessionId).find((e) => e.type === 'prompt.dequeued')).toMatchObject({
       reason: 'sent',
     })
+    await manager.close()
+  })
+
+  it('starts a follow-up if the turn ends while steering is being rejected', async () => {
+    const { manager, events, state, prompts, emit } = setup()
+    state.onPrompt = (send) => {
+      send({ type: 'turn.started', turnId: `t${prompts.length}` })
+    }
+    state.onSteer = async () => {
+      emit({ type: 'turn.completed', turnId: 't1', reason: 'done' })
+      await until(() => events(sessionId).some((e) => e.type === 'turn.completed'))
+      throw new Error('promptRequired')
+    }
+    const { sessionId } = await manager.create({ instanceId: 'stub' })
+    await manager.prompt(sessionId, 'first')
+    await until(() => events(sessionId).some((e) => e.type === 'turn.started'))
+    expect(await manager.prompt(sessionId, 'follow up')).toMatchObject({ state: 'started' })
+    await until(() => prompts.length === 2)
+    expect(prompts).toEqual(['first', 'follow up'])
     await manager.close()
   })
 

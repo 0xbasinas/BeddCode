@@ -66,11 +66,15 @@ export function ClaudeBackendSettings({
       <div className="settings-section-head">
         <h3>Host Claude backend</h3>
       </div>
-      <div className="settings-card settings-fields">
-        <div className="settings-field">
-          <label htmlFor="claude-host-backend">Claude backend</label>
+      <div className="settings-card">
+        <div className="setting-row">
+          <div className="setting-label">
+            <span>Backend</span>
+            <small>Which Claude implementation new sessions use on this host.</small>
+          </div>
           <Select
             id="claude-host-backend"
+            aria-label="Host backend"
             value={hostBackend ?? ''}
             disabled={!online || !hostBackend || busy}
             onChange={(e) => void saveHost(e.target.value as 'sdk' | 'cli')}
@@ -84,11 +88,15 @@ export function ClaudeBackendSettings({
       <div className="settings-section-head">
         <h3>Project Claude backend</h3>
       </div>
-      <div className="settings-card settings-fields">
-        <div className="settings-field">
-          <label htmlFor="claude-project">Project</label>
+      <div className="settings-card">
+        <div className="setting-row">
+          <div className="setting-label">
+            <span>Project</span>
+            <small>Pick a project to give it its own backend below.</small>
+          </div>
           <Select
             id="claude-project"
+            aria-label="Project"
             value={path}
             disabled={!online || busy}
             onChange={(e) => setPath(e.target.value)}
@@ -100,9 +108,15 @@ export function ClaudeBackendSettings({
               </option>
             ))}
           </Select>
-          <label htmlFor="claude-project-backend">Claude backend</label>
+        </div>
+        <div className="setting-row">
+          <div className="setting-label">
+            <span>Backend</span>
+            <small>Leaving it on the host default follows the choice above.</small>
+          </div>
           <Select
             id="claude-project-backend"
+            aria-label="Project backend"
             value={project?.claudeBackend ?? ''}
             disabled={!online || !project || busy}
             onChange={(e) => void save(e.target.value)}

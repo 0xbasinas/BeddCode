@@ -48,14 +48,15 @@ export function parseTrigger(text: string): ScheduleTrigger {
   return { kind: 'cron', expr: fields.join(' ') }
 }
 
-const triggerText = (t: ScheduleTrigger) =>
-  t.kind === 'cron'
-    ? t.expr
-    : t.minutes % 1440 === 0
-      ? `every ${t.minutes / 1440}d`
-      : t.minutes % 60 === 0
-        ? `every ${t.minutes / 60}h`
-        : `every ${t.minutes}m`
+const triggerText = (t: ScheduleTrigger) => {
+  if (t.kind === 'cron') return t.expr
+  if (t.kind === 'watch') return `on ${t.glob} changing`
+  return t.minutes % 1440 === 0
+    ? `every ${t.minutes / 1440}d`
+    : t.minutes % 60 === 0
+      ? `every ${t.minutes / 60}h`
+      : `every ${t.minutes}m`
+}
 
 export function formatSchedules(schedules: Schedule[], now = Date.now()): string {
   if (schedules.length === 0)
@@ -113,7 +114,18 @@ export function findSchedule(schedules: Schedule[], query: string | undefined): 
 export async function scheduleCmd(args: string[], ctx: Ctx): Promise<number> {
   const { flags, rest } = parseArgs(args, {
     bool: ['worktree', 'no-project', 'json'],
-    string: ['host', 'name', 'agent', 'model', 'mode', 'folder', 'session', 'count'],
+    string: [
+      'host',
+      'name',
+      'agent',
+      'model',
+      'mode',
+      'folder',
+      'session',
+      'count',
+      'watch',
+      'debounce',
+    ],
   })
   const [action = 'ls', ...more] = rest
   return withHost(ctx, str(flags.host), async (conn) => {
@@ -143,11 +155,22 @@ export async function scheduleCmd(args: string[], ctx: Ctx): Promise<number> {
     }
 
     if (action === 'add') {
-      const [when, ...promptWords] = more
+      // `--watch <glob>` fires on file changes instead of a clock: add --watch "src" + "/**" "run the tests"
+      const watchGlob = str(flags.watch)
+      const [when, ...promptWords] = watchGlob ? more : more
       const prompt = promptWords.join(' ').trim()
-      if (!when || !prompt) {
-        throw new Error('Usage: beddcode schedule add "0 9 * * 1-5" "triage new issues" [--name n]')
+      if ((!when && !watchGlob) || !prompt) {
+        throw new Error(
+          'Usage: beddcode schedule add "0 9 * * 1-5" "triage new issues" [--name n]\n' +
+            '   or: beddcode schedule add --watch "src/**/*.ts" "run the tests" [--debounce 10]',
+        )
       }
+      const debounce = flags.debounce ? Number(flags.debounce) : undefined
+      if (
+        debounce !== undefined &&
+        (!Number.isInteger(debounce) || debounce < 1 || debounce > 1440)
+      )
+        throw new Error('--debounce is minutes (1 to 1440)')
       let target: ScheduleInput['target']
       if (str(flags.session)) {
         // A heartbeat: the same prompt, sent to a session that already exists, on every tick.
@@ -181,13 +204,24 @@ export async function scheduleCmd(args: string[], ctx: Ctx): Promise<number> {
           )
         }
       }
+      const trigger: ScheduleTrigger = watchGlob
+        ? {
+            kind: 'watch',
+            glob: watchGlob,
+            ...(debounce !== undefined ? { debounceMinutes: debounce } : {}),
+          }
+        : parseTrigger(when!)
       const saved = await conn.request('schedules.save', {
         name: str(flags.name) ?? prompt.slice(0, 40),
         prompt,
-        trigger: parseTrigger(when),
+        trigger,
         target,
       })
-      ctx.io.err(`Scheduled "${saved.name}" (${shortId(saved.id)}), next ${when_(saved)}.\n`)
+      ctx.io.err(
+        watchGlob
+          ? `Scheduled "${saved.name}" (${shortId(saved.id)}) to run when ${watchGlob} changes.\n`
+          : `Scheduled "${saved.name}" (${shortId(saved.id)}), next ${when_(saved)}.\n`,
+      )
       return 0
     }
 

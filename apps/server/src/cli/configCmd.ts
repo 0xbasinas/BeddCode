@@ -38,6 +38,10 @@ export const SETTINGS: Record<SettingKey, { kind: Kind; help: string }> = {
     kind: 'string',
     help: 'A relay address (https://relay.example.com) so devices on any network can reach this host',
   },
+  retentionDays: {
+    kind: 'number',
+    help: 'Days a session stays quiet before the host removes it (0 keeps everything; `beddcode gc` runs it now)',
+  },
 }
 
 const KEYS = Object.keys(SETTINGS) as SettingKey[]
@@ -54,6 +58,11 @@ export function parseValue(key: SettingKey, raw: string): ConfigFile[keyof Confi
   const { kind } = SETTINGS[key]
   if (kind === 'number') {
     const n = Number(raw)
+    if (key === 'retentionDays') {
+      if (!Number.isInteger(n) || n < 0 || n > 3650)
+        throw new Error(`${key} needs a whole number of days (0 to 3650)`)
+      return n
+    }
     if (!Number.isInteger(n) || n < 1 || n > 65535) throw new Error(`${key} needs a port number`)
     return n
   }

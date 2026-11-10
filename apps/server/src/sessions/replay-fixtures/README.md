@@ -21,3 +21,9 @@ For future captures, record at the SDK query/callback or JSON-RPC transport boun
 message order and correlation IDs, and document provider, protocol and version. Replace secrets,
 account identifiers, absolute personal paths and private prompts/output with consistent synthetic
 values; review every field and any embedded strings before committing. Never commit raw captures.
+
+## CI
+
+`pnpm test:replay` runs only the replay test. The `Provider replay` workflow runs it when a provider
+package, `pnpm-lock.yaml` (a dependency bump) or these fixtures change, so a provider SDK upgrade that
+breaks an adapter fails before merge. The full `pnpm test` runs it too.

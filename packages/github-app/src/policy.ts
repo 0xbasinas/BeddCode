@@ -9,7 +9,12 @@ export interface Actor {
 export const parseList = (value: string | undefined) =>
   (value ?? '')
     .split(',')
-    .map((s) => s.trim().toLowerCase().replace(/\[bot\]$/, ''))
+    .map((s) =>
+      s
+        .trim()
+        .toLowerCase()
+        .replace(/\[bot\]$/, ''),
+    )
     .filter(Boolean)
 
 /**
@@ -38,7 +43,5 @@ export function fromFork(pr: { head?: { repo?: Repo | null }; base?: { repo?: Re
 /** A sliding window per sender. Returns whether another job fits and the times to keep. */
 export function withinLimit(times: number[], now: number, limit: number, windowMs = 3_600_000) {
   const recent = times.filter((t) => now - t < windowMs)
-  return recent.length < limit
-    ? { ok: true, recent: [...recent, now] }
-    : { ok: false, recent }
+  return recent.length < limit ? { ok: true, recent: [...recent, now] } : { ok: false, recent }
 }

@@ -10,7 +10,11 @@ export interface Resolved {
   notes: string[]
 }
 
-const norm = (text: string) => text.toLowerCase().replace(/[^a-z0-9.]+/g, ' ').trim()
+const norm = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9.]+/g, ' ')
+    .trim()
 const words = (text: string) => norm(text).split(' ').filter(Boolean)
 const has = (haystack: string, needle: string) =>
   needle.length > 0 && new RegExp(`(^| )${needle.replace(/[.]/g, '\\.')}( |$)`).test(haystack)
@@ -20,7 +24,11 @@ const has = (haystack: string, needle: string) =>
  * bug" does not. Only text right after a word like with, using, use, on or via is looked at.
  */
 export function chosen(text: string): string[] {
-  return [...norm(text).matchAll(/(?:^| )(?:with|using|use|via|by|on|model|agent)(?: the)? ([a-z0-9. ]{2,40})/g)].map((m) => m[1]!)
+  return [
+    ...norm(text).matchAll(
+      /(?:^| )(?:with|using|use|via|by|on|model|agent)(?: the)? ([a-z0-9. ]{2,40})/g,
+    ),
+  ].map((m) => m[1]!)
 }
 
 const ready = (p: ProviderInstance) => p.status === undefined || p.status === 'ready'
@@ -53,13 +61,26 @@ export function pickAgent(
 const SMALL = /(haiku|mini|flash|lite|light|small|fast|nano|spark)/
 const BIG = /(opus|pro\b|max|large|ultra|heavy|high)/
 const TIERS: [RegExp, (m: ModelOption) => boolean][] = [
-  [/\b(fast|fastest|quick|quickest|cheap|cheapest|light|lightweight|small|smallest)\b/, (m) => SMALL.test(norm(`${m.id} ${m.label}`))],
-  [/\b(best|smartest|strongest|most capable|biggest|deepest|powerful)\b/, (m) => BIG.test(norm(`${m.id} ${m.label}`))],
-  [/\b(balanced|default|standard)\b/, (m) => /(sonnet|balanced|standard)/.test(norm(`${m.id} ${m.label} ${m.description ?? ''}`))],
+  [
+    /\b(fast|fastest|quick|quickest|cheap|cheapest|light|lightweight|small|smallest)\b/,
+    (m) => SMALL.test(norm(`${m.id} ${m.label}`)),
+  ],
+  [
+    /\b(best|smartest|strongest|most capable|biggest|deepest|powerful)\b/,
+    (m) => BIG.test(norm(`${m.id} ${m.label}`)),
+  ],
+  [
+    /\b(balanced|default|standard)\b/,
+    (m) => /(sonnet|balanced|standard)/.test(norm(`${m.id} ${m.label} ${m.description ?? ''}`)),
+  ],
 ]
 
 /** Finds a model by what was written: its id, its label, the family word of either, or a tier like "fast". */
-export function pickModel(models: ModelOption[], asked: string | undefined, text: string): ModelOption | undefined {
+export function pickModel(
+  models: ModelOption[],
+  asked: string | undefined,
+  text: string,
+): ModelOption | undefined {
   if (models.length === 0) return undefined
   const query = norm(asked ?? '')
   const scan = (needle: string, loose: boolean) => {
@@ -67,7 +88,9 @@ export function pickModel(models: ModelOption[], asked: string | undefined, text
     for (const model of models) {
       const labels = [model.id, model.label].map(norm)
       // Versions are ignored for the family match: "sonnet 5.5" finds the model called sonnet.
-      const family = labels.flatMap((l) => l.split(' ').filter((w) => /[a-z]/.test(w) && w.length > 2))
+      const family = labels.flatMap((l) =>
+        l.split(' ').filter((w) => /[a-z]/.test(w) && w.length > 2),
+      )
       const score = labels.includes(needle)
         ? 1000
         : labels.some((l) => l.length > 2 && has(needle, l))
@@ -103,14 +126,20 @@ const EFFORT_WORDS: Record<string, string[]> = {
 const ORDER = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 
 /** Maps what was written ("low", "think hard", "max") onto the efforts this model really offers. */
-export function pickEffort(available: string[], asked: string | undefined, text: string): string | undefined {
+export function pickEffort(
+  available: string[],
+  asked: string | undefined,
+  text: string,
+): string | undefined {
   if (available.length === 0) return undefined
   const exact = (word: string) => available.find((e) => norm(e) === norm(word))
   if (asked) {
     const direct = exact(asked)
     if (direct) return direct
   }
-  let level = asked ? Object.keys(EFFORT_WORDS).find((k) => EFFORT_WORDS[k]!.includes(norm(asked))) : undefined
+  let level = asked
+    ? Object.keys(EFFORT_WORDS).find((k) => EFFORT_WORDS[k]!.includes(norm(asked)))
+    : undefined
   if (!level) {
     const spoken = norm(text)
     const hit =
@@ -135,7 +164,10 @@ const ASK = /^(ask|default|ask before edits|prompt|normal)$/
 const PLAN = /^(plan|read only|readonly|read-only)$/
 
 /** Finds a permission mode by its id or label, or by what it means: "full" is the one marked dangerous. */
-export function pickMode(instance: ProviderInstance, asked: string | undefined): string | undefined {
+export function pickMode(
+  instance: ProviderInstance,
+  asked: string | undefined,
+): string | undefined {
   const modes = instance.capabilities?.permissionModes ?? []
   if (!asked) return undefined
   const q = norm(asked)
@@ -172,9 +204,13 @@ export function resolveRun(
   const efforts = model?.efforts?.length ? model.efforts : (caps?.efforts ?? [])
   const effort = pickEffort(efforts, want.effort, text)
   if (want.effort && !effort)
-    notes.push(`${model?.label ?? instance.label} has no effort setting called \`${want.effort}\`; I used its default.`)
+    notes.push(
+      `${model?.label ?? instance.label} has no effort setting called \`${want.effort}\`; I used its default.`,
+    )
   const permissionMode = pickMode(instance, want.permissionMode)
   if (want.permissionMode && !permissionMode)
-    notes.push(`There is no permission mode like \`${want.permissionMode}\` on ${instance.label}; I used its default.`)
+    notes.push(
+      `There is no permission mode like \`${want.permissionMode}\` on ${instance.label}; I used its default.`,
+    )
   return { instance, model: model?.id, effort, permissionMode, notes }
 }

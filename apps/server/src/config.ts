@@ -19,6 +19,8 @@ export interface ServerConfig {
   warmPool?: Partial<WarmPoolSettings> & { enabled: boolean }
   /** Claude's agent process keeps running through a host restart (see docs/agent-supervisor.md). */
   agentSupervisor?: boolean
+  /** Days after which a quiet session is removed by the daily housekeeping sweep; 0 keeps everything. */
+  retentionDays?: number
 }
 
 /** Settings kept in `<data dir>/config.json` (see `beddcode config`); flags and variables win. */
@@ -34,6 +36,8 @@ export interface ConfigFile {
   telemetry?: boolean
   warmPool?: Partial<WarmPoolSettings> & { enabled: boolean }
   agentSupervisor?: boolean
+  /** Days after which a quiet session is removed by the daily housekeeping sweep; 0 keeps everything. */
+  retentionDays?: number
 }
 
 export const configPath = () => path.join(dataHome(), 'config.json')
@@ -78,6 +82,16 @@ export function sanitizeConfig(raw: unknown, warn: (message: string) => void): C
   for (const key of ['allowLan', 'requireToken', 'telemetry', 'agentSupervisor']) {
     if (config[key] !== undefined && typeof config[key] !== 'boolean')
       drop(key, 'not true or false')
+  }
+  if (config.retentionDays !== undefined) {
+    const days =
+      typeof config.retentionDays === 'string' ? Number(config.retentionDays) : config.retentionDays
+    if (typeof days !== 'number' || !Number.isInteger(days) || days < 0 || days > 3650) {
+      drop(
+        'retentionDays',
+        `${JSON.stringify(config.retentionDays)} is not a number of days (0 to 3650)`,
+      )
+    } else config.retentionDays = days
   }
   if (config.warmPool !== undefined) {
     const raw = config.warmPool
@@ -197,6 +211,15 @@ export function parseServeArgs(
       ? truthy(env.BEDDCODE_AGENT_SUPERVISOR)
       : file.agentSupervisor
   if (supervisor !== undefined) config.agentSupervisor = supervisor
+  const retentionDays =
+    env.BEDDCODE_RETENTION_DAYS !== undefined
+      ? Number(env.BEDDCODE_RETENTION_DAYS)
+      : file.retentionDays
+  if (retentionDays !== undefined) {
+    if (!Number.isInteger(retentionDays) || retentionDays < 0 || retentionDays > 3650)
+      throw new Error('BEDDCODE_RETENTION_DAYS is a number of days (0 to 3650)')
+    config.retentionDays = retentionDays
+  }
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!

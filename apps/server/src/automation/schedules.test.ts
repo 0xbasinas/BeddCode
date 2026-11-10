@@ -4,12 +4,17 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Schedule, ScheduleRun, SessionEvent, StoredEvent } from '@beddcode/contracts'
 import { createLogger } from '@beddcode/shared'
+import { previewTrigger } from './cron.ts'
 import { ScheduleService, type ScheduleHost } from './schedules.ts'
+import type { WatchedFile } from './watchGlob.ts'
 
 const dirs: string[] = []
 afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true })))
 
-function setup(start = new Date(2026, 9, 23, 10, 0).getTime()) {
+function setup(
+  start = new Date(2026, 9, 23, 10, 0).getTime(),
+  scan?: (cwd: string, glob: string) => Promise<WatchedFile[]>,
+) {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'beddcode-sched-'))
   dirs.push(dir)
   let now = start
@@ -59,6 +64,7 @@ function setup(start = new Date(2026, 9, 23, 10, 0).getTime()) {
       now: () => now,
       tickMs: 1_000_000,
       onRunEnded: (run, s) => ended.push([run, s]),
+      ...(scan ? { scan } : {}),
     })
   const finish = (sessionId: string, reason: 'done' | 'error' = 'done') => {
     busy.delete(sessionId)
@@ -369,5 +375,109 @@ describe('ScheduleService', () => {
         target: NEW,
       }),
     ).toThrow(/time zone/)
+  })
+})
+
+describe('watch triggers', () => {
+  const WATCH = { kind: 'watch' as const, glob: 'src/**/*.ts' }
+
+  it('sets a baseline on the first scan and fires only when files change, naming them', async () => {
+    let files = [{ path: 'src/a.ts', size: 1, mtimeMs: 1 }]
+    const t = setup(undefined, async () => files)
+    const svc = t.make()
+    svc.start()
+    const s = svc.saveSchedule({ name: 'Watch', prompt: 'run tests', trigger: WATCH, target: NEW })
+
+    await svc.tick()
+    expect(t.prompts).toHaveLength(0) // first scan only sets the baseline
+    expect(svc.list().schedules[0]!.lastWatch?.digest).toBeTruthy()
+
+    await svc.tick()
+    expect(t.prompts).toHaveLength(0) // nothing changed
+
+    files = [...files, { path: 'src/b.ts', size: 2, mtimeMs: 2 }]
+    t.advance(6 * 60_000) // past the 5-minute debounce
+    await svc.tick()
+    expect(t.prompts).toHaveLength(1)
+    expect(t.prompts[0]![1]).toContain('run tests')
+    expect(t.prompts[0]![1]).toContain('src/b.ts')
+
+    // Same state again: no fire.
+    t.advance(60_000)
+    await svc.tick()
+    expect(t.prompts).toHaveLength(1)
+    svc.stop()
+  })
+
+  it('waits out the debounce before firing again', async () => {
+    let files = [{ path: 'src/a.ts', size: 1, mtimeMs: 1 }]
+    const t = setup(undefined, async () => files)
+    const svc = t.make()
+    svc.start()
+    svc.saveSchedule({
+      name: 'W',
+      prompt: 'p',
+      trigger: { ...WATCH, debounceMinutes: 10 },
+      target: NEW,
+    })
+    await svc.tick() // baseline
+    files = [{ path: 'src/a.ts', size: 2, mtimeMs: 2 }]
+    t.advance(2 * 60_000) // changed, but inside the 10-minute debounce
+    await svc.tick()
+    expect(t.prompts).toHaveLength(0)
+    t.advance(9 * 60_000) // now past it; the change is still pending
+    await svc.tick()
+    expect(t.prompts).toHaveLength(1)
+    svc.stop()
+  })
+
+  it('watches the session folder for a session target, and a watch trigger has no nextRunAt', async () => {
+    let scanned: [string, string][] = []
+    const t = setup(undefined, async (cwd: string, glob: string) => {
+      scanned.push([cwd, glob])
+      return [{ path: 'x.ts', size: 1, mtimeMs: 1 }]
+    })
+    const svc = t.make()
+    svc.start()
+    // A session target: the watched folder is the session's cwd.
+    const s0 = await t.host.create(
+      { instanceId: 'codex', cwd: '/project', title: 'x' },
+      { schedule: { id: 'x', name: 'x' } },
+    )
+    const s = svc.saveSchedule({
+      name: 'S',
+      prompt: 'p',
+      trigger: WATCH,
+      target: { kind: 'session', sessionId: s0.sessionId },
+    })
+    expect(s.nextRunAt).toBeUndefined()
+    await svc.tick()
+    expect(scanned).toEqual([['/project', 'src/**/*.ts']])
+    svc.stop()
+  })
+
+  it('persists the baseline across a restart, so a restart alone does not fire it', async () => {
+    const files = [{ path: 'src/a.ts', size: 1, mtimeMs: 1 }]
+    const scan = async () => files
+    const t = setup(undefined, scan)
+    const svc = t.make()
+    svc.start()
+    svc.saveSchedule({ name: 'W', prompt: 'p', trigger: WATCH, target: NEW })
+    await svc.tick()
+    svc.stop()
+
+    // A new service over the same file, with the same files: no fire.
+    const svc2 = t.make()
+    svc2.start()
+    await svc2.tick()
+    expect(t.prompts).toHaveLength(0)
+    svc2.stop()
+  })
+
+  it('preview explains that a watch trigger has no clock', () => {
+    setup()
+    const res = previewTrigger(WATCH, Date.now(), 3)
+    expect(res.times).toEqual([])
+    expect(res.error).toMatch(/files change/)
   })
 })

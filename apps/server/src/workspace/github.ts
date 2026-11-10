@@ -478,9 +478,12 @@ export class GithubService {
     const folder = existsSync(cwd) ? cwd : find?.repo && existsSync(find.repo) ? find.repo : cwd
     if (folder === cwd) {
       const res = await this.gh(cwd, ['pr', 'view', '--json', PR_FIELDS])
-      if (res.code === 0) return this.mapPr(JSON.parse(res.stdout) as RawPr)
-      // With no branch to fall back on, or any other trouble, say so.
-      if (
+      if (res.code === 0) {
+        const pr = this.mapPr(JSON.parse(res.stdout) as RawPr)
+        // The folder's current branch may have moved on since a session ran there, so its
+        // pull request is not that session's: look up the session's own branch instead.
+        if (!find?.branch || pr.headBranch === find.branch) return pr
+      } else if (
         !find?.branch ||
         !/no pull requests found|could not determine current branch/i.test(res.stderr)
       ) {

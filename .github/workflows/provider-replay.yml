@@ -1,0 +1,35 @@
+name: Provider replay
+
+# Replays the recorded provider-boundary fixtures (apps/server/src/sessions/replay-fixtures)
+# through the real Claude, Codex and ACP adapters. Runs when a provider package, its dependencies
+# (the lockfile) or the fixtures change, i.e. on a provider bump, and on demand.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/provider-*/**'
+      - 'packages/provider-core/**'
+      - 'apps/server/src/sessions/replay-fixtures/**'
+      - 'apps/server/src/sessions/providerReplay.test.ts'
+      - 'pnpm-lock.yaml'
+  pull_request:
+    paths:
+      - 'packages/provider-*/**'
+      - 'apps/server/src/sessions/replay-fixtures/**'
+      - 'apps/server/src/sessions/providerReplay.test.ts'
+      - 'pnpm-lock.yaml'
+  workflow_dispatch:
+
+jobs:
+  replay:
+    name: Provider fixture replay
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:replay

@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { planService } from './install.ts'
+import { currentCommand, planService } from './install.ts'
 
 describe('planService', () => {
+  it('installs a host with a bounded Node heap on both platforms', () => {
+    const command = currentCommand()
+    expect(command[1]).toBe('--max-old-space-size=2048')
+    for (const platform of ['win32', 'linux'] as const) {
+      const plan = planService({ platform, command, home: '/home/me', serveArgs: [] })
+      expect(plan.files[0]!.content).toContain('--max-old-space-size=2048')
+    }
+  })
   it('builds a systemd user unit that keeps the host running', () => {
     const plan = planService({
       platform: 'linux',

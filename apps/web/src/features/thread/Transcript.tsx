@@ -83,7 +83,14 @@ export const Transcript = memo(function Transcript({
   sessionId?: string
   hostKey?: string
   /** Where turn changes are read and undone; without it their cards are not shown. */
-  changes?: { hostKey: string; sessionId: string; idle: boolean; worktree?: boolean }
+  changes?: {
+    hostKey: string
+    sessionId: string
+    idle: boolean
+    worktree?: boolean
+    /** The session's branch, so its pull request is not another branch's. */
+    branch?: string
+  }
   onApprove(requestId: string, optionId: string): void | Promise<void>
   onAnswer?(requestId: string, answers?: Record<string, string[]>): void | Promise<void>
   onOpenFile?(path: string): void
@@ -226,6 +233,7 @@ export const Transcript = memo(function Transcript({
               cwd={cwd}
               canUndo={changes.idle && block.item.id === latestChanges}
               offerPr={changes.worktree && changes.idle && block.item.id === latestChanges}
+              branch={changes.branch}
               onOpenFile={onOpenFile}
             />
           ) : null

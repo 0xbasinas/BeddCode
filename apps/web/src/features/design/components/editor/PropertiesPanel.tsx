@@ -418,10 +418,42 @@ export function PropertiesPanel() {
         <div className="text-center">
           <div className="w-12 h-12 rounded-xl bg-[color:var(--dc-raised)] flex items-center justify-center mx-auto mb-3">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <rect x="2" y="2" width="7" height="7" rx="1" stroke="var(--dc-faint)" strokeWidth="1.5" />
-              <rect x="11" y="2" width="7" height="7" rx="1" stroke="var(--dc-faint)" strokeWidth="1.5" />
-              <rect x="2" y="11" width="7" height="7" rx="1" stroke="var(--dc-faint)" strokeWidth="1.5" />
-              <rect x="11" y="11" width="7" height="7" rx="1" stroke="var(--dc-faint)" strokeWidth="1.5" />
+              <rect
+                x="2"
+                y="2"
+                width="7"
+                height="7"
+                rx="1"
+                stroke="var(--dc-faint)"
+                strokeWidth="1.5"
+              />
+              <rect
+                x="11"
+                y="2"
+                width="7"
+                height="7"
+                rx="1"
+                stroke="var(--dc-faint)"
+                strokeWidth="1.5"
+              />
+              <rect
+                x="2"
+                y="11"
+                width="7"
+                height="7"
+                rx="1"
+                stroke="var(--dc-faint)"
+                strokeWidth="1.5"
+              />
+              <rect
+                x="11"
+                y="11"
+                width="7"
+                height="7"
+                rx="1"
+                stroke="var(--dc-faint)"
+                strokeWidth="1.5"
+              />
             </svg>
           </div>
           <p className="text-[11px] text-[color:var(--dc-muted)]">Select an element to edit</p>

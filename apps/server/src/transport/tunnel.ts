@@ -50,72 +50,103 @@ export function handleTunnel(ws: WebSocket, options: TunnelOptions): void {
   const highWater = options.highWaterMark ?? HIGH_WATER
   let target: net.Socket | null = null
   let deviceId: string | undefined
-  const fail = (message: string, code = 1011) => {
+  const guard =
+    <T extends unknown[]>(fn: (...args: T) => void) =>
+    (...args: T) => {
+      try {
+        fn(...args)
+      } catch (err) {
+        options.log.debug('tunnel handler failed: ' + String(err))
+        target?.destroy()
+        ws.terminate()
+      }
+    }
+  const fail = guard((message: string, code: number = 1011) => {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: 'error', message }))
     ws.close(code, message.slice(0, 120))
-  }
-  const timer = setTimeout(() => fail('no open request', 1008), OPEN_TIMEOUT_MS)
-  const stopOnRevoke = options.onRevoke((id) => {
-    if (id === deviceId) ws.close(1008, 'device revoked')
   })
+  const timer = setTimeout(() => fail('no open request', 1008), OPEN_TIMEOUT_MS)
+  const stopOnRevoke = options.onRevoke(
+    guard((id: string) => {
+      if (id === deviceId) ws.close(1008, 'device revoked')
+    }),
+  )
   ws.on('close', () => {
     clearTimeout(timer)
-    stopOnRevoke()
     target?.destroy()
+    guard(stopOnRevoke)()
   })
   ws.on('error', () => target?.destroy())
 
-  ws.on('message', (data, isBinary) => {
-    if (target) {
-      if (!isBinary) return
-      const chunk = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer)
-      // Writes that pile up pause the socket until the target drains.
-      if (!target.write(chunk)) {
-        ws.pause()
-        target.once('drain', () => ws.resume())
-      }
-      return
-    }
-    if (isBinary) return fail('expected an open request', 1008)
-    clearTimeout(timer)
-    const open = parseOpen(String(data))
-    if (!open) return fail('expected an open request', 1008)
-    if (options.needsToken) {
-      const device = options.verifyToken(open.token)
-      if (!device) return fail('auth', 1008)
-      deviceId = device.id
-    }
-    if (open.port === options.ownPort()) return fail('that port is the host itself', 1008)
-    const socket = net.connect({ host: 'localhost', port: open.port, autoSelectFamily: true })
-    target = socket
-    socket.setNoDelay(true)
-    socket.once('connect', () => {
-      if (ws.readyState !== ws.OPEN) return void socket.destroy()
-      ws.send(JSON.stringify({ t: 'ok' }))
-    })
-    socket.on('data', (chunk) => {
-      if (ws.readyState !== ws.OPEN) return
-      ws.send(chunk, { binary: true })
-      if (ws.bufferedAmount > highWater) {
-        socket.pause()
-        const resume = () => {
-          if (ws.readyState !== ws.OPEN) return
-          if (ws.bufferedAmount > highWater / 2) setTimeout(resume, 10)
-          else socket.resume()
+  ws.on(
+    'message',
+    guard((data: import('ws').RawData, isBinary: boolean) => {
+      if (target) {
+        if (!isBinary) return
+        const chunk = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer)
+        // Writes that pile up pause the socket until the target drains.
+        if (!target.write(chunk)) {
+          ws.pause()
+          target.once(
+            'drain',
+            guard(() => ws.resume()),
+          )
         }
-        setTimeout(resume, 10)
+        return
       }
-    })
-    socket.on('error', (err: NodeJS.ErrnoException) => {
-      options.log.debug(`tunnel to port ${open.port}: ${err.code ?? err.message}`)
-      fail(
-        err.code === 'ECONNREFUSED'
-          ? `Nothing is listening on port ${open.port} on the host`
-          : `Could not reach port ${open.port} on the host`,
+      if (isBinary) return fail('expected an open request', 1008)
+      clearTimeout(timer)
+      const open = parseOpen(String(data))
+      if (!open) return fail('expected an open request', 1008)
+      if (options.needsToken) {
+        const device = options.verifyToken(open.token)
+        if (!device) return fail('auth', 1008)
+        deviceId = device.id
+      }
+      if (open.port === options.ownPort()) return fail('that port is the host itself', 1008)
+      const socket = net.connect({ host: 'localhost', port: open.port, autoSelectFamily: true })
+      target = socket
+      socket.setNoDelay(true)
+      socket.once(
+        'connect',
+        guard(() => {
+          if (ws.readyState !== ws.OPEN) return void socket.destroy()
+          ws.send(JSON.stringify({ t: 'ok' }))
+        }),
       )
-    })
-    socket.on('close', () => {
-      if (ws.readyState === ws.OPEN) ws.close(1000, 'closed')
-    })
-  })
+      socket.on(
+        'data',
+        guard((chunk: Buffer) => {
+          if (ws.readyState !== ws.OPEN) return
+          ws.send(chunk, { binary: true })
+          if (ws.bufferedAmount > highWater) {
+            socket.pause()
+            const resume = guard(() => {
+              if (ws.readyState !== ws.OPEN) return
+              if (ws.bufferedAmount > highWater / 2) setTimeout(resume, 10)
+              else socket.resume()
+            })
+            setTimeout(resume, 10)
+          }
+        }),
+      )
+      socket.on(
+        'error',
+        guard((err: NodeJS.ErrnoException) => {
+          options.log.debug(`tunnel to port ${open.port}: ${err.code ?? err.message}`)
+          fail(
+            err.code === 'ECONNREFUSED'
+              ? `Nothing is listening on port ${open.port} on the host`
+              : `Could not reach port ${open.port} on the host`,
+          )
+        }),
+      )
+      socket.on(
+        'close',
+        guard(() => {
+          if (ws.readyState === ws.OPEN) ws.close(1000, 'closed')
+        }),
+      )
+    }),
+  )
 }

@@ -999,3 +999,85 @@
   gap: var(--gap);
   padding: var(--gap) 0;
 }
+
+.mcp-policy-editor {
+  flex-basis: 100%;
+  display: grid;
+  gap: 8px;
+  padding: 8px 0 0;
+}
+.mcp-policy-editor input:not([type='checkbox']) {
+  min-width: 14rem;
+}
+
+.agent-capabilities {
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.agent-capabilities-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.agent-capabilities h4,
+.agent-capabilities h5 {
+  margin: 0;
+}
+.agent-capabilities-heading p,
+.agent-capabilities-empty,
+.agent-capabilities-meta,
+.agent-capabilities-note,
+.agent-capabilities-details {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  margin: 7px 0;
+}
+.agent-capabilities-details p {
+  overflow-wrap: anywhere;
+  margin: 6px 0;
+}
+.agent-capabilities-group {
+  margin-top: 18px;
+}
+.agent-capabilities-group h5 {
+  font-size: 12px;
+  font-weight: 600;
+}
+.agent-capabilities-group dl {
+  margin: 5px 0 0;
+}
+.agent-capabilities-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.agent-capabilities-item dt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.agent-capabilities-item dt small {
+  color: var(--muted-foreground);
+}
+.agent-capabilities-item dd {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.agent-capabilities-item dd.is-advertised {
+  color: var(--foreground);
+  font-weight: 600;
+}
+@media (max-width: 600px) {
+  .agent-capabilities-heading {
+    flex-wrap: wrap;
+  }
+  .agent-capabilities-item {
+    align-items: flex-start;
+  }
+}

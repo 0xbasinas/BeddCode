@@ -77,6 +77,10 @@ export const GitDiff = z.object({
   /** True when content cannot be fully reviewed in this diff. */
   truncated: z.boolean(),
   reason: z.enum(['binary', 'oversized', 'submodule', 'unavailable']).optional(),
+  /** Patch lines in the whole diff, when paged; `patch` holds `maxLines` of them from `offset`. */
+  totalLines: z.number().int().nonnegative().optional(),
+  /** Where the next page starts; absent when this page reaches the end. */
+  nextOffset: z.number().int().nonnegative().optional(),
 })
 export type GitDiff = z.infer<typeof GitDiff>
 

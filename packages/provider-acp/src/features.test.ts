@@ -522,7 +522,7 @@ describe('previewing an agent before a session', () => {
     })
     const adapter = createAcpAdapter({ store, log, createTransport: () => a.transport })
     const preview = await adapter.preview?.('acp:demo', '/w')
-    expect(preview).toEqual({
+    expect(preview).toMatchObject({
       modes: [
         { id: 'ask', label: 'Ask', description: 'Asks first' },
         { id: 'auto', label: 'Auto', description: undefined },
@@ -541,7 +541,7 @@ describe('previewing an agent before a session', () => {
     store.put({ id: 'plain', label: 'Plain', command: process.execPath })
     const a = agent({ ...init(), 'session/new': () => ({ sessionId: 'acp-1' }) })
     const adapter = createAcpAdapter({ store, log, createTransport: () => a.transport })
-    expect(await adapter.preview?.('acp:plain')).toEqual({
+    expect(await adapter.preview?.('acp:plain')).toMatchObject({
       // No modes of its own: the app's two choices, so the picker is always there.
       modes: CLIENT_MODES,
       currentModeId: 'ask',

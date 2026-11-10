@@ -542,7 +542,9 @@ ${s.projectless ? 'no-project' : s.projectPath}`
               <AgentIcon agent={s.instanceId} label={agentLabel(s)} size={12} />
               {agentLabel(s)}
             </span>
-            {s.branch && !isFiledAway(s) && (
+            {/* The badge belongs to the session's own work on the branch, not to the folder:
+                sessions that never changed a file have nothing to do with its pull request. */}
+            {s.branch && !isFiledAway(s) && (s.added > 0 || s.removed > 0) && (
               <SessionPr
                 hostKey={hostOf.get(s.id) ?? LOCAL_HOST_KEY}
                 cwd={s.cwd}

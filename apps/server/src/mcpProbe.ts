@@ -1,5 +1,6 @@
 type ProbeResult =
-  { ok: true; name: string; version: string; toolCount: number } | { ok: false; error: string }
+  | { ok: true; name: string; version: string; toolCount: number; tools: string[] }
+  | { ok: false; error: string }
 
 class ProbeError extends Error {}
 
@@ -158,6 +159,7 @@ export async function probeMcp(
       name: safe(initialized.serverInfo.name),
       version: safe(initialized.serverInfo.version),
       toolCount: listed.tools.length,
+      tools: listed.tools.map((t: { name?: unknown }) => String(t.name ?? '')).filter(Boolean),
     }
   } catch (error) {
     if (controller.signal.aborted) return { ok: false, error: 'Connection timed out.' }

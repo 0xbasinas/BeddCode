@@ -184,6 +184,8 @@ export interface SessionView {
   plan?: { steps: PlanStep[]; explanation?: string }
   /** Slash commands and skills the agent offers right now. */
   commands: SlashCommand[]
+  steeringSupported?: boolean
+  advertisedCapabilities?: unknown
   /** Started by another session through its agent tools. */
   parent?: { sessionId: string; depth: number; requestId?: string }
   orchestrationPlans?: {
@@ -549,6 +551,8 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       // Options, modes and commands belong to the agent that offered them; the new one announces
       // its own, and until then the composer must not show the old agent's.
       next.config = []
+      next.steeringSupported = undefined
+      next.advertisedCapabilities = undefined
       next.modes = []
       // The mode carried over is shown until the new agent announces its own list.
       next.currentModeId = e.permissionMode
@@ -741,6 +745,12 @@ export function applyEvent(state: ReplicaState, stored: StoredEvent): ReplicaSta
       break
     case 'session.commands':
       next.commands = e.commands
+      break
+    case 'session.steering':
+      next.steeringSupported = e.supported
+      break
+    case 'session.capabilities':
+      next.advertisedCapabilities = e.raw
       break
     case 'session.config': {
       next.config = e.options

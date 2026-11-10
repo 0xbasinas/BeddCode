@@ -63,6 +63,10 @@ import type { AgentTools } from './automation/agentTools.ts'
 import { createAutomation } from './automation/index.ts'
 import { GatewayControl } from './mcpGateway/control.ts'
 import { createHostWarmPool } from './sessions/hostWarmPool.ts'
+import { HostMetrics } from './telemetry/hostMetrics.ts'
+import { garbageCollect } from './housekeeping.ts'
+import { VERSION } from './version.ts'
+import { trackHostState, monitorHostLoop } from './hostState.ts'
 
 /** Starts the host and keeps running until SIGINT/SIGTERM. */
 export async function runServer(
@@ -76,6 +80,8 @@ export async function runServer(
   const home = dataHome()
   // One host per data folder; a second one says so instead of corrupting the first one's state.
   const lock = await acquireHostLock(home, config.port, { log })
+  const hostState = trackHostState(home)
+  const loopMonitor = monitorHostLoop()
   process.on('exit', () => lock.release())
   // Agents a killed host left running (nothing ran its exit handlers): end them, then keep the
   // list for this host, so the next start can do the same.
@@ -138,10 +144,10 @@ export async function runServer(
       if (added) hostPool?.warmProject(folder)
       else void hostPool?.removeProject(folder)
     }),
-    terminals: new TerminalManager(),
+    terminals: new TerminalManager({ log }),
     files: new FileService(),
   }
-  const watchers = new FileWatchers((cwd) => workspace.files.invalidate(cwd))
+  const watchers = new FileWatchers((cwd) => workspace.files.invalidate(cwd), log)
   // Filled in once the host listens: the agent tools' bridge calls back on this port.
   let port = config.port
   let agentTools: AgentTools | undefined
@@ -180,6 +186,39 @@ export async function runServer(
   )
 
   const hostId = loadHostId(home)
+  // Self-monitoring: counters since start plus on-demand gauges, served at /metrics and host.stats.
+  const metrics = new HostMetrics({
+    store,
+    host: {
+      hostId,
+      name: os.hostname(),
+      platform: process.platform as 'win32' | 'linux' | 'darwin',
+      version: VERSION,
+      logId: store.logId,
+    },
+    startedAt: Date.now(),
+    activeTurns: () => sessions.activeTurnCount(),
+    activeTools: () => sessions.activeToolCount(),
+    attachmentsRoot: attachments.root,
+    projects: () =>
+      workspace.projects
+        .list()
+        .then((ps) => ps.map((p) => p.path))
+        .catch(() => []),
+  })
+  metrics.start()
+  const gc = (opts: Parameters<typeof garbageCollect>[1]) =>
+    garbageCollect(
+      {
+        store,
+        sessions,
+        attachments,
+        projects: async () => (await workspace.projects.list()).map((p) => ({ path: p.path })),
+        git,
+        log,
+      },
+      opts,
+    )
   const automation = createAutomation({
     home,
     hostId,
@@ -263,6 +302,12 @@ export async function runServer(
   try {
     server = await startServer({
       supervised: config.agentSupervisor === true,
+      healthExtras: () => ({
+        crashCount: hostState.crashCount,
+        eventLoopLag: loopMonitor.snapshot(),
+        uptimeSeconds: process.uptime(),
+        memory: process.memoryUsage(),
+      }),
       port: config.port,
       host: config.host,
       guard: config.guard,
@@ -293,6 +338,8 @@ export async function runServer(
       mcpGateway,
       warmPool: hostPool?.settings,
       telemetry,
+      metrics,
+      ops: { metrics, gc },
       telemetryRecorder: (name, value, tags) => telemetry.record(name, value, tags),
       automation: {
         schedules,
@@ -325,6 +372,25 @@ export async function runServer(
   if (relayUrl) startRelay(relayUrl)
   schedules.start()
   log.info(`listening on ${config.host}:${server.port} (data: ${home})`)
+  // Housekeeping on a timer: sessions quiet for `retentionDays` days go (never one that is
+  // running, waiting on the user, or pinned), and the log is vacuumed so the space comes back.
+  if (config.retentionDays && config.retentionDays > 0) {
+    const days = config.retentionDays
+    const sweep = () => {
+      void gc({ days, worktrees: false, vacuum: true })
+        .then((report) => {
+          if (report.sessionsRemoved > 0 || report.attachmentsRemoved > 0)
+            log.info(
+              `housekeeping: removed ${report.sessionsRemoved} session(s) and ${report.attachmentsRemoved} attachment(s) quiet for over ${days}d; db ${report.dbBytesBefore} -> ${report.dbBytesAfter} bytes`,
+            )
+        })
+        .catch((err: unknown) => log.warn('housekeeping sweep failed', err))
+    }
+    const timer = setInterval(sweep, 24 * 60 * 60_000)
+    timer.unref?.()
+    const first = setTimeout(sweep, 5 * 60_000)
+    first.unref?.()
+  }
   automation.telegram.start()
   automation.github.start()
   if (!isLoopbackHost(config.host)) {
@@ -336,12 +402,21 @@ export async function runServer(
 
   const shutdown = createShutdown({
     log,
-    exit: (code) => process.exit(code),
+    exit: (code) => {
+      try {
+        hostState.finish(code !== 0)
+      } catch (err) {
+        log.warn('could not save host state', err)
+      }
+      process.exit(code)
+    },
     close: async () => {
+      loopMonitor.stop()
       server.notifyUpdating()
       relay?.stop()
       mcpGateway.stop()
       telemetry.stop()
+      metrics.stop()
       automation.stop()
       await hostPool?.pool.close()
       const resumable = await sessions.prepareForRestart()
@@ -355,7 +430,6 @@ export async function runServer(
       await watchers.closeAll()
       await server.close()
       store.close()
-      lock.release()
     },
     timeoutMs: 8_000,
   })

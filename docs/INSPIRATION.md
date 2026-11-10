@@ -1,5 +1,81 @@
 # Ideas from the reference projects
 
+## Paradev source review (2026-11-09)
+
+Reviewed [Paradev](https://github.com/paradevai/paradev) at commit `a865880dad4265cbcc188753506ab0abdbce701e`. Its [port scanner](https://github.com/paradevai/paradev/blob/a865880dad4265cbcc188753506ab0abdbce701e/packages/port-scanner/src/scanner.ts) associates listening sockets with terminal process trees, and its [port manager](https://github.com/paradevai/paradev/blob/a865880dad4265cbcc188753506ab0abdbce701e/packages/port-scanner/src/port-manager.ts) removes stale ports, scans idle terminals less often, and validates ownership before stopping a process. This is a useful next step for previews: BeddCode currently only remembers URLs printed to terminal output, so silent servers are missed and stopped servers may remain listed. Process attribution and platform-specific scanning need their own tests before exposing a stop action.
+
+Paradev's [terminal attach diagnosis tests](https://github.com/paradevai/paradev/blob/a865880dad4265cbcc188753506ab0abdbce701e/apps/desktop/src/renderer/lib/terminal/attach-retry-diagnosis.test.ts) also cover repeated connections that open but never attach, silent closes, and clearing stale error messages after the failure mode changes. These cases are worth checking against BeddCode's terminal reconnect path. No Paradev code was copied.
+
+## Ecosystem scan: agentic dev environments and control planes (2026-11-09)
+
+A web pass over what ships today, beyond the local checkouts above. The useful split: **agentic dev
+environments** (a host that runs agents on your machines), **cloud sandboxes** (Daytona, E2B, Modal,
+Runloop, Coder, DevPod — fast create/resume, snapshots, port forwarding, secrets), **multi-agent
+orchestrators** (Vibe Kanban, Conductor, Gastown/Beads, agent-swarm, Claude Squad — worktree
+isolation, kanban stages, leader→worker delegation, dependency-aware task graphs, merge queues),
+**observability control planes** (Langfuse MIT, AgentOps MIT, Phoenix, Braintrust — traces, session
+replay, cost), and **MCP control planes** (ToolHive containers+policy, vMCP aggregation, registry
+governance). Local dev control planes (Tilt, Garden, Skaffold) contribute the file-watch → rebuild
+loop; GitButler the parallel-branch UI.
+
+Implemented in BeddCode from this scan:
+
+- **Host self-monitoring like any other service:** `GET /metrics` (Prometheus text; loopback free,
+  other peers need a paired token) and the `host.stats` RPC, counted by
+  `apps/server/src/telemetry/hostMetrics.ts` — sessions by status, active turns/tools, open
+  approvals, queued prompts, ws clients, db/attachment bytes, stale worktrees, uptime, and counters
+  since start. CLI: `beddcode stats [--json]`. `/health` now carries a housekeeping hint for
+  `beddcode doctor`.
+- **Housekeeping:** `host.gc` RPC + `beddcode gc [--days N] [--dry-run] [--worktrees] [--yes]`
+  (`apps/server/src/housekeeping.ts`): deletes sessions quiet for N days (never running, waiting,
+  or pinned), optionally removes their worktrees and stale `.wt` folders, sweeps attachments no
+  event references anymore, and vacuums the log (T3 Code's "reclaim database space", Vibe Kanban's
+  worktree auto-cleanup). `retention-days` config sweeps daily on a timer. `beddcode doctor` warns
+  on a heavy log or stale worktrees.
+- **Watch triggers:** `beddcode schedule add --watch "src/**/*.ts" "run the tests"` — schedules can
+  now fire on file changes (Tilt/Skaffold-style), with a debounce, a persisted baseline so a host
+  restart does not fire everything, and the changed files named in the prompt. Web settings form
+  has an "On file change" repeat.
+- **CLI QoL:** `beddcode rename`, `beddcode notes`, `beddcode rm` over the existing RPCs.
+
+Also shipped from that list (2026-11-09):
+
+- **`run_subagent` agent tool:** start a child on any provider and wait for its answer in one call
+  (`start_session` + `wait_for`), same permission cap and nesting limits, idempotent by `request_id`.
+- **Preview URL detection:** `localhost:PORT` URLs printed in terminal output are collected per
+  terminal (`TerminalInfo.previews`), listed by `previews.list` / `beddcode previews`, and offered
+  as an "Open preview" button in the terminal tab.
+- **MCP policy records per server and project:** `mcp.policy.list/set`, stored in the ProjectStore;
+  an off switch and allow/deny tool lists, annotated on `mcp.list` / `mcp.overview` and editable
+  under Settings → Tools & MCP. `mcp.test` refuses disabled servers and reports `blockedTools`.
+  These records do not enforce policy on agent-owned MCP connections.
+- **Diff paging:** `git.diff` takes `offset`/`maxLines` and returns `totalLines`/`nextOffset`; the
+  Changes tab has "Load more" for cut-off diffs.
+- **Provider replay in CI:** `pnpm test:replay` and the `Provider replay` workflow, which runs on
+  provider package, fixture or lockfile changes.
+
+- **acpx (openclaw/acpx, MIT):** its agent launch table became `packages/provider-acp/src/known.ts` (installed-agent detection, `agents.known` RPC, "Found on this machine" in Add agent), and its per-agent launch fixes became `launch.ts` (Gemini flag by version, startup-failure hints). Not taken: its session queue/flows runtime, which duplicates BeddCode's host.
+
+Suggested next (items 2, 3, 4, 5 and 6 below are done, see above), in rough order of value:
+
+1. **Task graph / dependencies for orchestration** (Beads-style): let a template task say
+   "after task A", so a pipeline of agents runs in order; the board stage UI already exists.
+2. **Sub-agent tool for agents** (T3 Code's MCP sub-agents): let a session spawn a bounded child
+   agent on any provider and wait for its result — peer messaging exists, this packages it as a tool.
+3. **Preview URL detection:** parse `localhost:PORT` from terminal output of project scripts and
+   surface "Open preview" per session/worktree (Paseo preview URLs; Daytona port forwarding).
+4. **Provider fixture replay at scale:** replay the recorded transcripts through adapters in CI on
+   every provider bump (T3's replay tooling) — already an open PLAN.md item.
+5. **Diff paging / bounded transcript loads** for very long sessions (T3's live-stream budgets) so
+   a remote reconnect stays cheap.
+6. **MCP gateway policies per server** (ToolHive): allow/deny tool lists and per-server secrets in
+   the gateway config, not just a global switch.
+7. **Session export/import archive** (0XB-45's resumable archive): the Markdown export exists;
+   package it with metadata so another host can resume it.
+8. **Cloud sandbox bridge:** an optional adapter that runs a session in Daytona/E2B instead of
+   locally, keeping the same UI (the ADE comparison shows resume-from-snapshot is the winning
+   primitive).
+
 ## Workspace quality of life (2026-11-01)
 
 Branch: `codex/workspace-quality-of-life`.

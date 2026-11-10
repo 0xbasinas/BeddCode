@@ -15,13 +15,13 @@ GitHub webhook ──▶ Worker (verify signature, allow-list, rate limit, build
 
 `@beddcode [agent] [model=…] [effort=low|medium|high|xhigh|max] <command> [extra instructions]`
 
-| Command | Where | Does |
-| --- | --- | --- |
-| `fix this` | issue | new branch, agent fixes it, push, open a PR |
-| `fix this` / `fix ci` | PR | agent fixes it / the failing checks, pushes to the PR branch |
-| `review` / `explain` | issue or PR | reply with a review / explanation; changes nothing |
-| `rebase on main` | PR | agent rebases and resolves conflicts, lease-protected force push |
-| `stop` | issue or PR | interrupts the running job |
+| Command               | Where       | Does                                                             |
+| --------------------- | ----------- | ---------------------------------------------------------------- |
+| `fix this`            | issue       | new branch, agent fixes it, push, open a PR                      |
+| `fix this` / `fix ci` | PR          | agent fixes it / the failing checks, pushes to the PR branch     |
+| `review` / `explain`  | issue or PR | reply with a review / explanation; changes nothing               |
+| `rebase on main`      | PR          | agent rebases and resolves conflicts, lease-protected force push |
+| `stop`                | issue or PR | interrupts the running job                                       |
 
 `@beddcode codex model=gpt-5 effort=high fix this` picks the agent, model and effort for that one job.
 **Plain words work too.** Anything that is not one of the commands above, such as
@@ -78,7 +78,11 @@ Quoted lines and code blocks are ignored, so quoting a command never runs it.
   "commands": { "review": { "effort": "high" }, "fix": { "agent": "claude" } },
   "approval": { "push": "ask", "pullRequest": "auto", "forcePush": "ask" },
   "repos": {
-    "0xbasinas/test-repo": { "path": "C:/Users/you/code/test-repo", "agent": "codex", "approval": { "push": "auto" } }
+    "0xbasinas/test-repo": {
+      "path": "C:/Users/you/code/test-repo",
+      "agent": "codex",
+      "approval": { "push": "auto" }
+    }
   }
 }
 ```
@@ -99,7 +103,7 @@ at (`on PR 102`), the repo's `baseBranch` in `github.json`, then the most recent
 the files you mention (when the default branch does not), and finally the default branch. The reply says which branch
 was used and why, and the pull request targets that branch.
 
-**Planner (agent orchestration).** For a request in plain words the host starts a *planner*: a main agent with BeddCode's
+**Planner (agent orchestration).** For a request in plain words the host starts a _planner_: a main agent with BeddCode's
 agent tools. It reads the request, then starts the agents that do the work (`start_session`), choosing agent, model and
 effort for each (what you asked for, else by task size), waits for them, has a different agent check a non-trivial change
 (`review_changes`) and sends fixes back to the worker. Code workers run one at a time in the job's own worktree, so

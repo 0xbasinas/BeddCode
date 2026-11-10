@@ -3,7 +3,15 @@ import type { ProviderInstance } from '@beddcode/contracts'
 import { resolveRun } from './resolve.ts'
 
 const caps = (over: object) =>
-  ({ resume: true, fork: false, steer: false, planMode: true, imageInput: true, usage: true, ...over }) as never
+  ({
+    resume: true,
+    fork: false,
+    steer: false,
+    planMode: true,
+    imageInput: true,
+    usage: true,
+    ...over,
+  }) as never
 
 const claude = {
   id: 'claude-1',
@@ -18,8 +26,18 @@ const claude = {
       { id: 'bypassPermissions', label: 'Full access', dangerous: true },
     ],
     models: [
-      { id: 'sonnet', label: 'Sonnet', description: 'Balanced speed and quality', efforts: ['low', 'medium', 'high'] },
-      { id: 'opus', label: 'Opus', description: 'Deep reasoning for complex changes', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+      {
+        id: 'sonnet',
+        label: 'Sonnet',
+        description: 'Balanced speed and quality',
+        efforts: ['low', 'medium', 'high'],
+      },
+      {
+        id: 'opus',
+        label: 'Opus',
+        description: 'Deep reasoning for complex changes',
+        efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+      },
       { id: 'haiku', label: 'Haiku', description: 'Fast and light, for small edits' },
     ],
   }),
@@ -46,16 +64,24 @@ const all = [claude, codex]
 
 describe('resolveRun', () => {
   it('reads "use sonnet 5.5 on medium" against the real model list', () => {
-    const r = resolveRun(all, {}, 'please make the composer less tall slightly, use sonnet 5.5 on medium')
+    const r = resolveRun(
+      all,
+      {},
+      'please make the composer less tall slightly, use sonnet 5.5 on medium',
+    )
     expect(r).toMatchObject({ model: 'sonnet', effort: 'medium' })
     expect(r.instance?.id).toBe('claude-1')
   })
   it('picks the agent from a choice, not from a topic', () => {
     expect(resolveRun(all, {}, 'fix this with codex').instance?.id).toBe('codex-1')
-    expect(resolveRun(all, {}, 'fix the codex bug in the settings page').instance?.id).toBe('claude-1')
+    expect(resolveRun(all, {}, 'fix the codex bug in the settings page').instance?.id).toBe(
+      'claude-1',
+    )
   })
   it('takes explicit settings over the text, and matches labels and versions', () => {
-    expect(resolveRun(all, { agent: 'codex', model: 'GPT-5 mini', effort: 'high' }, '')).toMatchObject({
+    expect(
+      resolveRun(all, { agent: 'codex', model: 'GPT-5 mini', effort: 'high' }, ''),
+    ).toMatchObject({
       model: 'gpt-5-mini',
       // gpt-5-mini has no "high", so the nearest it has.
       effort: 'medium',
@@ -69,7 +95,9 @@ describe('resolveRun', () => {
   })
   it('maps words to the efforts a model has, and "full" to the dangerous mode', () => {
     expect(resolveRun(all, { permissionMode: 'full' }, '').permissionMode).toBe('bypassPermissions')
-    expect(resolveRun(all, { agent: 'codex', permissionMode: 'full access' }, '').permissionMode).toBe('full-access')
+    expect(
+      resolveRun(all, { agent: 'codex', permissionMode: 'full access' }, '').permissionMode,
+    ).toBe('full-access')
     expect(resolveRun(all, { permissionMode: 'plan' }, '').permissionMode).toBe('plan')
     expect(resolveRun(all, { model: 'opus' }, 'on max effort').effort).toBe('max')
     expect(resolveRun(all, { model: 'sonnet' }, 'use sonnet, think hard').effort).toBe('high')

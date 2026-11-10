@@ -174,6 +174,29 @@ export async function doctor(deps: DoctorDeps): Promise<Check[]> {
         },
   )
 
+  // Housekeeping: a host that has run a long time collects quiet sessions, stale worktrees and a
+  // log that has not been vacuumed. The host reports the numbers on /health (this machine only).
+  const hk = health?.housekeeping
+  if (hk) {
+    const gib = hk.dbBytes / 1024 / 1024 / 1024
+    const stale = hk.staleWorktrees.length
+    const heavy = gib >= 2 || hk.attachmentsBytes >= 2 * 1024 * 1024 * 1024
+    checks.push(
+      !heavy && stale === 0
+        ? {
+            name: 'Housekeeping',
+            level: 'ok',
+            detail: `log ${(hk.dbBytes / 1024 / 1024).toFixed(0)} MiB, attachments ${(hk.attachmentsBytes / 1024 / 1024).toFixed(0)} MiB, no stale worktrees`,
+          }
+        : {
+            name: 'Housekeeping',
+            level: 'warn',
+            detail: `log ${(hk.dbBytes / 1024 / 1024).toFixed(0)} MiB, attachments ${(hk.attachmentsBytes / 1024 / 1024).toFixed(0)} MiB, ${stale} stale worktree${stale === 1 ? '' : 's'}`,
+            fix: 'See what would go with `beddcode gc --dry-run`, then `beddcode gc --worktrees` (or set retention-days to sweep automatically).',
+          },
+    )
+  }
+
   return checks
 }
 

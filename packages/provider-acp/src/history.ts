@@ -5,7 +5,17 @@ type Obj = Record<string, unknown>
 
 interface Capabilities {
   loadSession?: boolean
+  promptCapabilities?: { image?: boolean; audio?: boolean; embeddedContext?: boolean }
+  mcpCapabilities?: { http?: boolean; sse?: boolean }
   sessionCapabilities?: { list?: unknown; resume?: unknown; close?: unknown }
+}
+
+interface InitializeInfo {
+  protocolVersion?: number
+  agentCapabilities?: Capabilities
+  agentInfo?: { name?: string; title?: string; version?: string }
+  authMethods?: unknown[]
+  _meta?: { steering?: { supported?: boolean } }
 }
 
 const INIT_TIMEOUT = 30_000
@@ -19,11 +29,11 @@ export async function withAcpAgent<T>(
   transport: Transport,
   log: Logger,
   label: string,
-  fn: (rpc: JsonRpcClient, caps: Capabilities) => Promise<T>,
+  fn: (rpc: JsonRpcClient, caps: Capabilities, info: InitializeInfo) => Promise<T>,
 ): Promise<T> {
   const rpc = new JsonRpcClient(transport, log, { jsonrpc2: true })
   try {
-    const init = await rpc.request<{ protocolVersion?: number; agentCapabilities?: Capabilities }>(
+    const init = await rpc.request<InitializeInfo>(
       'initialize',
       {
         protocolVersion: 1,
@@ -41,7 +51,7 @@ export async function withAcpAgent<T>(
         `${label} speaks ACP v${String(init.protocolVersion)}, which is not supported yet`,
       )
     }
-    return await fn(rpc, init.agentCapabilities ?? {})
+    return await fn(rpc, init.agentCapabilities ?? {}, init)
   } catch (err) {
     const tail = rpc.stderrTail.split('\n').filter(Boolean).at(-1)
     const message = err instanceof Error ? err.message : String(err)

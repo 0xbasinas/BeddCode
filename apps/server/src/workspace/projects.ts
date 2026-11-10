@@ -1,7 +1,7 @@
 import { statSync } from 'node:fs'
 import path from 'node:path'
 import { createLogger, readJsonFile, writeFileAtomic } from '@beddcode/shared'
-import type { Project, ProjectScript } from '@beddcode/contracts'
+import type { McpServerPolicy, Project, ProjectScript } from '@beddcode/contracts'
 import type { GitService } from './git.ts'
 
 /**
@@ -20,12 +20,14 @@ export class ProjectStore {
     scripts: Record<string, ProjectScript[]>
     instructions: Record<string, string>
     backends: Record<string, 'sdk' | 'cli'>
+    mcpPolicies: Record<string, Record<string, McpServerPolicy>>
   } {
     const read = readJsonFile<{
       paths?: unknown
       scripts?: Record<string, ProjectScript[]>
       instructions?: Record<string, string>
       backends?: Record<string, unknown>
+      mcpPolicies?: Record<string, Record<string, McpServerPolicy>>
     }>(this.file)
     if (read.status === 'corrupt') {
       createLogger('projects').error(
@@ -34,7 +36,7 @@ export class ProjectStore {
       )
     }
     if (read.status !== 'ok' || !read.value || typeof read.value !== 'object')
-      return { paths: [], scripts: {}, instructions: {}, backends: {} }
+      return { paths: [], scripts: {}, instructions: {}, backends: {}, mcpPolicies: {} }
     const data = read.value
     return {
       paths: Array.isArray(data.paths)
@@ -46,6 +48,7 @@ export class ProjectStore {
       backends: Object.fromEntries(
         Object.entries(data.backends ?? {}).filter(([, v]) => v === 'sdk' || v === 'cli'),
       ) as Record<string, 'sdk' | 'cli'>,
+      mcpPolicies: data.mcpPolicies && typeof data.mcpPolicies === 'object' ? data.mcpPolicies : {},
     }
   }
 
@@ -58,6 +61,7 @@ export class ProjectStore {
     scripts = this.read().scripts,
     instructions = this.read().instructions,
     backends = this.read().backends,
+    mcpPolicies = this.read().mcpPolicies,
   ) {
     // Scripts of folders no longer in the list are dropped.
     const kept = Object.fromEntries(
@@ -74,12 +78,20 @@ export class ProjectStore {
     const keptBackends = Object.fromEntries(
       Object.entries(backends).filter(([p]) => paths.some((folder) => samePath(folder, p))),
     )
+    const keptPolicies = Object.fromEntries(
+      Object.entries(mcpPolicies).flatMap(([p, servers]) =>
+        paths.some((folder) => samePath(folder, p)) && Object.keys(servers).length > 0
+          ? [[p, servers] as const]
+          : [],
+      ),
+    )
     const data = {
       version: 1,
       paths,
       ...(Object.keys(kept).length ? { scripts: kept } : {}),
       ...(Object.keys(rules).length ? { instructions: rules } : {}),
       ...(Object.keys(keptBackends).length ? { backends: keptBackends } : {}),
+      ...(Object.keys(keptPolicies).length ? { mcpPolicies: keptPolicies } : {}),
     }
     writeFileAtomic(this.file, JSON.stringify(data, null, 2))
   }
@@ -126,6 +138,53 @@ export class ProjectStore {
     const backends = this.read().backends
     const key = Object.keys(backends).find((p) => samePath(p, folder))
     return key ? backends[key] : undefined
+  }
+
+  /** The added project a folder belongs to: itself, or the repository root for a worktree. */
+  projectRootFor(folder: string): string | undefined {
+    const resolved = path.resolve(folder)
+    const paths = this.paths()
+    const exact = paths.find((p) => samePath(p, resolved))
+    if (exact) return exact
+    // Longest project path the folder is inside (a worktree lives under `<repo>/.wt/…`).
+    let best: string | undefined
+    for (const p of paths) {
+      const rel = path.relative(path.resolve(p), resolved)
+      if (rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+        if (!best || p.length > best.length) best = p
+      }
+    }
+    return best
+  }
+
+  /** The MCP server policies set for the project a folder belongs to. */
+  mcpPoliciesFor(folder: string | undefined): Record<string, McpServerPolicy> {
+    if (!folder) return {}
+    const root = this.projectRootFor(folder)
+    if (!root) return {}
+    const { mcpPolicies } = this.read()
+    const key = Object.keys(mcpPolicies).find((p) => samePath(p, root))
+    return key ? (mcpPolicies[key] ?? {}) : {}
+  }
+
+  /** Sets or clears (null) one server's policy for the project containing `folder`. */
+  async setMcpPolicy(
+    folder: string | undefined,
+    name: string,
+    policy: McpServerPolicy | null,
+  ): Promise<{ name: string; policy: McpServerPolicy | null }> {
+    const root = folder ? this.projectRootFor(folder) : undefined
+    if (!root) throw new Error(`${folder ?? 'This folder'} is not an added project`)
+    const { paths, scripts, instructions, backends, mcpPolicies } = this.read()
+    const next = Object.fromEntries(
+      Object.entries(mcpPolicies).filter(([p]) => !samePath(p, root)),
+    ) as Record<string, Record<string, McpServerPolicy>>
+    const servers = { ...mcpPolicies[root] }
+    if (policy) servers[name] = policy
+    else delete servers[name]
+    if (Object.keys(servers).length > 0) next[root] = servers
+    this.write(paths, scripts, instructions, backends, next)
+    return { name, policy }
   }
 
   async setClaudeBackend(folder: string, backend: 'sdk' | 'cli' | null): Promise<Project> {

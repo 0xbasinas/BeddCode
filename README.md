@@ -14,6 +14,14 @@ The agent CLIs (`claude`, `codex`, `grok`, …) aren't bundled. Install them and
 
 Enable Agent collaboration when creating sessions to let them start child agents and exchange messages with other opted-in sessions on the same host and project. Agents can use `list_peer_sessions`, `send_peer_message`, `broadcast_peer_message` and `read_peer_inbox`. Messages carry a thread id for replies and appear in both participants' timelines. A message starts an idle session or waits in a busy session's queue. The project is limited to ten peer sends per minute, including across host restarts; a thread is limited to 50 delivery attempts, including failed attempts and across restarts. Broadcast takes an explicit list of up to 20 sessions and reports each delivery separately; replies use a separate thread for each recipient. Discovery covers the 100 most recently active sessions. This opt-in applies to sessions already created with agent tools enabled as well. Peer delivery does not ask for a separate approval.
 
+Sessions with agent tools can also start child sessions and wait on them: `start_session`, `send_message`, `wait_for`, `get_status`, `read_transcript`, `review_changes`, `stop`, `list_children`, and the one-shot `run_subagent` (start a bounded child and get its answer in a single call; the child never gets a wider permission mode than its parent). Children nest up to a depth limit and are capped per session; a child reports its outcome with `report_result`, which `wait_for` returns to the parent.
+
+### Previews and MCP policies
+
+When a terminal prints a local URL (a dev server's `Local: http://localhost:5173`, or a bare `127.0.0.1:8080`), the host remembers it on that terminal: the terminal tab gets a globe button that opens the preview in the browser pane, and `beddcode previews` lists every detected URL on every host.
+
+Each project can keep a policy per MCP server (Settings → Tools & MCP). A disabled server cannot be probed with `mcp.test`; allow and deny lists are reported in the probe results. `mcp.list` and `mcp.overview` show the saved policy. These settings do not restrict MCP calls made directly by an agent.
+
 ### The `beddcode` command
 
 The installed app also gives you a `beddcode` command, so a terminal is enough to look after a host. It runs on the app's own runtime; nothing else has to be installed.
@@ -29,15 +37,24 @@ beddcode send last "also add a test"           # (--queue to run it after the cu
 beddcode stop last           # interrupt the running turn
 beddcode approve last        # answer what the agent is waiting on (allow | deny | a number)
 beddcode undo last           # put back what the latest turn changed
+beddcode rename last "new title"   # retitle a session
+beddcode notes last "reads X first" # show or set a session's note
+beddcode rm last             # delete a session and its history (--yes to skip asking)
 
 # Automation
 beddcode schedule add "every 30m" "check the build"   # or a cron: "0 9 * * 1-5" (ls, runs, run, pause, resume, rm)
+beddcode schedule add --watch "src/**/*.ts" "run the tests"  # fires when matching files change (--debounce 10 = minutes)
 beddcode projects add .      # add this folder to BeddCode;  beddcode open . also opens the app
 beddcode alert test          # send a test phone alert
 beddcode hosts add <address> <code>   # talk to another machine's host; then pass --host <name>
+beddcode previews            # local preview URLs seen in terminal output (dev servers), all hosts
 
 # This machine
 beddcode status              # is the host on this machine running, and which version
+beddcode stats               # what the host has been doing: sessions, turns, storage (--json; the host also serves GET /metrics in Prometheus format)
+beddcode gc --dry-run        # housekeeping: what would go (sessions quiet for --days, stale worktrees, old attachments)
+beddcode gc --yes            # remove them, plus vacuum the log; retention-days sweeps this daily
+beddcode previews            # local preview URLs dev servers printed in terminals (--json); the Terminal tab also has an Open preview button
 beddcode doctor              # check git, agent CLIs, GitHub, Tailscale and the host; says how to fix each
 beddcode pair                # a one-time code to pair a phone or another computer
 beddcode devices             # paired devices;  beddcode revoke <device> removes one
@@ -199,6 +216,8 @@ In **Git → PR**, choose a base branch and click **Generate PR draft**. The dra
 
 Git drafts keep the selected model but use lower reasoning settings where supported. Claude draft jobs disable extended thinking; Codex uses an advertised minimal/low effort; ACP agents use a lower reasoning choice when they offer one. Conversation settings are unchanged. Context preparation resolves Git metadata once per batch and reads up to four file diffs concurrently; the stale-change check still runs before returning the draft.
 
+Long diffs load 600 lines at a time: **Git → Changes** shows **Load more** under a diff that is cut off (`git.diff` takes `offset` and `maxLines`).
+
 **Folder scripts.** Each added folder can keep up to 20 named commands (install, dev server, tests…). They appear as buttons at the top of the **Terminal** pane; one click runs the command in a new terminal titled with the script's name, in the session's own folder or worktree. **Edit** changes them inline. Scripts marked **On new worktree** run by themselves in the new worktree when a session creates one, for example to install dependencies. They are saved on the host with the folder (`projects.setScripts`).
 
 ### Panes
@@ -227,6 +246,8 @@ Sessions with a default name use the first message as their title. Use the conve
 
 ### ACP agents
 
+**Found on this machine.** Add agent lists the ACP agents it detects on the host's PATH (Gemini CLI, Cursor, Copilot, Goose, Qwen, Kimi, Kiro and about twenty more; `agents.known`) and fills in their launch command in one click. Launch commands, an older-Gemini `--experimental-acp` fallback and startup hints (Gemini sign-in, old Copilot) are adapted from [acpx](https://github.com/openclaw/acpx) (MIT).
+
 Open **Settings → Agents** to see the agents on a host. Choose a host, refresh detection after installing or signing in to a CLI, or add an agent from the ACP registry. **Custom agent** accepts an executable, one argument per line, and optional environment variables. Commands run on the selected host; adding one does not start a session. Removing an agent keeps its CLI and existing session history.
 
 Set the default agent, model, reasoning effort, and permission mode from the options that agent reports. Defaults are saved in this app separately for each host and apply to new sessions. Existing sessions keep their choices. Unavailable agents and unsupported saved options fall back to the agent's current defaults.
@@ -245,11 +266,11 @@ Any agent that speaks the [Agent Client Protocol](https://agentclientprotocol.co
 - **Continue with another agent.** The conversation's **… → Continue with another agent** opens the new-session composer in the same folder with a short summary of the session (what you asked, replies, commands, changed files, plan). Pick Claude, Codex or an ACP agent and send it, edited as you like.
 - **Typing before the host is ready.** Pressing Enter while the composer is still connecting, the agent is loading or the folder is being read no longer drops the message: the composer shows "Sends as soon as …" and sends once it can. Escape or **Cancel** stops it.
 - **Fork, resume, history.** Fork a session from any finished turn. **Resume an earlier conversation** on the new-session screen lists what an agent keeps on its host, including conversations started in its own CLI, and brings one in as a session. Claude, Codex and ACP agents that list their sessions are supported.
-- **Agents managing agents.** The new-session chip **Can start agents** (off by default) gives that session BeddCode's tools over a loopback MCP bridge: `start_session`, `send_message`, `get_status`, `read_transcript`, `wait_for`, `stop`, `list_children`. Works with Claude, Codex and ACP agents, across providers. A child never gets looser permissions than its parent; sessions nest 2 deep, with at most 5 children running and 10 in total. The calls show as cards in the transcript that fold to one line (who was started, its task, live status, the result), a child shows a **Started by** banner with a way back, and the parent shows a bar of its children above the composer. Children appear nested under their parent in the sidebar, and their approvals come to you. A child of a **No project** session stays without a project.
+- **Agents managing agents.** The new-session chip **Can start agents** (off by default) gives that session BeddCode's tools over a loopback MCP bridge: `start_session`, `run_subagent` (start a bounded child and wait for its answer in one call), `send_message`, `get_status`, `read_transcript`, `wait_for`, `stop`, `list_children`. Works with Claude, Codex and ACP agents, across providers. A child never gets looser permissions than its parent; sessions nest 2 deep, with at most 5 children running and 10 in total. The calls show as cards in the transcript that fold to one line (who was started, its task, live status, the result), a child shows a **Started by** banner with a way back, and the parent shows a bar of its children above the composer. Children appear nested under their parent in the sidebar, and their approvals come to you. A child of a **No project** session stays without a project.
 - **Browser use.** The chip **Can use browser** (off by default, desktop app) gives an agent `browser_*` tools (tabs, navigate, snapshot, click, type, scroll, screenshot, console, …) that run in tabs of the agent's own. You can take over, stop it or let it continue from a banner; form sends to non-local hosts and JavaScript ask first, depending on the permission mode.
 - **Scheduled prompts.** **Settings → Schedules** (per host): run every N minutes or on a cron expression, either starting a fresh session (agent, model, permissions, folder, optional worktree) or sending a heartbeat to an existing one. Schedules run on the host with every app closed and keep a run history; pause, resume or run one now. A run is skipped while the previous one is going, and missed runs are not backfilled.
 - **Phone alerts.** **Settings → Phone alerts** (per host): the host sends a push to paired phones when a turn finishes, an agent needs you, a turn fails or a scheduled run finishes; each phone picks its events, and tapping one opens the session. Push needs a Firebase `google-services.json` and an EAS project (see the Android section); an optional [ntfy](https://ntfy.sh) topic works without either. Desktop and web keep their OS notifications.
-- **Tools & MCP.** Settings → Tools & MCP lists, adds and removes MCP servers by running the agent's own CLI (`claude mcp`, `codex mcp`), so its own config files stay the single source.
+- **Tools & MCP.** Settings → Tools & MCP lists, adds and removes MCP servers by running the agent's own CLI (`claude mcp`, `codex mcp`), so its own config files stay the single source. Each server has a **policy per project** (shield button): switch it off for that project, allow only some tools, or always deny some. Policies are kept by BeddCode (`mcp.policy.list` / `mcp.policy.set`), shown on the server list and enforced when BeddCode tests a server.
 - **Commands and skills.** Typing `/` in the composer lists the agent's slash commands and skills (Claude's live list, Codex skills, an ACP agent's available commands).
 - **ACP extras.** Agents' own settings (model, reasoning effort, modes, commands) appear in the composer, including on the new-session screen: the host starts the agent once to read them (`agents.preview`) and remembers the answer, so custom commands such as `grok agent stdio` get the same picker as any registry agent. Choices made there are applied as the session starts. Pictures go to agents that accept images; start-up has timeouts and failures include the agent's last stderr line.
 

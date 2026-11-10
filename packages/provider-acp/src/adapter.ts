@@ -3,9 +3,12 @@ import type { ProviderCapabilities, ProviderInstance, SessionEvent } from '@bedd
 import type { ProviderAdapter } from '@beddcode/provider-core'
 import { generateSessionText } from '@beddcode/provider-core'
 import { randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
+import { statSync } from 'node:fs'
 import {
   createLogger,
   resolveExecutable,
+  runCommand,
   spawnTransport,
   type Logger,
   type SupervisorClient,
@@ -17,6 +20,7 @@ import { acpTransport } from './supervised.ts'
 import { AcpEventMapper, toConfigOptions } from './mapper.ts'
 import { approvalSetup } from './permissions.ts'
 import { profileFor } from './profiles.ts'
+import { geminiArgs, isDevinAcp, isGeminiAcp, startupHint } from './launch.ts'
 import { listAcpSessions, readAcpSession, withAcpAgent } from './history.ts'
 
 /**
@@ -105,6 +109,20 @@ export function createAcpAdapter(options: AcpAdapterOptions): ProviderAdapter {
     },
     detect: async () => options.store.list().map(toInstance),
     capabilities: () => acpCapabilities,
+    previewCacheKey(instanceId) {
+      const config = requireConfig(instanceId)
+      const executable = resolveExecutable(config.command, { ...process.env, ...config.env })
+      let identity = ''
+      try {
+        const stat = statSync(executable ?? config.command)
+        identity = `${stat.size}:${stat.mtimeMs}:${stat.ino}`
+      } catch {
+        /* unavailable */
+      }
+      return createHash('sha256')
+        .update(JSON.stringify({ config, executable, identity }))
+        .digest('hex')
+    },
     /**
      * Starts the agent just long enough to read what a session offers, then stops it. The agent
      * only says so in answer to `session/new`, and its command list follows a moment later.
@@ -136,16 +154,21 @@ export function createAcpAdapter(options: AcpAdapterOptions): ProviderAdapter {
             .catch(() => {})
         }
         const commands = events.findLast((e) => e.type === 'session.commands')
+        const updatedConfig = events.findLast((e) => e.type === 'session.config')
+        const updatedModes = events.findLast((e) => e.type === 'session.modes')
         const setup = approvalSetup(
           res.modes,
           toConfigOptions(res.configOptions),
           profileFor(config.command),
         )
         return {
-          modes: setup.modes,
-          currentModeId: setup.current,
-          config: setup.rest,
+          modes: updatedModes?.type === 'session.modes' ? updatedModes.modes : setup.modes,
+          currentModeId:
+            updatedModes?.type === 'session.modes' ? updatedModes.currentModeId : setup.current,
+          config: updatedConfig?.type === 'session.config' ? updatedConfig.options : setup.rest,
           commands: commands?.type === 'session.commands' ? commands.commands : [],
+          observedAt: Date.now(),
+          snapshot: true,
         }
       })
     },
@@ -170,7 +193,7 @@ export function createAcpAdapter(options: AcpAdapterOptions): ProviderAdapter {
       if (!config) throw new Error(`Unknown ACP agent: ${instanceId}`)
       // Agents we know start in the chosen mode by their own flags, whatever their config says.
       const profile = profileFor(config.command)
-      const launched = profile?.launchArgs
+      let launched = profile?.launchArgs
         ? profile.launchArgs(config.args, input.permissionMode)
         : config.args
       const launchedMode =
@@ -179,6 +202,13 @@ export function createAcpAdapter(options: AcpAdapterOptions): ProviderAdapter {
           : undefined
       const command = resolveExecutable(config.command) ?? config.command
       const env = input.textOnly ? probeEnvironment(config.env) : { ...process.env, ...config.env }
+      if (isGeminiAcp(command, launched)) {
+        // Older Gemini CLIs only know --experimental-acp.
+        const version = await runCommand(command, ['--version'], { env, timeoutMs: 2000 }).catch(
+          () => undefined,
+        )
+        launched = geminiArgs(launched, version?.stdout)
+      }
       const transport =
         options.createTransport?.({ ...config, args: launched }, input.cwd) ??
         (await acpTransport({
@@ -197,6 +227,8 @@ export function createAcpAdapter(options: AcpAdapterOptions): ProviderAdapter {
         label: config.label,
         profile,
         launchedMode,
+        startupHint: startupHint(config.command, launched, env),
+        devin: isDevinAcp(config.command, launched),
       })
     },
   }

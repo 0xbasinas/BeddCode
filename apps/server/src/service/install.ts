@@ -224,7 +224,7 @@ export async function serviceInstalled(
 export function currentCommand(): string[] {
   const entry = process.argv[1]
   if (!entry) throw new Error('Cannot tell how this server was started')
-  return [process.execPath, ...process.execArgv, path.resolve(entry)]
+  return [process.execPath, '--max-old-space-size=2048', ...process.execArgv, path.resolve(entry)]
 }
 
 async function execute(

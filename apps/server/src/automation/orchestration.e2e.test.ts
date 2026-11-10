@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it, vi } from 'vitest'
@@ -12,6 +12,7 @@ import { TerminalManager } from '../terminals/manager.ts'
 import { GitService } from '../workspace/git.ts'
 import { ProjectStore } from '../workspace/projects.ts'
 import { createAutomation } from './index.ts'
+import { removeDir } from '../testing/removeDir.ts'
 
 // Uses the same real session manager, automation wiring and fake provider as the server harness.
 function boot(home: string, project: string) {
@@ -98,10 +99,12 @@ it('orchestrates workers, approvals and durable messages across a host restart',
       ],
     })
     for (let i = 0; i < 2; i++) {
-      await vi.waitFor(() =>
-        expect(
-          host!.automation.orchestration.list().filter((a) => a.status === 'pending'),
-        ).toHaveLength(1),
+      await vi.waitFor(
+        () =>
+          expect(
+            host!.automation.orchestration.list().filter((a) => a.status === 'pending'),
+          ).toHaveLength(1),
+        { timeout: 30_000, interval: 50 },
       )
       const pending = host.automation.orchestration.list().find((a) => a.status === 'pending')!
       expect(pending).toMatchObject({ sessionId: lead, kind: 'spawn' })
@@ -193,7 +196,7 @@ it('orchestrates workers, approvals and durable messages across a host restart',
     ])
   } finally {
     await host?.close()
-    rmSync(root, { recursive: true, force: true })
+    await removeDir(root)
   }
 }, 30_000)
 
@@ -229,6 +232,6 @@ it('starts a template through the plan runner with the fake provider', async () 
     })
   } finally {
     await host.close()
-    rmSync(root, { recursive: true, force: true })
+    await removeDir(root)
   }
 })

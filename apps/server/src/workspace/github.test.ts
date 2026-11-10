@@ -86,6 +86,38 @@ describe('GithubService.pullRequest', () => {
     expect(pr).toMatchObject({ number: 9, state: 'MERGED' })
   })
 
+  it("returns the session's branch's pull request, not the folder's newest one", async () => {
+    const view = ok(
+      JSON.stringify({
+        number: 24,
+        title: 'Newer work',
+        url: 'https://github.com/o/r/pull/24',
+        state: 'OPEN',
+        isDraft: false,
+        headRefName: 'beddcode/new',
+        baseRefName: 'main',
+      }),
+    )
+    const list = ok(
+      JSON.stringify([
+        {
+          number: 9,
+          title: 'Old session work',
+          url: 'https://github.com/o/r/pull/9',
+          state: 'MERGED',
+          isDraft: false,
+          headRefName: 'beddcode/old',
+          baseRefName: 'main',
+        },
+      ]),
+    )
+    const { gh, calls } = service((args) => (args[1] === 'list' ? list : view))
+    const pr = await gh.pullRequest('/no/such/folder', { branch: 'beddcode/old' })
+    expect(pr).toMatchObject({ number: 9, state: 'MERGED', headBranch: 'beddcode/old' })
+    expect(calls[0]).toEqual(['pr', 'view', '--json', expect.any(String)])
+    expect(calls[1]?.slice(0, 4)).toEqual(['pr', 'list', '--head', 'beddcode/old'])
+  })
+
   it('explains sign-in, missing remote and missing CLI problems', async () => {
     const auth = service(() => fail('To get started with GitHub CLI, please run:  gh auth login'))
     await expect(auth.gh.pullRequest('/r')).rejects.toThrow('gh auth login')

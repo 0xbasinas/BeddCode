@@ -972,9 +972,17 @@ export class SessionManager {
         this.appendUserMessage(sessionId, text, attachments)
         return { state: 'steered' }
       } catch (err) {
+        if (err && typeof err === 'object' && 'deliveryUnknown' in err && err.deliveryUnknown)
+          throw err
         // Some turns cannot take extra input (a compaction, a review); wait for the next one.
         this.deps.log.warn(`could not steer ${sessionId}; queueing instead`, err)
       }
+    }
+    // The running turn can finish while the steering request is in flight. Its normal queue
+    // drain has already happened in that case, so start this follow-up rather than strand it.
+    if (!turn.busy && turn.queue.length === 0) {
+      await this.startTurn(sessionId, live, text, attachments)
+      return { state: 'started' }
     }
     const queueId = randomUUID()
     this.deps.store.append({
@@ -1072,6 +1080,12 @@ export class SessionManager {
         this.dequeued(sessionId, queueId, 'steered')
         this.appendUserMessage(sessionId, item.text, item.attachments)
       } catch (err) {
+        if (err && typeof err === 'object' && 'deliveryUnknown' in err && err.deliveryUnknown) {
+          // Do not automatically send a queued message again when the agent may have accepted it.
+          this.dequeued(sessionId, queueId, 'steered')
+          this.appendUserMessage(sessionId, item.text, item.attachments)
+          throw err
+        }
         turn.queue.unshift(item)
         throw err
       }
@@ -2353,15 +2367,19 @@ export class SessionManager {
    * What an agent offers before a session exists. Claude and Codex answer from their capabilities;
    * ACP agents are probed once and remembered (a real session seeds the same cache).
    */
-  async previewAgent(instanceId: string, cwd?: string): Promise<AgentPreview> {
+  async previewAgent(instanceId: string, cwd?: string, refresh = false): Promise<AgentPreview> {
     const { adapter, instance } = await this.findInstance(instanceId)
-    const cached = this.deps.previews?.get(instance.id)
+    const folder = cwd ?? (await this.scratchFolder('_preview'))
+    const key = adapter.previewCacheKey
+      ? `${instance.id}:${adapter.previewCacheKey(instance.id)}:${path.resolve(folder)}`
+      : instance.id
+    const cached = refresh ? undefined : this.deps.previews?.get(key)
     if (cached) {
       // Agents update themselves (Grok does), so an old answer is checked again: the fresh one is
       // used when it comes quickly, else the old one now and the fresh one next time.
-      const age = this.deps.previews?.ageOf(instance.id) ?? 0
+      const age = this.deps.previews?.ageOf(key) ?? 0
       if (!adapter.preview || age <= PREVIEW_REFRESH_MS) return cached
-      const fresh = this.refreshPreview(instance.id, cwd)
+      const fresh = this.refreshPreview(instance.id, folder, key)
       const late = new Promise<undefined>((resolve) => {
         setTimeout(() => resolve(undefined), PREVIEW_REFRESH_WAIT_MS).unref?.()
       })
@@ -2378,26 +2396,25 @@ export class SessionManager {
           )) ?? [],
       }
     }
-    const preview = await adapter.preview(
-      instance.id,
-      cwd ?? (await this.scratchFolder('_preview')),
-    )
-    this.deps.previews?.set(instance.id, preview)
+    const preview = await adapter.preview(instance.id, folder)
+    this.deps.previews?.set(key, preview)
     return preview
   }
 
   private readonly refreshing = new Map<string, Promise<AgentPreview | undefined>>()
   /** Probes an agent again and remembers the answer; one probe per agent at a time. */
-  private refreshPreview(instanceId: string, cwd?: string): Promise<AgentPreview | undefined> {
-    const running = this.refreshing.get(instanceId)
+  private refreshPreview(
+    instanceId: string,
+    cwd: string,
+    key: string,
+  ): Promise<AgentPreview | undefined> {
+    const running = this.refreshing.get(key)
     if (running) return running
     const probe = this.findInstance(instanceId)
-      .then(async ({ adapter }) =>
-        adapter.preview?.(instanceId, cwd ?? (await this.scratchFolder('_preview'))),
-      )
+      .then(async ({ adapter }) => adapter.preview?.(instanceId, cwd))
       .then(
         (preview) => {
-          if (preview) this.deps.previews?.set(instanceId, preview)
+          if (preview) this.deps.previews?.set(key, preview)
           return preview
         },
         (err: unknown) => {
@@ -2405,8 +2422,8 @@ export class SessionManager {
           return undefined
         },
       )
-      .finally(() => this.refreshing.delete(instanceId))
-    this.refreshing.set(instanceId, probe)
+      .finally(() => this.refreshing.delete(key))
+    this.refreshing.set(key, probe)
     return probe
   }
 
@@ -2429,7 +2446,17 @@ export class SessionManager {
     )
     if (!preview || this.live.get(sessionId)?.adapter.kind !== 'acp') return
     const created = this.createdEvent(sessionId)
-    if (created) previews.set(created.instanceId, preview)
+    if (created) {
+      try {
+        const adapter = this.live.get(sessionId)?.adapter
+        const key = adapter?.previewCacheKey
+          ? `${created.instanceId}:${adapter.previewCacheKey(created.instanceId)}:${path.resolve(created.cwd)}`
+          : created.instanceId
+        previews.set(key, preview)
+      } catch (err) {
+        this.deps.log.warn(`could not cache preview of ${created.instanceId}`, err)
+      }
+    }
   }
 
   async listCommands(instanceId: string, cwd?: string): Promise<SlashCommand[]> {

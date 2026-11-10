@@ -16,10 +16,16 @@ import { reportCmd } from './report.ts'
 import { completionScript, SHELLS } from './spec.ts'
 import { updateCmd } from './update.ts'
 import { parseArgs, num, str } from './args.ts'
+import { gcCmd } from './gc.ts'
+import { previewsCmd } from './previews.ts'
+import { statsCmd } from './stats.ts'
 import {
   approveCmd,
   attachCmd,
   lsCmd,
+  notesCmd,
+  renameCmd,
+  rmCmd,
   runCmd,
   sendCmd,
   stopCmd,
@@ -82,6 +88,12 @@ export const HANDLERS: Record<string, Handler> = {
   approve: approveCmd,
   undo: undoCmd,
   attach: attachCmd,
+  rename: (a, ctx) => renameCmd(a, ctx),
+  notes: (a, ctx) => notesCmd(a, ctx),
+  rm: (a, ctx) => rmCmd(a, ctx),
+  stats: (a, ctx) => statsCmd(a, ctx),
+  gc: (a, ctx) => gcCmd(a, ctx),
+  previews: (a, ctx) => previewsCmd(a, ctx),
   hosts: (a, ctx) => hostsCmd(a, ctx.io),
   config: (a, ctx) => Promise.resolve(configCmd(a, ctx.io)),
   metrics: (a, ctx) => metricsCmd(a, ctx.io),

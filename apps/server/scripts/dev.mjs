@@ -2,7 +2,7 @@
 // `node --watch`, but waits while an agent turn is running. An agent that edits this very code
 // finishes its step first; the reload then happens between turns. Past MAX_WAIT_MS it restarts
 // anyway and the interrupted turn resumes by itself on boot (see sessions/recovery.ts).
-// With the agent supervisor on (BEDDCODE_AGENT_SUPERVISOR=1 or `agentSupervisor` in config.json) a
+// The dev host turns the agent supervisor on by default (BEDDCODE_AGENT_SUPERVISOR=0 turns it off). With it on a
 // restart cannot interrupt a turn, since the agents keep running and the new host reattaches to
 // them: the reloader then restarts at once and does not wait (docs/agent-supervisor.md).
 //
@@ -32,6 +32,9 @@ let waitingSince
 function start() {
   const env = { ...process.env }
   delete env.WATCH_REPORT_DEPENDENCIES
+  // A dev reload must not cut off a running agent: keep agents under the supervisor so the new
+  // host reattaches and the turn carries on. Opt out with BEDDCODE_AGENT_SUPERVISOR=0.
+  env.BEDDCODE_AGENT_SUPERVISOR ??= '1'
   child = spawn(process.execPath, ['--import', 'tsx', 'src/main.ts', ...process.argv.slice(2)], {
     cwd: dir,
     stdio: 'inherit',

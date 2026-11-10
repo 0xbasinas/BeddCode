@@ -38,11 +38,13 @@ import { handleTunnel } from './tunnel.ts'
 import {
   createRpcRouter,
   type AutomationServices,
+  type OpsServices,
   type RpcContext,
   type WorkspaceServices,
   type AccessServices,
   type RelayControl,
 } from './rpc.ts'
+import type { HostMetrics } from '../telemetry/hostMetrics.ts'
 
 function parsePairRequest(body: unknown): { code: string; deviceName: string } | null {
   if (typeof body !== 'object' || body === null) return null
@@ -111,6 +113,10 @@ export interface StartServerOptions {
   /** Takes the host's own measurements (see Telemetry.record). */
   telemetryRecorder?: (name: string, value: number, tags?: Record<string, string>) => void
   automation: AutomationServices
+  /** Host self-monitoring, served at `/metrics` and over `host.stats`. */
+  metrics?: HostMetrics
+  /** Housekeeping (`host.gc`): removing old sessions, worktrees and attachments. */
+  ops?: OpsServices
   /** Answers BeddCode's agent tools for sessions that may use them (loopback only). */
   agentTools?: AgentTools
   /** Runs agents' browser tools on connected desktop apps. */
@@ -119,6 +125,11 @@ export interface StartServerOptions {
   designLink?: DesignLink
   /** Who may connect; defaults to this machine plus the tailnet, tokens for everyone else. */
   guard?: GuardOptions
+  /**
+   * Extra fields for `/health` (crash count, event-loop lag), so a supervisor can see how the
+   * host is doing without a websocket.
+   */
+  healthExtras?: () => Record<string, unknown>
   log: Logger
   /**
    * A connection silent for this long is closed. Clients ping every 15 s; past half of this one
@@ -147,6 +158,7 @@ export interface ConnSocket {
   terminate(): void
   ping(): void
   on(event: 'pong' | 'close', listener: () => void): unknown
+  on(event: 'error', listener: (err: unknown) => void): unknown
   on(event: 'message', listener: (raw: unknown) => void): unknown
 }
 
@@ -218,9 +230,10 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     },
     options.automation,
     store,
+    options.ops ?? (options.metrics ? { metrics: options.metrics } : {}),
   )
 
-  const http = createServer((req, res) => {
+  const http = createServer(async (req, res) => {
     const peer = classifyRequest(req.socket.remoteAddress, req.headers)
     const origin = req.headers.origin
     const url = (req.url ?? '').split('?')[0]
@@ -255,12 +268,37 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
             ? {
                 activeTurns: options.sessions.activeTurnCount(),
                 activeTools: options.sessions.activeToolCount(),
+                // Housekeeping hints (`beddcode doctor` reads these): how much the data folder
+                // weighs and which worktrees no session uses anymore.
+                ...(options.metrics ? { housekeeping: await options.metrics.storageHint() } : {}),
               }
             : {}),
           // The dev reloader restarts at once when a restart cannot interrupt a turn.
           supervised: options.supervised === true,
+          // How the host has been doing since it was installed: crashes it did not survive, and
+          // how blocked its event loop is right now (a hung host answers this late, or not at all).
+          ...(options.healthExtras ? options.healthExtras() : {}),
         }),
       )
+      return
+    }
+
+    // Prometheus scraping: this machine always, anyone else with a paired device's token.
+    if (url === '/metrics' && req.method === 'GET') {
+      if (!options.metrics) return void res.writeHead(404).end()
+      const token = req.headers.authorization?.startsWith('Bearer ')
+        ? req.headers.authorization.slice(7)
+        : undefined
+      if (needsToken(peer, guard) && !options.tokens.verify(token)) {
+        res.writeHead(401, { 'content-type': 'application/json' })
+        return void res.end(JSON.stringify({ error: 'A paired device token is required' }))
+      }
+      const body = await options.metrics.renderPrometheus()
+      res.writeHead(200, {
+        'content-type': 'text/plain; version=0.0.4; charset=utf-8',
+        'cache-control': 'no-store',
+      })
+      res.end(body)
       return
     }
 
@@ -337,9 +375,12 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     done(true)
   }
   // Direct connections squeeze what is big (a replay, a diff); small frames go as they are.
+  // A frame bigger than maxPayload is refused before it is read whole, so one giant message
+  // cannot balloon the host's memory.
   const wss = new WebSocketServer({
     noServer: true,
     verifyClient,
+    maxPayload: 64 * 1024 * 1024,
     perMessageDeflate: {
       threshold: 1024,
       serverNoContextTakeover: true,
@@ -348,7 +389,20 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     },
   })
   // The desktop app's port forwarding for its browser pane (see tunnel.ts).
-  const tunnels = new WebSocketServer({ noServer: true, verifyClient, perMessageDeflate: false })
+  const tunnels = new WebSocketServer({
+    noServer: true,
+    verifyClient,
+    maxPayload: 16 * 1024 * 1024,
+    perMessageDeflate: false,
+  })
+  // A broken listener or socket is logged, never thrown: an 'error' with no listener would stop
+  // the whole host over one connection.
+  wss.on('error', (err) => log.error(`websocket listener error: ${err.message}`))
+  tunnels.on('error', (err) => log.error(`tunnel listener error: ${err.message}`))
+  http.on('clientError', (err, socket) => {
+    log.debug(`bad client request: ${err.message}`)
+    socket.destroy()
+  })
   http.on('upgrade', (req, socket, head) => {
     const path = (req.url ?? '').split('?')[0]
     const server = path === '/ws' ? wss : path === '/tunnel' ? tunnels : null
@@ -356,32 +410,53 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n')
       return
     }
-    server.handleUpgrade(req, socket, head, (ws) => server.emit('connection', ws, req))
+    try {
+      server.handleUpgrade(req, socket, head, (ws) => server.emit('connection', ws, req))
+    } catch (err) {
+      log.debug(`websocket upgrade failed: ${String(err)}`)
+      socket.destroy()
+    }
   })
-  wss.on('connection', (ws, req) =>
-    handleConnection(
-      ws as unknown as ConnSocket,
-      classifyRequest(req.socket.remoteAddress, req.headers),
-    ),
-  )
-  tunnels.on('connection', (ws, req) =>
-    handleTunnel(ws, {
-      needsToken: needsToken(classifyRequest(req.socket.remoteAddress, req.headers), guard),
-      verifyToken: (token) => options.tokens.verify(token),
-      onRevoke: (listener) => options.tokens.onRevoke(listener),
-      ownPort: () => listeningPort,
-      log,
-    }),
-  )
+  wss.on('connection', (ws, req) => {
+    try {
+      handleConnection(
+        ws as unknown as ConnSocket,
+        classifyRequest(req.socket.remoteAddress, req.headers),
+      )
+    } catch (err) {
+      // Setting up one connection failed; that connection goes, the host stays.
+      log.error(`could not serve a connection: ${err instanceof Error ? err.message : String(err)}`)
+      ws.terminate()
+    }
+  })
+  tunnels.on('connection', (ws, req) => {
+    try {
+      handleTunnel(ws, {
+        needsToken: needsToken(classifyRequest(req.socket.remoteAddress, req.headers), guard),
+        verifyToken: (token) => options.tokens.verify(token),
+        onRevoke: (listener) => options.tokens.onRevoke(listener),
+        ownPort: () => listeningPort,
+        log,
+      })
+    } catch (err) {
+      log.error(`could not serve a tunnel: ${err instanceof Error ? err.message : String(err)}`)
+      ws.terminate()
+    }
+  })
 
   // A laptop that slept or a phone that lost its network leaves a socket that never closes on its
   // own; its subscriptions, terminals and watchers would stay attached. Close the silent ones.
   const idleMs = options.idleTimeoutMs ?? IDLE_TIMEOUT_MS
   const lastSeen = new Map<ConnSocket, number>()
+  options.metrics?.setWsClients(() => lastSeen.size)
   const updateClients = (message = 'Host is updating, back in a moment') => {
     for (const ws of lastSeen.keys()) {
-      if (ws.readyState === ws.OPEN)
+      if (ws.readyState !== ws.OPEN) continue
+      try {
         ws.send(JSON.stringify({ t: 'host.updating', message, version: VERSION }))
+      } catch {
+        // closing anyway; the close handler cleans up
+      }
     }
   }
   const sweep = setInterval(
@@ -411,8 +486,25 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       if (ws.readyState !== ws.OPEN) return
       // A stalled connection can resume from its last sequence rather than retain unlimited frames.
       if (ws.bufferedAmount > 32 * 1024 * 1024) return ws.terminate()
-      ws.send(JSON.stringify(frame))
+      try {
+        ws.send(JSON.stringify(frame))
+      } catch (err) {
+        // The socket died between the check and the write (ws throws when it is not open). One
+        // dead connection must not take the host down from inside a terminal or watcher callback.
+        log.debug(
+          `could not send to a connection: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
     }
+    // A socket error (reset, protocol violation) ends this connection only.
+    ws.on('error', (err: unknown) => {
+      log.debug(`connection error: ${err instanceof Error ? err.message : String(err)}`)
+      try {
+        ws.terminate()
+      } catch {
+        // already gone
+      }
+    })
     const stopOnRevoke = options.tokens.onRevoke((id) => {
       if (id !== deviceId) return
       authed = false
@@ -444,15 +536,26 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       backlog: () => ws.bufferedAmount,
     }
     ws.on('close', () => {
+      // Each release runs even if an earlier one throws: a bad cleanup must not leak the rest
+      // (subscriptions, watchers, terminals) or stop the host.
+      const release = (what: string, fn: () => void) => {
+        try {
+          fn()
+        } catch (err) {
+          log.error(
+            `could not release ${what}: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
+      }
       lastSeen.delete(ws)
-      stopOnRevoke()
-      unsubscribe?.()
-      terminalDetach.forEach((detach) => detach())
-      watching.forEach((release) => release())
-      browserClient?.close()
-      designClient?.close()
-      stopDesigns()
-      stopTerminals()
+      release('auth', stopOnRevoke)
+      if (unsubscribe) release('subscription', unsubscribe)
+      terminalDetach.forEach((detach, id) => release(`terminal ${id}`, detach))
+      watching.forEach((rel, cwd) => release(`watch ${cwd}`, rel))
+      if (browserClient) release('browser', () => browserClient.close())
+      if (designClient) release('design', () => designClient.close())
+      release('designs', stopDesigns)
+      release('terminals', stopTerminals)
     })
 
     ws.on('message', (raw) => {
@@ -464,7 +567,25 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
         ws.close(1003, 'invalid frame')
         return
       }
+      try {
+        handleFrame(frame)
+      } catch (err) {
+        // A handler threw (an unknown terminal, a socket that closed mid-send): answer the
+        // request if it was one, log it, and keep both this connection and the host alive.
+        log.error(
+          `error handling '${frame.t}': ${err instanceof Error ? err.message : String(err)}`,
+        )
+        if (frame.t === 'req')
+          send({
+            t: 'res',
+            id: frame.id,
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          })
+      }
+    })
 
+    function handleFrame(frame: ClientFrame) {
       if (!authed && frame.t === 'pair') {
         const outcome = options.pairing.redeem(frame.code)
         if (outcome === 'ok') {
@@ -623,13 +744,16 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
           break
         }
       }
-    })
+    }
   }
 
   await new Promise<void>((resolve, reject) => {
     http.once('error', reject)
     http.listen(options.port, options.host, resolve)
   })
+  // Once listening, a listener error (a socket that dies mid-handshake, say) is logged rather
+  // than thrown: an 'error' with no listener would stop the host.
+  http.on('error', (err) => log.error(`http listener error: ${err.message}`))
   const address = http.address()
   const port = typeof address === 'object' && address ? address.port : options.port
   listeningPort = port
@@ -638,7 +762,16 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
   return {
     port,
     hostInfo,
-    attach: handleConnection,
+    attach: (socket, peer) => {
+      try {
+        handleConnection(socket, peer)
+      } catch (err) {
+        log.error(
+          `could not serve an attached connection: ${err instanceof Error ? err.message : String(err)}`,
+        )
+        socket.terminate()
+      }
+    },
     notifyUpdating: updateClients,
     close: () =>
       new Promise<void>((resolve) => {

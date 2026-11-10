@@ -139,3 +139,47 @@ describe('schedule form', () => {
     expect(formToInput({ ...form, days: [] })).toEqual({ error: 'Pick at least one day' })
   })
 })
+
+describe('watch schedules', () => {
+  it('round-trips a watch trigger through the form', () => {
+    const form = {
+      ...emptyScheduleForm('codex'),
+      name: 'Tests on change',
+      prompt: 'run the tests',
+      repeat: 'watch' as const,
+      glob: 'src/**/*.ts',
+      debounceMinutes: '10',
+      cwd: '/proj',
+    }
+    const result = formToInput(form)
+    expect('error' in result).toBe(false)
+    if (!('error' in result)) {
+      expect(result.input.trigger).toEqual({
+        kind: 'watch',
+        glob: 'src/**/*.ts',
+        debounceMinutes: 10,
+      })
+    }
+    const saved: Schedule = {
+      id: 'w1',
+      name: 'Tests on change',
+      prompt: 'run the tests',
+      trigger: { kind: 'watch', glob: 'src/**/*.ts', debounceMinutes: 10 },
+      target: { kind: 'new', instanceId: 'codex', cwd: '/proj' },
+      paused: false,
+      createdAt: 0,
+    }
+    const back = scheduleToForm(saved)
+    expect(back.repeat).toBe('watch')
+    expect(back.glob).toBe('src/**/*.ts')
+    expect(back.debounceMinutes).toBe('10')
+    expect(describeTrigger(saved.trigger)).toContain('src/**/*.ts')
+  })
+
+  it('rejects an empty glob or a bad debounce', () => {
+    const base = { ...emptyScheduleForm('codex'), name: 'n', prompt: 'p', repeat: 'watch' as const }
+    expect('error' in formToInput({ ...base, glob: '  ' })).toBe(true)
+    expect('error' in formToInput({ ...base, glob: 'ok', debounceMinutes: '0' })).toBe(true)
+    expect('error' in formToInput({ ...base, glob: 'ok', debounceMinutes: '5' })).toBe(false)
+  })
+})

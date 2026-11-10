@@ -4,7 +4,7 @@ import type { AgentPreview, SessionEvent } from '@beddcode/contracts'
 const TTL_MS = 7 * 24 * 60 * 60_000
 
 /** Bumped when what a preview holds changes, so answers kept by an older version are dropped. */
-const VERSION = 2
+const VERSION = 3
 
 interface Stored {
   v?: number
@@ -66,8 +66,9 @@ export class PreviewCache {
 
   /** Forget an agent whose command or settings may have changed. */
   clear(instanceId: string) {
-    if (!(instanceId in this.entries)) return
-    delete this.entries[instanceId]
+    for (const key of Object.keys(this.entries)) {
+      if (key === instanceId || key.startsWith(`${instanceId}:`)) delete this.entries[key]
+    }
     this.save()
   }
 }

@@ -8,6 +8,24 @@ type ToolKind = 'command' | 'read' | 'edit' | 'search' | 'other'
 
 const MAX_OUTPUT = 4_000
 
+const TITLE_KINDS: [string, string[]][] = [
+  ['read', ['read', 'cat']],
+  ['search', ['search', 'find', 'grep']],
+  ['edit', ['write', 'edit', 'patch', 'delete', 'remove', 'move', 'rename']],
+  ['execute', ['run', 'execute', 'bash']],
+  ['fetch', ['fetch', 'http', 'url']],
+]
+
+/**
+ * The kind an agent that sent none most likely means, from the first word of the tool's title
+ * (`Read file.ts`, `bash: ls`). Adapted from acpx's `inferToolKind`.
+ */
+export function kindFromTitle(title: string | null | undefined): string | undefined {
+  const head = title?.trim().toLowerCase().split(/[:\s]/, 1)[0]
+  if (!head) return undefined
+  return TITLE_KINDS.find(([, names]) => names.includes(head))?.[0]
+}
+
 export function toolKind(kind: string | null | undefined): ToolKind {
   switch (kind) {
     case 'execute':
@@ -327,7 +345,7 @@ export class AcpEventMapper {
     if (!state) {
       state = {
         title: title ?? id,
-        kind: toolKind(kind),
+        kind: toolKind(kind ?? kindFromTitle(title)),
         done: false,
         diffs: new Map(),
         input,

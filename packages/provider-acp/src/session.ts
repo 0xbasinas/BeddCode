@@ -30,10 +30,21 @@ import {
   modelOptionFromState,
   type AskedQuestions,
 } from './questions.ts'
+import {
+  DEVIN_CAPABILITIES_META,
+  DEVIN_CLIENT,
+  PROMPT_RETRIES,
+  isStartupFailure,
+  isTransientPromptError,
+  promptRetryDelayMs,
+} from './launch.ts'
+import { isInsideFolder } from './confine.ts'
+import { isSessionNotFound } from './errors.ts'
 import { AcpEventMapper, toConfigOptions } from './mapper.ts'
 import { allowOption, approvalSetup, isHostTool, type ModeSource } from './permissions.ts'
 import type { AgentProfile } from './profiles.ts'
 import { promptUsage, usageEvents } from './usage.ts'
+import { safeAdvertised } from './capabilityReport.ts'
 import { TerminalManager } from './terminals.ts'
 
 type Draft<E = SessionEvent> = E extends unknown ? Omit<E, 'sessionId' | 'at' | 'turnId'> : never
@@ -124,6 +135,10 @@ export interface AcpSessionDeps {
   profile?: AgentProfile
   /** The mode the agent was started in by its launch flags, so it does not have to be switched. */
   launchedMode?: string
+  /** What to add to a failure to start (a timeout, or the process ending) for this agent. */
+  startupHint?: string
+  /** The agent is Devin, which only talks to clients that look like the Windsurf IDE. */
+  devin?: boolean
 }
 
 interface SetupResponse {
@@ -187,6 +202,8 @@ export class AcpSession implements ProviderSession {
   private endTurn: (() => void) | undefined
   private canSendImages = false
   private canCloseSession = false
+  /** Present only when the agent advertises its pre-standard steering extension. */
+  steer?: (input: PromptInput) => Promise<void>
   /** The agent's process when the supervisor owns it. */
   private readonly supervised: SupervisedTransport | undefined
   /** This session took over an agent that was already running (and maybe mid-turn). */
@@ -244,7 +261,11 @@ export class AcpSession implements ProviderSession {
       : `${this.deps.label} stopped unexpectedly`
   }
 
+  /** Counts what the agent and we have done in the turn, so a retry knows nothing happened yet. */
+  private activity = 0
+
   private emit(draft: Draft, turnId?: string) {
+    if (draft.type !== 'turn.started') this.activity++
     this.queue.push({ ...draft, sessionId: this.sessionId, turnId, at: Date.now() } as SessionEvent)
   }
 
@@ -263,13 +284,16 @@ export class AcpSession implements ProviderSession {
                 elicitation: { form: {} },
                 // We map and send boolean configuration options in the composer.
                 session: { configOptions: { boolean: {} } },
+                ...(this.deps.devin ? { _meta: DEVIN_CAPABILITIES_META } : {}),
               },
           ...(this.deps.hooks?.initializeMeta ? { _meta: this.deps.hooks.initializeMeta } : {}),
-          clientInfo: {
-            name: 'beddcode',
-            title: 'BeddCode',
-            version: this.deps.clientVersion ?? '0.0.0',
-          },
+          clientInfo: this.deps.devin
+            ? DEVIN_CLIENT
+            : {
+                name: 'beddcode',
+                title: 'BeddCode',
+                version: this.deps.clientVersion ?? '0.0.0',
+              },
         },
         { timeoutMs: INIT_TIMEOUT },
       )
@@ -280,6 +304,14 @@ export class AcpSession implements ProviderSession {
       }
 
       const caps = init.agentCapabilities
+      this.emit({
+        type: 'session.capabilities',
+        raw: safeAdvertised({ agentCapabilities: caps, _meta: init._meta }),
+      })
+      const steering = (init._meta as { steering?: { supported?: boolean } } | null | undefined)
+        ?.steering
+      if (steering?.supported === true) this.steer = (input) => this.sendSteering(input)
+      this.emit({ type: 'session.steering', supported: steering?.supported === true })
       this.canCloseSession = caps?.sessionCapabilities?.close != null
       this.canSendImages = caps?.promptCapabilities?.image === true
       this.authMethods = (init.authMethods ?? []).map((m) => m.name)
@@ -458,8 +490,9 @@ export class AcpSession implements ProviderSession {
     ) {
       return `${this.deps.label} needs you to sign in (${this.authMethods.join(' or ')}). Do that with the agent itself, then try again.`
     }
-    if (/ended|closed|stopped/i.test(message)) return this.endMessage()
-    return message
+    const plain = /ended|closed|stopped/i.test(message) ? this.endMessage() : message
+    const hint = this.deps.startupHint
+    return hint && !this.acpSessionId && isStartupFailure(plain) ? `${plain} ${hint}` : plain
   }
 
   /** A session setup request, tried again when the agent's session storage is not ready yet. */
@@ -491,8 +524,16 @@ export class AcpSession implements ProviderSession {
     } catch (err) {
       const message = describeRpcError(err)
       const code = err instanceof JsonRpcError ? err.code : undefined
+      // The agent process still holds this conversation (a host restart reattached to it, or an
+      // earlier open timed out after succeeding): it is open, which is all a reopen wants. Some
+      // agents (Mistral Vibe) refuse to open it a second time instead of answering again.
+      if (/already (open|loaded|active|exists)/i.test(message)) {
+        this.deps.log.info(`${this.deps.label} already has ${this.acpSessionId} open; carrying on`)
+        return {} as T
+      }
       if (
         isStorageNotFound(err) ||
+        isSessionNotFound(err) ||
         code === -32002 ||
         /not found|no such file|does not exist|os error 2|ENOENT/i.test(message)
       ) {
@@ -596,16 +637,14 @@ export class AcpSession implements ProviderSession {
     this.startWatchdog(turnId)
 
     try {
-      const request = this.rpc.request<{ stopReason: string; _meta?: unknown; usage?: unknown }>(
-        'session/prompt',
-        {
-          sessionId: this.acpSessionId,
-          prompt: [
-            { type: 'text', text: await this.promptText(input.text) },
-            ...(await this.imageBlocks(input.attachments)),
-          ],
-        },
-      )
+      const params = {
+        sessionId: this.acpSessionId,
+        prompt: [
+          { type: 'text', text: await this.promptText(input.text) },
+          ...(await this.imageBlocks(input.attachments)),
+        ],
+      }
+      const request = this.promptWithRetry(params, turnId)
       const res = await Promise.race([request, forced])
       if (res === 'forced') return
       // What the turn used, when the agent says; counted even if the turn was cut short.
@@ -629,6 +668,64 @@ export class AcpSession implements ProviderSession {
       this.stopWatchdog()
       this.endTurn = undefined
     }
+  }
+
+  /**
+   * Sends `session/prompt`, and sends it again after a transient agent error (a failed model call)
+   * as long as the turn has had no effect yet, so a retry cannot repeat any work.
+   */
+  private async promptWithRetry(params: Obj, turnId: string) {
+    for (let attempt = 0; ; attempt++) {
+      const before = this.activity
+      try {
+        return await this.rpc.request<{ stopReason: string; _meta?: unknown; usage?: unknown }>(
+          'session/prompt',
+          params,
+        )
+      } catch (err) {
+        const retry =
+          attempt < PROMPT_RETRIES &&
+          isTransientPromptError(err) &&
+          this.activity === before &&
+          this.inflightTurn === turnId &&
+          !this.closed
+        if (!retry) throw err
+        this.deps.log.warn(`${this.deps.label} failed the prompt, retrying`, err)
+        await new Promise((resolve) => setTimeout(resolve, promptRetryDelayMs(attempt)))
+        if (this.inflightTurn !== turnId || this.closed || this.activity !== before) throw err
+      }
+    }
+  }
+
+  private async sendSteering(input: PromptInput): Promise<void> {
+    await this.ready
+    const turnId = this.inflightTurn
+    if (!turnId || !this.acpSessionId || this.closed) throw new Error('No running turn to steer')
+    const prompt = [
+      { type: 'text', text: await this.promptText(input.text) },
+      ...(await this.imageBlocks(input.attachments)),
+    ]
+    if (this.inflightTurn !== turnId) throw new Error('The turn ended before steering was sent')
+    let result: { outcome?: string }
+    try {
+      result = await this.rpc.request<{ outcome?: string }>('_session/steering', {
+        sessionId: this.acpSessionId,
+        prompt,
+        _meta: { steering: { idleBehavior: 'promptRequired' } },
+      })
+    } catch (cause) {
+      throw Object.assign(new Error('Steering delivery could not be confirmed', { cause }), {
+        deliveryUnknown: true,
+      })
+    }
+    if (result?.outcome === 'startedNewTurn') return
+    if (result?.outcome === 'promptRequired') {
+      throw new Error(`Steering was not injected: ${result?.outcome ?? 'unknown outcome'}`)
+    }
+    if (result?.outcome !== 'injected')
+      throw Object.assign(new Error('Steering delivery returned an unknown outcome'), {
+        deliveryUnknown: true,
+      })
   }
 
   /** The turn's end, from the answer to `session/prompt` (ours, or the previous host's). */
@@ -900,12 +997,17 @@ export class AcpSession implements ProviderSession {
     if (isProgress(update.sessionUpdate)) this.lastProgressAt = Date.now()
     for (const event of this.mapper.map(update)) {
       if (event.type === 'session.config' && this.modelState) {
+        this.activity++
         this.queue.push({ ...event, options: this.withModel(event.options) })
-      } else this.queue.push(event)
+      } else {
+        this.activity++
+        this.queue.push(event)
+      }
     }
   }
 
   private async onClientRequest(method: string, params: unknown): Promise<unknown> {
+    this.activity++
     if (this.input.textOnly) {
       const message =
         'The agent requested a tool or question while generating text. Try another agent.'
@@ -933,6 +1035,9 @@ export class AcpSession implements ProviderSession {
 
       case 'fs/read_text_file': {
         const file = this.absolute(p.path)
+        // Reading outside the folder is allowed (shared config, a sibling worktree) but noted.
+        if (!(await isInsideFolder(this.input.cwd, file)))
+          this.deps.log.info(`${this.deps.label} read ${file}, outside the session folder`)
         const text = await readFile(file, 'utf8').catch(fileError)
         const line = typeof p.line === 'number' ? Math.max(1, p.line) : 1
         const limit = typeof p.limit === 'number' ? p.limit : undefined
@@ -942,6 +1047,9 @@ export class AcpSession implements ProviderSession {
       }
       case 'fs/write_text_file': {
         const file = this.absolute(p.path)
+        // Writes stay in the session folder (or its worktree), symlinks followed; one outside it
+        // needs the user's say-so.
+        if (!(await isInsideFolder(this.input.cwd, file))) await this.allowOutsideWrite(file)
         await mkdir(path.dirname(file), { recursive: true }).catch(fileError)
         await writeFile(file, String(p.content ?? ''), 'utf8').catch(fileError)
         return {}
@@ -1022,6 +1130,50 @@ export class AcpSession implements ProviderSession {
         this.currentTurn(),
       )
     })
+  }
+
+  /** Folders outside the session folder the user let the agent write in, for this session. */
+  private readonly writableOutside = new Set<string>()
+
+  /**
+   * An agent wants to write a file outside the session folder through `fs/write_text_file`. The
+   * user decides: this time only, anywhere in that file's folder for the rest of the session, or
+   * not at all. A session that approves everything lets it through (the user chose that); one that
+   * cannot ask (text-only) refuses. Returns when allowed, throws when not.
+   */
+  private async allowOutsideWrite(file: string): Promise<void> {
+    const folder = path.dirname(file)
+    const refuse = () =>
+      new JsonRpcError(
+        -32602,
+        `Writes are limited to the session folder (${this.input.cwd}); ${file} is outside it`,
+      )
+    if (this.approveAll) {
+      this.deps.log.info(`${this.deps.label} wrote ${file}, outside the session folder`)
+      return
+    }
+    if (this.input.textOnly) throw refuse()
+    for (const allowed of this.writableOutside) if (await isInsideFolder(allowed, file)) return
+
+    const options = [
+      { optionId: 'write-once', name: 'Allow this write', kind: 'allow_once' },
+      { optionId: 'write-folder', name: `Allow writes in ${folder}`, kind: 'allow_always' },
+      { optionId: 'write-deny', name: 'Deny', kind: 'reject_once' },
+    ] as PermissionOption[]
+    const answer = (await this.askPermission({
+      sessionId: this.acpSessionId ?? '',
+      toolCall: {
+        toolCallId: '',
+        title: `Write ${path.basename(file)} outside the project`,
+        kind: 'edit',
+        locations: [{ path: file }],
+        rawInput: { file_path: file },
+      },
+      options,
+    } as RequestPermissionRequest)) as { outcome: { outcome: string; optionId?: string } }
+    const chosen = answer.outcome.outcome === 'selected' ? answer.outcome.optionId : undefined
+    if (chosen === 'write-folder') this.writableOutside.add(folder)
+    else if (chosen !== 'write-once') throw refuse()
   }
 
   private absolute(value: unknown): string {

@@ -284,6 +284,11 @@ function FileDiffView({
   // Reloads when the file's status changes, and on the same interval as the list, so an edit
   // that keeps the line counts the same still shows up.
   const diff = usePolled(() => hostRequest(hostKey, 'git.diff', { cwd, path }), refreshKey)
+  // Further pages of a long patch, dropped whenever the diff itself is reloaded.
+  const [more, setMore] = useState<{ key: string; patch: string; next?: number }>()
+  const [moreError, setMoreError] = useState<string>()
+  const [loadingMore, setLoadingMore] = useState(false)
+  const extra = more && more.key === refreshKey ? more : undefined
   if (diff.loading) return <div className="muted diff-note">Loading…</div>
   if (diff.error || !diff.data)
     return (
@@ -297,7 +302,27 @@ function FileDiffView({
         {openError && <div role="alert">{openError}</div>}
       </div>
     )
-  const incomplete = diff.data.truncated
+  const nextOffset = extra ? extra.next : diff.data.nextOffset
+  const loadMore = async () => {
+    if (nextOffset === undefined) return
+    setLoadingMore(true)
+    setMoreError(undefined)
+    try {
+      const page = await hostRequest(hostKey, 'git.diff', { cwd, path, offset: nextOffset })
+      setMore({
+        key: refreshKey,
+        patch: `${extra?.patch ?? ''}\n${page.patch}`,
+        next: page.nextOffset,
+      })
+    } catch (err) {
+      setMoreError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+  const patch = extra ? `${diff.data.patch}${extra.patch}` : diff.data.patch
+  // With more pages to fetch, the diff is not really incomplete yet.
+  const incomplete = diff.data.truncated && nextOffset === undefined
   return (
     <>
       {incomplete && (
@@ -322,7 +347,22 @@ function FileDiffView({
           {openError}
         </div>
       )}
-      {diff.data.patch && <PatchView patch={diff.data.patch} review={review} />}
+      {patch && <PatchView patch={patch} review={review} />}
+      {nextOffset !== undefined && (
+        <div className="muted diff-note" role="status">
+          Showing part of a long diff
+          {diff.data.totalLines ? ` (${nextOffset} of ${diff.data.totalLines} lines)` : ''}.{' '}
+          <Button
+            variant="app"
+            className="secondary"
+            disabled={loadingMore}
+            onClick={() => void loadMore()}
+          >
+            {loadingMore ? 'Loading…' : 'Load more'}
+          </Button>
+          {moreError && <span role="alert"> {moreError}</span>}
+        </div>
+      )}
       {!diff.data.patch && !incomplete && <div className="muted diff-note">No line changes.</div>}
     </>
   )

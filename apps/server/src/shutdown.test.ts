@@ -45,7 +45,7 @@ describe('createShutdown', () => {
 })
 
 describe('watchForCrashes', () => {
-  it('logs a stray rejection and keeps going, but stops on a thrown error', () => {
+  it('logs a stray rejection and keeps going', () => {
     const log = logger()
     const stop = vi.fn()
     const target = new EventEmitter()
@@ -53,7 +53,41 @@ describe('watchForCrashes', () => {
     target.emit('unhandledRejection', new Error('lost promise'))
     expect(stop).not.toHaveBeenCalled()
     expect(log.lines[0]).toContain('lost promise')
-    target.emit('uncaughtException', new Error('boom'))
-    expect(stop).toHaveBeenCalledWith('uncaught exception', 1)
+  })
+
+  it('survives a few thrown errors, then stops cleanly so the host is restarted', () => {
+    const log = logger()
+    const stop = vi.fn()
+    const target = new EventEmitter()
+    watchForCrashes(log, stop, target as unknown as NodeJS.Process, {
+      maxUncaught: 3,
+      windowMs: 60_000,
+    })
+    target.emit('uncaughtException', new Error('boom 1'))
+    target.emit('uncaughtException', new Error('boom 2'))
+    expect(stop).not.toHaveBeenCalled()
+    target.emit('uncaughtException', new Error('boom 3'))
+    expect(stop).toHaveBeenCalledWith('3 uncaught exceptions in 60s', 1)
+    for (let i = 0; i < 10; i++) target.emit('uncaughtException', new Error('during shutdown'))
+    expect(stop).toHaveBeenCalledTimes(1)
+  })
+
+  it('forgets thrown errors that fall outside the window', () => {
+    const log = logger()
+    const stop = vi.fn()
+    const target = new EventEmitter()
+    watchForCrashes(log, stop, target as unknown as NodeJS.Process, {
+      maxUncaught: 2,
+      windowMs: 1_000,
+    })
+    target.emit('uncaughtException', new Error('boom 1'))
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(Date.now() + 5_000)
+      target.emit('uncaughtException', new Error('boom 2'))
+      expect(stop).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

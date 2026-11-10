@@ -1101,7 +1101,7 @@ a {
   container-type: inline-size;
   container-name: orch;
 }
-.orch-head {
+.orchestration-panel .orch-head {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1111,10 +1111,10 @@ a {
   text-align: left;
   color: var(--text-muted);
 }
-.orch-head:hover {
+.orchestration-panel .orch-head:hover {
   color: var(--text);
 }
-.orch-title {
+.orchestration-panel .orch-title {
   flex: none;
   color: var(--text);
 }
@@ -1125,11 +1125,11 @@ a {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.orch-chevron {
+.orchestration-panel .orch-chevron {
   margin-left: auto;
   transition: transform var(--motion-fast);
 }
-.orch-head[aria-expanded='true'] .orch-chevron {
+.orchestration-panel .orch-head[aria-expanded='true'] .orch-chevron {
   transform: rotate(90deg);
 }
 .orchestration-content {
@@ -1210,7 +1210,7 @@ a.orch-card-head:hover .orch-agent {
   color: var(--text-faint);
   font-size: var(--fs-caption);
 }
-.orch-state {
+.orchestration-panel .orch-state {
   margin-left: auto;
   white-space: nowrap;
   color: var(--text-muted);
@@ -1315,7 +1315,7 @@ a.orch-card-head:hover .orch-agent {
   .orchestration-content {
     padding: 4px 8px 8px;
   }
-  .orch-state {
+  .orchestration-panel .orch-state {
     margin-left: 0;
     flex-basis: 100%;
   }

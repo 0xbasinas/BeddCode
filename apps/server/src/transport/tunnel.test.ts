@@ -71,6 +71,22 @@ const until = async (check: () => boolean) => {
 }
 
 describe('tunnel', () => {
+  it('closes only the affected tunnel when authentication throws', async () => {
+    const host = await tunnelHost({
+      needsToken: true,
+      verifyToken: (token) => {
+        if (token === 'bad') throw new Error('verification failed')
+        return { id: 'device' }
+      },
+    })
+    const broken = open(host.port, { t: 'open', port: 1234, token: 'bad' })
+    await broken.closed
+    const target = await echoServer()
+    const healthy = open(host.port, { t: 'open', port: target, token: 'good' })
+    await healthy.ok
+    healthy.ws.send(Buffer.from('still alive'))
+    await until(() => Buffer.concat(healthy.bytes).toString() === 'STILL ALIVE')
+  })
   it('parses only well-formed open requests', () => {
     expect(parseOpen('{"t":"open","port":5173,"token":"x"}')).toEqual({ port: 5173, token: 'x' })
     expect(parseOpen('{"t":"open","port":5173}')).toEqual({ port: 5173 })

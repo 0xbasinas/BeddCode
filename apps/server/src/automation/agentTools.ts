@@ -227,6 +227,49 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'run_subagent',
+    description: `Runs one bounded task on another agent and waits for the answer, all in one call (like start_session + wait_for together). Starts a child session, sends it the task, and returns its status, reported result and latest reply. The child cannot ask for more permissions than this session has, and never runs longer than timeout_seconds.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent: {
+          type: 'string',
+          description: 'Agent id from list_agents, e.g. "codex", "claude" or "grok".',
+        },
+        prompt: {
+          type: 'string',
+          description: 'The task; give it everything it needs, since you only get the answer back.',
+        },
+        title: { type: 'string', description: 'A short name for the child session.' },
+        model: { type: 'string', description: 'Model id; the agent default when omitted.' },
+        mode: {
+          type: 'string',
+          description: "Permission mode id; capped at this session's own mode when omitted.",
+        },
+        folder: {
+          type: 'string',
+          description:
+            "Folder to work in; this session's folder when omitted. Must be a BeddCode project.",
+        },
+        worktree: {
+          type: 'boolean',
+          description:
+            'Work in a new git worktree of the folder, so changes stay apart from yours.',
+        },
+        timeout_seconds: {
+          type: 'number',
+          description: `How long to wait for the answer (default ${WAIT_DEFAULT_S}, at most ${WAIT_MAX_S}). When it runs out the child keeps running and you can call wait_for.`,
+        },
+        request_id: {
+          type: 'string',
+          description:
+            'Your own id for this call. Calling again with the same id waits on the session already started instead of starting a second one.',
+        },
+      },
+      required: ['agent', 'prompt'],
+    },
+  },
+  {
     name: 'send_message',
     description: 'Sends a follow-up message to one of your sessions (queued if it is busy).',
     inputSchema: {
@@ -842,6 +885,8 @@ export class AgentTools {
       }
       case 'start_session':
         return this.serially(sessionId, () => this.start(sessionId, args))
+      case 'run_subagent':
+        return this.serially(sessionId, () => this.runSubagent(sessionId, args))
       case 'send_message': {
         const child = this.child(sessionId, args)
         const text = str(args, 'text', true)!
@@ -1224,6 +1269,26 @@ export class AgentTools {
       folder: child?.cwd ?? folder,
       ...(child?.branch ? { branch: child.branch } : {}),
       next: 'Call wait_for with this session_id to get its answer.',
+    }
+  }
+
+  /**
+   * One call that starts a child session and waits for its answer, so the agent gets the result
+   * without juggling start_session and wait_for. Still a normal child session: it shows nested
+   * under the parent, and a timeout here does not kill it — wait_for picks it up later.
+   */
+  private async runSubagent(parentId: string, args: Args) {
+    const started = await this.start(parentId, args)
+    const sessionId = (started as { session_id: string }).session_id
+    const waited = await this.wait(parentId, {
+      session_id: sessionId,
+      timeout_seconds: args.timeout_seconds,
+    })
+    return {
+      session_id: sessionId,
+      ...(started as Record<string, unknown>),
+      ...(waited as Record<string, unknown>),
+      next: 'The answer is in reply/result above; the child session stays listed under list_children.',
     }
   }
 

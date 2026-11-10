@@ -76,9 +76,7 @@ export function BoardPage() {
       )}
       <div className="board-columns">
         {stages.map(([stage, label]) => {
-          const cards = visible.filter(
-            ({ session }) => defaultStage(session) === stage,
-          )
+          const cards = visible.filter(({ session }) => defaultStage(session) === stage)
           return (
             <section className="board-column" key={stage} aria-label={label}>
               <h2>

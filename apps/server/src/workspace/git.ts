@@ -259,11 +259,11 @@ export class GitService {
     return { branch: info.branch, ahead: info.ahead ?? 0, behind: info.behind ?? 0, files }
   }
 
-  async diff(cwd: string, file: string): Promise<GitDiff> {
+  async diff(cwd: string, file: string, page?: DiffPage): Promise<GitDiff> {
     const root = await this.root(cwd)
     assertRelative(file)
     const oldPath = (await this.status(root)).files.find((entry) => entry.path === file)?.oldPath
-    return this.diffAtRoot(root, file, undefined, oldPath)
+    return this.diffAtRoot(root, file, undefined, oldPath, page)
   }
 
   private async diffAtRoot(
@@ -271,6 +271,7 @@ export class GitService {
     file: string,
     known?: { baseline: string; tracked: boolean },
     oldPath?: string,
+    page?: DiffPage,
   ): Promise<GitDiff> {
     const abs = path.join(root, file)
 
@@ -292,14 +293,14 @@ export class GitService {
         return { path: file, patch: '', added: 0, removed: 0, truncated: true, reason }
       }
       const d = diffText(null, text)
-      const lines = d.patch.split('\n')
-      const truncated = d.added > lines.length || lines.length > MAX_PATCH_LINES
+      const paged = pageLines(d.patch.split('\n'), page)
       return {
         path: file,
         ...d,
-        patch: lines.slice(0, MAX_PATCH_LINES).join('\n'),
-        truncated,
-        ...(truncated ? { reason: 'oversized' as const } : {}),
+        ...paged.fields,
+        patch: paged.patch,
+        truncated: paged.truncated || d.added > paged.total,
+        ...(paged.truncated || d.added > paged.total ? { reason: 'oversized' as const } : {}),
       }
     }
 
@@ -315,7 +316,7 @@ export class GitService {
       ...(oldPath ? [oldPath] : []),
       file,
     ])
-    const result = patchOf(file, out)
+    const result = patchOf(file, out, page)
     return submodule || /^\s*(?:old|new|deleted file) mode 160000$/m.test(out)
       ? { ...result, truncated: true, reason: 'submodule' }
       : result
@@ -1063,7 +1064,32 @@ function assertHash(hash: string) {
   if (!/^[0-9a-f]{40,64}$/.test(hash)) throw new GitError('Not a snapshot')
 }
 
-function patchOf(file: string, out: string): GitDiff {
+/** Which slice of a long patch to return. */
+export interface DiffPage {
+  offset?: number
+  maxLines?: number
+}
+
+/** Cuts a patch's lines to one page; `truncated` is true when lines remain after it. */
+function pageLines(lines: string[], page?: DiffPage) {
+  const offset = Math.min(page?.offset ?? 0, lines.length)
+  const size = page?.maxLines ?? MAX_PATCH_LINES
+  const end = Math.min(offset + size, lines.length)
+  const truncated = end < lines.length
+  return {
+    patch: lines.slice(offset, end).join('\n'),
+    total: lines.length,
+    truncated,
+    // Only paged callers see the paging fields, so the first page stays as it always was.
+    fields: page
+      ? { totalLines: lines.length, ...(truncated ? { nextOffset: end } : {}) }
+      : truncated
+        ? { totalLines: lines.length, nextOffset: end }
+        : {},
+  }
+}
+
+function patchOf(file: string, out: string, page?: DiffPage): GitDiff {
   if (/^Binary files /m.test(out))
     return { path: file, patch: '', added: 0, removed: 0, truncated: true, reason: 'binary' }
   const lines = out.split('\n')

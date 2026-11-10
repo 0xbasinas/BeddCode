@@ -23,7 +23,7 @@ describe('serverLaunch', () => {
   it('runs the sources with Node from the source tree', () => {
     expect(serverLaunch(base)).toEqual({
       command: 'node',
-      args: ['--import', 'tsx', 'src/main.ts', '--port', '3773'],
+      args: ['--max-old-space-size=2048', '--import', 'tsx', 'src/main.ts', '--port', '3773'],
       cwd: '/repo/apps/server',
     })
   })
@@ -31,7 +31,7 @@ describe('serverLaunch', () => {
   it("runs the built host with the app's own runtime when installed", () => {
     const spec = serverLaunch({ ...base, packaged: true })
     expect(spec.command).toBe('/app/beddcode')
-    expect(spec.args[0]).toBe(path.join(base.resourcesPath, 'server', 'main.mjs'))
+    expect(spec.args[1]).toBe(path.join(base.resourcesPath, 'server', 'main.mjs'))
     expect(spec.env).toEqual({
       ELECTRON_RUN_AS_NODE: '1',
       BEDDCODE_WEB_ROOT: path.join(base.resourcesPath, 'web'),
@@ -43,6 +43,6 @@ describe('serverLaunch', () => {
       ...base,
       env: { BEDDCODE_SERVER_ENTRY: '/x/main.mjs', BEDDCODE_PORT: '4100' },
     })
-    expect(spec.args).toEqual(['/x/main.mjs', '--port', '4100'])
+    expect(spec.args).toEqual(['--max-old-space-size=2048', '/x/main.mjs', '--port', '4100'])
   })
 })

@@ -1,9 +1,15 @@
+import { AgentCapabilities } from './AgentCapabilities.tsx'
 import { AutoHandoffSettings } from './AutoHandoffSettings.tsx'
 import { AgentIcon, agentKind } from '../../ui/AgentMark.tsx'
 import { Button } from '@/components/ui/button'
 import { useEffect, useState } from 'react'
 import { Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
-import type { AcpAgentSummary, AgentPreview, ProviderInstance } from '@beddcode/contracts'
+import type {
+  AcpAgentSummary,
+  AgentPreview,
+  ProviderInstance,
+  RpcResult,
+} from '@beddcode/contracts'
 import { hostRequest, refreshProviders, useRuntime } from '../../stores/host.ts'
 import { agentDefaults, hostDefaults, usePreferences } from '../../stores/preferences.ts'
 import { AddAgentDialog } from './AddAgentDialog.tsx'
@@ -44,28 +50,65 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
   // the host starts one briefly to find out; the answer is remembered there.
   const [offered, setOffered] = useState<{ id: string; data?: AgentPreview; error?: string }>()
   const [previewAttempt, setPreviewAttempt] = useState(0)
+  const [requestedPreview, setRequestedPreview] = useState<string>()
+  const [inspection, setInspection] = useState<{
+    id: string
+    hostKey: string
+    loading?: boolean
+    data?: RpcResult<'agents.inspect'>
+    error?: string
+  }>()
   const acpId = providers.find(
     (p) => p.id === (selected ?? defaults.instanceId ?? providers[0]?.id),
   )
   const previewId = acpId?.kind === 'acp' ? acpId.id : undefined
   useEffect(() => {
-    if (!online || !previewId) return
+    if (!online || !previewId || requestedPreview !== previewId) return
     let cancelled = false
     setOffered({ id: previewId })
-    hostRequest(hostKey, 'agents.preview', { instanceId: previewId, cwd: host?.defaultCwd }).then(
+    hostRequest(hostKey, 'agents.preview', {
+      instanceId: previewId,
+      cwd: host?.defaultCwd,
+      refresh: previewAttempt > 0,
+    }).then(
       (data) => !cancelled && setOffered({ id: previewId, data }),
       (err: unknown) => !cancelled && setOffered({ id: previewId, error: errorMessage(err) }),
     )
     return () => {
       cancelled = true
     }
-  }, [hostKey, online, previewId, epoch, host?.defaultCwd, previewAttempt])
+  }, [hostKey, online, previewId, epoch, host?.defaultCwd, previewAttempt, requestedPreview])
   const current =
     providers.find((p) => p.id === selected) ??
     providers.find((p) => p.id === defaults.instanceId) ??
     providers[0]
   const saved = agentDefaults(defaults, current)
   const agentOffer = current && offered?.id === current.id ? offered : undefined
+  const configuredAgent = agents.find((a) => current?.id === `acp:${a.id}`)
+  const checked =
+    configuredAgent && inspection?.id === configuredAgent.id && inspection.hostKey === hostKey
+      ? inspection
+      : undefined
+  const inspect = async (agent: AcpAgentSummary) => {
+    setInspection({ id: agent.id, hostKey, loading: true })
+    try {
+      const data = await hostRequest(hostKey, 'agents.inspect', {
+        id: agent.id,
+        cwd: host?.defaultCwd,
+      })
+      setInspection((previous) =>
+        previous?.id === agent.id && previous.hostKey === hostKey
+          ? { id: agent.id, hostKey, data }
+          : previous,
+      )
+    } catch (err) {
+      setInspection((previous) =>
+        previous?.id === agent.id && previous.hostKey === hostKey
+          ? { id: agent.id, hostKey, error: errorMessage(err) }
+          : previous,
+      )
+    }
+  }
   const permissionModes = current
     ? current.capabilities.permissionModes.length > 0
       ? current.capabilities.permissionModes
@@ -98,6 +141,7 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
   const refresh = async () => {
     setBusy(true)
     setError(undefined)
+    setInspection(undefined)
     try {
       const [, list] = await Promise.all([
         refreshProviders(hostKey),
@@ -312,11 +356,84 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
             </div>
           </div>
           <div className="settings-card">
+            {configuredAgent && (
+              <AgentCapabilities
+                label={configuredAgent.label}
+                check={checked}
+                online={online}
+                onCheck={() => void inspect(configuredAgent)}
+              />
+            )}
             {current.kind === 'acp' && (
               <p className="settings-empty">
                 Installed means the launch command was found. The agent checks sign-in when it
                 starts.
               </p>
+            )}
+            {configuredAgent && requestedPreview !== current.id && (
+              <div className="setting-row">
+                <div className="setting-label">
+                  <span>Session features</span>
+                  <small>
+                    Starts a temporary session to inspect models, modes and commands. Some agents
+                    may retain it in history.
+                  </small>
+                </div>
+                <Button
+                  variant="app"
+                  className="settings-button"
+                  disabled={!online}
+                  onClick={() => setRequestedPreview(current.id)}
+                >
+                  Inspect session features
+                </Button>
+              </div>
+            )}
+            {agentOffer?.data && (
+              <div className="setting-row">
+                <div className="setting-label">
+                  <span>Session features</span>
+                  {agentOffer.data.snapshot && (
+                    <small>
+                      Session snapshot
+                      {agentOffer.data.observedAt
+                        ? ` · ${new Date(agentOffer.data.observedAt).toLocaleString()}`
+                        : ''}
+                      . Commands may arrive later or change in a live session.
+                    </small>
+                  )}
+                  <small>
+                    Modes:{' '}
+                    {agentOffer.data.modes.map((mode) => mode.label).join(', ') || 'None reported'}
+                  </small>
+                  <small>
+                    Settings:{' '}
+                    {agentOffer.data.config.map((option) => option.name).join(', ') ||
+                      'None reported'}
+                  </small>
+                  <small>
+                    Commands:{' '}
+                    {agentOffer.data.commands.map((command) => `/${command.name}`).join(', ') ||
+                      'None reported'}
+                  </small>
+                  {agentOffer.data.config
+                    .filter((option) => option.category === 'model')
+                    .map((option) => (
+                      <small key={option.id}>
+                        Models:{' '}
+                        {option.choices?.map((choice) => choice.name).join(', ') || 'None reported'}
+                      </small>
+                    ))}
+                </div>
+                <Button
+                  variant="app"
+                  className="settings-button"
+                  disabled={!online}
+                  onClick={() => setPreviewAttempt((n) => n + 1)}
+                >
+                  Refresh session features
+                </Button>
+              </div>
             )}
             {agentOffer?.error && (
               <div className="setting-row" role="alert">
@@ -434,7 +551,9 @@ export function AgentsSettings({ hostKey }: { hostKey: string }) {
               !agentOffer?.error && (
                 <p className="settings-empty">
                   {current.kind === 'acp' && online && !agentOffer?.data
-                    ? "Reading this agent's settings…"
+                    ? requestedPreview === current.id
+                      ? "Reading this agent's settings…"
+                      : "Inspect session features to see this agent's settings."
                     : 'This agent reports its choices when a session starts. Its own configuration supplies the defaults.'}
                 </p>
               )}
