@@ -654,3 +654,36 @@ describe('GitService in odd repository states', () => {
     expect(await git.removeWorktree(wt.path)).toBe(true)
   })
 })
+
+describe('GitService.discard', () => {
+  it('restores a modified file and leaves unselected files alone', async () => {
+    const dir = repo()
+    writeFileSync(path.join(dir, 'a.txt'), 'changed\n')
+    writeFileSync(path.join(dir, 'b.txt'), 'also changed\n')
+    const { discarded } = await git.discard(dir, ['a.txt'])
+    expect(discarded).toBe(1)
+    expect(readFileSync(path.join(dir, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\n')
+    expect(readFileSync(path.join(dir, 'b.txt'), 'utf8')).toBe('also changed\n')
+  })
+
+  it('restores a deleted file and removes an untracked one', async () => {
+    const dir = repo()
+    rmSync(path.join(dir, 'a.txt'))
+    writeFileSync(path.join(dir, 'new.txt'), 'scratch\n')
+    const { discarded } = await git.discard(dir, ['a.txt', 'new.txt'])
+    expect(discarded).toBe(2)
+    expect(readFileSync(path.join(dir, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\n')
+    expect(existsSync(path.join(dir, 'new.txt'))).toBe(false)
+  })
+
+  it('throws away a staged new file and refuses paths outside the repository', async () => {
+    const dir = repo()
+    writeFileSync(path.join(dir, 'staged.txt'), 'n\n')
+    sh(dir, 'add', 'staged.txt')
+    expect((await git.discard(dir, ['staged.txt'])).discarded).toBe(1)
+    expect(existsSync(path.join(dir, 'staged.txt'))).toBe(false)
+    expect((await git.status(dir)).files).toEqual([])
+    await expect(git.discard(dir, ['../secret'])).rejects.toThrow('inside the repository')
+    await expect(git.discard(dir, ['missing.txt'])).rejects.toThrow('throw away')
+  })
+})

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   TerminalManager,
   defaultShell,
+  stripAnsi,
   type PtyFactory,
   type PtyProcess,
   type TerminalFrame,
@@ -505,5 +506,33 @@ describe('resumable terminal output', () => {
       seq: 200_001,
       truncated: true,
     })
+  })
+})
+
+
+describe('terminals.tail helpers', () => {
+  it('strips color codes so mentions get readable text', () => {
+    expect(stripAnsi('\x1b[31mred\x1b[0m and plain')).toBe('red and plain')
+  })
+})
+
+describe('TerminalManager.tail', () => {
+  it('returns recent output and prefers a failed command in the folder', async () => {
+    const m = track(new TerminalManager())
+    const cwd = tmp()
+    const ok = m.create({ cwd, command: 'echo ok-output && exit 0' })
+    const fail = m.create({ cwd, command: 'echo fail-output && exit 4' })
+    const c1 = new Collector()
+    const c2 = new Collector()
+    m.attach(ok.id, c1)
+    m.attach(fail.id, c2)
+    await until(() => c1.exit() !== undefined && c2.exit() !== undefined, 25_000)
+    const byId = m.tail({ id: fail.id })
+    expect(byId.id).toBe(fail.id)
+    expect(byId.exited).toBe(4)
+    expect(byId.text).toContain('fail-output')
+    const picked = m.tail({ cwd })
+    expect(picked.id).toBe(fail.id)
+    expect(picked.exited).toBe(4)
   })
 })

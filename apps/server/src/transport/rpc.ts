@@ -309,6 +309,7 @@ export function createRpcRouter(
       await git.push(p.cwd)
       return {}
     },
+    'git.discard': (p) => git.discard(p.cwd, p.paths),
     'git.pr.get': (p) => github.pullRequest(p.cwd, { branch: p.branch, repo: p.repo }),
     'git.ci.report': (p) => github.ciReport(p.cwd),
     'git.pr.cleanup': (p) =>
@@ -378,6 +379,7 @@ export function createRpcRouter(
     'previews.list': async () => terminals.previews(),
     'terminals.rename': async (p) => terminals.rename(p.id, p.name),
     'terminals.takeOver': async (p) => terminals.takeOver(p.id),
+    'terminals.tail': async (p) => terminals.tail(p),
     'terminals.close': async (p) => {
       terminals.close(p.id)
       return {}

@@ -496,6 +496,48 @@ export class TerminalManager {
       .map(snapshot)
   }
 
+  /**
+   * Recent output as plain text. Pass an id, or a folder to pick the most useful terminal there
+   * (a failed command first, otherwise the newest).
+   */
+  tail(params: { id?: string; cwd?: string; maxChars?: number }): {
+    id: string
+    cwd: string
+    shell: string
+    title?: string
+    name?: string
+    exited?: number | null
+    text: string
+  } {
+    const maxChars = params.maxChars ?? 8000
+    let term: Terminal | undefined
+    if (params.id) {
+      term = this.require(params.id)
+    } else {
+      const list = [...this.terminals.values()].filter(
+        (t) => params.cwd === undefined || sameFolder(t.info.cwd, params.cwd),
+      )
+      term = [...list].sort((a, b) => {
+        const fail = (t: Terminal) => (t.info.exited !== undefined && t.info.exited !== 0 ? 1 : 0)
+        const byFail = fail(b) - fail(a)
+        if (byFail !== 0) return byFail
+        return b.info.createdAt - a.info.createdAt
+      })[0]
+      if (!term) throw new Error('No terminal is open in this folder.')
+    }
+    this.flush(term)
+    const info = term.info
+    return {
+      id: info.id,
+      cwd: info.cwd,
+      shell: info.shell,
+      ...(info.title ? { title: info.title } : {}),
+      ...(info.name ? { name: info.name } : {}),
+      ...(info.exited !== undefined ? { exited: info.exited } : {}),
+      text: clipPlain(term.buffer, maxChars),
+    }
+  }
+
   /** Sends the buffered history, then live output. Returns a function that detaches. */
   attach(id: string, subscriber: TerminalSubscriber, afterSeq?: number): () => void {
     const term = this.require(id)
@@ -745,4 +787,21 @@ function sameFolder(a: string, b: string) {
 /** A copy of a terminal's info that later changes to it do not reach. */
 function snapshot(term: { info: TerminalInfo }): TerminalInfo {
   return term.info.agent ? { ...term.info, agent: { ...term.info.agent } } : { ...term.info }
+}
+
+/** CSI/OSC sequences and leftover C0 controls, so mentions get readable text. */
+export function stripAnsi(text: string): string {
+  return text
+    .replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, '')
+    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
+}
+
+/** The last `max` characters of plain text, cut on a line boundary when possible. */
+function clipPlain(text: string, max: number): string {
+  const plain = stripAnsi(text)
+  if (plain.length <= max) return plain
+  const sliced = plain.slice(plain.length - max)
+  const nl = sliced.indexOf('\n')
+  return (nl >= 0 && nl < sliced.length - 1 ? sliced.slice(nl + 1) : sliced).trimStart()
 }
