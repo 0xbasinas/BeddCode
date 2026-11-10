@@ -38,6 +38,11 @@ import type {
 import { readReplica, writeReplica } from './replicaFile'
 import { readHosts, writeHosts } from './storage'
 import { startOfflineQueue } from './offlineQueue'
+import {
+  applyHostSettingsRecord,
+  pullAndApplyHostSettings,
+  unbindHostSettingsClient,
+} from './hostSettings'
 
 /** Everything the app knows about one host: its connection, its sessions, its capabilities. */
 export interface HostRuntime {
@@ -91,7 +96,7 @@ const savers = new Map<string, ReplicaSaver>()
 type LiveFrame = Extract<
   ServerFrame,
   {
-    t: 'term.out' | 'term.exit' | 'term.changed' | 'fs.changed' | 'design.changed' | 'host.updating'
+    t: 'term.out' | 'term.exit' | 'term.changed' | 'fs.changed' | 'design.changed' | 'host.updating' | 'settings.changed'
   }
 >
 const frameListeners = new Map<string, Set<(frame: LiveFrame) => void>>()
@@ -171,6 +176,14 @@ function loadHostLists(hostKey: string, client: HostClient) {
   })
   void Promise.all([providers, projects]).then(([a, b]) => {
     if (a && b && isCurrent()) patchRuntime(hostKey, () => ({ loadError: undefined }))
+  })
+  void pullAndApplyHostSettings(hostKey, client).catch((error: unknown) => {
+    if (isCurrent())
+      patchRuntime(hostKey, (r) => ({
+        loadError:
+          r.loadError ??
+          `Could not read shared settings: ${error instanceof Error ? error.message : String(error)}`,
+      }))
   })
 }
 
@@ -257,6 +270,9 @@ function startHost(entry: HostEntry) {
     onFrame(frame) {
       frameListeners.get(entry.key)?.forEach((l) => l(frame))
     },
+    onSettingsChanged(record) {
+      applyHostSettingsRecord(entry.key, record)
+    },
     onCaughtUp() {
       flush()
       patchRuntime(entry.key, () => ({ synced: true }))
@@ -333,6 +349,7 @@ export function addRemoteHost(entry: HostEntry) {
 export function removeRemoteHost(hostKey: string) {
   clients.get(hostKey)?.stop()
   clients.delete(hostKey)
+  unbindHostSettingsClient(hostKey)
   telemetryStops.get(hostKey)?.()
   telemetryStops.delete(hostKey)
   savers.get(hostKey)?.cancel()
@@ -455,6 +472,7 @@ export async function prompt(
   text: string,
   attachmentIds?: string[],
   mode?: 'auto' | 'queue',
+  idempotencyKey?: string,
 ) {
   const started = now()
   // Sending the same message again after a failure reuses its id, so a message that did reach
@@ -465,7 +483,7 @@ export async function prompt(
     text,
     attachments: attachmentIds && attachmentIds.length > 0 ? attachmentIds : undefined,
     mode,
-    clientMessageId: attempt.id,
+    clientMessageId: idempotencyKey ?? attempt.id,
   })
   attempt.done()
   const hostKey = hostKeyOfSession(sessionId)
@@ -521,6 +539,46 @@ export async function setSessionWaiting(
 
 export async function setMode(sessionId: string, modeId: string) {
   await sessionRequest(sessionId, 'sessions.setMode', { sessionId, modeId })
+}
+
+export async function refreshProviders(hostKey: string) {
+  const providers = await hostRequest(hostKey, 'providers.list', {})
+  patchRuntime(hostKey, () => ({ providers }))
+}
+
+export async function setSessionPinned(sessionId: string, pinned: boolean) {
+  await sessionRequest(sessionId, 'sessions.setPinned', { sessionId, pinned })
+}
+
+export async function renameSession(sessionId: string, title: string) {
+  await sessionRequest(sessionId, 'sessions.rename', { sessionId, title })
+}
+
+export async function forkSession(
+  sessionId: string,
+  throughTurn?: number,
+  side?: boolean,
+): Promise<string> {
+  const { sessionId: forked } = await sessionRequest(sessionId, 'sessions.fork', {
+    sessionId,
+    throughTurn,
+    side,
+  })
+  createdOn.set(forked, hostKeyOfSession(sessionId) ?? '')
+  return forked
+}
+
+export async function setSessionBoardStage(
+  sessionId: string,
+  stage: 'pending' | 'in-progress' | 'review' | 'done',
+) {
+  await sessionRequest(sessionId, 'sessions.setBoardStage', { sessionId, stage })
+}
+
+export async function undoTurn(sessionId: string, after: string) {
+  const hostKey = hostKeyOfSession(sessionId)
+  if (!hostKey) throw new Error('That session is not available right now')
+  return hostRequest(hostKey, 'sessions.undoTurn', { sessionId, after })
 }
 
 export async function approve(sessionId: string, requestId: string, optionId: string) {

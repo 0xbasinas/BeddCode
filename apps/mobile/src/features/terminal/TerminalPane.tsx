@@ -3,7 +3,10 @@ import { Paperclip, Plus, TerminalWindow, Trash } from 'phosphor-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 
+import { debugThisPrompt } from '@/features/composer/contextMentions'
+import { formatTermMention } from '@/features/composer/contextMentions'
 import { attachText } from '@/host/attachments'
+import { useComposerPrefill } from '@/host/composerPrefill'
 import { hostRequest, useRuntime } from '@/host/store'
 import { useWorkspace } from '@/host/workspace'
 import { colors, radius } from '@/theme/tokens'
@@ -254,6 +257,38 @@ export function TerminalPane({
               </Pressable>
             ))}
           </ScrollView>
+          {(() => {
+            const failed =
+              terminals?.find((t) => t.id === current && t.exited !== undefined && t.exited !== 0) ??
+              terminals?.find((t) => t.exited !== undefined && t.exited !== 0)
+            if (!failed || !session || !hostKey) return null
+            return (
+              <Pressable
+                style={styles.failed}
+                onPress={() =>
+                  void hostRequest(hostKey, 'terminals.tail', {
+                    id: failed.id,
+                    cwd,
+                    maxChars: 8000,
+                  }).then(
+                    (tail) => {
+                      useComposerPrefill
+                        .getState()
+                        .set(session.id, debugThisPrompt('command', formatTermMention(tail)))
+                      onAttached()
+                    },
+                    (err: unknown) =>
+                      setError(err instanceof Error ? err.message : String(err)),
+                  )
+                }
+                accessibilityRole="button"
+              >
+                <Text size={12.5}>
+                  This shell failed (exit {failed.exited}). Send it to the agent
+                </Text>
+              </Pressable>
+            )
+          })()}
           <View style={styles.surface}>
             {terminals?.map((t) => (
               <View
@@ -333,6 +368,16 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   nameInput: { minWidth: 70, padding: 0, fontSize: 13, color: colors.text },
+  failed: {
+    marginHorizontal: 12,
+    marginBottom: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.control,
+    backgroundColor: colors.dangerSoft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.dangerBorder,
+  },
   tabs: { gap: 6, paddingHorizontal: 12, paddingBottom: 8 },
   tab: {
     flexDirection: 'row',

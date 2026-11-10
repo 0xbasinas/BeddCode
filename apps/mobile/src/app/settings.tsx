@@ -4,7 +4,10 @@ import Constants from 'expo-constants'
 import { router } from 'expo-router'
 import {
   Bell,
+  CalendarBlank,
+  ChartLine,
   FolderSimple,
+  Plugs,
   FolderSimplePlus,
   HardDrives,
   Lightning,
@@ -26,6 +29,8 @@ import {
 } from 'react-native'
 import type { AlertEvents } from '@beddcode/contracts'
 
+import { AutoHandoffSettings } from '@/features/settings/AutoHandoffSettings'
+import { SharedHostSettings } from '@/features/settings/SharedHostSettings'
 import {
   activeRoute,
   hostRequest,
@@ -35,6 +40,7 @@ import {
   useRuntime,
 } from '@/host/store'
 import { applyHostAlerts, hostAlertPrefs, pushUnavailableReason, usePushPrefs } from '@/host/push'
+import { updateHostSettings, useHostSettings } from '@/host/hostSettings'
 import { colors, radius } from '@/theme/tokens'
 import { Header } from '@/ui/Header'
 import { Icon } from '@/ui/Icon'
@@ -167,6 +173,18 @@ function HostCard({ entry }: { entry: HostEntry }) {
             </View>
             <Pressable
               hitSlop={10}
+              onPress={() =>
+                router.push({
+                  pathname: '/instructions' as '/new',
+                  params: { host: entry.key, path: p.path },
+                })
+              }
+              accessibilityLabel={`Instructions for ${p.name}`}
+            >
+              <Muted size={11.5}>Instructions</Muted>
+            </Pressable>
+            <Pressable
+              hitSlop={10}
               onPress={() => removeFolder(p.path, p.name)}
               accessibilityLabel={`Remove ${p.name}`}
             >
@@ -206,6 +224,9 @@ function HostCard({ entry }: { entry: HostEntry }) {
       <HostWarmPool hostKey={entry.key} online={online} epoch={runtime.epoch} />
 
       <HostAlerts hostKey={entry.key} online={online} />
+
+      <SharedHostSettings hostKey={entry.key} online={online} />
+      <AutoHandoffSettings hostKey={entry.key} />
 
       <Pressable style={styles.forget} onPress={forget}>
         <Icon icon={Trash} size={16} color={colors.danger} />
@@ -280,9 +301,24 @@ const ALERT_EVENTS: { key: keyof AlertEvents; label: string }[] = [
 function HostAlerts({ hostKey, online }: { hostKey: string; online: boolean }) {
   const prefs = usePushPrefs((s) => hostAlertPrefs(s.hosts, hostKey))
   const save = usePushPrefs((s) => s.set)
+  const hostNotes = useHostSettings((s) => s.records[hostKey]?.settings.notifications)
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string>()
   const unavailable = pushUnavailableReason()
+
+  useEffect(() => {
+    if (!hostNotes) return
+    const current = hostAlertPrefs(usePushPrefs.getState().hosts, hostKey)
+    const events = { ...current.events, ...hostNotes }
+    if (
+      events.needsYou === current.events.needsYou &&
+      events.turnDone === current.events.turnDone &&
+      events.error === current.events.error &&
+      events.schedule === current.events.schedule
+    )
+      return
+    save(hostKey, { ...current, events })
+  }, [hostKey, hostNotes, save])
 
   const change = async (next: typeof prefs) => {
     setBusy(true)
@@ -290,6 +326,9 @@ function HostAlerts({ hostKey, online }: { hostKey: string; online: boolean }) {
     try {
       await applyHostAlerts(hostKey, next)
       save(hostKey, next)
+      await updateHostSettings(hostKey, { notifications: next.events }).catch(() => {
+        // The phone still has the choice; a later connect will retry.
+      })
     } catch (err) {
       setProblem(err instanceof Error ? err.message : String(err))
     } finally {
@@ -405,6 +444,35 @@ export default function SettingsScreen() {
               Add a host
             </Text>
           </Pressable>
+        </Section>
+
+        <Section title="TOOLS">
+          <View style={styles.card}>
+            <Pressable onPress={() => router.push('/schedules' as '/new')} accessibilityRole="button">
+              <Row>
+                <Icon icon={CalendarBlank} size={18} />
+                <Text size={13.5} style={{ flex: 1 }}>
+                  Schedules
+                </Text>
+              </Row>
+            </Pressable>
+            <Pressable onPress={() => router.push('/usage' as '/new')} accessibilityRole="button">
+              <Row>
+                <Icon icon={ChartLine} size={18} />
+                <Text size={13.5} style={{ flex: 1 }}>
+                  Usage
+                </Text>
+              </Row>
+            </Pressable>
+            <Pressable onPress={() => router.push('/mcp' as '/new')} accessibilityRole="button">
+              <Row last>
+                <Icon icon={Plugs} size={18} />
+                <Text size={13.5} style={{ flex: 1 }}>
+                  MCP servers
+                </Text>
+              </Row>
+            </Pressable>
+          </View>
         </Section>
 
         <Section title="ABOUT">

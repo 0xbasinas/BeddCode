@@ -66,7 +66,7 @@ interface Row {
 }
 
 /** The project's files: a tree to browse, search to jump, and a viewer you can attach from. */
-export function FilesPane({ sessionId, onAttached }: { sessionId: string; onAttached(): void }) {
+export function FilesPane({ sessionId, onAttached, openPath }: { sessionId: string; onAttached(): void; openPath?: string }) {
   const { hostKey, cwd, session } = useWorkspace(sessionId)
   const runtime = useRuntime(hostKey)
   const [dirs, setDirs] = useState<Record<string, FileEntry[]>>({})
@@ -75,6 +75,9 @@ export function FilesPane({ sessionId, onAttached }: { sessionId: string; onAtta
   const [results, setResults] = useState<string[] | null>(null)
   const [error, setError] = useState<string>()
   const [file, setFile] = useState<string>()
+  useEffect(() => {
+    if (openPath) setFile(openPath)
+  }, [openPath])
   const openRef = useRef(open)
   openRef.current = open
 

@@ -87,12 +87,18 @@ function read() {
   }
 }
 
+type AppPreferencesPush = (patch: { theme?: AppPreferences['theme']; defaultWorkspace?: AppPreferences['defaultWorkspace'] }) => void
+let appPreferencesPush: AppPreferencesPush | undefined
+export function setAppPreferencesPush(fn: AppPreferencesPush | undefined) {
+  appPreferencesPush = fn
+}
+
 export const useAppPreferences = create<{
   values: AppPreferences
   update(patch: Partial<AppPreferences>): void
 }>((set) => ({
   values: parseAppPreferences(read()),
-  update: (patch) =>
+  update: (patch) => {
     set((state) => {
       const values = { ...state.values, ...patch }
       try {
@@ -101,5 +107,9 @@ export const useAppPreferences = create<{
         /* Keep this window usable when storage is blocked. */
       }
       return { values }
-    }),
+    })
+    if (patch.theme !== undefined || patch.defaultWorkspace !== undefined) {
+      appPreferencesPush?.({ theme: patch.theme, defaultWorkspace: patch.defaultWorkspace })
+    }
+  },
 }))

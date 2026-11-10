@@ -29,6 +29,7 @@ import {
   GcReport,
   HostStats,
 } from './hosts.ts'
+import { SharedSettingsPatch, SharedSettingsRecord } from './hostSettings.ts'
 import { ConfigOption, SlashCommand, StoredEvent } from './events.ts'
 import { PermissionModeOption, ProviderInstance } from './providers.ts'
 import {
@@ -353,6 +354,14 @@ export const RpcMethods = {
     result: z.object({ hash: z.string(), pushed: z.boolean(), pushError: z.string().optional() }),
   },
   'git.push': { params: z.object({ cwd: z.string() }), result: z.object({}) },
+  /** Throw away working-tree (and staged) changes for the chosen paths, leaving other files alone. */
+  'git.discard': {
+    params: z.object({
+      cwd: z.string(),
+      paths: z.array(z.string().min(1)).min(1).max(500),
+    }),
+    result: z.object({ discarded: z.number().int().nonnegative() }),
+  },
   /** The pull request for the current branch, or null when there is none. */
   'git.pr.get': {
     params: z.object({
@@ -568,6 +577,27 @@ export const RpcMethods = {
   },
   /** Lets the user type into an agent terminal (it starts read-only). */
   'terminals.takeOver': { params: z.object({ id: z.string() }), result: TerminalInfo },
+  /**
+   * Recent output of a terminal, as plain text (escape sequences removed). Used by @term mentions
+   * and "Send to agent" after a command fails.
+   */
+  'terminals.tail': {
+    params: z.object({
+      id: z.string().optional(),
+      cwd: z.string().optional(),
+      maxChars: z.number().int().min(200).max(50_000).optional(),
+    }),
+    result: z.object({
+      id: z.string(),
+      cwd: z.string(),
+      shell: z.string(),
+      title: z.string().optional(),
+      name: z.string().optional(),
+      /** Exit code once the shell has ended; absent while running. */
+      exited: z.number().int().nullable().optional(),
+      text: z.string(),
+    }),
+  },
   /** Folder contents; `dir` is relative to `cwd` (empty for the root). Folders first. */
   'files.list': {
     params: z.object({ cwd: z.string(), dir: z.string().optional() }),
@@ -1096,6 +1126,23 @@ export const RpcMethods = {
   },
   /** Sends a test alert everywhere alerts go. */
   'alerts.test': { params: z.object({}), result: SentAlert },
+
+  /** Shared host settings: agent defaults, handoff, theme, and notification events the host needs. */
+  'settings.get': {
+    params: z.object({}),
+    result: SharedSettingsRecord,
+  },
+  /**
+   * Apply a patch on top of the current document (field-level last-write-wins).
+   * Pass `baseVersion` so a stale client can tell it was merged onto a newer copy.
+   */
+  'settings.update': {
+    params: z.object({
+      patch: SharedSettingsPatch,
+      baseVersion: z.number().int().nonnegative().optional(),
+    }),
+    result: SharedSettingsRecord,
+  },
   /** A phone asks for push alerts, or changes which ones it wants. Tied to its pairing. */
   'push.register': {
     params: z.object({

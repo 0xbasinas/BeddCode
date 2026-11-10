@@ -8,14 +8,20 @@ import {
   Stop,
   X,
 } from 'phosphor-react-native'
-import { useState } from 'react'
-import { insertCommand, matchCommands } from '@beddcode/client-runtime'
+import { useEffect, useState } from 'react'
+import { attachBase64 } from '@/host/attachments'
+import { useComposerPrefill } from '@/host/composerPrefill'
+import { insertCommand, insertMention, matchCommands, mentionAt } from '@beddcode/client-runtime'
 import type { SlashCommand } from '@beddcode/contracts'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 
 import { EMPTY_ATTACHMENTS, type DraftAttachment } from '@/host/attachments'
 import { colors, fonts, radius } from '@/theme/tokens'
 import { AttachmentImage, isImageName } from './AttachmentImage'
+import { matchingContextMentions, type ContextMentionKind } from './contextMentions'
+import { ImageAnnotator } from './ImageAnnotator'
+import { resolveContextMention } from './resolveContextMention'
+import { mentionItems, type MentionItem } from './mentionItems'
 import { send as sendHaptic } from '@/ui/haptics'
 import { Icon } from '@/ui/Icon'
 import { Faint, Muted, Text } from '@/ui/Text'
@@ -46,6 +52,8 @@ export function Composer({
   hostKey,
   commands,
   onDraftChange,
+  cwd,
+  sessionId,
 }: {
   placeholder: string
   onSend(text: string, attachmentIds: string[]): Promise<void> | void
@@ -66,6 +74,10 @@ export function Composer({
   /** The agent's slash commands, offered while the message is a half-typed `/command`. */
   commands?: SlashCommand[]
   onDraftChange?(text: string): void
+  /** The session folder, used to offer @file mentions and live @diff/@ci/@pr/@term. */
+  cwd?: string
+  /** When set, quotes, CI follow-ups, and annotated images attach to this session. */
+  sessionId?: string
 }) {
   const [text, setText] = useState(initial)
   const [busy, setBusy] = useState(false)
@@ -73,8 +85,85 @@ export function Composer({
   const uploading = attachments.some((a) => a.status === 'uploading')
   const ready = attachments.filter((a) => a.status === 'done' && a.id).map((a) => a.id!)
   const canSend = text.trim().length > 0 && !busy && !uploading
+  const prefill = useComposerPrefill((s) => s.pending)
+  useEffect(() => {
+    if (!sessionId || !prefill || prefill.sessionId !== sessionId) return
+    const next = useComposerPrefill.getState().take(sessionId)
+    if (!next) return
+    const combined = text.trim() ? `${text.trim()}\n\n${next}` : next
+    setText(combined)
+    onDraftChange?.(combined)
+  }, [prefill, sessionId])
+  const [annotate, setAnnotate] = useState<{ key: number; uri: string; name: string }>()
+
   const [dismissed, setDismissed] = useState<string>()
   const matches = dismissed === text ? [] : matchCommands(text, commands)
+  const [caret, setCaret] = useState(0)
+  const [selection, setSelection] = useState<{ start: number; end: number }>()
+  const mention = mentionAt(text, caret)
+  const contextKinds = mention ? matchingContextMentions(mention.query) : []
+  const [fileMentions, setFileMentions] = useState<MentionItem[]>([])
+  const [mentionBusy, setMentionBusy] = useState(false)
+  const showMentions = Boolean(mention) && matches.length === 0
+
+  useEffect(() => {
+    if (!showMentions || !mention || !hostKey || !cwd) {
+      setFileMentions([])
+      return
+    }
+    let cancelled = false
+    const timer = setTimeout(() => {
+      setMentionBusy(true)
+      mentionItems(hostKey, cwd, mention.query).then(
+        (items) => {
+          if (!cancelled) {
+            setFileMentions(items)
+            setMentionBusy(false)
+          }
+        },
+        () => {
+          if (!cancelled) {
+            setFileMentions([])
+            setMentionBusy(false)
+          }
+        },
+      )
+    }, 120)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [showMentions, mention?.query, mention?.start, hostKey, cwd])
+
+  const applyText = (next: string, nextCaret: number) => {
+    setText(next)
+    onDraftChange?.(next)
+    setCaret(nextCaret)
+    setSelection({ start: nextCaret, end: nextCaret })
+  }
+
+  const pickFileMention = (item: MentionItem) => {
+    if (!mention) return
+    const next = insertMention(text, caret, mention, item.path, item.dir)
+    applyText(next.text, next.caret)
+  }
+
+  const pickContextMention = async (kind: ContextMentionKind) => {
+    if (!mention || !hostKey || !cwd) return
+    setBusy(true)
+    setError(undefined)
+    try {
+      const body = await resolveContextMention(hostKey, cwd, kind.id)
+      const inserted = body.endsWith('\n') ? body : `${body}\n`
+      const rest = text.slice(caret).replace(/^ /, '')
+      const next = text.slice(0, mention.start) + inserted + rest
+      applyText(next, mention.start + inserted.length)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const send = async () => {
     if (!canSend) return
@@ -132,6 +221,57 @@ export function Composer({
           </Pressable>
         </View>
       )}
+      {showMentions ? (
+        <View style={styles.menu} accessibilityRole="menu">
+          <ScrollView keyboardShouldPersistTaps="always" style={{ maxHeight: 260 }}>
+            {contextKinds.map((kind) => (
+              <Pressable
+                key={kind.id}
+                accessibilityRole="menuitem"
+                accessibilityLabel={kind.label}
+                onPress={() => void pickContextMention(kind)}
+                style={({ pressed }) => [styles.item, pressed && { backgroundColor: colors.active }]}
+              >
+                <View style={styles.itemHead}>
+                  <Text size={13.5} style={{ fontFamily: fonts.mono }}>
+                    {kind.label}
+                  </Text>
+                  <Faint size={12}>{kind.hint}</Faint>
+                </View>
+              </Pressable>
+            ))}
+            {fileMentions.map((item) => (
+              <Pressable
+                key={item.path}
+                accessibilityRole="menuitem"
+                accessibilityLabel={item.path}
+                onPress={() => pickFileMention(item)}
+                style={({ pressed }) => [styles.item, pressed && { backgroundColor: colors.active }]}
+              >
+                <View style={styles.itemHead}>
+                  <Text size={13.5} numberOfLines={1} style={{ flex: 1 }}>
+                    {item.name}
+                  </Text>
+                  {item.dir ? <Faint size={11}>folder</Faint> : null}
+                </View>
+                <Muted size={11.5} numberOfLines={1}>
+                  {item.path}
+                </Muted>
+              </Pressable>
+            ))}
+            {mentionBusy && fileMentions.length === 0 && contextKinds.length === 0 ? (
+              <Muted size={12} style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
+                Looking up files…
+              </Muted>
+            ) : null}
+            {!mentionBusy && fileMentions.length === 0 && contextKinds.length === 0 ? (
+              <Muted size={12} style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
+                No matching files.
+              </Muted>
+            ) : null}
+          </ScrollView>
+        </View>
+      ) : null}
       <View style={styles.box}>
         {attachments.length > 0 && (
           <ScrollView
@@ -147,6 +287,11 @@ export function Composer({
                   name={a.name}
                   id={a.id}
                   onRemove={onRemoveAttachment ? () => onRemoveAttachment(a.key) : undefined}
+                  onAnnotate={
+                    sessionId
+                      ? (uri) => setAnnotate({ key: a.key, uri, name: a.name })
+                      : undefined
+                  }
                 />
               ) : (
                 <View
@@ -197,6 +342,12 @@ export function Composer({
             setText(value)
             onDraftChange?.(value)
           }}
+          onSelectionChange={(e) => {
+            const { start, end } = e.nativeEvent.selection
+            setCaret(end)
+            setSelection(undefined)
+          }}
+          selection={selection}
           placeholder={placeholder}
           placeholderTextColor={colors.faint}
           multiline
@@ -267,6 +418,25 @@ export function Composer({
         <Muted size={11.5} style={{ paddingHorizontal: 4 }}>
           {context}
         </Muted>
+      ) : null}
+      {annotate ? (
+        <ImageAnnotator
+          visible
+          uri={annotate.uri}
+          onClose={() => setAnnotate(undefined)}
+          onSave={async (data) => {
+            if (!hostKey || !sessionId) return
+            const base = annotate.name.replace(/\.[^.]+$/, '') || 'image'
+            await attachBase64(
+              hostKey,
+              sessionId,
+              `${base}-marked.png`,
+              data,
+              Math.ceil((data.length * 3) / 4),
+            )
+            onRemoveAttachment?.(annotate.key)
+          }}
+        />
       ) : null}
     </View>
   )

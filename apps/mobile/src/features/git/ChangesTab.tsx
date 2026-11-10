@@ -14,7 +14,7 @@ import {
   Sparkle,
 } from 'phosphor-react-native'
 import { useState } from 'react'
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 
 import { hostRequest } from '@/host/store'
 import { colors, fonts, radius } from '@/theme/tokens'
@@ -23,6 +23,9 @@ import { Diffstat } from '@/ui/Diffstat'
 import { Icon } from '@/ui/Icon'
 import { PatchView } from '@/ui/PatchView'
 import { Faint, Muted, Text } from '@/ui/Text'
+import { numberPatch, reviewPatchVersion } from '@beddcode/client-runtime'
+import { ReviewBar } from './ReviewBar'
+import { reviewKey, useReviewStore } from './reviewStore'
 import { usePolled } from './usePolled'
 
 const STATUS_COLOR: Record<GitFile['status'], string> = {
@@ -102,7 +105,8 @@ export function ChangesTab({
   const [openDiff, setOpenDiff] = useState<string>()
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [message, setMessage] = useState('')
-  const [busy, setBusy] = useState<'generate' | 'commit' | 'commit-push'>()
+  const [busy, setBusy] = useState<'generate' | 'commit' | 'commit-push' | 'discard'>()
+  const [reviewNote, setReviewNote] = useState('')
   const [error, setError] = useState<string>()
   const [notice, setNotice] = useState<string>()
 
@@ -176,6 +180,61 @@ export function ChangesTab({
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy(undefined)
+    }
+  }
+
+
+  const discard = () => {
+    Alert.alert(
+      'Discard selected changes?',
+      'The chosen files go back to HEAD. Untracked files are deleted. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () =>
+            void (async () => {
+              setBusy('discard')
+              setError(undefined)
+              try {
+                const r = await hostRequest(hostKey, 'git.discard', { cwd, paths: selected })
+                setNotice(`Discarded ${r.discarded} path${r.discarded === 1 ? '' : 's'}`)
+                setOverrides({})
+                status.refresh()
+              } catch (err) {
+                setError(err instanceof Error ? err.message : String(err))
+              } finally {
+                setBusy(undefined)
+              }
+            })(),
+        },
+      ],
+    )
+  }
+
+  const addReviewNote = async () => {
+    const path = openDiff ?? selected[0]
+    const body = reviewNote.trim()
+    if (!path || !body) return
+    setError(undefined)
+    try {
+      const diff = await hostRequest(hostKey, 'git.diff', { cwd, path })
+      const lines = numberPatch(diff.patch ?? '')
+      const target = lines.find((l) => l.newLine !== undefined)
+      useReviewStore.getState().add(reviewKey(hostKey, cwd), {
+        id: `${Date.now()}-${path}`,
+        path,
+        side: 'new',
+        line: target?.newLine ?? 1,
+        body,
+        context: { hunk: target?.hunk ?? '', lines: lines.slice(0, 24), target: 0 },
+        createdAt: Date.now(),
+        patchVersion: diff.truncated ? undefined : reviewPatchVersion(diff.patch),
+      })
+      setReviewNote('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -324,6 +383,24 @@ export function ChangesTab({
                 {notice}
               </Text>
             ) : null}
+            <View style={{ gap: 6 }}>
+              <Text size={12} color={colors.textSecondary}>
+                Review note{openDiff ? ` on ${openDiff}` : selected[0] ? ` on ${selected[0]}` : ''}
+              </Text>
+              <TextInput
+                value={reviewNote}
+                onChangeText={setReviewNote}
+                placeholder="A comment for the agent about this file…"
+                placeholderTextColor={colors.faint}
+                style={styles.messageInput}
+              />
+              <Pressable
+                onPress={() => void addReviewNote()}
+                disabled={!reviewNote.trim() || !(openDiff ?? selected[0])}
+              >
+                <Faint size={11.5}>Add review note</Faint>
+              </Pressable>
+            </View>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Button
                 label={busy === 'commit' ? 'Committing…' : commitLabel(selected.length)}
@@ -339,9 +416,15 @@ export function ChangesTab({
                 style={{ flex: 1 }}
               />
             </View>
+            <Button
+              label={busy === 'discard' ? 'Discarding…' : 'Discard selected'}
+              disabled={busy !== undefined || selected.length === 0}
+              onPress={discard}
+            />
           </View>
         </>
       )}
+      <ReviewBar hostKey={hostKey} cwd={cwd} sessionId={sessionId} storeKey={reviewKey(hostKey, cwd)} />
     </View>
   )
 }

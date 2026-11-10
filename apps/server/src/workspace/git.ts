@@ -639,6 +639,50 @@ export class GitService {
     return this.write(root, () => this.pushDirect(root))
   }
 
+  /**
+   * Throw away working-tree and staged changes for the chosen paths only. Tracked files go back
+   * to HEAD; files that were never committed are deleted. Other files are left alone.
+   */
+  async discard(cwd: string, paths: string[]): Promise<{ discarded: number }> {
+    const root = await this.root(cwd)
+    for (const file of paths) assertRelative(file)
+    return this.write(root, () => this.discardAtRoot(root, paths.map(toPosix)))
+  }
+
+  private async discardAtRoot(root: string, paths: string[]): Promise<{ discarded: number }> {
+    const status = await this.readStatus(root)
+    const wanted = new Set(paths)
+    const files = status.files.filter(
+      (f) => wanted.has(f.path) || (f.oldPath !== undefined && wanted.has(f.oldPath)),
+    )
+    if (files.length === 0) {
+      throw new GitError('None of those paths have changes to throw away.')
+    }
+    let discarded = 0
+    for (const file of files) {
+      const inHead =
+        (await this.gitRaw(root, ['cat-file', '-e', `HEAD:${file.path}`])).code === 0 ||
+        (file.oldPath !== undefined &&
+          (await this.gitRaw(root, ['cat-file', '-e', `HEAD:${file.oldPath}`])).code === 0)
+      if (inHead) {
+        const restore = file.oldPath ? [file.oldPath, file.path] : [file.path]
+        await this.git(root, ['restore', '--source=HEAD', '--staged', '--worktree', '--', ...restore])
+      } else {
+        if (file.staged) {
+          await this.git(root, ['restore', '--staged', '--', file.path])
+        }
+        const clean = await this.gitRaw(root, ['clean', '-f', '-d', '--', file.path])
+        if (clean.code !== 0) {
+          throw new GitError(
+            explainGitError(clean.stderr.trim() || clean.stdout.trim() || `git clean failed`),
+          )
+        }
+      }
+      discarded++
+    }
+    return { discarded }
+  }
+
   private async pushDirect(root: string): Promise<void> {
     const info = await this.info(root)
     if (info.detached || !info.branch) throw new GitError('Cannot push a detached HEAD')

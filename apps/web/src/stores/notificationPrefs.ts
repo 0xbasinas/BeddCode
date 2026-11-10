@@ -62,6 +62,12 @@ function read(): string | null {
   }
 }
 
+type NotificationPrefsPush = (patch: { needsYou?: boolean; turnDone?: boolean }) => void
+let notificationPrefsPush: NotificationPrefsPush | undefined
+export function setNotificationPrefsPush(fn: NotificationPrefsPush | undefined) {
+  notificationPrefsPush = fn
+}
+
 export const useNotificationPrefs = create<{
   values: NotificationPrefs
   update(patch: Partial<NotificationPrefs>): void
@@ -77,5 +83,8 @@ export const useNotificationPrefs = create<{
       }
       return { values }
     })
+    if (patch.needsYou !== undefined || patch.turnDone !== undefined) {
+      notificationPrefsPush?.({ needsYou: patch.needsYou, turnDone: patch.turnDone })
+    }
   },
 }))

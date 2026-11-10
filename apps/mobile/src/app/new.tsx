@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router'
 import {
   CaretDown,
   Desktop,
+  Monitor,
   FolderSimple,
   FolderSimplePlus,
   GitBranch,
@@ -56,6 +57,7 @@ export default function NewSessionScreen() {
   const project = projects.find((p) => p.path === chosenFolder)
   const [worktree, setWorktree] = useState(true)
   const [agentTools, setAgentTools] = useState(false)
+  const [computerTools, setComputerTools] = useState(false)
   const useWorktree = Boolean(chosenFolder && project?.isRepo && worktree)
 
   const modes = agent?.capabilities.permissionModes ?? []
@@ -216,6 +218,7 @@ export default function NewSessionScreen() {
       effort,
       workspace: useWorktree ? { mode: 'worktree' } : undefined,
       agentTools: agentTools || undefined,
+      computerTools: computerTools || undefined,
     })
     // The session opens as soon as it exists; the first message follows while the screen slides in,
     // instead of the screen waiting for the host to accept it.
@@ -288,6 +291,8 @@ export default function NewSessionScreen() {
               placeholder="Describe a task, or paste an issue link…"
               onSend={send}
               commands={commands}
+              hostKey={host}
+              cwd={chosenFolder || undefined}
               mode={
                 mode
                   ? {
@@ -322,6 +327,22 @@ export default function NewSessionScreen() {
                   'workspace',
                 )
               : null}
+            <Pressable
+              style={[styles.chip, computerTools && { borderColor: colors.accent }]}
+              onPress={() => setComputerTools((v) => !v)}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: computerTools }}
+              accessibilityLabel="Use computer"
+            >
+              <Icon icon={Monitor} size={14} color={computerTools ? colors.accent : undefined} />
+              <Text
+                size={12.5}
+                color={computerTools ? colors.accent : colors.textSecondary}
+                numberOfLines={1}
+              >
+                {computerTools ? 'Uses computer' : 'Use computer'}
+              </Text>
+            </Pressable>
             <Pressable
               style={[styles.chip, agentTools && { borderColor: colors.accent }]}
               onPress={() => setAgentTools((v) => !v)}

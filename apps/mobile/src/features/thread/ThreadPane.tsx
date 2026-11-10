@@ -11,7 +11,7 @@ import { Checks, DotsThree, Stop as StopIcon, ArrowUUpLeft } from 'phosphor-reac
 import { now } from '@beddcode/client-runtime'
 import { useEffect, useRef, useState } from 'react'
 import { router } from 'expo-router'
-import { Alert, Animated, Pressable, StyleSheet, View } from 'react-native'
+import { Alert, Animated, Pressable, Share, StyleSheet, TextInput, View } from 'react-native'
 
 import { Composer } from '@/features/composer/Composer'
 import { ModelPicker } from '@/features/composer/ModelPicker'
@@ -22,9 +22,12 @@ import {
   hostRequest,
   prompt,
   recordMetric,
+  forkSession,
+  renameSession,
   setMode,
   setSessionDone,
   setSessionModel,
+  setSessionPinned,
   useHostStore,
   useSession,
   useSessionHostKey,
@@ -33,26 +36,33 @@ import { colors, radius } from '@/theme/tokens'
 import { Header } from '@/ui/Header'
 import { Icon } from '@/ui/Icon'
 import { MenuSheet, type MenuItem } from '@/ui/MenuSheet'
-import { Faint, Muted } from '@/ui/Text'
+import { Faint, Muted, Text } from '@/ui/Text'
 import { attachBase64, EMPTY_ATTACHMENTS, useAttachments } from '@/host/attachments'
 import type { Pane } from '@/features/panes/PaneBar'
 import * as ImagePicker from 'expo-image-picker'
 import { Camera, Image as ImageIcon, FolderSimple, TerminalWindow } from 'phosphor-react-native'
+import { ContextMeter } from './ContextMeter'
+import { PlanCard } from './PlanCard'
+import { exportSession } from './exportSession'
+import { appendReplyQuote } from './quote'
 import { Transcript } from './Transcript'
 import { StartedByBanner } from './AgentToolCard'
 import { QueueControls } from './QueueControls'
 import { SessionNotes } from './SessionNotes'
 import { Button } from '@/ui/Button'
 import { OfflineMessages } from './OfflineMessages'
+import { useComposerPrefill } from '@/host/composerPrefill'
 import { enqueueMessage, useOfflineQueue } from '@/host/offlineQueue'
 
 /** The conversation with the agent: transcript, anything it waits on, and the composer. */
 export function ThreadPane({
   sessionId,
   onOpenPane,
+  onOpenFile,
 }: {
   sessionId: string
   onOpenPane(pane: Pane): void
+  onOpenFile?(path: string): void
 }) {
   const [queueOnly, setQueueOnly] = useState(true)
   const session = useSession(sessionId)
@@ -75,6 +85,8 @@ export function ThreadPane({
   const [modelMenu, setModelMenu] = useState(false)
   const [switchMenu, setSwitchMenu] = useState(false)
   const [switchTarget, setSwitchTarget] = useState<string>()
+  const [renameOpen, setRenameOpen] = useState(false)
+  const [renameTitle, setRenameTitle] = useState('')
   const draft = useAttachments((s) => s.drafts[sessionId]) ?? EMPTY_ATTACHMENTS
 
   if (!session) {
@@ -138,6 +150,41 @@ export function ThreadPane({
   const items: MenuItem[] = [
     { id: 'switch', label: 'Switch agent…', onSelect: () => setSwitchMenu(true) },
     {
+      id: 'pin',
+      label: session.pinned ? 'Unpin' : 'Pin to top',
+      onSelect: () =>
+        void setSessionPinned(session.id, !session.pinned).catch((err: unknown) =>
+          Alert.alert('Could not update pin', err instanceof Error ? err.message : String(err)),
+        ),
+    },
+    {
+      id: 'rename',
+      label: 'Rename…',
+      onSelect: () => {
+        setRenameTitle(session.title)
+        setRenameOpen(true)
+      },
+    },
+    {
+      id: 'fork',
+      label: 'Fork this thread…',
+      hint: 'Open a copy from this point',
+      onSelect: () =>
+        void forkSession(session.id)
+          .then((id) => router.push({ pathname: '/session/[id]', params: { id } }))
+          .catch((err: unknown) =>
+            Alert.alert('Could not fork', err instanceof Error ? err.message : String(err)),
+          ),
+    },
+    {
+      id: 'export',
+      label: 'Export transcript…',
+      onSelect: () => {
+        const body = exportSession(session, hostName)
+        void Share.share({ title: session.title, message: body }).catch(() => {})
+      },
+    },
+    {
       id: 'notes',
       label: notesOpen ? 'Hide session notes' : 'Session notes',
       onSelect: () => setNotesOpen((open) => !open),
@@ -184,6 +231,11 @@ export function ThreadPane({
         }
       />
       <StreamIndicator state={streamState} />
+      {session.items.some((i) => i.kind === 'notice' && i.hostUpdating) ? (
+        <Muted size={11} style={{ paddingHorizontal: 16, paddingTop: 2 }}>
+          The host is restoring this session…
+        </Muted>
+      ) : null}
       <View style={{ flex: 1 }}>
         <Transcript
           onFirstLayout={() => {
@@ -202,6 +254,12 @@ export function ThreadPane({
           hostKey={hostKey}
           onApprove={(requestId, optionId) => approve(session.id, requestId, optionId)}
           onAnswer={(requestId, answers) => answerQuestion(session.id, requestId, answers)}
+          onOpenFile={onOpenFile}
+          onQuote={(text, turnNo) => {
+            const current = composerDraft.current
+            const next = appendReplyQuote(current, text, turnNo)
+            useComposerPrefill.getState().set(session.id, next)
+          }}
           header={
             <View style={{ alignItems: 'center', paddingBottom: 4 }}>
               <Faint size={12}>
@@ -254,6 +312,7 @@ export function ThreadPane({
         )}
         <OfflineMessages sessionId={session.id} />
         {session.queue.length > 0 && <QueueControls session={session} hostKey={hostKey!} />}
+        {session.plan ? <PlanCard plan={session.plan} /> : null}
         <View style={styles.composer}>
           {running && (
             <Button
@@ -261,6 +320,14 @@ export function ThreadPane({
               label={queueOnly ? 'Queue after this turn' : 'Steer if supported, otherwise queue'}
             />
           )}
+          {session.context && session.context.size > 0 ? (
+            <ContextMeter
+              used={session.context.used}
+              size={session.context.size}
+              sessionId={session.id}
+              hasCompact={Boolean(session.commands?.some((c) => c.name === 'compact'))}
+            />
+          ) : null}
           <Composer
             placeholder={
               endedByDecline(session)
@@ -291,6 +358,8 @@ export function ThreadPane({
             attachments={draft}
             hostKey={hostKey}
             commands={session.commands}
+            cwd={session.cwd}
+            sessionId={session.id}
             onDraftChange={(text) => {
               composerDraft.current = text
             }}
@@ -315,7 +384,6 @@ export function ThreadPane({
                   }
                 : undefined
             }
-            context={contextPct !== undefined ? `Context ${contextPct}%` : undefined}
           />
         </View>
       </View>
@@ -429,6 +497,36 @@ export function ThreadPane({
         items={items}
         onClose={() => setMenu(false)}
       />
+      {renameOpen ? (
+        <View style={styles.renameBox}>
+          <TextInput
+            value={renameTitle}
+            onChangeText={setRenameTitle}
+            autoFocus
+            style={styles.renameInput}
+            placeholder="Session name"
+            placeholderTextColor={colors.faint}
+          />
+          <View style={{ flexDirection: 'row', gap: 16 }}>
+            <Pressable onPress={() => setRenameOpen(false)}>
+              <Muted size={13}>Cancel</Muted>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                const title = renameTitle.trim()
+                if (!title) return
+                void renameSession(session.id, title)
+                  .then(() => setRenameOpen(false))
+                  .catch((err: unknown) =>
+                    Alert.alert('Could not rename', err instanceof Error ? err.message : String(err)),
+                  )
+              }}
+            >
+              <Text size={13}>Save</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
       <MenuSheet
         visible={modeMenu}
         title="How much it asks"
@@ -450,6 +548,21 @@ const styles = StyleSheet.create({
   missing: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
   composer: { paddingHorizontal: 12, paddingTop: 4, paddingBottom: 6 },
   queue: { paddingHorizontal: 16, gap: 6, paddingBottom: 4 },
+  renameBox: {
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    gap: 8,
+  },
+  renameInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    borderRadius: radius.control,
+    color: colors.text,
+    fontSize: 15,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
   queued: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -488,7 +601,7 @@ function StreamIndicator({
   if (!visible) return null
   return (
     <Animated.View style={{ opacity, paddingHorizontal: 16, paddingTop: 4 }}>
-      <Muted size={11}>{state === 'live' ? 'Caught up' : 'Reconnecting…'}</Muted>
+      <Muted size={11}>{state === 'live' ? 'Caught up' : state === 'catching-up' ? 'Resuming this session…' : 'Reconnecting…'}</Muted>
     </Animated.View>
   )
 }
