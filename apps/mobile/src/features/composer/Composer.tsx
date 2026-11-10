@@ -9,6 +9,8 @@ import {
   X,
 } from 'phosphor-react-native'
 import { useEffect, useState } from 'react'
+import { attachBase64 } from '@/host/attachments'
+import { useComposerPrefill } from '@/host/composerPrefill'
 import { insertCommand, insertMention, matchCommands, mentionAt } from '@beddcode/client-runtime'
 import type { SlashCommand } from '@beddcode/contracts'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
@@ -17,6 +19,7 @@ import { EMPTY_ATTACHMENTS, type DraftAttachment } from '@/host/attachments'
 import { colors, fonts, radius } from '@/theme/tokens'
 import { AttachmentImage, isImageName } from './AttachmentImage'
 import { matchingContextMentions, type ContextMentionKind } from './contextMentions'
+import { ImageAnnotator } from './ImageAnnotator'
 import { resolveContextMention } from './resolveContextMention'
 import { mentionItems, type MentionItem } from './mentionItems'
 import { send as sendHaptic } from '@/ui/haptics'
@@ -50,6 +53,7 @@ export function Composer({
   commands,
   onDraftChange,
   cwd,
+  sessionId,
 }: {
   placeholder: string
   onSend(text: string, attachmentIds: string[]): Promise<void> | void
@@ -72,6 +76,8 @@ export function Composer({
   onDraftChange?(text: string): void
   /** The session folder, used to offer @file mentions and live @diff/@ci/@pr/@term. */
   cwd?: string
+  /** When set, quotes, CI follow-ups, and annotated images attach to this session. */
+  sessionId?: string
 }) {
   const [text, setText] = useState(initial)
   const [busy, setBusy] = useState(false)
@@ -79,6 +85,17 @@ export function Composer({
   const uploading = attachments.some((a) => a.status === 'uploading')
   const ready = attachments.filter((a) => a.status === 'done' && a.id).map((a) => a.id!)
   const canSend = text.trim().length > 0 && !busy && !uploading
+  const prefill = useComposerPrefill((s) => s.pending)
+  useEffect(() => {
+    if (!sessionId || !prefill || prefill.sessionId !== sessionId) return
+    const next = useComposerPrefill.getState().take(sessionId)
+    if (!next) return
+    const combined = text.trim() ? `${text.trim()}\n\n${next}` : next
+    setText(combined)
+    onDraftChange?.(combined)
+  }, [prefill, sessionId])
+  const [annotate, setAnnotate] = useState<{ key: number; uri: string; name: string }>()
+
   const [dismissed, setDismissed] = useState<string>()
   const matches = dismissed === text ? [] : matchCommands(text, commands)
   const [caret, setCaret] = useState(0)
@@ -270,6 +287,11 @@ export function Composer({
                   name={a.name}
                   id={a.id}
                   onRemove={onRemoveAttachment ? () => onRemoveAttachment(a.key) : undefined}
+                  onAnnotate={
+                    sessionId
+                      ? (uri) => setAnnotate({ key: a.key, uri, name: a.name })
+                      : undefined
+                  }
                 />
               ) : (
                 <View
@@ -396,6 +418,25 @@ export function Composer({
         <Muted size={11.5} style={{ paddingHorizontal: 4 }}>
           {context}
         </Muted>
+      ) : null}
+      {annotate ? (
+        <ImageAnnotator
+          visible
+          uri={annotate.uri}
+          onClose={() => setAnnotate(undefined)}
+          onSave={async (data) => {
+            if (!hostKey || !sessionId) return
+            const base = annotate.name.replace(/\.[^.]+$/, '') || 'image'
+            await attachBase64(
+              hostKey,
+              sessionId,
+              `${base}-marked.png`,
+              data,
+              Math.ceil((data.length * 3) / 4),
+            )
+            onRemoveAttachment?.(annotate.key)
+          }}
+        />
       ) : null}
     </View>
   )

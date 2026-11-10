@@ -1,4 +1,4 @@
-import { X } from 'phosphor-react-native'
+import { PencilSimple, X } from 'phosphor-react-native'
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, View } from 'react-native'
 
@@ -39,6 +39,7 @@ export function AttachmentImage({
   size = 56,
   uploading,
   onRemove,
+  onAnnotate,
 }: {
   hostKey: string
   name: string
@@ -47,6 +48,7 @@ export function AttachmentImage({
   size?: number
   uploading?: boolean
   onRemove?: () => void
+  onAnnotate?(uri: string): void
 }) {
   const uri = useAttachmentUri(hostKey, { id, path })
   const [open, setOpen] = useState(false)
@@ -63,6 +65,16 @@ export function AttachmentImage({
           <ActivityIndicator size="small" color={colors.muted} />
         )}
       </Pressable>
+      {onAnnotate && uri ? (
+        <Pressable
+          hitSlop={8}
+          onPress={() => onAnnotate(uri)}
+          accessibilityLabel={`Mark up ${name}`}
+          style={styles.annotate}
+        >
+          <Icon icon={PencilSimple} size={11} />
+        </Pressable>
+      ) : null}
       {onRemove ? (
         <Pressable
           hitSlop={8}
@@ -101,6 +113,19 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.control,
     backgroundColor: colors.card,
+  },
+  annotate: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.panel,
   },
   remove: {
     position: 'absolute',

@@ -29,6 +29,7 @@ import { Button } from '@/ui/Button'
 import { Diffstat } from '@/ui/Diffstat'
 import { Icon } from '@/ui/Icon'
 import { Faint, Muted, Text } from '@/ui/Text'
+import { CiFollowUp } from './CiFollowUp'
 import { usePolled } from './usePolled'
 
 /**
@@ -66,6 +67,7 @@ export function PullRequestTab(props: {
           </Pressable>
         ))}
       </View>
+      <CiFollowUp hostKey={props.hostKey} cwd={props.cwd} sessionId={props.sessionId} />
       {scope === 'branch' ? <BranchPullRequest {...props} /> : <RepoPullRequests {...props} />}
     </View>
   )

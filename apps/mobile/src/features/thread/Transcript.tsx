@@ -484,6 +484,7 @@ interface RowProps {
   onAnswer(requestId: string, answers?: Record<string, string[]>): Promise<void>
   onOpenFile?(path: string): void
   canUndo?: boolean
+  onQuote?(text: string, turnNo?: number): void
   /** Appeared after the thread was first shown, so it eases in. */
   fresh: boolean
   /** The message still being written: its settled paragraphs are drawn once, only the end again. */
@@ -494,7 +495,7 @@ interface RowProps {
 const played = new Set<string>()
 
 const Row = memo(
-  function Row({ entry, cwd, sessionId, hostKey, onApprove, onAnswer, onOpenFile, canUndo, fresh, live }: RowProps) {
+  function Row({ entry, cwd, sessionId, hostKey, onApprove, onAnswer, onOpenFile, canUndo, onQuote, fresh, live }: RowProps) {
     const body = (() => {
       if (entry.kind === 'tools') return <ToolGroup tools={entry.tools} />
       if (entry.kind === 'agent-tool')
@@ -504,7 +505,12 @@ const Row = memo(
       switch (item.kind) {
         case 'message':
           return item.role === 'user' ? (
-            <View style={styles.userBubble}>
+            <Pressable
+              style={styles.userBubble}
+              onLongPress={onQuote ? () => onQuote(item.text, item.turnNo) : undefined}
+              delayLongPress={350}
+              accessibilityHint={onQuote ? 'Long press to quote' : undefined}
+            >
               <Text size={14} color={colors.textSecondary} style={{ lineHeight: 21 }} selectable>
                 {item.text}
               </Text>
@@ -527,9 +533,15 @@ const Row = memo(
                   )}
                 </View>
               ) : null}
-            </View>
+            </Pressable>
           ) : (
-            <Message text={item.text} live={live} />
+            <Pressable
+              onLongPress={onQuote ? () => onQuote(item.text, item.turnNo) : undefined}
+              delayLongPress={350}
+              accessibilityHint={onQuote ? 'Long press to quote' : undefined}
+            >
+              <Message text={item.text} live={live} />
+            </Pressable>
           )
         case 'approval':
           return <ApprovalCard item={item} cwd={cwd} onApprove={onApprove} />
@@ -592,6 +604,7 @@ const Row = memo(
     a.onAnswer === b.onAnswer &&
     a.onOpenFile === b.onOpenFile &&
     a.canUndo === b.canUndo &&
+    a.onQuote === b.onQuote &&
     sameEntry(a.entry, b.entry),
 )
 
@@ -602,6 +615,7 @@ export function Transcript({
   onApprove,
   onAnswer,
   onOpenFile,
+  onQuote,
   header,
   footer,
   hostKey,
@@ -614,6 +628,7 @@ export function Transcript({
   onApprove(requestId: string, optionId: string): Promise<void>
   onAnswer(requestId: string, answers?: Record<string, string[]>): Promise<void>
   onOpenFile?(path: string): void
+  onQuote?(text: string, turnNo?: number): void
   header?: React.ReactElement
   footer?: React.ReactElement
   /** Called once, when the first rows of the thread have been laid out. */
@@ -722,6 +737,7 @@ export function Transcript({
             onApprove={approve}
             onAnswer={answer}
             onOpenFile={onOpenFile}
+            onQuote={onQuote}
             canUndo={
               entry.kind === 'item' &&
               entry.item.kind === 'changes' &&

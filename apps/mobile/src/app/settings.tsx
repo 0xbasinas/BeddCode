@@ -4,7 +4,10 @@ import Constants from 'expo-constants'
 import { router } from 'expo-router'
 import {
   Bell,
+  CalendarBlank,
+  ChartLine,
   FolderSimple,
+  Plugs,
   FolderSimplePlus,
   HardDrives,
   Lightning,
@@ -166,6 +169,18 @@ function HostCard({ entry }: { entry: HostEntry }) {
                 {p.path}
               </Faint>
             </View>
+            <Pressable
+              hitSlop={10}
+              onPress={() =>
+                router.push({
+                  pathname: '/instructions' as '/new',
+                  params: { host: entry.key, path: p.path },
+                })
+              }
+              accessibilityLabel={`Instructions for ${p.name}`}
+            >
+              <Muted size={11.5}>Instructions</Muted>
+            </Pressable>
             <Pressable
               hitSlop={10}
               onPress={() => removeFolder(p.path, p.name)}
@@ -408,6 +423,35 @@ export default function SettingsScreen() {
               Add a host
             </Text>
           </Pressable>
+        </Section>
+
+        <Section title="TOOLS">
+          <View style={styles.card}>
+            <Pressable onPress={() => router.push('/schedules' as '/new')} accessibilityRole="button">
+              <Row>
+                <Icon icon={CalendarBlank} size={18} />
+                <Text size={13.5} style={{ flex: 1 }}>
+                  Schedules
+                </Text>
+              </Row>
+            </Pressable>
+            <Pressable onPress={() => router.push('/usage' as '/new')} accessibilityRole="button">
+              <Row>
+                <Icon icon={ChartLine} size={18} />
+                <Text size={13.5} style={{ flex: 1 }}>
+                  Usage
+                </Text>
+              </Row>
+            </Pressable>
+            <Pressable onPress={() => router.push('/mcp' as '/new')} accessibilityRole="button">
+              <Row last>
+                <Icon icon={Plugs} size={18} />
+                <Text size={13.5} style={{ flex: 1 }}>
+                  MCP servers
+                </Text>
+              </Row>
+            </Pressable>
+          </View>
         </Section>
 
         <Section title="ABOUT">

@@ -11,7 +11,7 @@ import { Checks, DotsThree, Stop as StopIcon, ArrowUUpLeft } from 'phosphor-reac
 import { now } from '@beddcode/client-runtime'
 import { useEffect, useRef, useState } from 'react'
 import { router } from 'expo-router'
-import { Alert, Animated, Pressable, StyleSheet, View } from 'react-native'
+import { Alert, Animated, Pressable, Share, StyleSheet, TextInput, View } from 'react-native'
 
 import { Composer } from '@/features/composer/Composer'
 import { ModelPicker } from '@/features/composer/ModelPicker'
@@ -22,9 +22,11 @@ import {
   hostRequest,
   prompt,
   recordMetric,
+  renameSession,
   setMode,
   setSessionDone,
   setSessionModel,
+  setSessionPinned,
   useHostStore,
   useSession,
   useSessionHostKey,
@@ -33,18 +35,21 @@ import { colors, radius } from '@/theme/tokens'
 import { Header } from '@/ui/Header'
 import { Icon } from '@/ui/Icon'
 import { MenuSheet, type MenuItem } from '@/ui/MenuSheet'
-import { Faint, Muted } from '@/ui/Text'
+import { Faint, Muted, Text } from '@/ui/Text'
 import { attachBase64, EMPTY_ATTACHMENTS, useAttachments } from '@/host/attachments'
 import type { Pane } from '@/features/panes/PaneBar'
 import * as ImagePicker from 'expo-image-picker'
 import { Camera, Image as ImageIcon, FolderSimple, TerminalWindow } from 'phosphor-react-native'
 import { PlanCard } from './PlanCard'
+import { exportSession } from './exportSession'
+import { appendReplyQuote } from './quote'
 import { Transcript } from './Transcript'
 import { StartedByBanner } from './AgentToolCard'
 import { QueueControls } from './QueueControls'
 import { SessionNotes } from './SessionNotes'
 import { Button } from '@/ui/Button'
 import { OfflineMessages } from './OfflineMessages'
+import { useComposerPrefill } from '@/host/composerPrefill'
 import { enqueueMessage, useOfflineQueue } from '@/host/offlineQueue'
 
 /** The conversation with the agent: transcript, anything it waits on, and the composer. */
@@ -78,6 +83,8 @@ export function ThreadPane({
   const [modelMenu, setModelMenu] = useState(false)
   const [switchMenu, setSwitchMenu] = useState(false)
   const [switchTarget, setSwitchTarget] = useState<string>()
+  const [renameOpen, setRenameOpen] = useState(false)
+  const [renameTitle, setRenameTitle] = useState('')
   const draft = useAttachments((s) => s.drafts[sessionId]) ?? EMPTY_ATTACHMENTS
 
   if (!session) {
@@ -140,6 +147,30 @@ export function ThreadPane({
   const action = doneMenuAction(session)
   const items: MenuItem[] = [
     { id: 'switch', label: 'Switch agent…', onSelect: () => setSwitchMenu(true) },
+    {
+      id: 'pin',
+      label: session.pinned ? 'Unpin' : 'Pin to top',
+      onSelect: () =>
+        void setSessionPinned(session.id, !session.pinned).catch((err: unknown) =>
+          Alert.alert('Could not update pin', err instanceof Error ? err.message : String(err)),
+        ),
+    },
+    {
+      id: 'rename',
+      label: 'Rename…',
+      onSelect: () => {
+        setRenameTitle(session.title)
+        setRenameOpen(true)
+      },
+    },
+    {
+      id: 'export',
+      label: 'Export transcript…',
+      onSelect: () => {
+        const body = exportSession(session, hostName)
+        void Share.share({ title: session.title, message: body }).catch(() => {})
+      },
+    },
     {
       id: 'notes',
       label: notesOpen ? 'Hide session notes' : 'Session notes',
@@ -206,6 +237,11 @@ export function ThreadPane({
           onApprove={(requestId, optionId) => approve(session.id, requestId, optionId)}
           onAnswer={(requestId, answers) => answerQuestion(session.id, requestId, answers)}
           onOpenFile={onOpenFile}
+          onQuote={(text, turnNo) => {
+            const current = composerDraft.current
+            const next = appendReplyQuote(current, text, turnNo)
+            useComposerPrefill.getState().set(session.id, next)
+          }}
           header={
             <View style={{ alignItems: 'center', paddingBottom: 4 }}>
               <Faint size={12}>
@@ -297,6 +333,7 @@ export function ThreadPane({
             hostKey={hostKey}
             commands={session.commands}
             cwd={session.cwd}
+            sessionId={session.id}
             onDraftChange={(text) => {
               composerDraft.current = text
             }}
@@ -435,6 +472,36 @@ export function ThreadPane({
         items={items}
         onClose={() => setMenu(false)}
       />
+      {renameOpen ? (
+        <View style={styles.renameBox}>
+          <TextInput
+            value={renameTitle}
+            onChangeText={setRenameTitle}
+            autoFocus
+            style={styles.renameInput}
+            placeholder="Session name"
+            placeholderTextColor={colors.faint}
+          />
+          <View style={{ flexDirection: 'row', gap: 16 }}>
+            <Pressable onPress={() => setRenameOpen(false)}>
+              <Muted size={13}>Cancel</Muted>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                const title = renameTitle.trim()
+                if (!title) return
+                void renameSession(session.id, title)
+                  .then(() => setRenameOpen(false))
+                  .catch((err: unknown) =>
+                    Alert.alert('Could not rename', err instanceof Error ? err.message : String(err)),
+                  )
+              }}
+            >
+              <Text size={13}>Save</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
       <MenuSheet
         visible={modeMenu}
         title="How much it asks"
@@ -456,6 +523,21 @@ const styles = StyleSheet.create({
   missing: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
   composer: { paddingHorizontal: 12, paddingTop: 4, paddingBottom: 6 },
   queue: { paddingHorizontal: 16, gap: 6, paddingBottom: 4 },
+  renameBox: {
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    gap: 8,
+  },
+  renameInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    borderRadius: radius.control,
+    color: colors.text,
+    fontSize: 15,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
   queued: {
     flexDirection: 'row',
     alignItems: 'center',

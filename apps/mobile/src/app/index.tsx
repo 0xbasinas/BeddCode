@@ -18,6 +18,7 @@ import {
   CaretDown,
   CaretRight,
   Checks,
+  CalendarBlank,
   ClockCounterClockwise,
   FolderSimple,
   FolderSimplePlus,
@@ -39,7 +40,9 @@ import { Alert, FlatList, Pressable, StyleSheet, TextInput, View } from 'react-n
 
 import {
   deleteSession,
+  renameSession,
   setSessionDone,
+  setSessionPinned,
   setSessionWaiting,
   useAllSessions,
   useHostStore,
@@ -217,6 +220,37 @@ export default function SessionsScreen() {
     const action = doneMenuAction(session)
     return [
       {
+        id: 'pin',
+        label: session.pinned ? 'Unpin' : 'Pin to top',
+        onSelect: () =>
+          void setSessionPinned(session.id, !session.pinned).catch((err: unknown) =>
+            Alert.alert('Could not update pin', err instanceof Error ? err.message : String(err)),
+          ),
+      },
+      {
+        id: 'rename',
+        label: 'Rename…',
+        onSelect: () =>
+          Alert.prompt
+            ? Alert.prompt(
+                'Rename session',
+                undefined,
+                (title) => {
+                  const next = title.trim()
+                  if (!next) return
+                  void renameSession(session.id, next).catch((err: unknown) =>
+                    Alert.alert('Could not rename', err instanceof Error ? err.message : String(err)),
+                  )
+                },
+                'plain-text',
+                session.title,
+              )
+            : Alert.alert(
+                'Rename on this phone',
+                'Open the session and use Rename in its menu. Android does not show a prompt here.',
+              ),
+      },
+      {
         id: 'done',
         label: action.label,
         hint: action.hint,
@@ -296,6 +330,13 @@ export default function SessionsScreen() {
             accessibilityLabel="Agent inbox"
           >
             <Icon icon={Tray} size={20} />
+          </Pressable>
+          <Pressable
+            hitSlop={8}
+            onPress={() => router.push('/schedules' as '/new')}
+            accessibilityLabel="Schedules"
+          >
+            <Icon icon={CalendarBlank} size={20} />
           </Pressable>
           <Pressable
             hitSlop={8}
