@@ -7,6 +7,7 @@ import { BrowserPane } from '@/features/browser/BrowserPane'
 import { FilesPane } from '@/features/files/FilesPane'
 import { GitPane } from '@/features/git/GitPane'
 import { TerminalPane } from '@/features/terminal/TerminalPane'
+import { DesktopPane } from '@/features/desktop/DesktopPane'
 import { ThreadPane } from '@/features/thread/ThreadPane'
 import { Screen } from '@/ui/Screen'
 import { useKeyboardVisible } from '@/ui/useKeyboardVisible'
@@ -15,6 +16,7 @@ import { useKeyboardVisible } from '@/ui/useKeyboardVisible'
 export default function SessionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const [pane, setPane] = useState<Pane>('thread')
+  const [pendingFile, setPendingFile] = useState<string>()
   // Panes the user has opened stay mounted, so a terminal or an open file is still there on return.
   const [opened, setOpened] = useState<Set<Pane>>(new Set(['thread']))
   const keyboard = useKeyboardVisible()
@@ -34,13 +36,22 @@ export default function SessionScreen() {
     <Screen bottom={false}>
       <View style={{ flex: 1 }}>
         <View style={{ flex: 1, display: pane === 'thread' ? 'flex' : 'none' }}>
-          {drawn ? <ThreadPane sessionId={id} onOpenPane={choose} /> : null}
+          {drawn ? (
+            <ThreadPane
+              sessionId={id}
+              onOpenPane={choose}
+              onOpenFile={(path) => {
+                setPendingFile(path)
+                choose('files')
+              }}
+            />
+          ) : null}
         </View>
-        {(['terminal', 'files', 'git', 'browser'] as const).map((p) =>
+        {(['terminal', 'files', 'git', 'browser', 'desktop'] as const).map((p) =>
           opened.has(p) ? (
             <View key={p} style={{ flex: 1, display: pane === p ? 'flex' : 'none' }}>
               {p === 'files' ? (
-                <FilesPane sessionId={id} onAttached={() => choose('thread')} />
+                <FilesPane sessionId={id} onAttached={() => choose('thread')} openPath={pendingFile} />
               ) : p === 'browser' ? (
                 <BrowserPane sessionId={id} onSent={() => choose('thread')} />
               ) : p === 'terminal' ? (
@@ -51,6 +62,8 @@ export default function SessionScreen() {
                 />
               ) : p === 'git' ? (
                 <GitPane sessionId={id} active={pane === 'git'} />
+              ) : p === 'desktop' ? (
+                <DesktopPane sessionId={id} active={pane === 'desktop'} />
               ) : null}
             </View>
           ) : null,

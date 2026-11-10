@@ -1,5 +1,5 @@
 import type { Icon as PhosphorIcon } from 'phosphor-react-native'
-import { ChatCircle, FolderSimple, GitBranch, Globe, TerminalWindow } from 'phosphor-react-native'
+import { ChatCircle, FolderSimple, GitBranch, Globe, Monitor, TerminalWindow } from 'phosphor-react-native'
 import { Pressable, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -7,7 +7,7 @@ import { colors } from '@/theme/tokens'
 import { Icon } from '@/ui/Icon'
 import { Text } from '@/ui/Text'
 
-export type Pane = 'thread' | 'terminal' | 'files' | 'git' | 'browser'
+export type Pane = 'thread' | 'terminal' | 'files' | 'git' | 'browser' | 'desktop'
 
 const PANES: { id: Pane; label: string; icon: PhosphorIcon }[] = [
   { id: 'thread', label: 'Thread', icon: ChatCircle },
@@ -15,6 +15,7 @@ const PANES: { id: Pane; label: string; icon: PhosphorIcon }[] = [
   { id: 'files', label: 'Files', icon: FolderSimple },
   { id: 'git', label: 'Git', icon: GitBranch },
   { id: 'browser', label: 'Browser', icon: Globe },
+  { id: 'desktop', label: 'Desktop', icon: Monitor },
 ]
 
 /**
@@ -56,7 +57,7 @@ export function PaneBar({ pane, onChange }: { pane: Pane; onChange(pane: Pane): 
 }
 
 const styles = StyleSheet.create({
-  wrap: { paddingHorizontal: 12, paddingTop: 6, backgroundColor: colors.panel },
+  wrap: { paddingHorizontal: 8, paddingTop: 6, backgroundColor: colors.panel },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -72,8 +73,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 7,
     height: 40,
-    minWidth: 44,
-    paddingHorizontal: 12,
+    minWidth: 40,
+    paddingHorizontal: 8,
     borderRadius: 20,
     justifyContent: 'center',
   },

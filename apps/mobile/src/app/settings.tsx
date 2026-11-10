@@ -26,6 +26,7 @@ import {
 } from 'react-native'
 import type { AlertEvents } from '@beddcode/contracts'
 
+import { AutoHandoffSettings } from '@/features/settings/AutoHandoffSettings'
 import {
   activeRoute,
   hostRequest,
@@ -206,6 +207,8 @@ function HostCard({ entry }: { entry: HostEntry }) {
       <HostWarmPool hostKey={entry.key} online={online} epoch={runtime.epoch} />
 
       <HostAlerts hostKey={entry.key} online={online} />
+
+      <AutoHandoffSettings hostKey={entry.key} />
 
       <Pressable style={styles.forget} onPress={forget}>
         <Icon icon={Trash} size={16} color={colors.danger} />

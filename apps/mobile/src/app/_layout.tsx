@@ -14,6 +14,7 @@ import '@/host/randomSource'
 import { startPush } from '@/host/push'
 import { startHosts, useHostStore } from '@/host/store'
 import { colors } from '@/theme/tokens'
+import { AutoHandoff } from '@/features/thread/AutoHandoff'
 import { LoadingScreen } from '@/ui/LoadingScreen'
 
 SplashScreen.preventAutoHideAsync()
@@ -108,6 +109,7 @@ export default function RootLayout() {
         <ThemeProvider value={theme}>
           <StatusBar style="light" />
           <Stack screenOptions={screenOptions} />
+          {gone ? <AutoHandoff /> : null}
           {gone ? null : <LoadingScreen status={status} done={done} onGone={onGone} />}
         </ThemeProvider>
       </SafeAreaProvider>

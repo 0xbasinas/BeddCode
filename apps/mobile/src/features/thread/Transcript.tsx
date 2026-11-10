@@ -19,11 +19,13 @@ import {
 } from '@beddcode/client-runtime'
 import {
   Prohibit,
+  ArrowUUpLeft,
   Check,
   CaretDown,
   CaretRight,
   ArrowsLeftRight,
   FileText,
+  FolderOpen,
   Hand,
   MagnifyingGlass,
   PencilSimpleLine,
@@ -36,7 +38,7 @@ import { ActivityIndicator, Animated, FlatList, Pressable, StyleSheet, View } fr
 
 import { colors, radius } from '@/theme/tokens'
 import { AttachmentImage, isImageName } from '@/features/composer/AttachmentImage'
-import { useHostStore } from '@/host/store'
+import { hostRequest, undoTurn, useHostStore } from '@/host/store'
 import { Message } from './Message'
 import { Diffstat } from '@/ui/Diffstat'
 import { FadeIn } from '@/ui/FadeIn'
@@ -251,46 +253,195 @@ function EditsCard({ files, cwd }: { files: EditedFile[]; cwd: string }) {
 
 type ChangesItem = Extract<TranscriptItem, { kind: 'changes' }>
 
-/** What a turn changed in the folder, from the host's before/after snapshots. Undo lives on desktop. */
-function ChangesCard({ item }: { item: ChangesItem }) {
+const STATUS_LABEL: Record<ChangesItem['files'][number]['status'], string> = {
+  A: 'added',
+  M: 'modified',
+  D: 'deleted',
+  R: 'renamed',
+}
+
+/**
+ * What a turn changed in the folder, from the host's before/after snapshots.
+ * The latest turn of an idle session can be undone, and each file's diff can be opened.
+ */
+function ChangesCard({
+  item,
+  hostKey,
+  sessionId,
+  canUndo,
+  onOpenFile,
+}: {
+  item: ChangesItem
+  hostKey?: string
+  sessionId: string
+  canUndo: boolean
+  onOpenFile?(path: string): void
+}) {
   const [open, setOpen] = useState(item.files.length <= 3 && !item.reverted)
+  const [confirming, setConfirming] = useState(false)
+  const [undoing, setUndoing] = useState(false)
+  const [error, setError] = useState<string>()
   const added = item.files.reduce((n, f) => n + f.added, 0)
   const removed = item.files.reduce((n, f) => n + f.removed, 0)
+  const coverage = item.coverage ?? { state: item.truncated ? 'truncated' : 'full' }
+  const unavailable = coverage.state === 'skipped' || coverage.state === 'expired'
+
+  const undo = async () => {
+    setUndoing(true)
+    setError(undefined)
+    try {
+      await undoTurn(sessionId, item.after)
+      setConfirming(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setUndoing(false)
+    }
+  }
+
   return (
     <View style={[styles.card, item.reverted ? { opacity: 0.7 } : null]}>
-      <Pressable
-        style={styles.cardHead}
-        onPress={() => {
-          animateLayout()
-          setOpen((v) => !v)
-        }}
-      >
-        <Icon icon={PencilSimpleLine} size={18} />
-        <View style={{ flex: 1 }}>
-          <Text size={13.5}>
-            {item.reverted ? 'Undone: ' : ''}Changed {item.files.length} file
-            {item.files.length === 1 ? '' : 's'}
-            {item.truncated ? '+' : ''} this turn
-          </Text>
-          <Diffstat added={added} removed={removed} />
+      <View style={styles.cardHead}>
+        <Pressable
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}
+          onPress={() => {
+            animateLayout()
+            setOpen((v) => !v)
+          }}
+        >
+          <Icon icon={PencilSimpleLine} size={18} />
+          <View style={{ flex: 1 }}>
+            <Text size={13.5}>
+              {item.reverted ? 'Undone: ' : ''}Changed {item.files.length} file
+              {item.files.length === 1 ? '' : 's'}
+              {item.truncated ? '+' : ''} this turn
+            </Text>
+            <Diffstat added={added} removed={removed} />
+          </View>
+          <Icon icon={open ? CaretDown : CaretRight} size={15} />
+        </Pressable>
+        {canUndo && !unavailable && !item.reverted && !confirming ? (
+          <Pressable
+            onPress={() => setConfirming(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Undo these changes"
+            style={{ paddingHorizontal: 6, paddingVertical: 4 }}
+          >
+            <Icon icon={ArrowUUpLeft} size={16} />
+          </Pressable>
+        ) : null}
+      </View>
+      {confirming ? (
+        <View style={styles.fileBlock}>
+          <Muted size={12.5} style={{ paddingHorizontal: 12, paddingTop: 8 }}>
+            Put these files back the way they were before this turn? Staged changes and commits stay
+            as they are.
+          </Muted>
+          <View style={{ flexDirection: 'row', gap: 12, padding: 12 }}>
+            <Pressable onPress={() => void undo()} disabled={undoing} accessibilityRole="button">
+              <Text size={13}>{undoing ? 'Undoing…' : 'Undo changes'}</Text>
+            </Pressable>
+            <Pressable onPress={() => setConfirming(false)} disabled={undoing}>
+              <Muted size={13}>Keep</Muted>
+            </Pressable>
+          </View>
         </View>
-        <Icon icon={open ? CaretDown : CaretRight} size={15} />
-      </Pressable>
+      ) : null}
+      {error ? (
+        <Text size={12} color={colors.danger} style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+          {error}
+        </Text>
+      ) : null}
       {open &&
         item.files.map((f) => (
-          <View key={f.path} style={styles.fileBlock}>
-            <View style={styles.fileRow}>
-              <Text size={13} numberOfLines={1} style={{ flex: 1 }}>
-                {f.path}
-              </Text>
-              {f.binary ? (
-                <Faint size={11.5}>binary</Faint>
-              ) : (
-                <Diffstat added={f.added} removed={f.removed} />
-              )}
-            </View>
-          </View>
+          <ChangedFile
+            key={f.path}
+            file={f}
+            hostKey={hostKey}
+            sessionId={sessionId}
+            after={item.after}
+            onOpenFile={item.reverted || f.status === 'D' ? undefined : onOpenFile}
+          />
         ))}
+    </View>
+  )
+}
+
+function ChangedFile({
+  file,
+  hostKey,
+  sessionId,
+  after,
+  onOpenFile,
+}: {
+  file: ChangesItem['files'][number]
+  hostKey?: string
+  sessionId: string
+  after: string
+  onOpenFile?(path: string): void
+}) {
+  const [open, setOpen] = useState(false)
+  const [diff, setDiff] = useState<{ patch?: string; truncated?: boolean } | 'loading' | { error: string }>()
+  const toggle = () => {
+    const next = !open
+    setOpen(next)
+    if (next && hostKey && (diff === undefined || (typeof diff === 'object' && 'error' in diff))) {
+      setDiff('loading')
+      hostRequest(hostKey, 'sessions.turnDiff', { sessionId, after, path: file.path }).then(
+        setDiff,
+        (err: unknown) => setDiff({ error: err instanceof Error ? err.message : String(err) }),
+      )
+    }
+  }
+  return (
+    <View style={styles.fileBlock}>
+      <View style={styles.fileRow}>
+        <Pressable style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }} onPress={toggle}>
+          <Text size={13} numberOfLines={1} style={{ flex: 1 }}>
+            {file.oldPath ? `${file.oldPath} → ` : ''}
+            {file.path}
+          </Text>
+          <Faint size={11}>{STATUS_LABEL[file.status]}</Faint>
+          {file.binary ? (
+            <Faint size={11.5}>binary</Faint>
+          ) : (
+            <Diffstat added={file.added} removed={file.removed} />
+          )}
+        </Pressable>
+        {onOpenFile ? (
+          <Pressable
+            hitSlop={8}
+            onPress={() => onOpenFile(file.path)}
+            accessibilityLabel={`Open ${file.path}`}
+          >
+            <Icon icon={FolderOpen} size={14} />
+          </Pressable>
+        ) : null}
+      </View>
+      {open ? (
+        diff === 'loading' || diff === undefined ? (
+          <Faint size={12} style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+            Loading diff…
+          </Faint>
+        ) : 'error' in diff ? (
+          <Text size={12} color={colors.danger} style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+            {diff.error}
+          </Text>
+        ) : diff.patch ? (
+          <View style={{ paddingHorizontal: 4, paddingBottom: 8 }}>
+            <PatchView patch={diff.patch} />
+            {diff.truncated ? (
+              <Faint size={11.5} style={{ paddingHorizontal: 8, paddingTop: 4 }}>
+                Diff cut short
+              </Faint>
+            ) : null}
+          </View>
+        ) : (
+          <Faint size={12} style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
+            {diff.truncated ? 'Binary file or too large to show' : 'No line changes'}
+          </Faint>
+        )
+      ) : null}
     </View>
   )
 }
@@ -331,6 +482,8 @@ interface RowProps {
   hostKey?: string
   onApprove(requestId: string, optionId: string): Promise<void>
   onAnswer(requestId: string, answers?: Record<string, string[]>): Promise<void>
+  onOpenFile?(path: string): void
+  canUndo?: boolean
   /** Appeared after the thread was first shown, so it eases in. */
   fresh: boolean
   /** The message still being written: its settled paragraphs are drawn once, only the end again. */
@@ -341,7 +494,7 @@ interface RowProps {
 const played = new Set<string>()
 
 const Row = memo(
-  function Row({ entry, cwd, sessionId, hostKey, onApprove, onAnswer, fresh, live }: RowProps) {
+  function Row({ entry, cwd, sessionId, hostKey, onApprove, onAnswer, onOpenFile, canUndo, fresh, live }: RowProps) {
     const body = (() => {
       if (entry.kind === 'tools') return <ToolGroup tools={entry.tools} />
       if (entry.kind === 'agent-tool')
@@ -400,7 +553,15 @@ const Row = memo(
             </Muted>
           )
         case 'changes':
-          return <ChangesCard item={item} />
+          return (
+            <ChangesCard
+              item={item}
+              hostKey={hostKey}
+              sessionId={sessionId}
+              canUndo={Boolean(canUndo)}
+              onOpenFile={onOpenFile}
+            />
+          )
         case 'error':
           return (
             <View style={styles.errorBox}>
@@ -429,6 +590,8 @@ const Row = memo(
     a.hostKey === b.hostKey &&
     a.onApprove === b.onApprove &&
     a.onAnswer === b.onAnswer &&
+    a.onOpenFile === b.onOpenFile &&
+    a.canUndo === b.canUndo &&
     sameEntry(a.entry, b.entry),
 )
 
@@ -438,6 +601,7 @@ export function Transcript({
   cwd,
   onApprove,
   onAnswer,
+  onOpenFile,
   header,
   footer,
   hostKey,
@@ -449,6 +613,7 @@ export function Transcript({
   hostKey?: string
   onApprove(requestId: string, optionId: string): Promise<void>
   onAnswer(requestId: string, answers?: Record<string, string[]>): Promise<void>
+  onOpenFile?(path: string): void
   header?: React.ReactElement
   footer?: React.ReactElement
   /** Called once, when the first rows of the thread have been laid out. */
@@ -556,6 +721,13 @@ export function Transcript({
             hostKey={hostKey}
             onApprove={approve}
             onAnswer={answer}
+            onOpenFile={onOpenFile}
+            canUndo={
+              entry.kind === 'item' &&
+              entry.item.kind === 'changes' &&
+              entry.item.id === session.items.filter((i) => i.kind === 'changes').at(-1)?.id &&
+              session.status !== 'running'
+            }
             fresh={fresh.current.has(entry.id)}
             live={session.status === 'running' && entry.id === all[all.length - 1]?.id}
           />

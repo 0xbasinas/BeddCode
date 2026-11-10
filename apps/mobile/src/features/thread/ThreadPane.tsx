@@ -38,6 +38,7 @@ import { attachBase64, EMPTY_ATTACHMENTS, useAttachments } from '@/host/attachme
 import type { Pane } from '@/features/panes/PaneBar'
 import * as ImagePicker from 'expo-image-picker'
 import { Camera, Image as ImageIcon, FolderSimple, TerminalWindow } from 'phosphor-react-native'
+import { PlanCard } from './PlanCard'
 import { Transcript } from './Transcript'
 import { StartedByBanner } from './AgentToolCard'
 import { QueueControls } from './QueueControls'
@@ -50,9 +51,11 @@ import { enqueueMessage, useOfflineQueue } from '@/host/offlineQueue'
 export function ThreadPane({
   sessionId,
   onOpenPane,
+  onOpenFile,
 }: {
   sessionId: string
   onOpenPane(pane: Pane): void
+  onOpenFile?(path: string): void
 }) {
   const [queueOnly, setQueueOnly] = useState(true)
   const session = useSession(sessionId)
@@ -202,6 +205,7 @@ export function ThreadPane({
           hostKey={hostKey}
           onApprove={(requestId, optionId) => approve(session.id, requestId, optionId)}
           onAnswer={(requestId, answers) => answerQuestion(session.id, requestId, answers)}
+          onOpenFile={onOpenFile}
           header={
             <View style={{ alignItems: 'center', paddingBottom: 4 }}>
               <Faint size={12}>
@@ -254,6 +258,7 @@ export function ThreadPane({
         )}
         <OfflineMessages sessionId={session.id} />
         {session.queue.length > 0 && <QueueControls session={session} hostKey={hostKey!} />}
+        {session.plan ? <PlanCard plan={session.plan} /> : null}
         <View style={styles.composer}>
           {running && (
             <Button
@@ -291,6 +296,7 @@ export function ThreadPane({
             attachments={draft}
             hostKey={hostKey}
             commands={session.commands}
+            cwd={session.cwd}
             onDraftChange={(text) => {
               composerDraft.current = text
             }}

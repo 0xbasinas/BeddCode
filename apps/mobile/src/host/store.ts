@@ -455,6 +455,7 @@ export async function prompt(
   text: string,
   attachmentIds?: string[],
   mode?: 'auto' | 'queue',
+  idempotencyKey?: string,
 ) {
   const started = now()
   // Sending the same message again after a failure reuses its id, so a message that did reach
@@ -465,7 +466,7 @@ export async function prompt(
     text,
     attachments: attachmentIds && attachmentIds.length > 0 ? attachmentIds : undefined,
     mode,
-    clientMessageId: attempt.id,
+    clientMessageId: idempotencyKey ?? attempt.id,
   })
   attempt.done()
   const hostKey = hostKeyOfSession(sessionId)
@@ -521,6 +522,46 @@ export async function setSessionWaiting(
 
 export async function setMode(sessionId: string, modeId: string) {
   await sessionRequest(sessionId, 'sessions.setMode', { sessionId, modeId })
+}
+
+export async function refreshProviders(hostKey: string) {
+  const providers = await hostRequest(hostKey, 'providers.list', {})
+  patchRuntime(hostKey, () => ({ providers }))
+}
+
+export async function setSessionPinned(sessionId: string, pinned: boolean) {
+  await sessionRequest(sessionId, 'sessions.setPinned', { sessionId, pinned })
+}
+
+export async function renameSession(sessionId: string, title: string) {
+  await sessionRequest(sessionId, 'sessions.rename', { sessionId, title })
+}
+
+export async function forkSession(
+  sessionId: string,
+  throughTurn?: number,
+  side?: boolean,
+): Promise<string> {
+  const { sessionId: forked } = await sessionRequest(sessionId, 'sessions.fork', {
+    sessionId,
+    throughTurn,
+    side,
+  })
+  createdOn.set(forked, hostKeyOfSession(sessionId) ?? '')
+  return forked
+}
+
+export async function setSessionBoardStage(
+  sessionId: string,
+  stage: 'pending' | 'in-progress' | 'review' | 'done',
+) {
+  await sessionRequest(sessionId, 'sessions.setBoardStage', { sessionId, stage })
+}
+
+export async function undoTurn(sessionId: string, after: string) {
+  const hostKey = hostKeyOfSession(sessionId)
+  if (!hostKey) throw new Error('That session is not available right now')
+  return hostRequest(hostKey, 'sessions.undoTurn', { sessionId, after })
 }
 
 export async function approve(sessionId: string, requestId: string, optionId: string) {
