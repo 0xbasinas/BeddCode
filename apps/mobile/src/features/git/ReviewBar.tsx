@@ -9,6 +9,8 @@ import { colors, radius } from '@/theme/tokens'
 import { Faint, Text } from '@/ui/Text'
 import { useReviewStore } from './reviewStore'
 
+const NO_COMMENTS: ReviewComment[] = []
+
 /** Pending review notes under the changed files: send them now, or put them in the composer. */
 export function ReviewBar({
   hostKey,
@@ -21,7 +23,7 @@ export function ReviewBar({
   sessionId: string
   storeKey: string
 }) {
-  const comments = useReviewStore((s) => s.comments[storeKey] ?? [])
+  const comments = useReviewStore((s) => s.comments[storeKey] ?? NO_COMMENTS)
   const clearSent = useReviewStore((s) => s.clearSent)
   const [busy, setBusy] = useState<'send' | 'draft'>()
   const [error, setError] = useState<string>()

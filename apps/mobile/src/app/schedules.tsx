@@ -29,10 +29,20 @@ import { Icon } from '@/ui/Icon'
 import { Screen } from '@/ui/Screen'
 import { Faint, Muted, Text } from '@/ui/Text'
 
+function preferredHostKey(
+  entries: { key: string; name: string }[],
+  runtimes: Record<string, { connection?: string } | undefined>,
+) {
+  return (
+    entries.find((e) => runtimes[e.key]?.connection === 'connected')?.key ?? entries[0]?.key
+  )
+}
+
 /** The host's scheduled runs: list, pause, run now, and add or edit one. */
 export default function SchedulesScreen() {
   const entries = useHostStore((s) => s.entries)
-  const [hostKey, setHostKey] = useState(entries[0]?.key)
+  const runtimes = useHostStore((s) => s.runtimes)
+  const [hostKey, setHostKey] = useState(() => preferredHostKey(entries, runtimes))
   const [data, setData] = useState<{ schedules: Schedule[]; runs: ScheduleRun[] }>()
   const [error, setError] = useState<string>()
   const [editing, setEditing] = useState<ScheduleForm>()
@@ -48,6 +58,16 @@ export default function SchedulesScreen() {
   useEffect(() => {
     void load()
   }, [load])
+  useEffect(() => {
+    const preferred = preferredHostKey(entries, runtimes)
+    if (!preferred) return
+    if (!hostKey || !entries.some((e) => e.key === hostKey)) {
+      setHostKey(preferred)
+      return
+    }
+    // When the current host is offline and another one is connected, show the live one first.
+    if (runtimes[hostKey]?.connection !== 'connected' && preferred !== hostKey) setHostKey(preferred)
+  }, [entries, hostKey, runtimes])
 
   const act = async (run: () => Promise<unknown>) => {
     try {
@@ -94,15 +114,22 @@ export default function SchedulesScreen() {
       <ScrollView contentContainerStyle={styles.body}>
         {entries.length > 1 ? (
           <View style={styles.chips}>
-            {entries.map((e) => (
-              <Pressable
-                key={e.key}
-                style={[styles.chip, hostKey === e.key && styles.chipOn]}
-                onPress={() => setHostKey(e.key)}
-              >
-                <Text size={12.5}>{e.name}</Text>
-              </Pressable>
-            ))}
+            {entries.map((e) => {
+              const online = runtimes[e.key]?.connection === 'connected'
+              const label = runtimes[e.key]?.host?.name ?? e.name
+              return (
+                <Pressable
+                  key={e.key}
+                  style={[styles.chip, hostKey === e.key && styles.chipOn]}
+                  onPress={() => setHostKey(e.key)}
+                >
+                  <Text size={12.5}>
+                    {label}
+                    {online ? '' : ' (offline)'}
+                  </Text>
+                </Pressable>
+              )
+            })}
           </View>
         ) : null}
         {error ? (
@@ -112,9 +139,11 @@ export default function SchedulesScreen() {
         ) : null}
         {!hostKey ? (
           <Muted size={13.5}>Add a host first.</Muted>
-        ) : !data ? (
+        ) : !data && !error ? (
           <Muted size={13.5}>Loading…</Muted>
-        ) : data.schedules.length === 0 ? (
+        ) : error && !data ? (
+          <Muted size={13.5}>Connect to this host to see its schedules.</Muted>
+        ) : !data ? null : data.schedules.length === 0 ? (
           <Muted size={13.5}>No schedules yet. Add one to run a prompt on a timer.</Muted>
         ) : (
           data.schedules.map((s) => {
