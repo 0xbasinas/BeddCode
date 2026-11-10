@@ -112,6 +112,10 @@ export interface StartServerOptions {
   telemetry?: AccessServices['telemetry']
   /** Takes the host's own measurements (see Telemetry.record). */
   telemetryRecorder?: (name: string, value: number, tags?: Record<string, string>) => void
+  /** Shared settings every connected client can read, write, and watch. */
+  hostSettings?: AccessServices['hostSettings'] & {
+    onChange(listener: (record: import('@beddcode/contracts').SharedSettingsRecord) => void): () => void
+  }
   automation: AutomationServices
   /** Host self-monitoring, served at `/metrics` and over `host.stats`. */
   metrics?: HostMetrics
@@ -227,6 +231,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       mcpGateway: options.mcpGateway,
       warmPool: options.warmPool,
       telemetry: options.telemetry,
+      hostSettings: options.hostSettings,
     },
     options.automation,
     store,
@@ -523,6 +528,9 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
     const stopTerminals = options.workspace.terminals.onChange((c) => {
       if (authed) send({ t: 'term.changed', ...c })
     })
+    const stopSettings = options.hostSettings?.onChange((record) => {
+      if (authed) send({ t: 'settings.changed', ...record })
+    })
     lastSeen.set(ws, Date.now())
     const alive = () => {
       if (lastSeen.has(ws)) lastSeen.set(ws, Date.now())
@@ -556,6 +564,7 @@ export async function startServer(options: StartServerOptions): Promise<RunningS
       if (designClient) release('design', () => designClient.close())
       release('designs', stopDesigns)
       release('terminals', stopTerminals)
+      if (stopSettings) release('settings', stopSettings)
     })
 
     ws.on('message', (raw) => {

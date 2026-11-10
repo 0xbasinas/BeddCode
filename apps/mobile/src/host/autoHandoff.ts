@@ -2,10 +2,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import type { HandoffPolicy } from '@beddcode/client-runtime'
+import type { SharedSettingsPatch } from '@beddcode/contracts'
 
 import { defaultHandoffPolicy, type HandoffHostPolicies } from './autoHandoffPolicy'
 
 export { defaultHandoffPolicy, policyFor } from './autoHandoffPolicy'
+
+type HandoffPush = (host: string, patch: SharedSettingsPatch) => void
+let handoffPush: HandoffPush | undefined
+export function setHandoffPush(fn: HandoffPush | undefined) {
+  handoffPush = fn
+}
 
 export const useAutoHandoff = create<{
   hosts: HandoffHostPolicies
@@ -14,7 +21,7 @@ export const useAutoHandoff = create<{
   persist(
     (set) => ({
       hosts: {},
-      setPolicy: (host, project, policy) =>
+      setPolicy: (host, project, policy) => {
         set((state) => {
           const current = state.hosts[host] ?? { global: defaultHandoffPolicy, projects: {} }
           return {
@@ -25,7 +32,12 @@ export const useAutoHandoff = create<{
                 : { ...current, global: policy },
             },
           }
-        }),
+        })
+        handoffPush?.(
+          host,
+          project ? { handoff: { projects: { [project]: policy } } } : { handoff: { global: policy } },
+        )
+      },
     }),
     { name: 'beddcode.auto-handoff.v1', storage: createJSONStorage(() => AsyncStorage) },
   ),

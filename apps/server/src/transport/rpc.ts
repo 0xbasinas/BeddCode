@@ -132,6 +132,14 @@ export interface AccessServices {
   }
   /** Where apps' speed measurements go (kept only while the owner has uploads switched on). */
   telemetry?: { report(platform: MetricPlatform, records: MetricRecord[]): boolean }
+  /** Shared settings every connected client can read, write, and watch. */
+  hostSettings?: {
+    get(): import('@beddcode/contracts').SharedSettingsRecord
+    update(
+      patch: import('@beddcode/contracts').SharedSettingsPatch,
+      baseVersion?: number,
+    ): import('@beddcode/contracts').SharedSettingsRecord
+  }
 }
 
 export interface RelayControl {
@@ -611,6 +619,14 @@ export function createRpcRouter(
     'alerts.settings': async () => alerts.view(),
     'alerts.setSettings': async (p) => alerts.setSettings(p),
     'alerts.test': () => alerts.test(),
+    'settings.get': async () => {
+      if (!access.hostSettings) throw new Error('Settings are not available on this host')
+      return access.hostSettings.get()
+    },
+    'settings.update': async (p) => {
+      if (!access.hostSettings) throw new Error('Settings are not available on this host')
+      return access.hostSettings.update(p.patch, p.baseVersion)
+    },
     'push.register': async (p, context) => {
       alerts.register(context.deviceId, p)
       return {}

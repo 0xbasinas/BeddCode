@@ -29,6 +29,7 @@ import {
   GcReport,
   HostStats,
 } from './hosts.ts'
+import { SharedSettingsPatch, SharedSettingsRecord } from './hostSettings.ts'
 import { ConfigOption, SlashCommand, StoredEvent } from './events.ts'
 import { PermissionModeOption, ProviderInstance } from './providers.ts'
 import {
@@ -1125,6 +1126,23 @@ export const RpcMethods = {
   },
   /** Sends a test alert everywhere alerts go. */
   'alerts.test': { params: z.object({}), result: SentAlert },
+
+  /** Shared host settings: agent defaults, handoff, theme, and notification events the host needs. */
+  'settings.get': {
+    params: z.object({}),
+    result: SharedSettingsRecord,
+  },
+  /**
+   * Apply a patch on top of the current document (field-level last-write-wins).
+   * Pass `baseVersion` so a stale client can tell it was merged onto a newer copy.
+   */
+  'settings.update': {
+    params: z.object({
+      patch: SharedSettingsPatch,
+      baseVersion: z.number().int().nonnegative().optional(),
+    }),
+    result: SharedSettingsRecord,
+  },
   /** A phone asks for push alerts, or changes which ones it wants. Tied to its pairing. */
   'push.register': {
     params: z.object({

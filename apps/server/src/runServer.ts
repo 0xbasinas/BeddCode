@@ -35,6 +35,7 @@ import {
   type ServerConfig,
 } from './config.ts'
 import { dataHome, loadHostId, loadRelayKey } from './hostIdentity.ts'
+import { HostSettingsStore } from './settings/hostSettings.ts'
 import { RelayAgent } from './relay/agent.ts'
 import { Telemetry, hostLabel } from './telemetry/telemetry.ts'
 import { newRelayKey } from '@beddcode/client-runtime/relayCrypto'
@@ -131,6 +132,7 @@ export async function runServer(
   recoverInterruptedTurns(store, autoResumeFromEnv(), held)
   const interruptedSessions = takeInterruptedSessions()
   const attachments = new AttachmentStore(path.join(home, 'attachments'))
+  const hostSettings = new HostSettingsStore(path.join(home, 'host-settings.json'))
   const hostPool = options.warmPool
     ? undefined
     : createHostWarmPool(config.warmPool, adapters, attachments.root, (warmPool) =>
@@ -338,6 +340,7 @@ export async function runServer(
       mcpGateway,
       warmPool: hostPool?.settings,
       telemetry,
+      hostSettings,
       metrics,
       ops: { metrics, gc },
       telemetryRecorder: (name, value, tags) => telemetry.record(name, value, tags),

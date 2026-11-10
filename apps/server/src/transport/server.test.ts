@@ -25,6 +25,7 @@ import { ProjectStore } from '../workspace/projects.ts'
 import { EventStore } from '../store/eventStore.ts'
 import { HostMetrics } from '../telemetry/hostMetrics.ts'
 import { startServer, type RunningServer } from './server.ts'
+import { HostSettingsStore } from '../settings/hostSettings.ts'
 import { createAutomation } from '../automation/index.ts'
 import { startRelay } from '@beddcode/relay'
 import { RelayAgent } from '../relay/agent.ts'
@@ -111,6 +112,7 @@ async function boot(
     () => sessions.invalidateDetection(),
   )
   const tokens = new TokenStore(path.join(dir, 'auth.json'))
+  const hostSettings = new HostSettingsStore(path.join(dir, 'host-settings.json'))
   const pairing = new PairingManager()
   const workspace = {
     git,
@@ -182,6 +184,7 @@ async function boot(
     watchers,
     automation: { ...automation, computer: automation.computerPane },
     agentTools: automation.agentTools,
+    hostSettings,
     ...(metrics ? { metrics, ops: { metrics } } : {}),
     log,
   })
@@ -195,7 +198,7 @@ async function boot(
     () => watchers.closeAll(),
     () => metrics?.stop(),
   )
-  return { server, store, tokens, pairing, attachments, automation, sessions, pushes, dir }
+  return { server, store, tokens, pairing, attachments, automation, sessions, pushes, dir, hostSettings }
 }
 
 class Client {
@@ -1796,5 +1799,35 @@ describe('resumable chat integration', () => {
     })
     await vi.waitFor(() => expect(resumed.events).toEqual([two]))
     expect(resumed.subscriptions[0]).toMatchObject({ afterSeq: one.seq, sessionCursors: { s: 1 } })
+  })
+})
+
+describe('settings sync', () => {
+  it('updates from one client and the other client gets the event', async () => {
+    const { server } = await boot()
+    const a = await Client.connect(server.port)
+    const b = await Client.connect(server.port)
+    await a.until((fs) => fs.some((f) => f.t === 'welcome'))
+    await b.until((fs) => fs.some((f) => f.t === 'welcome'))
+    const beforeB = b.frames.length
+    const res = await a.rpc('settings.update', {
+      patch: { theme: 'light', autoReview: 'ask' },
+      baseVersion: 0,
+    })
+    expect(res.ok).toBe(true)
+    if (!res.ok) throw new Error('update failed')
+    const record = res.result as { version: number; settings: { theme?: string; autoReview?: string } }
+    expect(record.version).toBe(1)
+    expect(record.settings.theme).toBe('light')
+    await b.until((fs) =>
+      fs.slice(beforeB).some((f) => f.t === 'settings.changed' && f.version === 1),
+    )
+    const changed = b.frames.find((f) => f.t === 'settings.changed')
+    expect(changed && changed.t === 'settings.changed' && changed.settings.theme).toBe('light')
+    expect(changed && changed.t === 'settings.changed' && changed.settings.autoReview).toBe('ask')
+    const got = await b.rpc('settings.get', {})
+    expect(got.ok).toBe(true)
+    if (!got.ok) throw new Error('get failed')
+    expect((got.result as { settings: { theme?: string } }).settings.theme).toBe('light')
   })
 })

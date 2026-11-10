@@ -30,6 +30,7 @@ import {
 import type { AlertEvents } from '@beddcode/contracts'
 
 import { AutoHandoffSettings } from '@/features/settings/AutoHandoffSettings'
+import { SharedHostSettings } from '@/features/settings/SharedHostSettings'
 import {
   activeRoute,
   hostRequest,
@@ -39,6 +40,7 @@ import {
   useRuntime,
 } from '@/host/store'
 import { applyHostAlerts, hostAlertPrefs, pushUnavailableReason, usePushPrefs } from '@/host/push'
+import { updateHostSettings, useHostSettings } from '@/host/hostSettings'
 import { colors, radius } from '@/theme/tokens'
 import { Header } from '@/ui/Header'
 import { Icon } from '@/ui/Icon'
@@ -223,6 +225,7 @@ function HostCard({ entry }: { entry: HostEntry }) {
 
       <HostAlerts hostKey={entry.key} online={online} />
 
+      <SharedHostSettings hostKey={entry.key} online={online} />
       <AutoHandoffSettings hostKey={entry.key} />
 
       <Pressable style={styles.forget} onPress={forget}>
@@ -298,9 +301,24 @@ const ALERT_EVENTS: { key: keyof AlertEvents; label: string }[] = [
 function HostAlerts({ hostKey, online }: { hostKey: string; online: boolean }) {
   const prefs = usePushPrefs((s) => hostAlertPrefs(s.hosts, hostKey))
   const save = usePushPrefs((s) => s.set)
+  const hostNotes = useHostSettings((s) => s.records[hostKey]?.settings.notifications)
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string>()
   const unavailable = pushUnavailableReason()
+
+  useEffect(() => {
+    if (!hostNotes) return
+    const current = hostAlertPrefs(usePushPrefs.getState().hosts, hostKey)
+    const events = { ...current.events, ...hostNotes }
+    if (
+      events.needsYou === current.events.needsYou &&
+      events.turnDone === current.events.turnDone &&
+      events.error === current.events.error &&
+      events.schedule === current.events.schedule
+    )
+      return
+    save(hostKey, { ...current, events })
+  }, [hostKey, hostNotes, save])
 
   const change = async (next: typeof prefs) => {
     setBusy(true)
@@ -308,6 +326,9 @@ function HostAlerts({ hostKey, online }: { hostKey: string; online: boolean }) {
     try {
       await applyHostAlerts(hostKey, next)
       save(hostKey, next)
+      await updateHostSettings(hostKey, { notifications: next.events }).catch(() => {
+        // The phone still has the choice; a later connect will retry.
+      })
     } catch (err) {
       setProblem(err instanceof Error ? err.message : String(err))
     } finally {

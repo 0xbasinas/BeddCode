@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { BrowserUnavailable, BrowserUseCall, BrowserUseResult } from './browserUse.ts'
 import { StoredEvent } from './events.ts'
+import { SharedSettingsRecord } from './hostSettings.ts'
 import { TerminalInfo } from './workspace.ts'
 
 export const PROTOCOL_VERSION = 1
@@ -208,5 +209,7 @@ export const ServerFrame = z.discriminatedUnion('t', [
     width: z.number().optional(),
   }),
   z.object({ t: z.literal('browser.call'), id: z.string(), call: BrowserUseCall }),
+  /** Shared host settings changed; every connected client should replace its copy. */
+  SharedSettingsRecord.extend({ t: z.literal('settings.changed') }),
 ])
 export type ServerFrame = z.infer<typeof ServerFrame>

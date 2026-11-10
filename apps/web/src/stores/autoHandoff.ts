@@ -1,6 +1,13 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { HandoffPolicy } from '@beddcode/client-runtime'
+import type { SharedSettingsPatch } from '@beddcode/contracts'
+
+type HandoffPush = (host: string, patch: SharedSettingsPatch) => void
+let handoffPush: HandoffPush | undefined
+export function setHandoffPush(fn: HandoffPush | undefined) {
+  handoffPush = fn
+}
 
 export const defaultHandoffPolicy: HandoffPolicy = {
   mode: 'off',
@@ -15,7 +22,7 @@ export const useAutoHandoff = create<{
   persist(
     (set) => ({
       hosts: {},
-      setPolicy: (host, project, policy) =>
+      setPolicy: (host, project, policy) => {
         set((state) => {
           const current = state.hosts[host] ?? { global: defaultHandoffPolicy, projects: {} }
           return {
@@ -26,7 +33,12 @@ export const useAutoHandoff = create<{
                 : { ...current, global: policy },
             },
           }
-        }),
+        })
+        handoffPush?.(
+          host,
+          project ? { handoff: { projects: { [project]: policy } } } : { handoff: { global: policy } },
+        )
+      },
     }),
     { name: 'beddcode.auto-handoff.v1', storage: createJSONStorage(() => localStorage) },
   ),

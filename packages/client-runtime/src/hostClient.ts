@@ -67,8 +67,13 @@ export interface HostClientOptions {
           | 'fs.changed'
           | 'design.changed'
           | 'host.updating'
+          | 'settings.changed'
       }
     >,
+  ): void
+  /** Shared host settings changed; replace the client's copy. */
+  onSettingsChanged?(
+    record: Extract<ServerFrame, { t: 'settings.changed' }>,
   ): void
   onState?(state: ConnectionState, host?: HostInfo): void
   /** An agent's browser tool call to run (only after `offerBrowser` said this client can). */
@@ -607,6 +612,10 @@ export class HostClient {
       case 'term.changed':
       case 'fs.changed':
       case 'design.changed':
+        this.options.onFrame?.(frame)
+        break
+      case 'settings.changed':
+        this.options.onSettingsChanged?.(frame)
         this.options.onFrame?.(frame)
         break
       case 'browser.call':

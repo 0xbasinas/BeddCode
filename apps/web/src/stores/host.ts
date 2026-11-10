@@ -32,6 +32,11 @@ import type {
 } from '@beddcode/contracts'
 import { readReplica, writeReplica } from './replicaDb.ts'
 import {
+  applyHostSettingsRecord,
+  pullAndApplyHostSettings,
+  unbindHostSettingsClient,
+} from './hostSettings.ts'
+import {
   LOCAL_HOST_KEY,
   loadRemoteHosts,
   saveRemoteHosts,
@@ -114,7 +119,7 @@ const telemetryStops = new Map<string, () => void>()
 type LiveFrame = Extract<
   ServerFrame,
   {
-    t: 'term.out' | 'term.exit' | 'term.changed' | 'fs.changed' | 'design.changed' | 'host.updating'
+    t: 'term.out' | 'term.exit' | 'term.changed' | 'fs.changed' | 'design.changed' | 'host.updating' | 'settings.changed'
   }
 >
 const frameListeners = new Map<string, Set<(frame: LiveFrame) => void>>()
@@ -202,6 +207,12 @@ function loadHostLists(hostKey: string, client: HostClient) {
   void Promise.all([providers, projects]).then(([a, b]) => {
     if (a && b && isCurrent()) patchRuntime(hostKey, () => ({ loadError: undefined }))
   })
+  void pullAndApplyHostSettings(hostKey, client).catch((error: unknown) => {
+    if (isCurrent())
+      patchRuntime(hostKey, (r) => ({
+        loadError: r.loadError ?? `Could not read shared settings: ${error instanceof Error ? error.message : String(error)}`,
+      }))
+  })
 }
 
 /** Saves each host's history shortly after it changes (see replicaCache.ts). */
@@ -284,6 +295,9 @@ function startHost(entry: HostEntry) {
     },
     onFrame(frame) {
       frameListeners.get(entry.key)?.forEach((l) => l(frame))
+    },
+    onSettingsChanged(record) {
+      applyHostSettingsRecord(entry.key, record)
     },
     onBrowserCall(id, call) {
       const run = browserCallHandler
@@ -432,6 +446,7 @@ export function removeRemoteHost(hostKey: string) {
   if (hostKey === LOCAL_HOST_KEY) return
   clients.get(hostKey)?.stop()
   clients.delete(hostKey)
+  unbindHostSettingsClient(hostKey)
   telemetryStops.get(hostKey)?.()
   telemetryStops.delete(hostKey)
   savers.get(hostKey)?.cancel()

@@ -36,7 +36,7 @@ export function AutoHandoffSettings({ hostKey }: { hostKey: string }) {
         <Icon icon={ArrowsDownUp} size={18} />
         <View style={{ flex: 1, gap: 2 }}>
           <Text size={13.5}>Automatic handoff</Text>
-          <Faint size={11.5}>Runs while this phone app is open.</Faint>
+          <Faint size={11.5}>Saved on this host and shown on every connected app.</Faint>
         </View>
       </View>
       <Text size={12} color={colors.textSecondary} style={styles.pad}>

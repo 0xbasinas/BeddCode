@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { ProviderInstance } from '@beddcode/contracts'
 import { modelChoice } from '../ui/models.ts'
+import type { SharedSettingsPatch } from '@beddcode/contracts'
 
 export interface AgentDefaults {
   model?: string
@@ -74,6 +75,12 @@ export function agentDefaults(defaults: HostDefaults, agent?: ProviderInstance):
   }
 }
 
+type PreferencesPush = (hostId: string, patch: SharedSettingsPatch) => void
+let preferencesPush: PreferencesPush | undefined
+export function setPreferencesPush(fn: PreferencesPush | undefined) {
+  preferencesPush = fn
+}
+
 interface PreferencesState {
   hosts: Record<string, HostDefaults>
   setDefaultAgent(hostId: string, instanceId: string | undefined): void
@@ -94,15 +101,20 @@ export function createPreferencesStore(storage?: Pick<Storage, 'getItem' | 'setI
       })
     return {
       hosts: loadPreferences(storage),
-      setDefaultAgent: (hostId, instanceId) => update(hostId, (d) => ({ ...d, instanceId })),
-      setAgentDefaults: (hostId, id, patch) =>
+      setDefaultAgent: (hostId, instanceId) => {
+        update(hostId, (d) => ({ ...d, instanceId }))
+        preferencesPush?.(hostId, { defaultInstanceId: instanceId ?? null })
+      },
+      setAgentDefaults: (hostId, id, patch) => {
         update(hostId, (d) => ({
           ...d,
           agents: {
             ...d.agents,
             [id]: { ...(Object.hasOwn(d.agents, id) ? d.agents[id] : {}), ...patch },
           },
-        })),
+        }))
+        preferencesPush?.(hostId, { agentDefaults: { [id]: patch } })
+      },
     }
   })
 }
